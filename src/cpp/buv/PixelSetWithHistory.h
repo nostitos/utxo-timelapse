@@ -16,6 +16,7 @@ public:
     struct BlockheightPixelidx {
         uint32_t block_height{};
         size_t pixel_idx{};
+        uint16_t pixel_distance{};  // Distance from origin block to current block (for variable fade)
     };
     using BlockheightPixelCollection = std::vector<BlockheightPixelidx>;
 
@@ -24,26 +25,31 @@ public:
         , m_pixel(size, sentinel) {}
 
     // Assumes that idx < size. O(1) operation.
-    void insert(uint32_t block_height, size_t pixel_idx) {
+    void insert(uint32_t block_height, size_t pixel_idx, uint16_t pixel_distance = 0) {
         if (sentinel == m_pixel[pixel_idx]) {
             // not set: create entry
             m_pixel[pixel_idx] = m_blockheight_pixelidx.size();
-            m_blockheight_pixelidx.emplace_back(BlockheightPixelidx{block_height, pixel_idx});
+            m_blockheight_pixelidx.emplace_back(BlockheightPixelidx{block_height, pixel_idx, pixel_distance});
         } else {
             // pixel already set: update it with the max
             auto& pos = m_blockheight_pixelidx[m_pixel[pixel_idx]];
             if (block_height > pos.block_height) {
                 pos.block_height = block_height;
+                pos.pixel_distance = pixel_distance;
             }
         }
     }
 
-    // remove all pixels older than max age
+    // remove all pixels older than their individual fade duration
     void age(uint32_t const current_block_height) {
         size_t idx = m_blockheight_pixelidx.size();
         while (0U != idx--) {
             auto& pos_at_idx = m_blockheight_pixelidx[idx];
-            if (pos_at_idx.block_height + m_max_history < current_block_height) {
+
+            // Calculate per-pixel fade duration: 10 blocks (near) to 300 blocks (far)
+            uint32_t fade_duration = getFadeDuration(pos_at_idx.pixel_distance);
+
+            if (pos_at_idx.block_height + fade_duration < current_block_height) {
                 // clear that pixel
                 m_pixel[pos_at_idx.pixel_idx] = sentinel;
 
@@ -77,6 +83,12 @@ public:
 
     [[nodiscard]] auto max_history() const -> size_t {
         return m_max_history;
+    }
+
+    // Calculate fade duration based on pixel distance: 10 blocks (near) to 300 blocks (far)
+    [[nodiscard]] static auto getFadeDuration(uint16_t pixel_distance) -> uint32_t {
+        // Linear interpolation: distance 0 -> 10 blocks, distance 3720 -> 300 blocks
+        return 10 + (static_cast<uint32_t>(pixel_distance) * 290 / 3720);
     }
 
 private:

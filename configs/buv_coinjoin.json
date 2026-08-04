@@ -33,11 +33,11 @@
     ],
     "checkpointFile": "/buv_data/checkpoint.utxo",
     "checkpointIntervalBlocks": 10000,
-
     "xAxisMode": "normalizedGeometric",
     "epochBlocks": 105000,
     "epochRatio": 0.5,
     "logCompressionFactor": 4.85,
     "resampleEveryNBlocks": 100,
-    "compressLowSatoshi": true
+    "compressLowSatoshi": true,
+    "coinjoinFilter": true
 }

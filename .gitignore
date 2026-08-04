@@ -43,3 +43,31 @@ out/
 
 # generated blobs
 *.lgr
+# Local/editor files
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# CMake output
+build*/
+compile_commands.json
+
+# Local deployment snapshots
+buv_deploy/
+buv_deploy_original/
+
+# Blockchain data and generated media
+buv_data/
+buv_output/
+output/
+*.blk*
+*.utxo*
+*.mp4
+*.mkv
+*.mov
+*.raw
+*.ppm
+*.log
+__pycache__/
+*.py[cod]

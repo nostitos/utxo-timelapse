@@ -29,7 +29,12 @@ Mmap::Mmap(std::filesystem::path const& f) {
     }
 
     // NOLINTNEXTLINE(hicpp-signed-bitwise)
-    mData = ::mmap(nullptr, mSize, PROT_READ, MAP_PRIVATE | MAP_POPULATE, mFileDescriptor, 0);
+#ifdef MAP_POPULATE
+    auto const mmapFlags = MAP_PRIVATE | MAP_POPULATE;
+#else
+    auto const mmapFlags = MAP_PRIVATE;
+#endif
+    mData = ::mmap(nullptr, mSize, PROT_READ, mmapFlags, mFileDescriptor, 0);
 
     // NOLINTNEXTLINE(cppcoreguidelines-pro-type-cstyle-cast)
     if (mData == MAP_FAILED) {

@@ -29,6 +29,12 @@ public:
 
     // Number of bytes of the RGB data
     [[nodiscard]] virtual auto size() const -> size_t = 0;
+
+    // Update the current epoch for epoch-based logarithmic compression
+    virtual void setCurrentEpoch(uint32_t epoch) = 0;
+
+    // Update total blocks for continuous log mode (keeps HUD in sync with Density)
+    virtual void setTotalBlocks(uint32_t totalBlocks) = 0;
 };
 
 } // namespace buv

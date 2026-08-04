@@ -20,7 +20,7 @@ static std::chrono::steady_clock::time_point sStartTime = std::chrono::steady_cl
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define LOGIF(showHide, ...)                              \
     do {                                                  \
-        if (showHide) {            \
+        if (showHide) {                                   \
             ::util::log(__FILE__, __LINE__, __VA_ARGS__); \
         }                                                 \
     } while (0)
@@ -42,10 +42,10 @@ void log(std::string_view filename, int line, char const* format, Args&&... args
     auto sec = std::chrono::duration<double>{std::chrono::steady_clock::now() - sStartTime};
 
     auto guard = std::lock_guard<std::mutex>{sLogMutex};
-    fmt::print("{:8.3f} {:>30}({:3}) | ", sec.count(), filename, line);
-    fmt::print(format, std::forward<Args>(args)...);
-    fmt::print("\n");
-    fflush(stdout);
+    fmt::print(stderr, "{:8.3f} {:>30}({:3}) | ", sec.count(), filename, line);
+    fmt::print(stderr, format, std::forward<Args>(args)...);
+    fmt::print(stderr, "\n");
+    fflush(stderr);
 }
 
 } // namespace util

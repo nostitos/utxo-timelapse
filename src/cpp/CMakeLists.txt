@@ -22,13 +22,6 @@ target_sources_local(${PROJECT_NAME}
         app/Utxo.cpp
         app/Visualizer.cpp
         buv/SocketStream.cpp
-        unit/BlockEncoderTest.cpp
-        unit/ChunkTest.cpp
-        unit/HexTest.cpp
-        unit/OpenCVTest.cpp
-        unit/parallelToSequentialTest.cpp
-        unit/ProgressBarTest.cpp
-        unit/VarIntTest.cpp
         util/args.cpp
         util/BlockHeightProgressBar.cpp
         util/doctest.cpp
@@ -39,3 +32,19 @@ target_sources_local(${PROJECT_NAME}
         util/parallelToSequential.cpp
         util/rss.cpp
 )
+
+# The pinned doctest release does not link cleanly with current Apple libc++.
+# Keep the application build available on macOS while retaining the full test
+# suite on Linux, including the Docker build used for deployment.
+if(NOT APPLE)
+    target_sources_local(${PROJECT_NAME}
+        PRIVATE
+            unit/BlockEncoderTest.cpp
+            unit/ChunkTest.cpp
+            unit/HexTest.cpp
+            unit/OpenCVTest.cpp
+            unit/parallelToSequentialTest.cpp
+            unit/ProgressBarTest.cpp
+            unit/VarIntTest.cpp
+    )
+endif()

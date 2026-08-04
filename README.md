@@ -1,118 +1,216 @@
-# BitcoinUtxoVisualizer
+# Bitcoin UTXO Visualizer
 
-BitcoinUtxoVisualizer (short `buv`) can generated videos of the evolution of the evolution of Bitcoin's [UTXO (Unspent Transaction Outputs)](https://medium.com/bitbees/what-the-heck-is-utxo-ca68f2651819).
+`buv` turns Bitcoin's UTXO history into a video. It preprocesses a fully indexed
+Bitcoin Core chain into a compact `changes.blk1` stream, renders RGB frames, and
+sends those frames over TCP to FFmpeg or FFplay.
 
-Watch the video on Youtube:
+This repository is based on
+[Martinus' BitcoinUtxoVisualizer](https://github.com/martinus/BitcoinUtxoVisualizer)
+and contains the newer code previously deployed on an Umbrel node.
 
-<!--
-How to create this gif from the video:
+![Bitcoin UTXO visualization](doc/animation_small.gif)
 
-ffmpeg -ss 02:50:00 -i Bitcoin\ UTXO\ evolution\ -\ Block\ 0\ to\ 661045.mp4 -c copy out.mp4
-ffmpeg -i out.mp4 -frames:v 20 -vf "fps=10,scale=838:-1:flags=lanczos" -c:v pam -f image2pipe - |convert -delay 10 - -loop 0 -layers optimize output.gif
+## Added capabilities
 
-# compress more, see https://stackoverflow.com/a/47343340/48181
-mogrify -layers 'optimize' -fuzz 7% output.gif
--->
-[![Bitcoin UTXO Creation & Destruction - Block 0 to 661045](doc/animation_small.gif)](https://www.youtube.com/watch?v=18m0bKsVb0Y)
+- Render an explicit block range.
+- Resume UTXO preprocessing from an experimental checkpoint.
+- Four X-axis layouts: `linear`, `epochLog`, `normalizedGeometric`, and
+  `continuousLog`.
+- Geometric epoch compression, including 210,000-block halving epochs.
+- Optional low-satoshi Y-axis compression.
+- Periodic density resampling for continuously changing layouts.
+- Optional common-denomination CoinJoin filter.
+- Optional synthesized raw audio based on spending activity.
+- 720p, 1080p, 2.5K, 4K, and 8K configuration presets.
+- Interactive configuration wizard with an explanation for each option.
 
-# Installation
+## Architecture
 
-**WARNING**: Generating such video is a time & resource intensive task, as Bitcoin's database is continuously growing.
-
-This currently only works in Linux. Prerequisites are a C++ compiler `g++` (>= v9) (or, my prefered choice, `clang++`), CMake (>= 3.13), and OpenCV (`libopencv-dev`).
-
-
-1. fetch
-   ```
-   git clone --recurse-submodules https://github.com/martinus/BitcoinUtxoVisualizer.git
-   ```
-1. compile
-   ```
-   mkdir BitcoinUtxoVisualizer/build
-   cd BitcoinUtxoVisualizer/build
-   cmake -DCMAKE_BUILD_TYPE=Release ..
-   make -j12
-   ```
-1. Run all tests, should print `SUCCESS!`
-   ```
-   ./buv
-    ```
-
-
-# How To Generate a UTXO Movie
-
-This is a 3 step process:
-
-## 1. Bitcoin Core
-
-1. Have a fully synced [Bitcoin Core](https://bitcoin.org/en/bitcoin-core/) node running locally.
-1. Make sure to enable transaction index by adding `txindex=1` to `bitcoin.conf`.
-1. `buv` makes heavy use of Bitcoin Core's JSON RPC, so you need to enable this as well. Also, make sure the
-   RPCs have enough threads for processing. To sum this up, I have these settings in my `bitcoin.conf` file:
-   ```
-   server=1
-   rest=1
-   rpcport=8332
-   rpcthreads=12
-   rpcworkqueue=24
-   txindex=1
-   dbcache=2000
-
-   # generate username & password with 'bitcoin/share/rpcauth.py <username> -'
-   rpcauth=martinus:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-   ```
-
-## 2. Preprocess UTXO Data
-
-Once Bitcoin Core is fully synced and RPC is enabled, you can preprocess the UTXO database. This fetches all blocks with full transaction data from bitcoin core, extracts UTXO data, and writes a compact data file. First, configure by editing `buv.json`. For this step, you only need to update `bitcoinRpcUrl` and the output `blkFile`:
-
-```
-"bitcoinRpcUrl": "http://127.0.0.1:8332",
-"blkFile": "/run/media/martinus/big/bitcoin/BitcoinUtxoVisualizer/changes.blk1",
+```text
+Bitcoin Core REST API
+        |
+        |  buv -tc=utxo_to_change
+        v
+  changes.blk1  (+ optional checkpoint.utxo)
+        |
+        |  buv -tc=visualizer
+        v
+ raw RGB24 frames over TCP -----> FFmpeg/FFplay -----> MKV or MP4
 ```
 
-The output `blkFile` will be ~7.5GB large (as of Block 660,000). It contains block information & all satoshi amounts that were added or removed for each block. The format is tuned to be very compact and very fast to parse.
+The BLK data, checkpoints, videos, and raw audio are generated artifacts. They
+are intentionally excluded from Git.
 
-```
-./buv -ns -tc=utxo_to_change -cfg=../buv.json
-```
+## Clone and build
 
-On my computer this takes about 1 1/2 hours, saturates 12 cores, and takes ~6.5GB of RAM. I have spent a long time to speed this up, initially this took 4 days and >30GB of RAM.
+The dependencies are Git submodules, so clone recursively:
 
-
-## 3. Generate UTXO Video
-
-After generating the `blkFile`, this file can be converted into an image stream that is directly piped into `ffmpeg` to generates a video. Preview is possible with `ffplay`.
-
-The configuration file `buv.json` has several options to configure the output.
-
-### Generate Preview
-
-To watch a preview, I usually update `buv.json` to start at a reasonably late block:
-```
-"startShowAtBlockHeight": 200000,
+```bash
+git clone --recurse-submodules https://github.com/nostitos/BitcoinUtxoVisualizer.git
+cd BitcoinUtxoVisualizer
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+./build/buv
 ```
 
-1. In one window, start `ffplay`:
-   ```
-   ffplay -f rawvideo -pixel_format rgb24 -video_size 3840x2160 -framerate 60 -i "tcp://127.0.0.1:12987?listen"
-   ```
+The native build requires:
 
-1. In another window, start `buv` to connect to `ffplay` and pipe its output into it.
-   ```
-   ./buv -ns -tc=visualizer -cfg=../buv.json
-   ```
-   Once `buv` has processed up to block 200000 ffplay will pop up and show a life preview.
+- CMake 3.13 or newer
+- A C++17 compiler
+- OpenCV development libraries
+- pthreads and TBB
 
-If you are happy with what you see, instead of `ffplay` use `ffmpeg` and start `buv` again:
+On Ubuntu/Debian:
 
-```
-ffmpeg -f rawvideo -pixel_format rgb24 -video_size 3840x2160 -framerate 60 -i "tcp://127.0.0.1:12987?listen" -c:v libx264 -profile:v high -bf 2 -g 30 -preset slower -crf 24 -pix_fmt yuv420p -movflags faststart out.mp4
+```bash
+sudo apt-get install build-essential cmake libopencv-dev libtbb-dev
 ```
 
-For 660000 this will create a ~3 hour 4K x 60Hz video, where each frame represents a single block. The video is about 21GB large.
+On macOS with Homebrew:
 
-Here is the final image of that video. Click for high resolution 4k image:
+```bash
+brew install cmake opencv tbb
+```
 
-[![Bitcoin UTXO still image](doc/img_0661045_small.jpg)](https://raw.githubusercontent.com/martinus/BitcoinUtxoVisualizer/master/doc/img_0661045_compressed.png)
+## Docker build
 
+After cloning with submodules:
+
+```bash
+docker build -t buv .
+```
+
+The container entry point is `buv`. Mount your data and configuration when
+running it.
+
+## 1. Generate or update blockchain data
+
+Bitcoin Core must be fully synchronized with REST and `txindex` enabled. Start
+with `configs/buv_update.json`, then run:
+
+```bash
+./build/buv -ns -tc=utxo_to_change -cfg=configs/buv_update.json
+```
+
+Read [`docs/data-update.md`](docs/data-update.md) before using checkpoint resume.
+The current checkpoint format has important visualization-correctness and memory
+caveats. For exact production output, a full genesis replay is currently safest.
+
+## 2. Choose a render configuration
+
+Ready-made profiles are under [`configs/`](configs/). To create one
+interactively:
+
+```bash
+python3 scripts/configure.py --output configs/my-render.json --print-docker
+```
+
+The wizard explains every setting before asking for its value.
+
+### X-axis modes
+
+| Mode | Behavior |
+|---|---|
+| `linear` | Maps the complete block range linearly across the graph. |
+| `epochLog` | Gives each newer epoch more width than older epochs. |
+| `normalizedGeometric` | Gives the current epoch `epochRatio` of the screen and geometrically compresses all previous epochs leftward. |
+| `continuousLog` | Uses a smooth power-law mapping and periodically resamples accumulated pixels. |
+
+For the “new epoch takes half, all previous epochs compress into the other half”
+layout, use:
+
+```json
+{
+  "xAxisMode": "normalizedGeometric",
+  "epochBlocks": 210000,
+  "epochRatio": 0.5
+}
+```
+
+## 3. Encode video
+
+Start FFmpeg first; it listens for the visualizer's raw RGB stream. An MKV output
+is recommended during long runs because it is more tolerant of interruption.
+
+Example: 4K at 60 fps using software H.264:
+
+```bash
+ffmpeg -y \
+  -f rawvideo -pixel_format rgb24 -video_size 3840x2160 -framerate 60 \
+  -i 'tcp://127.0.0.1:12987?listen' \
+  -c:v libx264 -preset fast -crf 18 -pix_fmt yuv420p \
+  output.mkv
+```
+
+Then start the visualizer:
+
+```bash
+./build/buv -ns -tc=visualizer -cfg=configs/buv_4k.json
+```
+
+Remux a completed MKV to MP4 without re-encoding:
+
+```bash
+ffmpeg -i output.mkv -c copy -movflags +faststart output.mp4
+```
+
+The visualizer normally emits one frame per rendered block. Changing FFmpeg from
+60 to 30 fps therefore doubles playback duration without changing the number of
+rendered frames.
+
+### Apple Silicon 8K
+
+Apple's H.264 VideoToolbox encoder commonly rejects 8K. Use HEVC VideoToolbox:
+
+```bash
+ffmpeg -y \
+  -f rawvideo -pixel_format rgb24 -video_size 7680x4320 -framerate 30 \
+  -i 'tcp://127.0.0.1:12987?listen' \
+  -c:v hevc_videotoolbox -allow_sw 1 -q:v 65 -tag:v hvc1 \
+  -pix_fmt yuv420p output-8k.mkv
+```
+
+At 8K, one RGB24 frame is about 99.5 MB. Rendering, full-frame memory copies,
+socket throughput, and encoding all become significant bottlenecks.
+
+## Important configuration fields
+
+| Field | Meaning |
+|---|---|
+| `blkFile` | Preprocessed `changes.blk1` input/output path. |
+| `startShowAtBlockHeight` | Process history but begin emitting frames at this height. |
+| `endShowAtBlockHeight` | Last rendered block; `0` means the BLK file's end. |
+| `repeatLastBlockTimes` | Number of final hold/fade frames. |
+| `graphRect` | Graph area as `[x, y, width, height]`. |
+| `colorUpperValueLimit` | Density value at which the color map saturates. |
+| `checkpointFile` | Optional preprocessing checkpoint path. |
+| `coinjoinFilter` | Show only changes matching common CoinJoin denominations. |
+| `audioEnabled` | Write synthesized mono float32 audio. |
+| `audioSamplesPerBlock` | Audio duration per rendered block; 800 is 60 fps at 48 kHz. |
+
+## Repository layout
+
+```text
+configs/       Render and preprocessing profiles
+scripts/       Interactive configuration tool
+src/cpp/app/   Preprocessor, renderer, HUD, and configuration
+src/cpp/buv/   Density, axis mapping, socket, and audio implementation
+docs/          Operational documentation
+doc/           Original screenshots and animation
+```
+
+## Operational warnings
+
+- Generating the BLK file and high-resolution video is resource intensive.
+- Keep Bitcoin Core REST/RPC private.
+- Do not commit credentials, `changes.blk1`, checkpoints, videos, raw audio, or
+  build directories.
+- Long MP4 recordings can be unplayable if FFmpeg is killed before writing the
+  `moov` atom. Record to MKV and remux after completion.
+- Test a short block range before starting a multi-hour render.
+
+## License and attribution
+
+The project remains under the original [MIT license](LICENSE). Original work by
+[Martinus](https://github.com/martinus); subsequent deployment and visualization
+changes are maintained in this fork.

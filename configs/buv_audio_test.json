@@ -3,41 +3,29 @@
     "blkFile": "/buv_data/changes.blk1",
     "utxoToChangeNumThreads": 12,
     "utxoToChangeNumResources": 24,
-    "imageWidth": 3840,
-    "imageHeight": 2160,
-    "graphRect": [
-        0,
-        10,
-        3720,
-        2072
-    ],
+    "imageWidth": 2560,
+    "imageHeight": 1440,
+    "graphRect": [0, 7, 2480, 1382],
     "minSatoshi": 1,
     "maxSatoshi": 1000000000000,
     "skipBlocks": 0,
-    "repeatLastBlockTimes": 1200,
-    "startShowAtBlockHeight": 0,
-    "endShowAtBlockHeight": 0,
+    "repeatLastBlockTimes": 60,
+    "startShowAtBlockHeight": 400000,
+    "endShowAtBlockHeight": 420000,
     "connectionIpAddr": "127.0.0.1",
     "connectionSocket": 12987,
     "colorMap": "turbo",
     "colorUpperValueLimit": 500,
-    "colorHighlightRGB": [
-        255,
-        255,
-        255
-    ],
-    "colorBackgroundRGB": [
-        0,
-        0,
-        0
-    ],
+    "colorHighlightRGB": [255, 255, 255],
+    "colorBackgroundRGB": [0, 0, 0],
     "checkpointFile": "/buv_data/checkpoint.utxo",
     "checkpointIntervalBlocks": 10000,
-
     "xAxisMode": "normalizedGeometric",
     "epochBlocks": 105000,
-    "epochRatio": 0.5,
-    "logCompressionFactor": 4.85,
-    "resampleEveryNBlocks": 100,
-    "compressLowSatoshi": true
+    "epochRatio": 0.333,
+    "compressLowSatoshi": true,
+    "audioEnabled": true,
+    "audioOutputFile": "/buv_output/audio.raw",
+    "audioSampleRate": 48000,
+    "audioSamplesPerBlock": 800
 }

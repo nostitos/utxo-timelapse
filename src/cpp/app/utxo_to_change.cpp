@@ -16,6 +16,7 @@
 #include <doctest.h>
 #include <fmt/format.h>
 #include <simdjson.h>
+#include <unordered_map>
 
 #include <filesystem>
 #include <fstream>
@@ -36,7 +37,8 @@ struct VoutsToAdd {
 
 struct PreprocessedBlockData {
     buv::ChangesInBlock cib{};
-    robin_hood::unordered_node_map<buv::TxIdPrefix, std::vector<uint16_t>> voutsToRemove{};
+    // robin_hood::unordered_node_map<buv::TxIdPrefix, std::vector<uint16_t>> voutsToRemove{};
+    std::unordered_map<buv::TxIdPrefix, std::vector<uint16_t>> voutsToRemove{};
     std::vector<VoutsToAdd> voutsToAdd{};
 };
 
@@ -107,6 +109,7 @@ struct ResourceData {
     std::unique_ptr<util::HttpClient> cli{};
     simdjson::dom::parser jsonParser{};
     PreprocessedBlockData preprocessedBlockData{};
+    std::string error{};
 };
 
 } // namespace
@@ -119,26 +122,72 @@ TEST_CASE("utxo_to_change" * doctest::skip()) {
 
     auto allBlockHeaders = buv::fetchAllBlockHeaders(cli);
 
-    auto throttler = util::ThrottlePeriodic(200ms);
-    // auto utxoDumpThrottler = util::LogThrottler(20s);
-
-    auto fout = std::ofstream(cfg.blkFile, std::ios::binary | std::ios::out);
+    // Variables for checkpoint/resume
+    uint32_t startBlockIndex = 0;
     auto utxo = std::make_unique<buv::Utxo>();
+    bool isResuming = false;
+
+    // Check for existing checkpoint
+    if (!cfg.checkpointFile.empty() && std::filesystem::exists(cfg.checkpointFile)) {
+        try {
+            LOG("Found checkpoint file {}, attempting to resume...", cfg.checkpointFile);
+            auto [checkpointBlockHeight, loadedUtxo] = buv::load(cfg.checkpointFile);
+            utxo = std::make_unique<buv::Utxo>(std::move(loadedUtxo));
+
+            // The vector index corresponds to the block height.
+            // We want to start from the next block.
+            if (checkpointBlockHeight + 1 < allBlockHeaders.size()) {
+                startBlockIndex = checkpointBlockHeight + 1;
+                LOG("Resuming from block {} (index {})", checkpointBlockHeight + 1, startBlockIndex);
+                isResuming = true;
+            } else {
+                LOG("Checkpoint is at end of chain, starting from scratch or skipping.");
+                isResuming = false;
+                startBlockIndex = 0;
+            }
+        } catch (std::exception const& e) {
+            LOG("Failed to load checkpoint: {}. Starting from scratch.", e.what());
+            utxo = std::make_unique<buv::Utxo>();
+            startBlockIndex = 0;
+            isResuming = false;
+        }
+    }
+
+    // Track the offset for block processing (don't erase headers!)
+    uint32_t blockOffset = 0;
+    size_t numBlocksToProcess = allBlockHeaders.size();
+
+    if (!isResuming && cfg.skipBlocks > 0 && cfg.skipBlocks < allBlockHeaders.size()) {
+        blockOffset = cfg.skipBlocks;
+        numBlocksToProcess = allBlockHeaders.size() - cfg.skipBlocks;
+    } else if (startBlockIndex > 0) {
+        blockOffset = startBlockIndex;
+        numBlocksToProcess = allBlockHeaders.size() - startBlockIndex;
+    }
+
+    auto throttler = util::ThrottlePeriodic(200ms);
+
+    // Open output file in append mode if resuming, otherwise truncate
+    auto fout = std::ofstream(cfg.blkFile, std::ios::binary | (isResuming ? std::ios::app : std::ios::out));
 
     auto resources = std::vector<ResourceData>(cfg.utxoToChangeNumResources);
     for (auto& resource : resources) {
         resource.cli = util::HttpClient::create(cfg.bitcoinRpcUrl.c_str());
     }
 
-    // sum up all nTx
+    // sum up all nTx for blocks we're actually processing
     auto totalNumTx = size_t();
-    for (auto const& bh : allBlockHeaders) {
-        totalNumTx += bh.nTx;
+    for (size_t i = blockOffset; i < allBlockHeaders.size(); ++i) {
+        totalNumTx += allBlockHeaders[i].nTx;
     }
 
     auto numWorkers = cfg.utxoToChangeNumThreads;
     fmt::print("\n");
-    auto pbs = util::HeightAndTxProgressBar::create(numWorkers, allBlockHeaders.size(), totalNumTx);
+    auto pbs = util::HeightAndTxProgressBar::create(numWorkers, numBlocksToProcess, totalNumTx);
+
+    // Checkpoint tracking
+    uint32_t lastCheckpointBlock = 0;
+    auto checkpointInterval = cfg.checkpointIntervalBlocks;
 
     auto numWorkersSum = size_t();
     auto numWorkersCount = size_t();
@@ -148,8 +197,13 @@ TEST_CASE("utxo_to_change" * doctest::skip()) {
 
     auto numTxProcessed = size_t();
     auto numActiveWorkers = std::atomic<size_t>();
+
+    // Error handling variables
+    auto abortFlag = std::atomic<bool>(false);
+    auto firstError = std::string();
+
     util::parallelToSequential(
-        util::SequenceId{allBlockHeaders.size()},
+        util::SequenceId{numBlocksToProcess},
         util::ResourceId{resources.size()},
         util::ConcurrentWorkers{numWorkers},
 
@@ -157,56 +211,111 @@ TEST_CASE("utxo_to_change" * doctest::skip()) {
             // this is done in parallel, do as much as we can here!
             ++numActiveWorkers;
             auto& res = resources[resourceId.count()];
-            auto hash = util::toHex(allBlockHeaders[sequenceId.count()].hash);
 
-            auto jsonData = res.cli->get("/rest/block/{}.json", hash);
-            simdjson::dom::element blockData = res.jsonParser.parse(jsonData);
-            res.preprocessedBlockData = preprocessBlockData(blockData);
+            if (abortFlag) {
+                --numActiveWorkers;
+                return;
+            }
+
+            res.error.clear(); // Clear previous error
+
+            try {
+                // Use blockOffset to get the correct block header
+                auto actualBlockIndex = blockOffset + sequenceId.count();
+                auto hash = util::toHex(allBlockHeaders[actualBlockIndex].hash);
+
+                auto jsonData = res.cli->get("/rest/block/{}.json", hash);
+                simdjson::dom::element blockData = res.jsonParser.parse(jsonData);
+                res.preprocessedBlockData = preprocessBlockData(blockData);
+            } catch (std::exception const& e) {
+                res.error = e.what();
+                abortFlag = true;
+            } catch (...) {
+                res.error = "Unknown exception in parallel worker";
+                abortFlag = true;
+            }
             --numActiveWorkers;
         },
         [&](util::ResourceId resourceId, util::SequenceId /*sequenceId*/) {
-            // done serially, try to do as little as possible here
             auto& res = resources[resourceId.count()];
-            auto& cib = res.preprocessedBlockData.cib;
 
-            // integrate block data: all adds (has to be done before the removals!)
-            for (auto const& voutToAdd : res.preprocessedBlockData.voutsToAdd) {
-                auto isSmallUtxoOptimizationUsed =
-                    utxo->insert(voutToAdd.txIdPrefix, cib.blockData().blockHeight, voutToAdd.satoshi);
-
-                ++numSallUtxoOptUsed[isSmallUtxoOptimizationUsed ? 1U : 0U];
+            if (abortFlag) {
+                return;
             }
 
-            // integrate block data: all removes
-            for (auto const& voutToRemove : res.preprocessedBlockData.voutsToRemove) {
-                utxo->removeAllSorted(voutToRemove.first, voutToRemove.second, [&cib](int64_t satoshi, uint32_t blockHeight) {
-                    cib.addChange(-satoshi, blockHeight);
-                });
-            }
-            cib.finalizeBlock();
-            fout << cib.encode();
-
-            numTxProcessed += cib.blockData().nTx;
-
-            numWorkersSum += numActiveWorkers;
-            numWorkersCount += 1;
-
-            if (throttler() || numTxProcessed >= totalNumTx) {
-                numWorkersExponentialAverage =
-                    numWorkersExponentialAverage * 0.95F + (static_cast<float>(numWorkersSum) / numWorkersCount) * 0.05F;
-                pbs->set_progress(numWorkersExponentialAverage, cib.blockData().blockHeight + 1, numTxProcessed);
-                numWorkersSum = 0;
-                numWorkersCount = 0;
+            if (!res.error.empty()) {
+                if (firstError.empty())
+                    firstError = res.error;
+                abortFlag = true;
+                return;
             }
 
-            if (util::kbhit()) {
-                std::getchar();
-                for (size_t i = 0; i < numSallUtxoOptUsed.size(); ++i) {
-                    fmt::print("\n{:3}: {:12}", i, numSallUtxoOptUsed[i]);
+            try {
+                // done serially, try to do as little as possible here
+                auto& cib = res.preprocessedBlockData.cib;
+
+                // integrate block data: all adds (has to be done before the removals!)
+                for (auto const& voutToAdd : res.preprocessedBlockData.voutsToAdd) {
+                    bool isSmallUtxoOptimizationUsed =
+                        utxo->insert(voutToAdd.txIdPrefix, cib.blockData().blockHeight, voutToAdd.satoshi);
+
+                    ++numSallUtxoOptUsed[isSmallUtxoOptimizationUsed ? 1U : 0U];
                 }
-                fmt::print("\n\n\n\n\n");
+
+                // integrate block data: all removes
+                for (auto const& voutToRemove : res.preprocessedBlockData.voutsToRemove) {
+                    utxo->removeAllSorted(voutToRemove.first, voutToRemove.second, [&cib](int64_t satoshi, uint32_t blockHeight) {
+                        cib.addChange(-satoshi, blockHeight);
+                    });
+                }
+                cib.finalizeBlock();
+                fout << cib.encode();
+
+                numTxProcessed += cib.blockData().nTx;
+
+                numWorkersSum += numActiveWorkers;
+                numWorkersCount += 1;
+
+                if (throttler() || numTxProcessed >= totalNumTx) {
+                    numWorkersExponentialAverage =
+                        numWorkersExponentialAverage * 0.95F + (static_cast<float>(numWorkersSum) / numWorkersCount) * 0.05F;
+                    pbs->set_progress(numWorkersExponentialAverage, cib.blockData().blockHeight + 1, numTxProcessed);
+                    numWorkersSum = 0;
+                    numWorkersCount = 0;
+                }
+
+                if (util::kbhit()) {
+                    std::getchar();
+                    for (size_t i = 0; i < numSallUtxoOptUsed.size(); ++i) {
+                        fmt::print("\n{:3}: {:12}", i, numSallUtxoOptUsed[i]);
+                    }
+                    fmt::print("\n\n\n\n\n");
+                }
+
+                // Periodic checkpoint saving
+                if (!cfg.checkpointFile.empty() && checkpointInterval > 0) {
+                    auto currentBlock = cib.blockData().blockHeight;
+                    if (currentBlock - lastCheckpointBlock >= checkpointInterval) {
+                        fout.flush(); // Ensure output is written before checkpoint
+                        buv::serialize(currentBlock, *utxo, cfg.checkpointFile);
+                        lastCheckpointBlock = currentBlock;
+                    }
+                }
+            } catch (std::exception const& e) {
+                if (firstError.empty())
+                    firstError = e.what();
+                abortFlag = true;
+            } catch (...) {
+                if (firstError.empty())
+                    firstError = "Unknown exception in sequential worker";
+                abortFlag = true;
             }
         });
+
+    if (abortFlag) {
+        throw std::runtime_error(fmt::format("Processing aborted due to worker error: {}", firstError));
+    }
+
     pbs = {};
 
     LOG("Done!");

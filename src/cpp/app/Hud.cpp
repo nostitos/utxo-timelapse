@@ -29,11 +29,9 @@ enum class Origin {
 };
 
 template <typename... Args>
-void write(cv::Mat& mat, size_t x, size_t y, Origin origin, char const* format, Args&&... args) {
+void writeWithScale(cv::Mat& mat, size_t x, size_t y, Origin origin, double fontScale, int thickness, char const* format, Args&&... args) {
     auto color = cv::Scalar(255, 255, 255);
     auto fontFace = cv::FONT_HERSHEY_SIMPLEX;
-    auto fontScale = 0.6;
-    auto thickness = 1;
 
     auto text = fmt::format(format, std::forward<Args>(args)...);
     auto pos = cv::Point(x, y);
@@ -80,6 +78,17 @@ void write(cv::Mat& mat, size_t x, size_t y, Origin origin, char const* format, 
         break;
     }
     cv::putText(mat, text, pos, fontFace, fontScale, color, thickness, cv::LINE_AA);
+}
+
+template <typename... Args>
+void write(cv::Mat& mat, size_t x, size_t y, Origin origin, char const* format, Args&&... args) {
+    writeWithScale(mat, x, y, origin, 0.6, 1, format, std::forward<Args>(args)...);
+}
+
+// Large text for Height and Timestamp (2x size)
+template <typename... Args>
+void writeLarge(cv::Mat& mat, size_t x, size_t y, Origin origin, char const* format, Args&&... args) {
+    writeWithScale(mat, x, y, origin, 1.2, 2, format, std::forward<Args>(args)...);
 }
 
 template <typename... Args>
@@ -160,7 +169,8 @@ Hud::~Hud() = default;
 
 class HudImpl : public Hud {
     Cfg mCfg;
-    cv::Mat mMat{};
+    std::vector<uint8_t> mBuffer;
+    cv::Mat mMat;
     SatoshiBlockheightToPixel mSatoshiBlockheightToPixel;
     std::map<uint32_t, std::string> mHeightToTimestring{};
     uint32_t mNumBlocks{};
@@ -168,7 +178,8 @@ class HudImpl : public Hud {
 public:
     explicit HudImpl(Cfg const& cfg, uint32_t numBlocks, util::Mmap const& mmappedFile)
         : mCfg(cfg)
-        , mMat(cfg.imageHeight, cfg.imageWidth, CV_8UC3)
+        , mBuffer(cfg.imageWidth * cfg.imageHeight * 3)
+        , mMat(cfg.imageHeight, cfg.imageWidth, CV_8UC3, mBuffer.data())
         , mSatoshiBlockheightToPixel(cfg, numBlocks)
         , mNumBlocks(numBlocks) {
 
@@ -207,88 +218,119 @@ public:
                      Origin originDenom = Origin::center_left) {
         auto mid = 60;
         auto offset = 3;
-        write(mMat, x + mid - offset, y, originNumber, number);
-        write(mMat, x + mid, y, originDenom, denom);
+        // Use cyan color for Y-axis BTC legend to contrast with orange flow lines
+        auto color = cv::Scalar(255, 255, 0);  // BGR: cyan
+        auto fontFace = cv::FONT_HERSHEY_SIMPLEX;
+        auto fontScale = 0.6;
+        auto thickness = 1;
+
+        auto align = [&](cv::Point pos, cv::Size const& size, Origin origin) {
+            switch (origin) {
+            case Origin::top_left:
+                pos.y += size.height;
+                break;
+            case Origin::top_center:
+                pos.x -= size.width / 2;
+                pos.y += size.height;
+                break;
+            case Origin::top_right:
+                pos.x -= size.width;
+                pos.y += size.height;
+                break;
+            case Origin::center_left:
+                pos.y += size.height / 2;
+                break;
+            case Origin::center:
+                pos.x -= size.width / 2;
+                pos.y += size.height / 2;
+                break;
+            case Origin::center_right:
+                pos.x -= size.width;
+                pos.y += size.height / 2;
+                break;
+            case Origin::bottom_left:
+                break;
+            case Origin::bottom_center:
+                pos.x -= size.width / 2;
+                break;
+            case Origin::bottom_right:
+                pos.x -= size.width;
+                break;
+            }
+            return pos;
+        };
+
+        // Draw number
+        auto numberText = std::string(number);
+        auto numberPos = cv::Point(x + mid - offset, y);
+        auto baseline = int();
+        auto numberSize = cv::getTextSize(numberText, fontFace, fontScale, thickness, &baseline);
+        numberPos = align(numberPos, numberSize, originNumber);
+        cv::putText(mMat, numberText, numberPos, fontFace, fontScale, color, thickness, cv::LINE_AA);
+
+        // Draw denomination
+        auto denomText = std::string(denom);
+        auto denomPos = cv::Point(x + mid, y);
+        auto denomSize = cv::getTextSize(denomText, fontFace, fontScale, thickness, &baseline);
+        denomPos = align(denomPos, denomSize, originDenom);
+        cv::putText(mMat, denomText, denomPos, fontFace, fontScale, color, thickness, cv::LINE_AA);
     }
 
-    // prints current block info
+    // prints current block info - simplified layout
     void writeBlockInfo(ChangesInBlock const& cib) {
-        auto legendX = mSatoshiBlockheightToPixel.blockheightToPixelWidth(cib.blockData().blockHeight);
         auto const& blockHeader = cib.blockData();
 
-        auto column1x = mCfg.imageWidth - 1000;
-        if (legendX + 150 > column1x) {
-            column1x = 20;
-        }
-
+        // Always keep HUD on the left side
+        auto column1x = 20;
         auto column2x = column1x + 960;
 
         auto y = 10;
         auto lineSpacing = 30;
+        auto largeLineSpacing = 50;  // Extra spacing for large text
 
-        // see e.g.
-        // https://blockstream.info/block/0000000000000000000419b60c3f5d98fc6f541896b399cb14076220a718bc25?expand
-        // https://www.blockchain.com/btc/block/548847
-
+        // 1. Hash (first)
         write(mMat, column1x, y, Origin::top_left, "Hash");
         writeMono(mMat, column2x, y, Origin::top_right, util::toHex(blockHeader.hash).c_str());
         y += lineSpacing;
 
-        write(mMat, column1x, y, Origin::top_left, "Height");
-        write(mMat, column2x, y, Origin::top_right, "{}", blockHeader.blockHeight);
-        y += lineSpacing;
+        // 2. Chainwork (moved to 2nd position)
+        write(mMat, column1x, y, Origin::top_left, "Chainwork");
+        writeMono(mMat, column2x, y, Origin::top_right, util::toHex(blockHeader.chainWork).c_str());
+        y += lineSpacing + 10;  // Extra gap before large text
 
-        write(mMat, column1x, y, Origin::top_left, "Timestamp");
-        write(mMat,
+        // 3. Height (LARGE - 2x font, renamed)
+        writeLarge(mMat, column1x, y, Origin::top_left, "HEIGHT (Block #):");
+        writeLarge(mMat, column2x, y, Origin::top_right, "{}", blockHeader.blockHeight);
+        y += largeLineSpacing;
+
+        // 4. Timestamp (LARGE - 2x font)
+        writeLarge(mMat, column1x, y, Origin::top_left, "TIMESTAMP:");
+        writeLarge(mMat,
               column2x,
               y,
               Origin::top_right,
               date::format("%F %T %Z", UnixClockSeconds(std::chrono::seconds(blockHeader.time))).c_str());
-        y += lineSpacing;
+        y += largeLineSpacing + 10;  // Extra gap after large text
 
-        write(mMat, column1x, y, Origin::top_left, "Size");
-        write(mMat, column2x, y, Origin::top_right, "{} B", blockHeader.size);
-        y += lineSpacing;
-
-        write(mMat, column1x, y, Origin::top_left, "Weight Units");
-        write(mMat, column2x, y, Origin::top_right, "{} WU", blockHeader.weight);
-        y += lineSpacing;
-
+        // 5. Number of Transactions
         write(mMat, column1x, y, Origin::top_left, "Number of Transactions");
         write(mMat, column2x, y, Origin::top_right, "{}", blockHeader.nTx);
         y += lineSpacing;
 
-        write(mMat, column1x, y, Origin::top_left, "Number of UTXO created");
-        write(mMat, column2x, y, Origin::top_right, "{}", cib.numUtxoCreated());
+        // 6. UTXO (combined: created - destroyed = net)
+        auto utxoCreated = cib.numUtxoCreated();
+        auto utxoDestroyed = cib.numUtxoDestroyed();
+        auto utxoNet = static_cast<int64_t>(utxoCreated) - static_cast<int64_t>(utxoDestroyed);
+        write(mMat, column1x, y, Origin::top_left, "UTXO");
+        write(mMat, column2x, y, Origin::top_right, "+{} -{} = {:+} net", utxoCreated, utxoDestroyed, utxoNet);
         y += lineSpacing;
 
-        write(mMat, column1x, y, Origin::top_left, "Number of UTXO destroyed");
-        write(mMat, column2x, y, Origin::top_right, "{}", cib.numUtxoDestroyed());
+        // 7. Block Size
+        write(mMat, column1x, y, Origin::top_left, "Block Size");
+        write(mMat, column2x, y, Origin::top_right, "{} B", blockHeader.size);
         y += lineSpacing;
 
-        write(mMat, column1x, y, Origin::top_left, "Difficulty");
-        write(mMat, column2x, y, Origin::top_right, "{}", blockHeader.difficulty());
-        y += lineSpacing;
-
-        write(mMat, column1x, y, Origin::top_left, "Merkle Root");
-        writeMono(mMat, column2x, y, Origin::top_right, util::toHex(blockHeader.merkleRoot).c_str());
-        y += lineSpacing;
-
-        write(mMat, column1x, y, Origin::top_left, "Chainwork");
-        writeMono(mMat, column2x, y, Origin::top_right, util::toHex(blockHeader.chainWork).c_str());
-        y += lineSpacing;
-
-        write(mMat, column1x, y, Origin::top_left, "Version");
-        writeMono(mMat, column2x, y, Origin::top_right, "0x{:x}", blockHeader.version);
-        y += lineSpacing;
-
-        write(mMat, column1x, y, Origin::top_left, "Bits");
-        writeMono(mMat, column2x, y, Origin::top_right, "0x{}", util::toHex(blockHeader.bits));
-        y += lineSpacing;
-
-        write(mMat, column1x, y, Origin::top_left, "Nonce");
-        writeMono(mMat, column2x, y, Origin::top_right, "0x{:x}", blockHeader.nonce);
-        y += lineSpacing;
+        // Removed: Merkle Root, Difficulty, Version, Bits, Nonce, Weight Units
     }
 
     // Copies rgbSource, then draws dat based on the given info.
@@ -387,6 +429,14 @@ public:
 
     [[nodiscard]] auto size() const -> size_t override {
         return mMat.total() * mMat.elemSize();
+    }
+
+    void setCurrentEpoch(uint32_t epoch) override {
+        mSatoshiBlockheightToPixel.setCurrentEpoch(epoch);
+    }
+
+    void setTotalBlocks(uint32_t totalBlocks) override {
+        mSatoshiBlockheightToPixel.setTotalBlocks(totalBlocks);
     }
 };
 

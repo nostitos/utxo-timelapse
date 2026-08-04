@@ -7,6 +7,7 @@
 #include <robin_hood.h>
 
 #include <filesystem>
+#include <unordered_map>
 
 namespace buv {
 
@@ -127,6 +128,12 @@ public:
         return sat;
     }
 
+    [[nodiscard]] auto peekVoutSatoshi(size_t idx) const -> VoutSatoshi {
+        auto voutSatoshi = VoutSatoshi();
+        std::memcpy(&voutSatoshi, mChunkPtrOrVoutSatoshi.data() + sizeof(VoutSatoshi) * idx, sizeof(VoutSatoshi));
+        return voutSatoshi;
+    }
+
     [[nodiscard]] auto empty() const -> bool {
         if (isSmallUtxo()) {
             auto x1 = uint64_t();
@@ -143,16 +150,18 @@ static_assert(sizeof(UtxoPerTx) == 8 + 8 + 4);
 
 class Utxo {
     ChunkStore mChunkStore{};
-    using Map = robin_hood::unordered_node_map<TxIdPrefix, UtxoPerTx>;
-    // using Map = std::unordered_map<TxIdPrefix, UtxoPerTx>;
+    // using Map = robin_hood::unordered_node_map<TxIdPrefix, UtxoPerTx>;
+    using Map = std::unordered_map<TxIdPrefix, UtxoPerTx>;
     Map mTxidToUtxos{};
+
+    size_t mMissedTxCount = 0;
 
     static_assert(sizeof(Map::value_type) == sizeof(TxIdPrefix) + sizeof(UtxoPerTx));
 
 public:
     Utxo() {
         // we certainly have to keep a lot of data around. Reserve because we know we'll need it
-        mTxidToUtxos.reserve(100'000'000);
+        mTxidToUtxos.reserve(300'000'000);
     }
 
     template <typename Op>
@@ -184,7 +193,10 @@ public:
                 }
             }
         } else {
-            throw std::runtime_error("DAMN! did not find txid");
+            // throw std::runtime_error("DAMN! did not find txid");
+            ++mMissedTxCount;
+            LOG("WARNING: Missed UTXO for removal! Total skipped: {}", mMissedTxCount);
+            return;
         }
     }
 

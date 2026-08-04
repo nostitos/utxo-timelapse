@@ -1,5 +1,8 @@
 #include "SocketStream.h"
 
+#include <cstdio>
+#include <string_view>
+
 #ifdef _WIN32
 
 #    include <winsock2.h>
@@ -40,10 +43,10 @@ private:
 
 #    include <stdexcept>
 
-#    include <arpa/inet.h> // inet_addr
+#    include <arpa/inet.h>  // inet_addr
 #    include <netinet/in.h> // scockaddr_in
 #    include <sys/socket.h> // socket
-#    include <unistd.h> // close
+#    include <unistd.h>     // close
 
 namespace buv {
 
@@ -97,7 +100,23 @@ public:
 
 namespace buv {
 
+class StdoutStreamImpl final : public SocketStream {
+public:
+    void write(uint8_t const* data, size_t size) override {
+        if (size == 0) {
+            return;
+        }
+        if (std::fwrite(data, 1, size, stdout) != size) {
+            throw std::runtime_error("write to stdout failed");
+        }
+    }
+};
+
 auto SocketStream::create(const char* ip_addr, uint16_t socket) -> std::unique_ptr<SocketStream> {
+    using namespace std::literals;
+    if (ip_addr == "stdout"sv) {
+        return std::make_unique<StdoutStreamImpl>();
+    }
     return std::make_unique<SocketStreamImpl>(ip_addr, socket);
 }
 

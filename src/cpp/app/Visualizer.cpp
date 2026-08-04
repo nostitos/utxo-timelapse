@@ -2,6 +2,7 @@
 #include <app/Cfg.h>
 #include <app/Hud.h>
 #include <app/forEachChange.h>
+#include <buv/AudioSynthesizer.h>
 #include <buv/Density.h>
 #include <buv/SocketStream.h>
 #include <util/Throttle.h>
@@ -16,6 +17,7 @@
 
 #include <cmath>
 #include <fstream>
+#include <memory>
 
 using namespace std::literals;
 
@@ -51,16 +53,48 @@ TEST_CASE("visualizer" * doctest::skip()) {
     auto hud = buv::Hud::create(cfg, numBlocks, file);
     auto socketStream = buv::SocketStream::create(cfg.connectionIpAddr.c_str(), cfg.connectionSocket);
 
+    // Initialize audio synthesizer if enabled
+    std::unique_ptr<buv::AudioSynthesizer> audioSynth;
+    if (cfg.audioEnabled && !cfg.audioOutputFile.empty()) {
+        LOG("Initializing audio synthesizer: {}", cfg.audioOutputFile);
+        audioSynth = std::make_unique<buv::AudioSynthesizer>(
+            cfg.audioOutputFile, cfg.audioSampleRate, cfg.audioSamplesPerBlock);
+    }
+
     auto lastCib = buv::forEachChange(file, [&](buv::ChangesInBlock const& cib) {
         auto blockHeight = cib.blockData().blockHeight;
+
+        // Stop if we've reached the end block
+        if (cfg.endShowAtBlockHeight > 0 && blockHeight > cfg.endShowAtBlockHeight) {
+            LOG("Reached end block {}, stopping", cfg.endShowAtBlockHeight);
+            return false;
+        }
+
         LOGIF(throttler(), "block {}, {} changes", blockHeight, cib.changeAtBlockheights().size());
 
         density.begin_block(blockHeight);
+
+        // Only collect audio events once we're in the visible range
+        bool collectAudio = audioSynth && blockHeight >= cfg.startShowAtBlockHeight;
+
         for (auto const& change : cib.changeAtBlockheights()) {
             density.change(change.blockHeight(), change.satoshi());
+
+            // Collect spending events for audio synthesis
+            if (collectAudio && change.satoshi() < 0) {
+                audioSynth->addSpend(blockHeight, change.blockHeight(), change.satoshi());
+            }
+        }
+
+        // Generate audio for this block (only when outputting video)
+        if (collectAudio) {
+            audioSynth->endBlock();
         }
 
         density.end_block(blockHeight, [&](uint8_t const* data) {
+            // Sync HUD with Density for correct legend positioning
+            hud->setCurrentEpoch(density.getCurrentEpoch());
+            hud->setTotalBlocks(density.getTotalBlocks());
             hud->draw(data, cib);
             socketStream->write(hud->data(), hud->size());
         });
@@ -85,6 +119,8 @@ TEST_CASE("visualizer" * doctest::skip()) {
     // fade out & keep last image for 1 minute
     for (uint32_t i = 0; i < cfg.repeatLastBlockTimes; ++i) {
         density.fadeOut(lastCib.blockData().blockHeight + i + 1, [&](uint8_t const* data) {
+            hud->setCurrentEpoch(density.getCurrentEpoch());
+            hud->setTotalBlocks(density.getTotalBlocks());
             hud->draw(data, lastCib);
             socketStream->write(hud->data(), hud->size());
 

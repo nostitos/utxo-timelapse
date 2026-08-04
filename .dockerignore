@@ -1,0 +1,17 @@
+.git
+.github
+.DS_Store
+build
+build_*
+buv_data
+buv_output
+output
+buv_deploy
+buv_deploy_original
+*.blk*
+*.utxo*
+*.mp4
+*.mkv
+*.mov
+*.raw
+*.ppm
