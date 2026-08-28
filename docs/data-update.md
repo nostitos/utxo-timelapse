@@ -78,9 +78,9 @@ appending to it.
 A checkpoint captures the in-memory UTXO map so preprocessing can restart after
 an interruption without replaying genesis.
 
-The current checkpoint layout (format v2, marker `UTX2`) is:
+The current checkpoint layout (format v3, marker `UTX3`) is:
 
-1. Four-byte `UTX2` marker.
+1. Four-byte `UTX3` marker.
 2. Checkpoint block height (`uint32`).
 3. Exact `changes.blk1` size in bytes after that block was appended (`uint64`).
 4. Byte offset of that block's record inside `changes.blk1` (`uint64`).
@@ -115,8 +115,13 @@ At startup, `utxo_to_change`:
 
 ### Checkpoint history and caveats
 
-Format v2 fixes the two correctness limitations of the legacy v1 (`UTXO`
-marker) format:
+Format v3 preserves the exact-resume guarantees introduced by v2 and also
+retains valid zero-satoshi outputs in the small-UTXO representation. Early v2
+checkpoints could omit those outputs; a later spend would then fail because its
+transaction was absent from the restored UTXO set.
+
+The original v2 format fixed two correctness limitations of the legacy v1
+(`UTXO` marker) format:
 
 - v1 did **not** store each UTXO's original creation block; restored outputs
   were assigned the checkpoint height, corrupting origin/age visuals after a
@@ -127,19 +132,21 @@ marker) format:
   the tail record (height, hash, exact byte size) before appending and refuses
   mismatched pairs.
 
-Legacy v1 checkpoints are rejected at load with a clear error; delete them and
-let one full from-genesis rebuild write fresh v2 checkpoints. After that,
+Legacy v1 and potentially incomplete v2 checkpoints are rejected at load with a
+clear error; keep them only for diagnosis and let one full from-genesis rebuild
+write fresh v3 checkpoints. After that,
 updating to a new chain tip only replays blocks past the last checkpoint
 (the final checkpoint is at the exact tip, so a routine update processes just
 the new blocks — minutes, not hours).
 
-The round-trip and tail-validation behavior is covered by the `checkpoint_v2`
-test case: `./buv -ns -tc=checkpoint_v2`.
+Round-trip, zero-satoshi spend-after-resume, and tail-validation behavior is
+covered by the `checkpoint_v3` test case: `./buv -ns -tc=checkpoint_v3`.
 
 Epoch-compressed rendering (`normalizedGeometric` or `epochLog`) also maintains
 an exact ledger of alive creation points so it can rebuild the density image at
 each epoch transition. That ledger requires a from-genesis, full-rebuild BLK.
-A v2 checkpoint-resumed BLK preserves creation heights, so it renders exactly;
+A v3 checkpoint-resumed BLK preserves creation heights and zero-satoshi outputs,
+so it renders exactly;
 a nonzero `ledger misses` diagnostic now indicates a genuinely inconsistent
 BLK (for example one produced with legacy v1 resume).
 

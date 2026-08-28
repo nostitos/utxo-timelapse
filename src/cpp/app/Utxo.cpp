@@ -20,8 +20,8 @@ namespace buv {
 
 namespace {
 
-// Checkpoint format v2, marker "UTX2":
-//   4  | "UTX2"        | magic marker
+// Checkpoint format v3, marker "UTX3":
+//   4  | "UTX3"        | magic marker
 //   4  | blockHeight   | uint32, last block integrated into this snapshot
 //   8  | blkFileSize   | uint64, exact size in bytes of changes.blk1 after blockHeight was appended
 //   8  | lastRecOffset | uint64, byte offset of blockHeight's record inside changes.blk1
@@ -44,7 +44,7 @@ auto dump(uint32_t blockHeight,
         throw std::runtime_error("could not open file for writing UTXO");
     }
 
-    fout.write("UTX2", 4);
+    fout.write("UTX3", 4);
     util::writeBinary<4>(blockHeight, fout);
     util::writeBinary<8>(blkFileSize, fout);
     util::writeBinary<8>(lastRecordOffset, fout);
@@ -62,14 +62,18 @@ auto dump(uint32_t blockHeight,
         if (kv.second.isSmallUtxo()) {
             // Check slot 0 (vout 0)
             auto vs0 = kv.second.peekVoutSatoshi(0);
-            if (!vs0.isEmptyMask() && vs0.satoshi() > 0) {
+            // In the small-UTXO representation the slot position is the real
+            // vout and the stored vout field is an occupancy bit (1 = present,
+            // 0 = unused). Do not use the amount as presence: zero-satoshi
+            // outputs are valid and must survive checkpoints.
+            if (vs0.isVout(1)) {
                 // Reconstruct with correct vout=0
                 util::writeBinary<8>(VoutSatoshi(0, vs0.satoshi()).data(), fout);
                 ++numVouts;
             }
             // Check slot 1 (vout 1)
             auto vs1 = kv.second.peekVoutSatoshi(1);
-            if (!vs1.isEmptyMask() && vs1.satoshi() > 0) {
+            if (vs1.isVout(1)) {
                 // Reconstruct with correct vout=1
                 util::writeBinary<8>(VoutSatoshi(1, vs1.satoshi()).data(), fout);
                 ++numVouts;
@@ -120,8 +124,13 @@ void serialize(uint32_t blockHeight,
             "Legacy v1 checkpoint ('UTXO'): it lacks original creation heights and BLK-tail validation, "
             "so an exact resume is impossible. Delete it and regenerate from a full rebuild.");
     }
-    if (std::string(header) != "UTX2") {
-        throw std::runtime_error(fmt::format("Invalid checkpoint header: got '{}', expected 'UTX2'", header));
+    if (std::string(header) == "UTX2") {
+        throw std::runtime_error(
+            "Legacy v2 checkpoint ('UTX2'): its small-UTXO serializer could omit zero-satoshi outputs, "
+            "so the snapshot may be incomplete. Regenerate a v3 checkpoint from genesis.");
+    }
+    if (std::string(header) != "UTX3") {
+        throw std::runtime_error(fmt::format("Invalid checkpoint header: got '{}', expected 'UTX3'", header));
     }
 
     auto cp = Checkpoint();

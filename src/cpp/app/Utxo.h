@@ -220,7 +220,21 @@ public:
                 }
             }
         } else {
-            throw std::runtime_error("DAMN! did not find txid");
+            auto const firstVout = vouts.empty() ? 0U : static_cast<unsigned>(vouts.front());
+            throw std::runtime_error(fmt::format(
+                "UTXO spend references missing txid prefix "
+                "{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x} "
+                "({} requested vout(s), first vout {})",
+                static_cast<unsigned>(txIdPrefix[0]),
+                static_cast<unsigned>(txIdPrefix[1]),
+                static_cast<unsigned>(txIdPrefix[2]),
+                static_cast<unsigned>(txIdPrefix[3]),
+                static_cast<unsigned>(txIdPrefix[4]),
+                static_cast<unsigned>(txIdPrefix[5]),
+                static_cast<unsigned>(txIdPrefix[6]),
+                static_cast<unsigned>(txIdPrefix[7]),
+                vouts.size(),
+                firstVout));
         }
     }
 
@@ -251,10 +265,11 @@ public:
 
 // A resumable snapshot of the UTXO set.
 //
-// Format v2 ("UTX2") stores, per transaction entry, the original creation block height,
+// Format v3 ("UTX3") stores, per transaction entry, the original creation block height,
 // plus the exact changes.blk1 size and the block hash at checkpoint time. This makes an
-// exact resume possible: spend records keep their true origin heights, the BLK tail can
-// be validated byte-exactly, and reorgs / wrong chains are detected before appending.
+// exact resume possible: zero-satoshi outputs are retained, spend records keep their true
+// origin heights, the BLK tail can be validated byte-exactly, and reorgs / wrong chains
+// are detected before appending.
 struct Checkpoint {
     uint32_t blockHeight{};
     uint64_t blkFileSize{};
@@ -271,8 +286,8 @@ void serialize(uint32_t blockHeight,
                Utxo const& utxo,
                std::filesystem::path const& filename);
 
-// Loads a v2 checkpoint. Throws a descriptive error for legacy v1 ("UTXO") files, which
-// lack creation heights and therefore cannot support an exact resume.
+// Loads a v3 checkpoint. Throws descriptive errors for legacy v1 ("UTXO") files and
+// potentially incomplete v2 ("UTX2") files.
 [[nodiscard]] auto load(std::filesystem::path const& filename) -> Checkpoint;
 
 } // namespace buv

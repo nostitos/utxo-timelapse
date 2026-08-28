@@ -171,27 +171,38 @@ auto validateBlkTail(buv::Checkpoint const& cp, std::filesystem::path const& blk
 
 } // namespace
 
-// Round-trip and tail-validation test for the v2 checkpoint format. Run with:
-//   ./buv -ns -tc=checkpoint_v2
-TEST_CASE("checkpoint_v2" * doctest::skip()) {
-    auto tmpDir = std::filesystem::temp_directory_path() / "buv_checkpoint_v2_test";
+// Round-trip and tail-validation test for the v3 checkpoint format. Run with:
+//   ./buv -ns -tc=checkpoint_v3
+TEST_CASE("checkpoint_v3" * doctest::skip()) {
+    auto tmpDir = std::filesystem::temp_directory_path() / "buv_checkpoint_v3_test";
     std::filesystem::create_directories(tmpDir);
     auto cpFile = tmpDir / "checkpoint.utxo";
     auto blkFile = tmpDir / "changes.blk1";
 
-    // Build a small UTXO set with known creation heights, incl. a sparse entry.
+    // Build a small UTXO set with known creation heights, including sparse and
+    // zero-satoshi entries. Bitcoin permits zero-value outputs; losing one at a
+    // checkpoint makes a later spend fail because its txid no longer exists.
     auto utxo = buv::Utxo();
     auto txidA = buv::TxIdPrefix{1, 2, 3, 4, 5, 6, 7, 8};
     auto txidB = buv::TxIdPrefix{9, 10, 11, 12, 13, 14, 15, 16};
     auto txidC = buv::TxIdPrefix{17, 18, 19, 20, 21, 22, 23, 24};
+    auto txidD = buv::TxIdPrefix{25, 26, 27, 28, 29, 30, 31, 32};
+    auto txidE = buv::TxIdPrefix{33, 34, 35, 36, 37, 38, 39, 40};
     utxo.insert(txidA, 100, {5000000000LL});                                  // coinbase-like, height 100
     utxo.insert(txidB, 200, {123LL, 456LL, 789LL, 1011LL});                   // 4 vouts -> chunk path
     utxo.insert(txidC, 300, {42LL, 77LL});                                    // small-utxo path
+    utxo.insert(txidD, 301, {0LL});                                            // zero-satoshi vout 0 only
+    utxo.insert(txidE, 302, {99LL, 0LL});                                      // zero-satoshi vout 1
     // Partially spend txidB (vouts 0 and 2), leaving a sparse {1,3} set.
     auto spent = std::vector<std::pair<int64_t, uint32_t>>();
     utxo.removeAllSorted(txidB, {0, 2}, [&](int64_t sat, uint32_t height) { spent.emplace_back(sat, height); });
     REQUIRE(spent.size() == 2);
     CHECK(spent[0].second == 200);
+    // Leave txidE sparse with only its zero-satoshi vout 1 alive.
+    utxo.removeAllSorted(txidE, {0}, [&](int64_t sat, uint32_t height) {
+        CHECK(sat == 99LL);
+        CHECK(height == 302);
+    });
 
     // Write a fake BLK file whose tail is a valid record for block 300.
     auto cib = buv::ChangesInBlock();
@@ -212,7 +223,7 @@ TEST_CASE("checkpoint_v2" * doctest::skip()) {
     CHECK(cp.blkFileSize == record.size());
     CHECK(cp.lastRecordOffset == 0);
     CHECK(cp.blockHash == bd.hash);
-    CHECK(cp.utxo.map().size() == 3);
+    CHECK(cp.utxo.map().size() == 5);
 
     // Creation heights survive the round trip (this is what v1 lost).
     auto checkEntry = [&](buv::TxIdPrefix const& txid, uint32_t expectedHeight, std::vector<std::pair<uint16_t, int64_t>> expected) {
@@ -234,10 +245,17 @@ TEST_CASE("checkpoint_v2" * doctest::skip()) {
         for (size_t i = 0; i < expected.size(); ++i) {
             CHECK(got[i].second == expected[i].second);
         }
+        // Removing every expected output must erase the transaction. This also
+        // catches a serializer that invents zero-value outputs from unused slots.
+        CHECK(cp.utxo.map().find(txid) == cp.utxo.map().end());
     };
     checkEntry(txidA, 100, {{0, 5000000000LL}});
     checkEntry(txidB, 200, {{1, 456LL}, {3, 1011LL}});
     checkEntry(txidC, 300, {{0, 42LL}, {1, 77LL}});
+    // These removals simulate spends after resume. Both zero-satoshi UTXOs must
+    // still be present, report their original heights, and return amount zero.
+    checkEntry(txidD, 301, {{0, 0LL}});
+    checkEntry(txidE, 302, {{1, 0LL}});
 
     // Tail validation: correct case passes and reports the on-disk size.
     CHECK(validateBlkTail(cp, blkFile) == record.size());
@@ -262,8 +280,17 @@ TEST_CASE("checkpoint_v2" * doctest::skip()) {
     }
     CHECK_THROWS(static_cast<void>(buv::load(v1File)));
 
+    // v2 checkpoints may already have omitted zero-satoshi outputs and cannot
+    // be repaired during load; reject them instead of allowing an unsafe resume.
+    auto v2File = tmpDir / "legacy-v2.utxo";
+    {
+        auto fout = std::ofstream(v2File, std::ios::binary);
+        fout.write("UTX2", 4);
+    }
+    CHECK_THROWS(static_cast<void>(buv::load(v2File)));
+
     std::filesystem::remove_all(tmpDir);
-    LOG("checkpoint_v2 round trip OK");
+    LOG("checkpoint_v3 round trip OK");
 }
 
 TEST_CASE("utxo_to_change" * doctest::skip()) {
