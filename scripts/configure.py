@@ -182,6 +182,8 @@ def build_config() -> Dict[str, Any]:
     checkpoint_file = prompt_text("Checkpoint file", "/buv_data/checkpoint.utxo")
     explain("Checkpoint interval blocks: write checkpoint every N blocks.")
     checkpoint_interval = prompt_int("Checkpoint interval blocks", 10000, 1)
+    explain("Allow blkFile truncate: refuse to overwrite an existing non-empty changes file unless you opt in.")
+    allow_blk_file_truncate = prompt_bool("Allow overwriting an existing blkFile", False)
 
     explain("X-axis mode: how block height maps to screen width over time.")
     x_axis_mode = prompt_choice("X-axis mode", X_AXIS_MODES, 3)
@@ -243,6 +245,7 @@ def build_config() -> Dict[str, Any]:
         "colorBackgroundRGB": color_background,
         "checkpointFile": checkpoint_file,
         "checkpointIntervalBlocks": checkpoint_interval,
+        "allowBlkFileTruncate": allow_blk_file_truncate,
         "xAxisMode": x_axis_mode,
         "epochBlocks": epoch_blocks,
         "epochRatio": epoch_ratio,

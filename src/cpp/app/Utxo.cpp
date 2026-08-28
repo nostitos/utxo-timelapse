@@ -20,20 +20,43 @@ namespace buv {
 
 namespace {
 
+// Checkpoint format v2, marker "UTX2":
+//   4  | "UTX2"        | magic marker
+//   4  | blockHeight   | uint32, last block integrated into this snapshot
+//   8  | blkFileSize   | uint64, exact size in bytes of changes.blk1 after blockHeight was appended
+//   8  | lastRecOffset | uint64, byte offset of blockHeight's record inside changes.blk1
+//  32  | blockHash     | binary, hash of the block at blockHeight (chain identity / reorg check)
+//   8  | numEntries    | uint64, number of transaction-prefix map entries
+// per entry:
+//   8  | txid prefix   | binary
+//   4  | creationHeight| uint32, block that created this transaction's outputs
+//  8*n | vout/satoshi  | packed VoutSatoshi values, terminated by the empty marker
+//
 // first creates a .tmp file, then renames when finished.
-auto dump(uint32_t blockHeight, Utxo const& utxo, std::filesystem::path const& filename) -> size_t {
+auto dump(uint32_t blockHeight,
+          uint64_t blkFileSize,
+          uint64_t lastRecordOffset,
+          std::array<uint8_t, 32> const& blockHash,
+          Utxo const& utxo,
+          std::filesystem::path const& filename) -> size_t {
     auto fout = std::ofstream(filename, std::ios::binary);
     if (!fout.is_open()) {
         throw std::runtime_error("could not open file for writing UTXO");
     }
 
-    fout.write("UTXO0", 4);
+    fout.write("UTX2", 4);
     util::writeBinary<4>(blockHeight, fout);
+    util::writeBinary<8>(blkFileSize, fout);
+    util::writeBinary<8>(lastRecordOffset, fout);
+    util::writeArray<32>(blockHash, fout);
     util::writeBinary<8>(utxo.map().size(), fout);
     auto numVouts = size_t();
     for (auto const& kv : utxo.map()) {
         // key
         util::writeArray<8>(kv.first, fout);
+
+        // original creation height of this transaction's outputs
+        util::writeBinary<4>(kv.second.blockHeight(), fout);
 
         // value
         if (kv.second.isSmallUtxo()) {
@@ -68,42 +91,59 @@ auto dump(uint32_t blockHeight, Utxo const& utxo, std::filesystem::path const& f
 } // namespace
 
 // first creates a .tmp file, then renames when finished.
-void serialize(uint32_t blockHeight, Utxo const& utxo, std::filesystem::path const& filename) {
+void serialize(uint32_t blockHeight,
+               uint64_t blkFileSize,
+               uint64_t lastRecordOffset,
+               std::array<uint8_t, 32> const& blockHash,
+               Utxo const& utxo,
+               std::filesystem::path const& filename) {
     auto tmpFilename = filename;
     tmpFilename += ".tmp";
     LOG("Writing UTXO to {}...", tmpFilename.string());
-    auto n = dump(blockHeight, utxo, tmpFilename.string());
+    auto n = dump(blockHeight, blkFileSize, lastRecordOffset, blockHash, utxo, tmpFilename.string());
     LOG("Wrote {} vouts", n);
     std::filesystem::rename(tmpFilename.string(), filename.string());
     LOG("Renamed {} -> {}", tmpFilename.string(), filename.string());
 }
 
-[[nodiscard]] auto load(std::filesystem::path const& filename) -> std::pair<uint32_t, Utxo> {
+[[nodiscard]] auto load(std::filesystem::path const& filename) -> Checkpoint {
     auto fin = std::ifstream(filename, std::ios::binary);
     if (!fin.is_open()) {
         throw std::runtime_error("could not open file for reading UTXO");
     }
 
-    // Read header "UTXO"
+    // Read magic marker
     char header[5] = {0};
     fin.read(header, 4);
-    if (std::string(header) != "UTXO") {
-        throw std::runtime_error(fmt::format("Invalid checkpoint header: got '{}', expected 'UTXO'", header));
+    if (std::string(header) == "UTXO") {
+        throw std::runtime_error(
+            "Legacy v1 checkpoint ('UTXO'): it lacks original creation heights and BLK-tail validation, "
+            "so an exact resume is impossible. Delete it and regenerate from a full rebuild.");
+    }
+    if (std::string(header) != "UTX2") {
+        throw std::runtime_error(fmt::format("Invalid checkpoint header: got '{}', expected 'UTX2'", header));
     }
 
-    auto blockHeight = util::readBinary<uint32_t>(fin);
+    auto cp = Checkpoint();
+    cp.blockHeight = util::readBinary<uint32_t>(fin);
+    cp.blkFileSize = util::readBinary<uint64_t>(fin);
+    cp.lastRecordOffset = util::readBinary<uint64_t>(fin);
+    fin.read(reinterpret_cast<char*>(cp.blockHash.data()), cp.blockHash.size());
     auto mapSize = util::readBinary<uint64_t>(fin);
 
-    auto utxo = Utxo();
-    LOG("Loading checkpoint: block {}, {} entries", blockHeight, mapSize);
+    LOG("Loading checkpoint: block {}, blk size {}, {} entries", cp.blockHeight, cp.blkFileSize, mapSize);
 
     for (size_t i = 0; i < mapSize; ++i) {
         // Read key (TxIdPrefix)
         auto txIdPrefix = TxIdPrefix{};
         fin.read(reinterpret_cast<char*>(txIdPrefix.data()), txIdPrefix.size());
 
-        // Read vouts until we hit the empty marker
-        auto satoshis = std::vector<int64_t>();
+        // Original creation height of this transaction's outputs
+        auto creationHeight = util::readBinary<uint32_t>(fin);
+
+        // Read vouts until we hit the empty marker. Keep explicit vout numbers: partial
+        // spends leave sparse sequences, and slot/chunk placement must match them.
+        auto voutSatoshis = std::vector<VoutSatoshi>();
         while (true) {
             auto voutData = util::readBinary<uint64_t>(fin);
             auto satoshi = static_cast<int64_t>(voutData >> 16U);
@@ -113,22 +153,19 @@ void serialize(uint32_t blockHeight, Utxo const& utxo, std::filesystem::path con
             if (vs.isEmptyMask()) {
                 break; // End of vouts for this txid
             }
-
-            // Handle sparse vouts
-            if (satoshis.size() <= vout) {
-                satoshis.resize(vout + 1, 0);
-            }
-            satoshis[vout] = vs.satoshi();
+            voutSatoshis.push_back(vs);
         }
 
-        // Insert into utxo (we don't have the original block height, use current)
-        if (!satoshis.empty()) {
-            utxo.insert(txIdPrefix, blockHeight, satoshis);
+        if (!voutSatoshis.empty()) {
+            cp.utxo.insertSparse(txIdPrefix, creationHeight, voutSatoshis);
         }
+    }
+    if (!fin) {
+        throw std::runtime_error("checkpoint file truncated or unreadable");
     }
 
     LOG("Checkpoint loaded successfully");
-    return std::make_pair(blockHeight, std::move(utxo));
+    return cp;
 }
 
 } // namespace buv

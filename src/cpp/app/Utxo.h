@@ -7,7 +7,6 @@
 #include <robin_hood.h>
 
 #include <filesystem>
-#include <unordered_map>
 
 namespace buv {
 
@@ -28,7 +27,11 @@ struct hash<buv::TxIdPrefix> {
     auto operator()(buv::TxIdPrefix const& txid) const noexcept -> size_t {
         auto h = size_t();
         std::memcpy(&h, txid.data(), sizeof(size_t));
-        return h;
+        // Bitcoin txid prefixes are not uniformly distributed in the low bits that
+        // robin_hood uses for bucket selection, which triggers a spurious
+        // "map overflow" once the table grows past ~76M entries. Mix the bits so the
+        // full 278M+ UTXO set loads.
+        return robin_hood::hash_int(h);
     }
 };
 
@@ -41,7 +44,7 @@ struct hash<buv::TxIdPrefix> {
     auto operator()(buv::TxIdPrefix const& txid) const noexcept -> size_t {
         auto h = size_t();
         std::memcpy(&h, txid.data(), sizeof(size_t));
-        return h;
+        return robin_hood::hash_int(h);
     }
 };
 
@@ -77,6 +80,33 @@ public:
         chunk(ptr);
         for (size_t i = 1; i < sat.size(); ++i) {
             ptr = chunkStore.insert(i, sat[i], ptr);
+        }
+        return false;
+    }
+
+    // Sets vout/satoshi pairs with explicit vout numbers (checkpoint restore). Unlike
+    // satoshi(), the input may be sparse (e.g. only vout 1 left after a partial spend).
+    // Returns true if smallUtxoOptimization is used.
+    auto satoshiSparse(ChunkStore& chunkStore, std::vector<VoutSatoshi> const& voutSatoshis) -> bool {
+        auto allSmall = true;
+        for (auto const& vs : voutSatoshis) {
+            if (vs.vout() > 1) {
+                allSmall = false;
+                break;
+            }
+        }
+        if (allSmall) {
+            // slot index encodes the vout, exactly like satoshi() does for dense inputs
+            for (auto const& vs : voutSatoshis) {
+                voutSatoshi(vs.vout(), vs.satoshi());
+            }
+            return true;
+        }
+
+        auto* ptr = chunkStore.insert(voutSatoshis.front().vout(), voutSatoshis.front().satoshi(), nullptr);
+        chunk(ptr);
+        for (size_t i = 1; i < voutSatoshis.size(); ++i) {
+            ptr = chunkStore.insert(voutSatoshis[i].vout(), voutSatoshis[i].satoshi(), ptr);
         }
         return false;
     }
@@ -150,11 +180,8 @@ static_assert(sizeof(UtxoPerTx) == 8 + 8 + 4);
 
 class Utxo {
     ChunkStore mChunkStore{};
-    // using Map = robin_hood::unordered_node_map<TxIdPrefix, UtxoPerTx>;
-    using Map = std::unordered_map<TxIdPrefix, UtxoPerTx>;
+    using Map = robin_hood::unordered_node_map<TxIdPrefix, UtxoPerTx>;
     Map mTxidToUtxos{};
-
-    size_t mMissedTxCount = 0;
 
     static_assert(sizeof(Map::value_type) == sizeof(TxIdPrefix) + sizeof(UtxoPerTx));
 
@@ -193,10 +220,7 @@ public:
                 }
             }
         } else {
-            // throw std::runtime_error("DAMN! did not find txid");
-            ++mMissedTxCount;
-            LOG("WARNING: Missed UTXO for removal! Total skipped: {}", mMissedTxCount);
-            return;
+            throw std::runtime_error("DAMN! did not find txid");
         }
     }
 
@@ -208,6 +232,14 @@ public:
         return utxoPerTx.satoshi(mChunkStore, satoshi);
     }
 
+    // Like insert(), but with explicit (possibly sparse) vout numbers. Used by checkpoint
+    // restore, where partial spends may have left gaps in the vout sequence.
+    auto insertSparse(TxIdPrefix const& txIdPrefix, uint32_t blockHeight, std::vector<VoutSatoshi> const& voutSatoshis) -> bool {
+        auto& utxoPerTx = mTxidToUtxos[txIdPrefix];
+        utxoPerTx.blockHeight(blockHeight);
+        return utxoPerTx.satoshiSparse(mChunkStore, voutSatoshis);
+    }
+
     [[nodiscard]] auto map() const -> Map const& {
         return mTxidToUtxos;
     }
@@ -217,10 +249,31 @@ public:
     }
 };
 
-// Compact binary data serialization
-void serialize(uint32_t blockHeight, Utxo const& utxo, std::filesystem::path const& filename);
+// A resumable snapshot of the UTXO set.
+//
+// Format v2 ("UTX2") stores, per transaction entry, the original creation block height,
+// plus the exact changes.blk1 size and the block hash at checkpoint time. This makes an
+// exact resume possible: spend records keep their true origin heights, the BLK tail can
+// be validated byte-exactly, and reorgs / wrong chains are detected before appending.
+struct Checkpoint {
+    uint32_t blockHeight{};
+    uint64_t blkFileSize{};
+    uint64_t lastRecordOffset{};
+    std::array<uint8_t, 32> blockHash{};
+    Utxo utxo{};
+};
 
-[[nodiscard]] auto load(std::filesystem::path const& filename) -> std::pair<uint32_t, Utxo>;
+// Compact binary data serialization. Writes to filename + ".tmp", then renames.
+void serialize(uint32_t blockHeight,
+               uint64_t blkFileSize,
+               uint64_t lastRecordOffset,
+               std::array<uint8_t, 32> const& blockHash,
+               Utxo const& utxo,
+               std::filesystem::path const& filename);
+
+// Loads a v2 checkpoint. Throws a descriptive error for legacy v1 ("UTXO") files, which
+// lack creation heights and therefore cannot support an exact resume.
+[[nodiscard]] auto load(std::filesystem::path const& filename) -> Checkpoint;
 
 } // namespace buv
 

@@ -9,12 +9,15 @@
 #include <buv/truncate.h>
 #include <util/log.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <fstream>
 #include <iostream>
+#include <robin_hood.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -70,6 +73,15 @@ public:
         , m_prev_block_height(-1)
         , m_prev_amount(-1) {
         LOG("Image {}x{}", cfg.imageWidth, cfg.imageHeight);
+        if (mSatoshiBlockheightToPixel.useEpochCompression()) {
+            // One entry represents every alive UTXO sharing a creation-height/Y
+            // pair. Reserving up front avoids repeated multi-gigabyte rehashes on
+            // a full-chain render.
+            m_alive.reserve(64'000'000);
+        }
+        if (cfg.amountColorFloor) {
+            m_density_to_image.setRowColorFloor(buildAmountColorFloor());
+        }
     }
 
     void begin_block(uint32_t block_height) {
@@ -119,10 +131,8 @@ public:
         }
         if (amount == m_prev_amount) {
             if (block_height == m_prev_block_height) {
-                // Underflow protection: don't decrement below 0
-                if (*m_last_data > 0 || amount >= 0) {
-                    *m_last_data += amount >= 0 ? 1 : -1;
-                }
+                updateAliveLedger(block_height, mPixelY, amount);
+                applyDelta(*m_last_data, amount);
                 return;
             }
         } else {
@@ -130,6 +140,7 @@ public:
             mPixelY = mSatoshiBlockheightToPixel.satoshiToPixelHeight(amount);
         }
         mPixelX = mSatoshiBlockheightToPixel.blockheightToPixelWidth(block_height);
+        updateAliveLedger(block_height, mPixelY, amount);
 
         auto pixel_idx = mPixelY * mCfg.imageWidth + mPixelX;
         static size_t max_pixel_idx = 0;
@@ -137,10 +148,7 @@ public:
             max_pixel_idx = pixel_idx;
         }
         m_last_data = &m_data[pixel_idx];
-        // Underflow protection: don't decrement below 0
-        if (*m_last_data > 0 || amount >= 0) {
-            *m_last_data += amount >= 0 ? 1 : -1;
-        }
+        applyDelta(*m_last_data, amount);
 
         // integrate density into image
         // m_density_image.update(pixel_idx, pixel);
@@ -346,9 +354,107 @@ public:
         for (size_t i = 0; i < numValues; ++i) {
             fmt::print("{}, ", m_data[(m_data.size() - 1) * i / (numValues - 1)]);
         }
+        LOG("Density diagnostics: ledger misses={}, dropped decrements={}",
+            m_ledger_misses, m_dropped_decrements);
     }
 
 private:
+    static constexpr uint64_t LEDGER_Y_MASK = 0xffffU;
+
+    // Build the per-row minimum color index for the amount color floor.
+    // The floor is derived from the BTC amount each screen row represents:
+    //   < 0.1 BTC            -> 0 (unchanged)
+    //   0.1 BTC .. 1 BTC     -> 0 .. 45, log-linear fade-in (avoids a hard seam)
+    //   1 BTC .. maxSatoshi  -> 45 .. 255, log-linear (top of the axis = peak red)
+    // Rows are resolved by sampling the exact forward satoshi->pixel mapping, so
+    // any Y-axis mode (including compressLowSatoshi) stays consistent.
+    [[nodiscard]] auto buildAmountColorFloor() const -> std::vector<uint8_t> {
+        auto rowFloor = std::vector<uint8_t>(mCfg.imageHeight, 0);
+        auto rowMaxSatoshi = std::vector<double>(mCfg.imageHeight, 0.0);
+
+        auto const logMin = std::log(static_cast<double>(std::max<int64_t>(mCfg.minSatoshi, 1)));
+        auto const logMax = std::log(static_cast<double>(mCfg.maxSatoshi));
+        constexpr size_t numSamples = 20000;
+        for (size_t i = 0; i <= numSamples; ++i) {
+            auto const logS = logMin + (logMax - logMin) * static_cast<double>(i) / numSamples;
+            auto const satoshi = static_cast<int64_t>(std::exp(logS));
+            auto const row = mSatoshiBlockheightToPixel.satoshiToPixelHeight(satoshi);
+            if (row < rowMaxSatoshi.size()) {
+                rowMaxSatoshi[row] = std::max(rowMaxSatoshi[row], static_cast<double>(satoshi));
+            }
+        }
+
+        constexpr double satTenthBtc = 1e7;
+        constexpr double satOneBtc = 1e8;
+        constexpr double floorAtOneBtc = 45.0;
+        auto const logOne = std::log(satOneBtc);
+        auto const logTenth = std::log(satTenthBtc);
+        for (size_t row = 0; row < rowMaxSatoshi.size(); ++row) {
+            auto const sat = rowMaxSatoshi[row];
+            if (sat < satTenthBtc) {
+                continue;
+            }
+            double floorIdx = 0.0;
+            if (sat < satOneBtc) {
+                floorIdx = floorAtOneBtc * (std::log(sat) - logTenth) / (logOne - logTenth);
+            } else {
+                auto const t = std::min(1.0, (std::log(sat) - logOne) / (logMax - logOne));
+                floorIdx = floorAtOneBtc + (255.0 - floorAtOneBtc) * t;
+            }
+            rowFloor[row] = static_cast<uint8_t>(truncate<int>(0, static_cast<int>(floorIdx + 0.5), 255));
+        }
+        return rowFloor;
+    }
+
+    [[nodiscard]] static auto aliveKey(uint32_t creationHeight, size_t pixelY) -> uint64_t {
+        return (static_cast<uint64_t>(creationHeight) << 16U)
+            | (static_cast<uint64_t>(pixelY) & LEDGER_Y_MASK);
+    }
+
+    // Epoch compression needs the exact set of still-unspent creation points.
+    // Density alone is not reversible after several creation columns merge.
+    void updateAliveLedger(uint32_t creationHeight, size_t pixelY, int64_t amount) {
+        if (!mSatoshiBlockheightToPixel.useEpochCompression()) {
+            return;
+        }
+
+        auto const key = aliveKey(creationHeight, pixelY);
+        if (amount > 0) {
+            auto [it, inserted] = m_alive.emplace(key, 1U);
+            if (!inserted) {
+                ++it->second;
+            }
+            return;
+        }
+
+        auto it = m_alive.find(key);
+        if (it == m_alive.end()) {
+            ++m_ledger_misses;
+            return;
+        }
+        if (--it->second == 0) {
+            m_alive.erase(it);
+        }
+    }
+
+    // Apply +1/-1 to a density cell. Density is stored as double so resampling can
+    // preserve fractional mass; a spend removes up to 1.0, clamped at 0.
+    void applyDelta(double& cell, int64_t amount) {
+        if (amount >= 0) {
+            cell += 1.0;
+            return;
+        }
+        if (cell >= 1.0) {
+            cell -= 1.0;
+            return;
+        }
+        if (cell > 0.0) {
+            cell = 0.0;
+            return;
+        }
+        ++m_dropped_decrements;
+    }
+
     // Resample all density data for continuous log mode
     // This is called every N blocks to smoothly compress older data
     void resampleForContinuousLog(uint32_t oldTotalBlocks, uint32_t newTotalBlocks) {
@@ -363,7 +469,7 @@ private:
         auto const& rect = mSatoshiBlockheightToPixel.getRect();
 
         // Create buffers for new density and merge counts (for averaging)
-        std::vector<size_t> newData(mCfg.imageWidth * mCfg.imageHeight, 0);
+        std::vector<double> newData(mCfg.imageWidth * mCfg.imageHeight, 0.0);
         std::vector<size_t> mergeCounts(mCfg.imageWidth * mCfg.imageHeight, 0);
 
         // For each pixel in old buffer, calculate its new position
@@ -394,7 +500,7 @@ private:
         // Compute averages where multiple pixels merged (prevents color blowup)
         for (size_t i = 0; i < newData.size(); ++i) {
             if (mergeCounts[i] > 1) {
-                newData[i] = newData[i] / mergeCounts[i];
+                newData[i] = newData[i] / static_cast<double>(mergeCounts[i]);
             }
         }
 
@@ -432,130 +538,41 @@ private:
         return blockHeight;
     }
 
-    // Resample all density data when transitioning to a new epoch
-    // This compresses older epochs to the left to make room for the new epoch
-    //
-    // FIXED v3: Spread density across FULL RANGE of new pixels
-    // Previous approach used one representative block per old pixel, causing banding.
-    // New approach: each old pixel maps to a RANGE [newXStart, newXEnd] and density
-    // is spread uniformly across that range, eliminating gaps/dark lines.
+    // Rebuild all epoch-compressed density from the exact alive-coin ledger. A density
+    // column cannot be redistributed exactly after multiple creation heights merge:
+    // later spends still point to one precise creation height. Replaying the ledger
+    // through the same forward mapping as change() keeps additions and spends aligned.
     void resampleForNewEpoch(uint32_t newEpoch) {
         uint32_t oldEpoch = mSatoshiBlockheightToPixel.getCurrentEpoch();
         LOG("Resampling for epoch transition: {} -> {}", oldEpoch, newEpoch);
 
-        size_t graphWidth = mSatoshiBlockheightToPixel.getPixelWidth();
         size_t graphHeight = mSatoshiBlockheightToPixel.getPixelHeight();
         auto const& rect = mSatoshiBlockheightToPixel.getRect();
 
-        bool useNormalizedGeometric = (mSatoshiBlockheightToPixel.getXAxisMode() == "normalizedGeometric");
-
-        uint32_t maxBlockHeight = m_current_block_height;
-        if (maxBlockHeight == 0) maxBlockHeight = 1;
-
-        // Step 1: Build mapping from old pixel X to block range [first, last]
-        std::vector<uint32_t> oldXToBlockFirst(graphWidth, UINT32_MAX);
-        std::vector<uint32_t> oldXToBlockLast(graphWidth, 0);
-
-        for (uint32_t blockHeight = 0; blockHeight < maxBlockHeight; ++blockHeight) {
-            size_t oldX;
-            if (useNormalizedGeometric) {
-                oldX = mSatoshiBlockheightToPixel.blockheightToPixelWidthNormalized(blockHeight, oldEpoch);
-            } else {
-                oldX = mSatoshiBlockheightToPixel.blockheightToPixelWidthEpochLog(blockHeight, oldEpoch);
-            }
-            if (oldX < graphWidth) {
-                if (oldXToBlockFirst[oldX] == UINT32_MAX) {
-                    oldXToBlockFirst[oldX] = blockHeight;
-                }
-                oldXToBlockLast[oldX] = blockHeight;
-            }
-        }
-
-        // Accumulator for density
-        std::vector<double> newDataAccum(mCfg.imageWidth * mCfg.imageHeight, 0.0);
-
-        // Step 2: For each old pixel, spread density across its full new range
-        for (size_t oldX = 0; oldX < graphWidth; ++oldX) {
-            if (oldXToBlockFirst[oldX] == UINT32_MAX) continue;
-
-            uint32_t blockFirst = oldXToBlockFirst[oldX];
-            uint32_t blockLast = oldXToBlockLast[oldX];
-
-            // Compute new X range for this old pixel's block range
-            // Use double-precision version to avoid banding from integer truncation
-            double newXStart, newXEnd;
-            if (useNormalizedGeometric) {
-                newXStart = mSatoshiBlockheightToPixel.blockheightToPixelWidthNormalizedDouble(blockFirst, newEpoch);
-                newXEnd = mSatoshiBlockheightToPixel.blockheightToPixelWidthNormalizedDouble(blockLast, newEpoch);
-            } else {
-                newXStart = static_cast<double>(mSatoshiBlockheightToPixel.blockheightToPixelWidthEpochLog(blockFirst, newEpoch));
-                newXEnd = static_cast<double>(mSatoshiBlockheightToPixel.blockheightToPixelWidthEpochLog(blockLast, newEpoch));
-            }
-
-            // Ensure start <= end
-            if (newXStart > newXEnd) std::swap(newXStart, newXEnd);
-
-            // Clamp to valid range
-            if (newXEnd >= graphWidth) newXEnd = graphWidth - 1;
-            if (newXStart >= graphWidth) newXStart = graphWidth - 1;
-
-            // Calculate the range width for density distribution
-            double rangeWidth = newXEnd - newXStart;
-            if (rangeWidth < 1.0) rangeWidth = 1.0;  // At least 1 pixel
-
-            // Transfer density from old column, spread across new range
-            for (size_t y = rect.y; y < rect.y + graphHeight; ++y) {
-                size_t oldIdx = y * mCfg.imageWidth + rect.x + oldX;
-                double density = static_cast<double>(m_data[oldIdx]);
-                if (density == 0.0) continue;
-
-                // Spread density uniformly across [newXStart, newXEnd]
-                size_t pixelStart = static_cast<size_t>(newXStart);
-                size_t pixelEnd = static_cast<size_t>(newXEnd);
-
-                if (pixelStart == pixelEnd) {
-                    // Single pixel case - all density goes here
-                    size_t newIdx = y * mCfg.imageWidth + rect.x + pixelStart;
-                    newDataAccum[newIdx] += density;
-                } else {
-                    // Multi-pixel case - spread density with proper sub-pixel weights
-                    double densityPerUnit = density / rangeWidth;
-
-                    for (size_t newX = pixelStart; newX <= pixelEnd && newX < graphWidth; ++newX) {
-                        double pixelLeft = static_cast<double>(newX);
-                        double pixelRight = static_cast<double>(newX + 1);
-
-                        // Calculate overlap of this pixel with [newXStart, newXEnd]
-                        double overlapLeft = std::max(pixelLeft, newXStart);
-                        double overlapRight = std::min(pixelRight, newXEnd);
-                        double overlap = overlapRight - overlapLeft;
-
-                        if (overlap > 0.0) {
-                            size_t newIdx = y * mCfg.imageWidth + rect.x + newX;
-                            newDataAccum[newIdx] += densityPerUnit * overlap;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Convert accumulated density to integer
-        std::vector<size_t> newData(mCfg.imageWidth * mCfg.imageHeight, 0);
-        for (size_t i = 0; i < newData.size(); ++i) {
-            if (newDataAccum[i] > 0.0) {
-                newData[i] = static_cast<size_t>(newDataAccum[i] + 0.5);
-            }
-        }
-
-        m_data = std::move(newData);
         mSatoshiBlockheightToPixel.setCurrentEpoch(newEpoch);
+
+        for (size_t y = rect.y; y < rect.y + graphHeight; ++y) {
+            auto first = m_data.begin() + static_cast<std::ptrdiff_t>(y * mCfg.imageWidth + rect.x);
+            std::fill_n(first, rect.w, 0.0);
+        }
+
+        uint64_t aliveCoins = 0;
+        for (auto const& [key, count] : m_alive) {
+            auto const creationHeight = static_cast<uint32_t>(key >> 16U);
+            auto const pixelY = static_cast<size_t>(key & LEDGER_Y_MASK);
+            auto const pixelX = mSatoshiBlockheightToPixel.blockheightToPixelWidth(creationHeight);
+            m_data[pixelY * mCfg.imageWidth + pixelX] += static_cast<double>(count);
+            aliveCoins += count;
+        }
+
         regenerateImageFromDensity();
         m_pixel_set_with_history.clear();
         m_last_data = nullptr;
         m_prev_block_height = -1;
         m_prev_amount = -1;
 
-        LOG("Resampling complete for epoch {}", newEpoch);
+        LOG("Exact epoch rebuild complete for epoch {}: {} ledger entries, {} alive coins",
+            newEpoch, m_alive.size(), aliveCoins);
     }
 
     // Regenerate the entire image from the density data
@@ -619,8 +636,13 @@ private:
 
     Cfg const mCfg;
     mutable SatoshiBlockheightToPixel mSatoshiBlockheightToPixel;  // mutable for epoch updates
-    std::vector<size_t> m_data;
-    size_t* m_last_data;
+    // Double remains necessary for the legacy continuous-log resampler. Epoch modes
+    // rebuild integer counts exactly from m_alive.
+    std::vector<double> m_data;
+    double* m_last_data;
+    size_t m_dropped_decrements{};
+    robin_hood::unordered_flat_map<uint64_t, uint32_t> m_alive;
+    size_t m_ledger_misses{};
     size_t mPixelX{};
     size_t mPixelY{};
     PixelSetWithHistory m_pixel_set_with_history;

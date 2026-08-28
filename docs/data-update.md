@@ -36,6 +36,10 @@ Edit a configuration such as `configs/buv_update.json` and set:
 - `checkpointFile`: optional UTXO checkpoint path.
 - `checkpointIntervalBlocks`: checkpoint interval; `0` disables periodic writes.
 
+- `allowBlkFileTruncate`: optional. Default `false`. When false, `utxo_to_change`
+  refuses to open an existing non-empty `blkFile` with `std::ios::out`. Set
+  `true` only when you intentionally want to overwrite the file.
+
 Then run:
 
 ```bash
@@ -74,13 +78,17 @@ appending to it.
 A checkpoint captures the in-memory UTXO map so preprocessing can restart after
 an interruption without replaying genesis.
 
-The current checkpoint layout is:
+The current checkpoint layout (format v2, marker `UTX2`) is:
 
-1. Four-byte `UTXO` marker.
+1. Four-byte `UTX2` marker.
 2. Checkpoint block height (`uint32`).
-3. Number of transaction-prefix map entries (`uint64`).
-4. For every entry: the compact transaction-ID prefix, packed vout/satoshi
-   values, and an empty-value terminator.
+3. Exact `changes.blk1` size in bytes after that block was appended (`uint64`).
+4. Byte offset of that block's record inside `changes.blk1` (`uint64`).
+5. Hash of the checkpointed block (32 bytes) for chain-identity/reorg checks.
+6. Number of transaction-prefix map entries (`uint64`).
+7. For every entry: the compact transaction-ID prefix, the outputs' original
+   creation block height (`uint32`), packed vout/satoshi values, and an
+   empty-value terminator.
 
 Checkpoint writes use `checkpoint.utxo.tmp` and rename it over the configured
 checkpoint only after serialization completes. This avoids treating a partially
@@ -90,26 +98,50 @@ At startup, `utxo_to_change`:
 
 1. Fetches the current block-header list from Bitcoin Core.
 2. Loads `checkpointFile` when it exists.
-3. Restores the UTXO map and resumes at `checkpointBlockHeight + 1`.
-4. Opens `changes.blk1` in append mode.
-5. Flushes `changes.blk1` before each periodic checkpoint write.
+3. Verifies the checkpointed block hash is still in the node's best chain
+   (reorg detection).
+4. Validates the `changes.blk1` tail byte-exactly: the record at the stored
+   offset must be the checkpointed block with the checkpointed hash and must
+   end exactly at the stored file size. Bytes written after the checkpoint are
+   truncated away and re-appended, so an interrupted run resumes cleanly.
+5. Restores the UTXO map, with original creation heights, and resumes at
+   `checkpointBlockHeight + 1`.
+6. Opens `changes.blk1` in append mode when resuming. If the checkpoint is already
+   at chain tip, it exits without opening the file. If the checkpoint cannot be
+   loaded, or if a fresh start would overwrite an existing non-empty `blkFile`,
+   it refuses unless `allowBlkFileTruncate` is `true`.
+7. Flushes `changes.blk1` before each periodic checkpoint write, and writes a
+   final checkpoint at the exact tip when processing completes.
 
-### Important checkpoint caveats
+### Checkpoint history and caveats
 
-The checkpoint feature is experimental and has two correctness limitations in
-this version:
+Format v2 fixes the two correctness limitations of the legacy v1 (`UTXO`
+marker) format:
 
-- The checkpoint does **not** store each UTXO's original creation block. During
-  restore, every loaded output is assigned the checkpoint block height. A later
-  spend can therefore be drawn as if the output was created at the checkpoint,
-  making origin/age visualization inaccurate after a resumed update.
-- Resume does not verify that the last record already in `changes.blk1` exactly
-  matches the checkpoint height. A mismatched data file and checkpoint can create
-  gaps or duplicate appended blocks.
+- v1 did **not** store each UTXO's original creation block; restored outputs
+  were assigned the checkpoint height, corrupting origin/age visuals after a
+  resumed update. v2 stores creation heights per entry, so resumed updates are
+  exact and the renderer's alive-coin ledger stays consistent
+  (`ledger misses=0`).
+- v1 did not verify that `changes.blk1` matched the checkpoint. v2 validates
+  the tail record (height, hash, exact byte size) before appending and refuses
+  mismatched pairs.
 
-For an exact production visualization, regenerate `changes.blk1` from genesis
-until checkpoint serialization preserves creation heights and validates the BLK
-tail. Use checkpoint resume only when that tradeoff is acceptable.
+Legacy v1 checkpoints are rejected at load with a clear error; delete them and
+let one full from-genesis rebuild write fresh v2 checkpoints. After that,
+updating to a new chain tip only replays blocks past the last checkpoint
+(the final checkpoint is at the exact tip, so a routine update processes just
+the new blocks — minutes, not hours).
+
+The round-trip and tail-validation behavior is covered by the `checkpoint_v2`
+test case: `./buv -ns -tc=checkpoint_v2`.
+
+Epoch-compressed rendering (`normalizedGeometric` or `epochLog`) also maintains
+an exact ledger of alive creation points so it can rebuild the density image at
+each epoch transition. That ledger requires a from-genesis, full-rebuild BLK.
+A v2 checkpoint-resumed BLK preserves creation heights, so it renders exactly;
+a nonzero `ledger misses` diagnostic now indicates a genuinely inconsistent
+BLK (for example one produced with legacy v1 resume).
 
 ## Memory behavior
 

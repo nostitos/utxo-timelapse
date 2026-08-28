@@ -18,7 +18,7 @@ namespace buv {
 // the whole density map each time we want to extract the image.
 class DensityToImage {
     // density 1 should map to 0, NEVER below 0.
-    [[nodiscard]] static auto scaleDensityToColor(size_t density) -> double {
+    [[nodiscard]] static auto scaleDensityToColor(double density) -> double {
         // log scales not so well, because for small numbers it has huge color jumps
         // return std::log(density);
         // return std::tanh(2.0 * (static_cast<double>(density) - 1.0) / m_max_included_value);
@@ -47,19 +47,33 @@ public:
         }
     }
 
-    void update(size_t pixel_idx, size_t density) {
+    void update(size_t pixel_idx, double density) {
         // static constexpr auto black = std::array<uint8_t, 3>();
         uint8_t const* rgb_source = nullptr;
-        if (0 == density) {
+        if (density <= 0.0) {
             rgb_source = mColorBackground.data();
-        } else if (density >= m_max_included_value) {
+        } else if (density >= static_cast<double>(m_max_included_value)) {
             rgb_source = m_colormap.rgb(255);
         } else {
             auto val = mDensityScaler(scaleDensityToColor(density));
             auto colIdx = truncate<int>(0, val, 255);
+            if (!mRowColorFloor.empty()) {
+                auto const row = pixel_idx / mWidth;
+                auto const floorIdx = static_cast<int>(mRowColorFloor[row]);
+                if (colIdx < floorIdx) {
+                    colIdx = floorIdx;
+                }
+            }
             rgb_source = m_colormap.rgb(colIdx);
         }
         rgb(pixel_idx, rgb_source);
+    }
+
+    // Optional per-row minimum color index ("amount color floor"). When set, any
+    // occupied pixel in row r renders at least at colormap index rowFloor[r], so
+    // sparse high-amount rows stay visible. Empty vector disables the feature.
+    void setRowColorFloor(std::vector<uint8_t> rowFloor) {
+        mRowColorFloor = std::move(rowFloor);
     }
 
     void rgb(size_t pixel_idx, uint8_t const* rgb_data) {
@@ -94,6 +108,7 @@ private:
 
     ColorMap const m_colormap;
     std::vector<uint8_t> m_rgb;
+    std::vector<uint8_t> mRowColorFloor{};
     LinearFunction mDensityScaler;
     size_t const m_max_included_value;
     size_t mWidth{};

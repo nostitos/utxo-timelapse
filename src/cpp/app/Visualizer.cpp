@@ -77,12 +77,24 @@ TEST_CASE("visualizer" * doctest::skip()) {
         // Only collect audio events once we're in the visible range
         bool collectAudio = audioSynth && blockHeight >= cfg.startShowAtBlockHeight;
 
+        // Two passes: creations first, then spends. The change list is sorted by
+        // amount (spends negative -> first), but a coin created AND spent within
+        // the same block must be added before its spend is subtracted. Otherwise
+        // the decrement hits an empty cell and is dropped, while the later +1
+        // sticks forever - permanent phantom density at exchange-churn pixels.
         for (auto const& change : cib.changeAtBlockheights()) {
-            density.change(change.blockHeight(), change.satoshi());
+            if (change.satoshi() > 0) {
+                density.change(change.blockHeight(), change.satoshi());
+            }
+        }
+        for (auto const& change : cib.changeAtBlockheights()) {
+            if (change.satoshi() <= 0) {
+                density.change(change.blockHeight(), change.satoshi());
 
-            // Collect spending events for audio synthesis
-            if (collectAudio && change.satoshi() < 0) {
-                audioSynth->addSpend(blockHeight, change.blockHeight(), change.satoshi());
+                // Collect spending events for audio synthesis
+                if (collectAudio && change.satoshi() < 0) {
+                    audioSynth->addSpend(blockHeight, change.blockHeight(), change.satoshi());
+                }
             }
         }
 

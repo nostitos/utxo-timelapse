@@ -92,6 +92,11 @@ auto parseCfg(std::filesystem::path const& cfgFile) -> Cfg {
     } catch (...) {
         cfg.checkpointIntervalBlocks = 10000;
     }
+    try {
+        cfg.allowBlkFileTruncate = load<bool>(data, "allowBlkFileTruncate");
+    } catch (...) {
+        cfg.allowBlkFileTruncate = false;
+    }
 
     // Optional X-axis mode settings (for logarithmic compression)
     try {
@@ -129,6 +134,13 @@ auto parseCfg(std::filesystem::path const& cfgFile) -> Cfg {
         cfg.compressLowSatoshi = false;  // Default: no compression
     }
 
+    // Optional amount color floor (whale-band visibility)
+    try {
+        cfg.amountColorFloor = load<bool>(data, "amountColorFloor");
+    } catch (...) {
+        cfg.amountColorFloor = false;  // Default: original colors
+    }
+
     if (cfg.xAxisMode == "continuousLog") {
         LOG("X-axis mode: continuousLog, compressionFactor: {}, resampleEvery: {} blocks",
             cfg.logCompressionFactor, cfg.resampleEveryNBlocks);
@@ -144,6 +156,9 @@ auto parseCfg(std::filesystem::path const& cfgFile) -> Cfg {
     }
 
     LOG("compressLowSatoshi: {}", cfg.compressLowSatoshi);
+    if (cfg.amountColorFloor) {
+        LOG("amountColorFloor: ENABLED (>=0.1 BTC rows get amount-scaled minimum color)");
+    }
     if (cfg.coinjoinFilter) {
         LOG("Coinjoin filter: ENABLED");
     }
@@ -178,6 +193,23 @@ auto parseCfg(std::filesystem::path const& cfgFile) -> Cfg {
     if (cfg.audioEnabled) {
         LOG("Audio enabled: output={}, sampleRate={}, samplesPerBlock={}",
             cfg.audioOutputFile, cfg.audioSampleRate, cfg.audioSamplesPerBlock);
+    }
+
+    // Optional UTXO explorer settings
+    try {
+        cfg.historyFile = std::string(load<std::string_view>(data, "historyFile"));
+    } catch (...) {
+        cfg.historyFile = "";
+    }
+    try {
+        cfg.explorerVideoFile = std::string(load<std::string_view>(data, "explorerVideoFile"));
+    } catch (...) {
+        cfg.explorerVideoFile = "";
+    }
+    try {
+        cfg.explorerPort = load<uint64_t>(data, "explorerPort");
+    } catch (...) {
+        cfg.explorerPort = 12988;
     }
 
     return cfg;

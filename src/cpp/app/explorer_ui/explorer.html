@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UTXO Pixel Explorer</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0b0e14; color: #d8dee9; font: 14px/1.45 -apple-system, "SF Pro Text", Helvetica, sans-serif; display: flex; height: 100vh; overflow: hidden; }
+  #left { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
+  #videoWrap { position: relative; flex: 1 1 auto; background: #000; min-height: 0; }
+  #videoWrap video { width: 100%; height: 100%; object-fit: contain; display: block; }
+  #clickLayer { position: absolute; inset: 0; cursor: crosshair; }
+  #crosshair { position: absolute; width: 13px; height: 13px; margin: -6px 0 0 -6px; pointer-events: none; display: none; }
+  #crosshair::before, #crosshair::after { content: ""; position: absolute; background: #ff5d5d; }
+  #crosshair::before { left: 6px; top: 0; width: 1px; height: 13px; }
+  #crosshair::after { top: 6px; left: 0; height: 1px; width: 13px; }
+  #loupe { position: absolute; width: 183px; height: 183px; border: 2px solid #7aa2f7; border-radius: 4px; pointer-events: none; display: none; background: #000; z-index: 5; image-rendering: pixelated; overflow: hidden; }
+  #loupe canvas { image-rendering: pixelated; }
+  #loupeCross { position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; margin: -4px 0 0 -4px; }
+  #loupeCross::before { content:""; position:absolute; left:4px; top:0; width:1px; height:9px; background:#ff5d5d; }
+  #loupeCross::after  { content:""; position:absolute; top:4px; left:0; height:1px; width:9px; background:#ff5d5d; }
+  #controls { padding: 8px 12px; background: #11151f; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  #controls input[type=number] { width: 90px; background: #0b0e14; color: inherit; border: 1px solid #2a3245; border-radius: 4px; padding: 4px 6px; }
+  #controls button, #panel button { background: #1c2333; color: inherit; border: 1px solid #2a3245; border-radius: 4px; padding: 4px 10px; cursor: pointer; }
+  #controls button:hover, #panel button:hover { background: #263049; }
+  #blockLabel { font-variant-numeric: tabular-nums; color: #7aa2f7; min-width: 190px; }
+  #panel { width: 480px; flex: 0 0 480px; background: #11151f; border-left: 1px solid #1d2433; overflow-y: auto; padding: 14px; }
+  #panelHeader { display: grid; grid-template-columns: minmax(0, 1fr) 1cm; gap: 12px; align-items: start; }
+  #panel h2 { margin: 0 0 4px; font-size: 15px; color: #7aa2f7; }
+  #panel .meta { color: #9aa5b8; font-size: 12.5px; margin-bottom: 10px; }
+  #pixelSwatch { width: 1cm; height: 1cm; visibility: hidden; background: #000; border: 1px solid #65708a; border-radius: 2px; box-shadow: 0 0 0 1px #080a0f, inset 0 0 0 1px rgba(255,255,255,0.12); }
+  #pixelSwatch.visible { visibility: visible; }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  th, td { text-align: right; padding: 3px 6px; border-bottom: 1px solid #1d2433; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  th { color: #9aa5b8; position: sticky; top: 0; background: #11151f; }
+  td:first-child, th:first-child { text-align: left; }
+  .unspent { color: #9ece6a; }
+  .goneLater { color: #7aa2f7; }
+  .spentTd { color: #e06c75; }
+  .secHead { margin: 14px 0 4px; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: #565f74; border-bottom: 1px solid #1d2433; padding-bottom: 3px; }
+  .splitBar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 6px 0 4px; background: #1d2433; }
+  .splitBar div { height: 100%; }
+  .statGrid { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; font-size: 12.5px; margin: 4px 0; }
+  .statGrid .k { color: #9aa5b8; }
+  .statGrid .v { font-variant-numeric: tabular-nums; }
+  .popWrap { margin: 6px 0 2px; position: relative; }
+  .popWrap canvas { width: 100%; height: 56px; display: block; }
+  .popCaption { display: flex; justify-content: space-between; color: #565f74; font-size: 10.5px; margin-top: 1px; }
+  .fateHead { margin: 12px 0 2px; font-size: 12.5px; font-weight: 600; }
+  .fateHead .sub { font-weight: 400; color: #9aa5b8; }
+  .txbtn { font-size: 11px; padding: 1px 6px; }
+  .txres { font-size: 11px; color: #9aa5b8; }
+  .txres a { color: #7aa2f7; }
+  #hint { color: #565f74; font-size: 12.5px; }
+  label.tog { display: inline-flex; gap: 5px; align-items: center; color: #9aa5b8; font-size: 12.5px; }
+</style>
+</head>
+<body>
+<div id="left">
+  <div id="videoWrap">
+    <video id="vid" src="/video.mp4" muted playsinline></video>
+    <div id="clickLayer"></div>
+    <div id="crosshair"></div>
+    <div id="loupe"><canvas id="loupeCanvas" width="183" height="183"></canvas><div id="loupeCross"></div></div>
+  </div>
+  <div id="controls">
+    <button id="playBtn">Play</button>
+    <span id="blockLabel">block 0</span>
+    <input id="seekBar" type="range" min="0" max="1" step="1" value="0" style="flex:1 1 200px">
+    <input id="blockInput" type="number" min="0" step="1" placeholder="block #">
+    <button id="goBtn">Go</button>
+    <label class="tog"><input id="loupeTog" type="checkbox" checked> magnifier</label>
+    <span id="hint">pause &amp; click a pixel</span>
+  </div>
+</div>
+<div id="panel">
+  <div id="panelHeader">
+    <div>
+      <h2>UTXO Pixel Explorer</h2>
+      <div class="meta" id="panelMeta">Click a pixel in the graph (pause first for exact aim).</div>
+    </div>
+    <div id="pixelSwatch" role="img" aria-label="No pixel selected"></div>
+  </div>
+  <div id="panelBody"></div>
+</div>
+<script>
+"use strict";
+const vid = document.getElementById("vid");
+const clickLayer = document.getElementById("clickLayer");
+const crosshair = document.getElementById("crosshair");
+const loupe = document.getElementById("loupe");
+const loupeCanvas = document.getElementById("loupeCanvas");
+const loupeTog = document.getElementById("loupeTog");
+const seekBar = document.getElementById("seekBar");
+const blockLabel = document.getElementById("blockLabel");
+const blockInput = document.getElementById("blockInput");
+const panelMeta = document.getElementById("panelMeta");
+const panelBody = document.getElementById("panelBody");
+const pixelSwatch = document.getElementById("pixelSwatch");
+
+let info = null;          // /api/info
+let lastBlock = 0;
+const ZOOM = 6;           // loupe zoom factor
+const frameCanvas = document.createElement("canvas"); // native-res frame for loupe
+let frameCtx = null;
+let frameValid = false;
+
+fetch("/api/info").then(r => r.json()).then(d => {
+  info = d;
+  frameCanvas.width = d.imageWidth;
+  frameCanvas.height = d.imageHeight;
+  frameCtx = frameCanvas.getContext("2d", { willReadFrequently: false });
+  seekBar.max = d.numBlocks - 1;
+  blockInput.max = d.numBlocks - 1;
+});
+
+function curBlock() {
+  if (!info) return 0;
+  return Math.min(Math.floor(vid.currentTime * info.fps + 1e-6), info.numBlocks - 1);
+}
+function fmtBtc(sat) {
+  const btc = sat / 1e8;
+  if (btc >= 1) return btc.toLocaleString("en-US", {maximumFractionDigits: 8}) + " BTC";
+  if (sat >= 100000) return (sat/1e8).toFixed(8).replace(/0+$/,"") + " BTC";
+  return sat.toLocaleString("en-US") + " sat";
+}
+function fmtAge(blocks) {
+  const years = blocks / 52560; // ~10min blocks
+  if (years >= 1) return years.toFixed(1) + " y";
+  const days = blocks / 144;
+  if (days >= 1) return days.toFixed(0) + " d";
+  return blocks + " blk";
+}
+
+// ---- timeline ----
+const playBtn = document.getElementById("playBtn");
+playBtn.onclick = () => { if (vid.paused) vid.play(); else vid.pause(); };
+vid.addEventListener("play", () => { playBtn.textContent = "Pause"; frameValid = false; hideLoupe(); });
+vid.addEventListener("pause", () => { playBtn.textContent = "Play"; captureFrame(); });
+vid.addEventListener("timeupdate", () => {
+  const b = curBlock();
+  if (b !== lastBlock) {
+    lastBlock = b;
+    if (!scrubbing) { blockLabel.textContent = "block " + b.toLocaleString("en-US"); seekBar.value = b; }
+  }
+});
+vid.addEventListener("seeked", () => { crosshair.style.display = "none"; if (vid.paused) captureFrame(); });
+// Scrubbing: every currentTime change opens a new HTTP range request and
+// abandons the previous one. Update the block label while dragging, but do
+// not touch the video until release. This makes one drag exactly one seek,
+// regardless of how far or how quickly the handle moves.
+let scrubbing = false;
+function seekToBar() { if (info) vid.currentTime = seekBar.value / info.fps + 1e-4; }
+seekBar.addEventListener("pointerdown", () => { scrubbing = true; });
+seekBar.oninput = () => {
+  if (!info) return;
+  blockLabel.textContent = "block " + parseInt(seekBar.value, 10).toLocaleString("en-US");
+};
+seekBar.addEventListener("change", () => {
+  scrubbing = false;
+  seekToBar();
+});
+document.getElementById("goBtn").onclick = () => {
+  const b = parseInt(blockInput.value, 10);
+  if (info && Number.isFinite(b)) vid.currentTime = Math.max(0, Math.min(b, info.numBlocks - 1)) / info.fps + 1e-4;
+};
+blockInput.addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("goBtn").click(); });
+
+function captureFrame() {
+  if (!frameCtx) return;
+  try { frameCtx.drawImage(vid, 0, 0, frameCanvas.width, frameCanvas.height); frameValid = true; }
+  catch (e) { frameValid = false; }
+}
+
+function updatePixelSwatch(nx, ny) {
+  if (!frameCtx || !frameValid) {
+    pixelSwatch.classList.remove("visible");
+    pixelSwatch.setAttribute("aria-label", "Pixel colour unavailable");
+    return;
+  }
+  try {
+    const rgba = frameCtx.getImageData(nx, ny, 1, 1).data;
+    const hex = "#" + [rgba[0], rgba[1], rgba[2]].map(v => v.toString(16).padStart(2, "0")).join("").toUpperCase();
+    const description = "Rendered pixel " + hex + " · rgb(" + rgba[0] + ", " + rgba[1] + ", " + rgba[2] + ")";
+    pixelSwatch.style.backgroundColor = hex;
+    pixelSwatch.title = description;
+    pixelSwatch.setAttribute("aria-label", description);
+    pixelSwatch.classList.add("visible");
+  } catch (e) {
+    pixelSwatch.classList.remove("visible");
+    pixelSwatch.setAttribute("aria-label", "Pixel colour unavailable");
+  }
+}
+
+// ---- coordinate mapping (letterboxed object-fit: contain) ----
+function displayToNative(clientX, clientY) {
+  if (!info) return null;
+  const r = clickLayer.getBoundingClientRect();
+  const scale = Math.min(r.width / info.imageWidth, r.height / info.imageHeight);
+  const dispW = info.imageWidth * scale, dispH = info.imageHeight * scale;
+  const offX = (r.width - dispW) / 2, offY = (r.height - dispH) / 2;
+  const nx = Math.floor((clientX - r.left - offX) / scale);
+  const ny = Math.floor((clientY - r.top - offY) / scale);
+  if (nx < 0 || ny < 0 || nx >= info.imageWidth || ny >= info.imageHeight) return null;
+  return { nx, ny, scale, offX: offX + r.left, offY: offY + r.top };
+}
+function nativeToDisplay(nx, ny) {
+  const r = clickLayer.getBoundingClientRect();
+  const scale = Math.min(r.width / info.imageWidth, r.height / info.imageHeight);
+  const dispW = info.imageWidth * scale, dispH = info.imageHeight * scale;
+  const offX = (r.width - dispW) / 2, offY = (r.height - dispH) / 2;
+  return { x: offX + (nx + 0.5) * scale, y: offY + (ny + 0.5) * scale };
+}
+
+// ---- loupe ----
+const lctx = loupeCanvas.getContext("2d");
+lctx.imageSmoothingEnabled = false;
+function hideLoupe() { loupe.style.display = "none"; }
+clickLayer.addEventListener("mousemove", e => {
+  if (!loupeTog.checked || !vid.paused || !frameValid) { hideLoupe(); return; }
+  const p = displayToNative(e.clientX, e.clientY);
+  if (!p) { hideLoupe(); return; }
+  loupeCenter = { nx: p.nx, ny: p.ny };
+  const half = Math.floor(loupeCanvas.width / ZOOM / 2); // native px on each side
+  lctx.fillStyle = "#000";
+  lctx.fillRect(0, 0, loupeCanvas.width, loupeCanvas.height);
+  lctx.drawImage(frameCanvas,
+    p.nx - half, p.ny - half, half * 2 + 1, half * 2 + 1,
+    0, 0, loupeCanvas.width, loupeCanvas.height);
+  const wr = clickLayer.getBoundingClientRect();
+  let lx = e.clientX - wr.left + 22, ly = e.clientY - wr.top + 22;
+  if (lx + 187 > wr.width) lx = e.clientX - wr.left - 205;
+  if (ly + 187 > wr.height) ly = e.clientY - wr.top - 205;
+  loupe.style.left = lx + "px"; loupe.style.top = ly + "px";
+  loupe.style.display = "block";
+});
+clickLayer.addEventListener("mouseleave", e => {
+  // moving onto the (clickable) loupe is not a real leave
+  if (e.relatedTarget && loupe.contains(e.relatedTarget)) return;
+  hideLoupe();
+});
+loupe.addEventListener("mouseleave", e => {
+  if (e.relatedTarget === clickLayer) return;
+  hideLoupe();
+});
+loupeTog.addEventListener("change", () => { if (!loupeTog.checked) hideLoupe(); });
+
+// ---- click -> lookup ----
+let selPixel = null; // {nx, ny} of the current selection (native coords)
+
+async function selectPixel(nx, ny) {
+  if (!info) return;
+  nx = Math.max(0, Math.min(info.imageWidth - 1, nx));
+  ny = Math.max(0, Math.min(info.imageHeight - 1, ny));
+  selPixel = { nx, ny };
+  if (!vid.paused) vid.pause();
+  captureFrame();
+  updatePixelSwatch(nx, ny);
+  const block = curBlock();
+  const p = { nx, ny };
+
+  const d = nativeToDisplay(p.nx, p.ny);
+  crosshair.style.left = d.x + "px";
+  crosshair.style.top = d.y + "px";
+  crosshair.style.display = "block";
+
+  panelMeta.textContent = "Loading pixel (" + p.nx + ", " + p.ny + ") at block " + block.toLocaleString("en-US") + "...";
+  panelBody.innerHTML = "";
+  let resp;
+  try {
+    resp = await fetch("/api/pixel?block=" + block + "&x=" + p.nx + "&y=" + p.ny).then(r => r.json());
+  } catch (err) {
+    panelMeta.textContent = "Lookup failed: " + err;
+    return;
+  }
+  if (resp.error) { panelMeta.textContent = "(" + p.nx + ", " + p.ny + "): " + resp.error; return; }
+  if (resp.overlay === "flowline") {
+    panelMeta.innerHTML = "pixel (" + p.nx + ", " + p.ny + ") at block <b>" + block.toLocaleString("en-US") + "</b><br>" +
+      "<span style='color:#e0af68'>This is right of the current block cursor (x=" + resp.cursorX + "). " +
+      "Color here is the orange UTXO flow-line overlay (recent creation activity indicator), not UTXO occupancy.</span>";
+    panelBody.innerHTML = "";
+    return;
+  }
+  if (!resp.blockRange) { panelMeta.textContent = "No data in this pixel."; return; }
+
+  const [h1, h2] = resp.blockRange;
+  const [d1, d2] = resp.blockDates;
+  const [s1, s2] = resp.satRange;
+  const stillUn = resp.stillUnspent || 0;
+  const goneLater = resp.count - stillUn;
+  const everCount = resp.count + resp.pastCount;
+  const survivalPct = everCount ? (100 * stillUn / everCount) : 0;
+
+  panelMeta.innerHTML =
+    "pixel (" + p.nx + ", " + p.ny + ") · block <b>" + block.toLocaleString("en-US") + "</b><br>" +
+    "blocks <b>" + h1.toLocaleString("en-US") + " – " + h2.toLocaleString("en-US") + "</b> (" + d1 + " → " + d2 + ")<br>" +
+    "amounts <b>" + fmtBtc(s1) + " – " + fmtBtc(s2) + "</b>";
+
+  let html = "";
+  if (!resp.utxos.length && !resp.pastCount) { panelBody.innerHTML = "<div id='hint'>No UTXOs were created in this pixel's block and amount ranges.</div>"; return; }
+
+  // ---- STATE AT VIEWED BLOCK ----
+  html += "<div class='secHead'>At block " + block.toLocaleString("en-US") + "</div>";
+  if (resp.count) {
+    html += "<div><b>" + resp.count.toLocaleString("en-US") + "</b> UTXOs were unspent · <b>" + fmtBtc(resp.liveSat) + "</b></div>";
+    const gPct = resp.count ? (100 * stillUn / resp.count) : 0;
+    html += "<div class='splitBar'><div style='width:" + gPct + "%;background:#9ece6a'></div><div style='width:" + (100-gPct) + "%;background:#7aa2f7'></div></div>";
+    const stateSummary = [];
+    if (stillUn > 0) {
+      stateSummary.push("<span class='unspent'>" + stillUn.toLocaleString("en-US") + " still unspent today (" + fmtBtc(resp.liveUnspentSat) + ")</span>");
+    }
+    if (goneLater > 0) {
+      stateSummary.push("<span class='goneLater'>" + goneLater.toLocaleString("en-US") + " spent after this block (" + fmtBtc(resp.liveSat - resp.liveUnspentSat) + ")</span>");
+    }
+    html += "<div style='font-size:12.5px'>" + stateSummary.join(" · ") + "</div>";
+  } else {
+    html += "<div style='color:#9aa5b8'>No UTXOs were unspent in this pixel at this block.</div>";
+  }
+
+  // ---- PIXEL TOTALS ----
+  html += "<div class='secHead'>Pixel totals</div>";
+  html += "<div class='statGrid'>" +
+    "<span class='k'>UTXOs ever created in this range</span><span class='v'>" + everCount.toLocaleString("en-US") + " · " + fmtBtc(resp.liveSat + resp.pastSat) + "</span>" +
+    (stillUn > 0 ? "<span class='k'>still unspent today</span><span class='v'>" + stillUn.toLocaleString("en-US") + " (" + survivalPct.toFixed(1) + "%)</span>" : "") +
+    (resp.medianStay >= 0 ? "<span class='k'>median lifespan</span><span class='v'>" + resp.medianStay.toLocaleString("en-US") + " blocks (~" + fmtAge(resp.medianStay) + ")</span>" : "") +
+    "</div>";
+  if (resp.pop && resp.pop.some(v => v > 0)) {
+    html += "<div class='popWrap'><canvas id='popChart' width='452' height='56'></canvas>" +
+      "<div class='popCaption'><span>" + d1 + "</span><span>unspent count over time</span></div></div>";
+  }
+
+  // ---- UTXOS, grouped by ledger state, ordered by spend height ----
+  const liveNow = resp.utxos;
+  const stayers = liveNow.filter(u => u.spent === null);
+  const leavers = liveNow.filter(u => u.spent !== null);
+  let btnSeq = 0;
+  const rowsOf = (list, kind) => {
+    let out = "<table><tr><th>amount</th><th>created</th><th>date</th>" +
+      (kind === "stay" ? "<th>age at block</th>" : "<th>spent @</th><th>lifespan</th>") + "<th>tx</th></tr>";
+    list.forEach(u => {
+      const id = "b" + (btnSeq++);
+      out += "<tr><td>" + fmtBtc(u.sat) + "</td><td>" + u.created.toLocaleString("en-US") + "</td><td>" + u.createdDate + "</td>";
+      if (kind === "stay") {
+        out += "<td class='unspent'>" + fmtAge(u.age) + "</td>";
+      } else {
+        const leaveH = u.spent;
+        const stayed = leaveH - u.created;
+        out += "<td class='goneLater'>@" + leaveH.toLocaleString("en-US") + (u.spentDate ? " · " + u.spentDate : "") + "</td><td>" + fmtAge(stayed) + "</td>";
+      }
+      out += "<td><button class='txbtn' data-h='" + u.created + "' data-s='" + u.sat + "' data-i='" + id + "'>txid</button><div class='txres' id='txres" + id + "'></div></td></tr>";
+    });
+    return out + "</table>";
+  };
+
+  if (stayers.length) {
+    html += "<div class='fateHead unspent'>● Still unspent today <span class='sub'>(" + stayers.length.toLocaleString("en-US") + ")</span></div>" + rowsOf(stayers, "stay");
+  }
+  if (leavers.length) {
+    html += "<div class='fateHead goneLater'>● Spent after this block <span class='sub'>(" + leavers.length.toLocaleString("en-US") + ", earliest spend first)</span></div>" + rowsOf(leavers, "leave");
+  }
+  if (resp.truncated) {
+    html += "<div id='hint'>unspent-at-block list capped at 500</div>";
+  }
+  if (resp.pastUtxos && resp.pastUtxos.length) {
+    html += "<details" + (resp.utxos.length ? "" : " open") + " style='margin-top:10px'><summary class='fateHead' style='cursor:pointer;color:#e06c75'>● Spent before this block <span class='sub'>(" +
+      resp.pastCount.toLocaleString("en-US") + (resp.pastTruncated ? ", earliest 100 spends" : "") + ")</span></summary>" + rowsOf(resp.pastUtxos, "leave") + "</details>";
+  }
+  panelBody.innerHTML = html;
+
+  // draw population curve
+  const pc = document.getElementById("popChart");
+  if (pc && resp.pop) {
+    const ctx = pc.getContext("2d");
+    const W = pc.width, H = pc.height, n = resp.pop.length;
+    const maxV = Math.max(...resp.pop, 1);
+    ctx.clearRect(0, 0, W, H);
+    ctx.beginPath();
+    ctx.moveTo(0, H);
+    for (let i = 0; i < n; i++) {
+      const x = i / (n - 1) * (W - 1);
+      const y = H - 2 - (resp.pop[i] / maxV) * (H - 6);
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(W - 1, H);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(122,162,247,0.25)";
+    ctx.fill();
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const x = i / (n - 1) * (W - 1);
+      const y = H - 2 - (resp.pop[i] / maxV) * (H - 6);
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.strokeStyle = "#7aa2f7";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // marker at the viewed block
+    const vx = resp.viewBin / (n - 1) * (W - 1);
+    ctx.beginPath();
+    ctx.moveTo(vx, 0);
+    ctx.lineTo(vx, H);
+    ctx.strokeStyle = "#ff5d5d";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+  panelBody.querySelectorAll(".txbtn").forEach(btn => {
+    btn.onclick = async () => {
+      const el = document.getElementById("txres" + btn.dataset.i);
+      el.textContent = "resolving…";
+      try {
+        const r = await fetch("/api/txid?height=" + btn.dataset.h + "&satoshi=" + btn.dataset.s).then(x => x.json());
+        if (r.error) { el.textContent = r.error; return; }
+        if (!r.matches.length) { el.textContent = "no exact match"; return; }
+        el.innerHTML = r.matches.map(m =>
+          "<a target='_blank' href='https://mempool.space/tx/" + m.txid + "'>" + m.txid.slice(0, 12) + "…:" + m.vout + "</a>"
+        ).join("<br>");
+      } catch (err) { el.textContent = "failed: " + err; }
+    };
+  });
+}
+
+clickLayer.addEventListener("click", e => {
+  if (!info) return;
+  const p = displayToNative(e.clientX, e.clientY);
+  if (!p) return;
+  selectPixel(p.nx, p.ny);
+});
+
+// ---- PiP: overlays and keyboard aids cannot render in the floating window ----
+function pipNotice(show) {
+  let el = document.getElementById("pipNote");
+  if (show && !el) {
+    el = document.createElement("div");
+    el.id = "pipNote";
+    el.style.cssText = "position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:8;background:#1c2333f0;border:1px solid #2a3245;border-radius:8px;padding:14px 20px;font-size:13px;color:#d8dee9;text-align:center;max-width:340px";
+    el.innerHTML = "<b>Picture-in-Picture active.</b><br>Pixel picking, crosshair and arrow-key nudge only work in this page view — PiP is fine for just watching.<br><br><button style='background:#263049;color:inherit;border:1px solid #2a3245;border-radius:4px;padding:5px 12px;cursor:pointer'>Exit PiP</button>";
+    el.querySelector("button").onclick = () => { if (document.pictureInPictureElement) document.exitPictureInPicture(); };
+    document.getElementById("videoWrap").appendChild(el);
+  } else if (!show && el) {
+    el.remove();
+  }
+}
+vid.addEventListener("enterpictureinpicture", () => pipNotice(true));
+vid.addEventListener("leavepictureinpicture", () => { pipNotice(false); if (vid.paused) captureFrame(); });
+
+// ---- keep the crosshair glued to its native pixel across window resizes ----
+window.addEventListener("resize", () => {
+  if (!selPixel || crosshair.style.display === "none" || !info) return;
+  const d = nativeToDisplay(selPixel.nx, selPixel.ny);
+  crosshair.style.left = d.x + "px";
+  crosshair.style.top = d.y + "px";
+});
+
+// ---- arrow-key pixel nudge (exact 1-native-px steps; Shift = 10) ----
+document.addEventListener("keydown", e => {
+  if (!selPixel || !info) return;
+  const t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+  const step = e.shiftKey ? 10 : 1;
+  let dx = 0, dy = 0;
+  if (e.key === "ArrowLeft") dx = -step;
+  else if (e.key === "ArrowRight") dx = step;
+  else if (e.key === "ArrowUp") dy = -step;
+  else if (e.key === "ArrowDown") dy = step;
+  else return;
+  e.preventDefault();
+  selectPixel(selPixel.nx + dx, selPixel.ny + dy);
+});
+
+// ---- clickable loupe: click inside it selects the exact native pixel under the loupe cursor ----
+let loupeCenter = null; // {nx, ny} native pixel at loupe center
+loupe.style.pointerEvents = "auto";
+loupe.style.cursor = "crosshair";
+loupe.addEventListener("click", e => {
+  if (!loupeCenter) return;
+  e.stopPropagation();
+  const r = loupe.getBoundingClientRect();
+  const half = Math.floor(loupeCanvas.width / ZOOM / 2);
+  const nx = loupeCenter.nx - half + Math.floor((e.clientX - r.left) / ZOOM);
+  const ny = loupeCenter.ny - half + Math.floor((e.clientY - r.top) / ZOOM);
+  selectPixel(nx, ny);
+  hideLoupe();
+});
+
+// ---- soft small-window suggestion (dismissible, persisted) ----
+(function() {
+  const KEY = "utxoExplorerResHintDismissed";
+  function maybeShowBanner() {
+    if (localStorage.getItem(KEY)) return;
+    if (!info) { setTimeout(maybeShowBanner, 500); return; }
+    const r = clickLayer.getBoundingClientRect();
+    const scale = Math.min(r.width / info.imageWidth, r.height / info.imageHeight);
+    const dispW = info.imageWidth * scale;
+    const existing = document.getElementById("resHint");
+    if (dispW < 2200) {
+      if (existing) return;
+      const div = document.createElement("div");
+      div.id = "resHint";
+      div.style.cssText = "position:fixed;left:10px;top:10px;width:max-content;max-width:calc(100vw - 20px);z-index:9;background:#1c2333e6;border:1px solid #2a3245;border-radius:6px;padding:8px 12px;font-size:12.5px;color:#d8dee9";
+      div.innerHTML = "For pixel-precise browsing use a 2.5K+ display fullscreen — or click near a target and fine-tune with <b>arrow keys</b> (Shift = 10 px). The magnifier is clickable too." +
+        "<button style='display:inline-block;margin-left:7px;padding:0 3px;background:none;border:none;color:#9aa5b8;font-size:15px;line-height:1;vertical-align:-1px;cursor:pointer' aria-label='dismiss'>×</button>";
+      div.querySelector("button").onclick = () => { localStorage.setItem(KEY, "1"); div.remove(); };
+      document.getElementById("videoWrap").appendChild(div);
+    } else if (existing) {
+      existing.remove();
+    }
+  }
+  window.addEventListener("resize", maybeShowBanner);
+  maybeShowBanner();
+})();
+</script>
+</body>
+</html>
