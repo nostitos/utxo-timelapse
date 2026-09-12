@@ -1556,6 +1556,6 @@ export const RELEASE = Object.freeze({
     1882
   ],
   "numBlocks": 966361,
-  "sitePrefix": "explorer/v4/site",
-  "version": "append-966360-20260910-r3"
+  "sitePrefix": "explorer/v5/site",
+  "version": "append-966360-20260910-r4"
 });
