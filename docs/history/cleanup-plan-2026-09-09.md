@@ -11,7 +11,7 @@ extra backup pair and no fallback videos.
 - **Both:** necessary source, configurations, dependencies and deployment tools.
 - **Cloud:** current production objects unchanged.
 
-See [retained files and update procedure](render-files.md) and the
+See [retained files and update procedure](../render-files.md) and the
 [completion report](cleanup-completed-2026-09-09.md).
 
 The [artifact manifest](cleanup-audit-2026-09-09/artifact-manifest.csv) records

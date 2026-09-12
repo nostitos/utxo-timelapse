@@ -1,216 +1,86 @@
-# Bitcoin UTXO Visualizer
+<div align="center">
 
-`buv` turns Bitcoin's UTXO history into a video. It preprocesses a fully indexed
-Bitcoin Core chain into a compact `changes.blk1` stream, renders RGB frames, and
-sends those frames over TCP to FFmpeg or FFplay.
+# UTXO Timelapse
 
-This repository is based on
-[Martinus' BitcoinUtxoVisualizer](https://github.com/martinus/BitcoinUtxoVisualizer)
-and contains the newer code previously deployed on an Umbrel node.
+### Bitcoin's history, written in unspent outputs.
 
-![Bitcoin UTXO visualization](doc/animation_small.gif)
+An evolving landscape of creation, survival and spending.<br>
+Explore 966,361 blocks in a 4K film. Pause any moment and inspect the outputs behind a pixel.
 
-## Added capabilities
+**[Read the illustrated guide](https://nostitos.github.io/utxo-timelapse/)** · **[Open the explorer](https://utxo.aiception.ai/)** · **[Under the hood](https://nostitos.github.io/utxo-timelapse/technical.html)**
 
-- Render an explicit block range.
-- Resume UTXO preprocessing from an experimental checkpoint.
-- Four X-axis layouts: `linear`, `epochLog`, `normalizedGeometric`, and
-  `continuousLog`.
-- Geometric epoch compression, including 210,000-block halving epochs.
-- Optional low-satoshi Y-axis compression.
-- Periodic density resampling for continuously changing layouts.
-- Optional common-denomination CoinJoin filter.
-- Optional synthesized raw audio based on spending activity.
-- 720p, 1080p, 2.5K, 4K, and 8K configuration presets.
-- Interactive configuration wizard with an explanation for each option.
+[![A moving landscape of Bitcoin outputs, extracted from the published 4K film](site/assets/readme/hero.gif)](https://nostitos.github.io/utxo-timelapse/)
 
-## Architecture
+**4K · 60 fps · 4h 28m · 3.65 billion historical output records**<br>
+Published data: genesis through block **966,360**, September 10, 2026.
 
-```text
-Bitcoin Core REST API
-        |
-        |  buv -tc=utxo_to_change
-        v
-  changes.blk1  (+ optional checkpoint.utxo)
-        |
-        |  buv -tc=visualizer
-        v
- raw RGB24 frames over TCP -----> FFmpeg/FFplay -----> MKV or MP4
-```
+</div>
 
-The BLK data, checkpoints, videos, and raw audio are generated artifacts. They
-are intentionally excluded from Git.
+## Learn to read the landscape
 
-## Clone and build
+An output appears at its **creation block** on the horizontal axis and its **amount** on the vertical axis. It stays there until spent. Many outputs can share a pixel. Colour represents accumulated density, weighted by value in this edition; a flash marks activity.
 
-The dependencies are Git submodules, so clone recursively:
+The newest 105,000-block epoch receives half the plot. Older epochs compress geometrically, with a 120-block slide at each layout change. Time is deliberately uneven: the present gets room while the past remains visible.
 
-```bash
-git clone --recurse-submodules https://github.com/nostitos/BitcoinUtxoVisualizer.git
-cd BitcoinUtxoVisualizer
+[![An annotated frame explaining creation time, logarithmic amounts, density and activity](site/assets/readme/annotated-frame.jpg)](https://nostitos.github.io/utxo-timelapse/#reading)
+
+The **[visual guide](https://nostitos.github.io/utxo-timelapse/)** walks through the axes, two palettes, eras, whale flashes and explorer controls with real frames, short films, enlarged crops and an interactive time-axis demonstration.
+
+## Go from a picture to evidence
+
+[![The explorer at block 314000, showing the lifecycle of outputs in one selected pixel](site/assets/ui/explorer-drawer.webp)](https://utxo.aiception.ai/?block=314000&x=3000&y=1525)
+
+**[Open this exact view](https://utxo.aiception.ai/?block=314000&x=3000&y=1525).** At block 314,000, this pixel contains two unspent outputs. One remains unspent at the published cutoff; the other was spent in 2018. The drawer shows amounts, dates, population over time and candidate transaction matches.
+
+- Pause, magnify and inspect native image pixels.
+- Jump by block or UTC date; step through individual frames.
+- Separate outputs still unspent at the cutoff from those spent later or earlier.
+- Share a block-and-pixel link; resolve candidate transaction IDs when needed.
+
+The high-detail explorer targets desktop browsers with HEVC support. The guide's lighter previews work independently of the full film.
+
+## What this edition changes
+
+UTXO Timelapse builds on Martinus's original idea with a substantially expanded rendering and exploration system.
+
+| Area | Implemented here |
+|---|---|
+| Time | Four axis modes, normalized geometric epochs and smooth boundary slides |
+| Accounting | Double-precision density, exact remapping from an alive ledger, matching inverse pixel queries |
+| Colour & activity | Amount-weighted density, actual-value flashes, a white-hot tail above 10 BTC, compressed extreme-value bands |
+| Data | Creation-height-preserving v3 checkpoints, zero-value accounting, full historical lifecycle index and incremental updates |
+| Exploration | Magnifier, historical pixel drawer, dates, block stepping, lifecycle charts, transaction matching and share links |
+| Delivery | HEVC 4:4:4 film, segmented HLS, private R2 storage, Workers, indexed shards and later-spend patches |
+| Updates | Verified prefix-preserving video append, continuous HLS timestamps and coordinated release metadata |
+
+These choices have costs. Weighted colour is not a raw output count. Compressed time changes horizontal scale. Lossy previews can hide tiny points. The compact history does not retain full outpoints, so equal-amount transaction matches can be ambiguous. The **[technical reference](https://nostitos.github.io/utxo-timelapse/technical.html)** documents the formats, algorithms, API, all **42 settings**, measured release evidence and **20 tradeoffs**.
+
+## Build your own
+
+```sh
+git clone --recurse-submodules https://github.com/nostitos/utxo-timelapse.git
+cd utxo-timelapse
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
-./build/buv
+./build/buv -ns '-tc=density_palette,epoch_transition_mapping,checkpoint_v3'
 ```
 
-The native build requires:
+Requires a C++17 compiler, CMake, OpenCV and TBB. FFmpeg encodes the frames. Bitcoin Core and substantial storage/memory are needed to create your own dataset; generated chain files and the full video are not in Git. On macOS, see the tested build flags and test-suite caveat in **[the operations index](docs/README.md)**.
 
-- CMake 3.13 or newer
-- A C++17 compiler
-- OpenCV development libraries
-- pthreads and TBB
+![Pipeline from Bitcoin Core to the rendered film and historical explorer](site/assets/diagrams/pipeline.svg)
 
-On Ubuntu/Debian:
-
-```bash
-sudo apt-get install build-essential cmake libopencv-dev libtbb-dev
-```
-
-On macOS with Homebrew:
-
-```bash
-brew install cmake opencv tbb
-```
-
-## Docker build
-
-After cloning with submodules:
-
-```bash
-docker build -t buv .
-```
-
-The container entry point is `buv`. Mount your data and configuration when
-running it.
-
-## 1. Generate or update blockchain data
-
-Bitcoin Core must be fully synchronized with REST and `txindex` enabled. Start
-with `configs/buv_update.json`, then run:
-
-```bash
-./build/buv -ns -tc=utxo_to_change -cfg=configs/buv_update.json
-```
-
-Read [`docs/data-update.md`](docs/data-update.md) before using checkpoint resume.
-The current checkpoint format has important visualization-correctness and memory
-caveats. For exact production output, a full genesis replay is currently safest.
-
-## 2. Choose a render configuration
-
-Ready-made profiles are under [`configs/`](configs/). To create one
-interactively:
-
-```bash
-python3 scripts/configure.py --output configs/my-render.json --print-docker
-```
-
-The wizard explains every setting before asking for its value.
-
-### X-axis modes
-
-| Mode | Behavior |
+| Where to go | What you will find |
 |---|---|
-| `linear` | Maps the complete block range linearly across the graph. |
-| `epochLog` | Gives each newer epoch more width than older epochs. |
-| `normalizedGeometric` | Gives the current epoch `epochRatio` of the screen and geometrically compresses all previous epochs leftward. |
-| `continuousLog` | Uses a smooth power-law mapping and periodically resamples accumulated pixels. |
+| [Illustrated guide](https://nostitos.github.io/utxo-timelapse/) | Learn the image, watch eras unfold, explore real screenshots |
+| [Technical reference](https://nostitos.github.io/utxo-timelapse/technical.html) | Data formats, rendering math, settings, API and tradeoffs |
+| [Operations index](docs/README.md) | Build, extract, render, update and publish |
+| [Vocabulary](GLOSSARY.md) | Canonical terms tied to code |
+| [September 10 release report](docs/video-update-2026-09-10.md) | Timings, retained bytes and verification evidence |
+| [Cloud service](cloudflare/utxo-video-worker/README.md) | HLS, history shards, releases and deployment |
+| [Guide source & media](site/README.md) | Static site, reproducible previews and provenance |
 
-For the “new epoch takes half, all previous epochs compress into the other half”
-layout, use:
+## Origin & credit
 
-```json
-{
-  "xAxisMode": "normalizedGeometric",
-  "epochBlocks": 210000,
-  "epochRatio": 0.5
-}
-```
+**[Martinus's BitcoinUtxoVisualizer](https://github.com/martinus/BitcoinUtxoVisualizer)** supplied the original visualization concept and code foundation. That inspiration deserves clear credit. UTXO Timelapse is maintained by **[nostitos](https://github.com/nostitos)** and has its own visual direction, accounting model, explorer, cloud delivery and update workflow.
 
-## 3. Encode video
-
-Start FFmpeg first; it listens for the visualizer's raw RGB stream. An MKV output
-is recommended during long runs because it is more tolerant of interruption.
-
-Example: 4K at 60 fps using software H.264:
-
-```bash
-ffmpeg -y \
-  -f rawvideo -pixel_format rgb24 -video_size 3840x2160 -framerate 60 \
-  -i 'tcp://127.0.0.1:12987?listen' \
-  -c:v libx264 -preset fast -crf 18 -pix_fmt yuv420p \
-  output.mkv
-```
-
-Then start the visualizer:
-
-```bash
-./build/buv -ns -tc=visualizer -cfg=configs/buv_4k.json
-```
-
-Remux a completed MKV to MP4 without re-encoding:
-
-```bash
-ffmpeg -i output.mkv -c copy -movflags +faststart output.mp4
-```
-
-The visualizer normally emits one frame per rendered block. Changing FFmpeg from
-60 to 30 fps therefore doubles playback duration without changing the number of
-rendered frames.
-
-### Apple Silicon 8K
-
-Apple's H.264 VideoToolbox encoder commonly rejects 8K. Use HEVC VideoToolbox:
-
-```bash
-ffmpeg -y \
-  -f rawvideo -pixel_format rgb24 -video_size 7680x4320 -framerate 30 \
-  -i 'tcp://127.0.0.1:12987?listen' \
-  -c:v hevc_videotoolbox -allow_sw 1 -q:v 65 -tag:v hvc1 \
-  -pix_fmt yuv420p output-8k.mkv
-```
-
-At 8K, one RGB24 frame is about 99.5 MB. Rendering, full-frame memory copies,
-socket throughput, and encoding all become significant bottlenecks.
-
-## Important configuration fields
-
-| Field | Meaning |
-|---|---|
-| `blkFile` | Preprocessed `changes.blk1` input/output path. |
-| `startShowAtBlockHeight` | Process history but begin emitting frames at this height. |
-| `endShowAtBlockHeight` | Last rendered block; `0` means the BLK file's end. |
-| `repeatLastBlockTimes` | Number of final hold/fade frames. |
-| `graphRect` | Graph area as `[x, y, width, height]`. |
-| `colorUpperValueLimit` | Density value at which the color map saturates. |
-| `checkpointFile` | Optional preprocessing checkpoint path. |
-| `coinjoinFilter` | Show only changes matching common CoinJoin denominations. |
-| `audioEnabled` | Write synthesized mono float32 audio. |
-| `audioSamplesPerBlock` | Audio duration per rendered block; 800 is 60 fps at 48 kHz. |
-
-## Repository layout
-
-```text
-configs/       Render and preprocessing profiles
-scripts/       Interactive configuration tool
-src/cpp/app/   Preprocessor, renderer, HUD, and configuration
-src/cpp/buv/   Density, axis mapping, socket, and audio implementation
-docs/          Operational documentation
-doc/           Original screenshots and animation
-```
-
-## Operational warnings
-
-- Generating the BLK file and high-resolution video is resource intensive.
-- Keep Bitcoin Core REST/RPC private.
-- Do not commit credentials, `changes.blk1`, checkpoints, videos, raw audio, or
-  build directories.
-- Long MP4 recordings can be unplayable if FFmpeg is killed before writing the
-  `moov` atom. Record to MKV and remux after completion.
-- Test a short block range before starting a multi-hour render.
-
-## License and attribution
-
-The project remains under the original [MIT license](LICENSE). Original work by
-[Martinus](https://github.com/martinus); subsequent deployment and visualization
-changes are maintained in this fork.
+The original [MIT license and copyright](LICENSE) are preserved. The guide labels the upstream images used in its origin comparison. Dependencies and font/media licenses are listed in the [technical credits](https://nostitos.github.io/utxo-timelapse/technical.html#credits).

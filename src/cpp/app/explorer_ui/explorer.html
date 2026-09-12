@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>UTXO Pixel Explorer</title>
+<title>UTXO Timelapse</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -132,6 +132,8 @@
     #controls { padding-top: 2px; padding-bottom: 2px; }
     #panel { top: 0; left: auto; width: min(420px, 55vw); max-height: 100dvh; border-radius: 0; }
   }
+  .guideLink { color:inherit; text-decoration:none; border:1px solid #2a3245; border-radius:4px; padding:4px 10px; font-size:12px; white-space:nowrap; }
+  .guideLink:hover { color:#a8d6b3; border-color:#a8d6b3; }
 </style>
 </head>
 <body>
@@ -144,7 +146,7 @@
     <div id="panel">
       <div id="panelHeader">
         <div>
-          <h2>UTXO Pixel Explorer</h2>
+          <h2>UTXO Timelapse</h2>
           <div class="meta" id="panelMeta">Click a pixel in the graph (pause first for exact aim).</div>
         </div>
         <div id="pixelSwatch" role="img" aria-label="No pixel selected"></div>
@@ -175,6 +177,7 @@
     <button id="copyLink" type="button" title="Copy a link to this block and pixel">copy link</button>
     <label class="tog"><input id="loupeTog" type="checkbox" checked> magnifier</label>
     <button id="fsBtn" type="button" title="Fullscreen (F)" aria-label="Fullscreen">⤢</button>
+    <a class="guideLink" href="https://nostitos.github.io/utxo-timelapse/" target="_blank" rel="noopener">Guide ↗</a>
     <button id="helpBtn" type="button" title="What is this? (?)" aria-label="About this explorer">?</button>
     <span id="hint">pause &amp; click a pixel</span>
     <span id="streamStatus" aria-live="polite"></span>
@@ -182,26 +185,26 @@
 </div>
 <div id="about" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
   <div id="aboutCard">
-    <h1 id="aboutTitle">Bitcoin UTXO Explorer</h1>
-    <p class="lead">Every unspent coin on the Bitcoin blockchain, as one pixel, from the genesis block to today. Play it as a video, pause anywhere, click any pixel to see exactly which coins were there.</p>
+    <h1 id="aboutTitle">UTXO Timelapse</h1>
+    <p class="lead">Bitcoin’s unspent outputs, mapped by their creation block and amount. Many outputs can share one pixel. The published timeline runs from genesis to the data cutoff shown below. Play it as a video, pause anywhere, click any pixel to inspect the outputs represented there.</p>
 
     <h3>Reading the picture</h3>
     <div class="grid">
       <span>Left → right</span><span>Time, by block height. The newest blocks are drawn at the cursor on the right; older history is progressively squeezed to the left so 17 years fit on one screen.</span>
       <span>Bottom → top</span><span>Amount of the coin, log scale from 1 sat to 100 k BTC. The 1–100 sat rows and the 10 k–100 k BTC band are compressed.</span>
-      <span>Colour</span><span id="legendNote">How many coins share the pixel (log scale). Coins above 5 BTC count as amount ÷ 5, so one 100 BTC coin weighs like twenty ordinary ones.</span>
+      <span>Colour</span><span id="legendNote">Accumulated output density (log scale). Coins above 5 BTC count as amount ÷ 5, so one 100 BTC coin weighs like twenty ordinary ones.</span>
       <span>Black</span><span>Nothing unspent there any more. Spent coins disappear.</span>
     </div>
     <div id="legend" style="margin-top:10px">
       <div class="row"><span>below 10 BTC</span><canvas id="legendBase" width="256" height="14"></canvas></div>
       <div class="row"><span>10 BTC and up</span><canvas id="legendWhale" width="256" height="14"></canvas></div>
-      <div class="ticks"><span>1 coin</span><span>~10</span><span>~100</span><span id="legendMax">500+</span></div>
+      <div class="ticks"><span>1 unit</span><span>~10</span><span>~100</span><span id="legendMax">500+</span></div>
     </div>
     <p style="margin-top:8px"><span class="sw" style="background:#fff"></span><b>White flashes</b> mark coins created or spent in the current block; the bigger the star, the more BTC moved. <span class="sw" style="background:#ff8c1a;margin-left:8px"></span><b>Orange bars</b> at the cursor show where new coins are being created right now.</p>
 
     <h3>Using it</h3>
     <div class="grid">
-      <span>Click a pixel</span><span>Opens the details drawer: which coins were there at that block, their amounts, when they were created, and whether they are still unspent today.</span>
+      <span>Click a pixel</span><span>Opens the details drawer: which coins were there at that block, their amounts, when they were created, and whether they remained unspent at the published data cutoff.</span>
       <span>Hover</span><span>The strip at the bottom shows the block range, dates and amount range under the cursor.</span>
       <span>Aim precisely</span><span>Pause, then use the magnifier (click inside it to pick), or nudge with <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> (<kbd>Shift</kbd> = 10 px).</span>
       <span>Move in time</span><span>Scrub the bar, type a block number, pick a date, or step with <kbd>[</kbd> <kbd>]</kbd> and the <kbd>&lt;</kbd> <kbd>&gt;</kbd> buttons.</span>
@@ -211,6 +214,7 @@
 
     <div id="aboutFoot">
       <span class="src" id="aboutSrc"></span>
+      <a href="https://nostitos.github.io/utxo-timelapse/" target="_blank" rel="noopener">Read the illustrated guide ↗</a>
       <button id="aboutClose" type="button">Got it</button>
     </div>
   </div>
@@ -333,7 +337,7 @@ function drawLegend() {
   const split = info.whiteHotMinSat;
   const rows = document.querySelectorAll("#legend .row span:first-child");
   const note = document.getElementById("legendNote");
-  const base = "How many coins share the pixel (log scale). Coins above 5 BTC count as amount ÷ 5, so one 100 BTC coin weighs like twenty ordinary ones. ";
+  const base = "Accumulated output density (log scale). Coins above 5 BTC count as amount ÷ 5, so one 100 BTC coin weighs like twenty ordinary ones. ";
   if (split > 0) {
     const t = fmtBtc(split);
     rows[0].textContent = "below " + t; rows[1].textContent = t + " and up";
@@ -399,7 +403,9 @@ function curBlock() {
   return Math.max(info.videoStartBlock, Math.min(frameBlock, info.videoEndBlock));
 }
 function blockToVideoTime(block) {
-  return (block - info.videoStartBlock) / info.fps + 1e-4;
+  // Seek inside the frame: a tiny boundary epsilon can display the previous
+  // frame in native HEVC/HLS playback. The midpoint keeps labels and HUD aligned.
+  return (block - info.videoStartBlock + 0.5) / info.fps;
 }
 function videoUrl(retry) {
   // The CDN redirects this stable pointer to an immutable object-versioned URL,
@@ -766,7 +772,7 @@ async function selectPixel(nx, ny) {
     html += "<div class='splitBar'><div style='width:" + gPct + "%;background:#9ece6a'></div><div style='width:" + (100-gPct) + "%;background:#7aa2f7'></div></div>";
     const stateSummary = [];
     if (stillUn > 0) {
-      stateSummary.push("<span class='unspent'>" + stillUn.toLocaleString("en-US") + " still unspent today (" + fmtBtc(resp.liveUnspentSat) + ")</span>");
+      stateSummary.push("<span class='unspent'>" + stillUn.toLocaleString("en-US") + " unspent at cutoff (" + fmtBtc(resp.liveUnspentSat) + ")</span>");
     }
     if (goneLater > 0) {
       stateSummary.push("<span class='goneLater'>" + goneLater.toLocaleString("en-US") + " spent after this block (" + fmtBtc(resp.liveSat - resp.liveUnspentSat) + ")</span>");
@@ -780,7 +786,7 @@ async function selectPixel(nx, ny) {
   html += "<div class='secHead'>Pixel totals</div>";
   html += "<div class='statGrid'>" +
     "<span class='k'>UTXOs ever created in this range</span><span class='v'>" + everCount.toLocaleString("en-US") + " · " + fmtBtc(resp.liveSat + resp.pastSat) + "</span>" +
-    (stillUn > 0 ? "<span class='k'>still unspent today</span><span class='v'>" + stillUn.toLocaleString("en-US") + " (" + survivalPct.toFixed(1) + "%)</span>" : "") +
+    (stillUn > 0 ? "<span class='k'>unspent at cutoff</span><span class='v'>" + stillUn.toLocaleString("en-US") + " (" + survivalPct.toFixed(1) + "%)</span>" : "") +
     (resp.medianStay >= 0 ? "<span class='k'>median lifespan</span><span class='v'>" + resp.medianStay.toLocaleString("en-US") + " blocks (~" + fmtAge(resp.medianStay) + ")</span>" : "") +
     "</div>";
   if (resp.pop && resp.pop.some(v => v > 0)) {
@@ -812,7 +818,7 @@ async function selectPixel(nx, ny) {
   };
 
   if (stayers.length) {
-    html += "<div class='fateHead unspent'>● Still unspent today <span class='sub'>(" + stayers.length.toLocaleString("en-US") + ")</span></div>" + rowsOf(stayers, "stay");
+    html += "<div class='fateHead unspent'>● Unspent at cutoff <span class='sub'>(" + stayers.length.toLocaleString("en-US") + ")</span></div>" + rowsOf(stayers, "stay");
   }
   if (leavers.length) {
     html += "<div class='fateHead goneLater'>● Spent after this block <span class='sub'>(" + leavers.length.toLocaleString("en-US") + ", earliest spend first)</span></div>" + rowsOf(leavers, "leave");

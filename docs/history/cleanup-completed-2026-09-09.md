@@ -23,7 +23,7 @@ The five large working files total **189.06 GB across Mac and node**:
 - Node v3 changes stream: 18.22 GB, on Umbrel.
 - Matching node v3 checkpoint: 10.45 GB, on Umbrel.
 
-Locations and working configurations are listed in [render-files.md](render-files.md).
+Locations and working configurations are listed in [render-files.md](../render-files.md).
 The node checkpoint has no extra copy on the Mac. No large backup copy was made.
 The temporary source archive created at the start was removed when the user
 clarified that extra backup copies were unwanted. Small operation logs remain.

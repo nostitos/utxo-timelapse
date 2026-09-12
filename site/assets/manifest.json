@@ -1,0 +1,96 @@
+{
+  "sourceMaster": "utxo_4k_epoch105k_60fps_transition_crf21_to_966360.mp4",
+  "sourceVersion": "append-966360-20260910-r3",
+  "fps": 60,
+  "dataCutoff": "2026-09-10",
+  "frames": [
+    {
+      "block": 100000,
+      "date": "2010-12-29T11:57:43+00:00",
+      "seconds": 1666.6666666666667
+    },
+    {
+      "block": 202933,
+      "date": "2012-10-12T08:29:49+00:00",
+      "seconds": 3382.2166666666667
+    },
+    {
+      "block": 210000,
+      "date": "2012-11-28T15:24:38+00:00",
+      "seconds": 3500.0
+    },
+    {
+      "block": 314000,
+      "date": "2014-08-04T22:32:26+00:00",
+      "seconds": 5233.333333333333
+    },
+    {
+      "block": 420000,
+      "date": "2016-07-09T16:46:13+00:00",
+      "seconds": 7000.0
+    },
+    {
+      "block": 500000,
+      "date": "2017-12-18T18:35:25+00:00",
+      "seconds": 8333.333333333334
+    },
+    {
+      "block": 630000,
+      "date": "2020-05-11T19:23:43+00:00",
+      "seconds": 10500.0
+    },
+    {
+      "block": 661045,
+      "date": "2020-12-12T15:05:30+00:00",
+      "seconds": 11017.416666666666
+    },
+    {
+      "block": 700000,
+      "date": "2021-09-11T04:14:32+00:00",
+      "seconds": 11666.666666666666
+    },
+    {
+      "block": 840000,
+      "date": "2024-04-20T00:09:27+00:00",
+      "seconds": 14000.0
+    },
+    {
+      "block": 900000,
+      "date": "2025-06-06T05:41:39+00:00",
+      "seconds": 15000.0
+    },
+    {
+      "block": 966360,
+      "date": "2026-09-10T12:46:45+00:00",
+      "seconds": 16106.0
+    }
+  ],
+  "clips": [
+    {
+      "name": "hero",
+      "startBlock": 313700,
+      "durationSeconds": 10,
+      "previewOnly": true
+    },
+    {
+      "name": "epoch-slide",
+      "startBlock": 209940,
+      "durationSeconds": 4,
+      "previewOnly": true
+    },
+    {
+      "name": "whale-flash",
+      "startBlock": 202880,
+      "durationSeconds": 3,
+      "previewOnly": true
+    },
+    {
+      "name": "tip",
+      "startBlock": 966240,
+      "durationSeconds": 7,
+      "previewOnly": true
+    }
+  ],
+  "numBlocks": 966361,
+  "numHistoryRecords": 3654431611
+}

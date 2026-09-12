@@ -1,0 +1,15 @@
+{
+  "capturedAt": "2026-09-12",
+  "interface": "cloudflare/utxo-video-worker/static/explorer.html",
+  "captureMethod": "Actual in-app browser screenshots of the local UI preview, proxying production video and read-only API responses from https://utxo.aiception.ai/",
+  "sourceVersion": "append-966360-20260910-r3",
+  "viewport": [1920,1080],
+  "dataCutoff": "2026-09-10",
+  "screenshots": [
+    {"file":"explorer-drawer.webp","block":314000,"pixel":[3000,1525],"crop":null},
+    {"file":"explorer-loupe.webp","block":314000,"pixel":[2211,1459],"crop":[900,610,520,400]},
+    {"file":"explorer-navigation.webp","block":314000,"crop":[0,940,1920,140]},
+    {"file":"explorer-about.webp","block":314000,"crop":[580,175,760,734]}
+  ],
+  "processing": "WebP quality 90; pixel crops from full-viewport screenshots only; no compositing of UI state"
+}
