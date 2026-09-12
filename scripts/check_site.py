@@ -25,7 +25,7 @@ def check(source,link):
  url=urlparse(link)
  if url.scheme or url.netloc:
   prefix='https://github.com/nostitos/utxo-timelapse/'
-  if link.startswith(prefix):
+  if link.startswith(prefix) and re.match(r'(blob|tree)/master/',url.path[len('/nostitos/utxo-timelapse/'):]):
    path=re.sub(r'^(blob|tree)/master/','',unquote(url.path[len('/nostitos/utxo-timelapse/'):]))
    if path and not (ROOT/path).exists():errors.append(f'{source}: missing source link {link}')
   return
