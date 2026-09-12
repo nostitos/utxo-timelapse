@@ -1,5 +1,6 @@
 #include <app/Cfg.h>
 #include <app/UtxoHistory.h>
+#include <buv/ColorMap.h>
 #include <buv/SatoshiBlockheightToPixel.h>
 #include <util/Mmap.h>
 #include <util/args.h>
@@ -234,7 +235,18 @@ public:
     // set epoch context for block N (normalizedGeometric / epochLog)
     void setContext(uint32_t blockHeight) {
         if (mMapper.useEpochCompression()) {
-            mMapper.setCurrentEpoch(blockHeight / mMapper.getEpochBlocks());
+            auto const epochBlocks = mMapper.getEpochBlocks();
+            auto const epoch = blockHeight / epochBlocks;
+            auto const offset = blockHeight % epochBlocks;
+            auto const slide = mCfg.epochTransitionBlocks;
+            if (slide > 0 && epoch > 0 && offset < slide) {
+                // Mirror the renderer: inside the slide window the layout is a
+                // blend between the previous and the new epoch geometry.
+                auto const t = static_cast<double>(offset + 1) / static_cast<double>(slide);
+                mMapper.setEpochTransition(epoch - 1, epoch, t);
+            } else {
+                mMapper.setCurrentEpoch(epoch);
+            }
         }
         if (mMapper.useContinuousLogCompression()) {
             mMapper.setTotalBlocks(blockHeight + 1);
@@ -414,6 +426,7 @@ TEST_CASE("utxo_explorer" * doctest::skip()) {
     // Per-IP rate limits (token buckets). Pixel limit is generous because the
     // arrow-key nudge feature legitimately fires many requests in a row.
     auto pixelLimiter = RateLimiter(15.0, 40.0);
+    auto rangesLimiter = RateLimiter(60.0, 120.0); // hover readout fires on every crossed pixel
     auto txidLimiter = RateLimiter(1.0, 3.0);
     auto pageLimiter = RateLimiter(30.0, 60.0);
 
@@ -421,6 +434,8 @@ TEST_CASE("utxo_explorer" * doctest::skip()) {
         RateLimiter* limiter = nullptr;
         if (req.path == "/api/pixel") {
             limiter = &pixelLimiter;
+        } else if (req.path == "/api/ranges") {
+            limiter = &rangesLimiter;
         } else if (req.path == "/api/txid") {
             limiter = &txidLimiter;
         } else if (req.path == "/video.mp4") {
@@ -444,9 +459,14 @@ TEST_CASE("utxo_explorer" * doctest::skip()) {
         res.set_header("Referrer-Policy", "no-referrer");
         res.set_header("Content-Security-Policy",
                        "default-src 'self'; style-src 'self' 'unsafe-inline'; "
-                       "script-src 'self' 'unsafe-inline'; media-src 'self'; connect-src 'self'");
+                       "script-src 'self' 'unsafe-inline'; "
+                       "media-src 'self' https://utxo-cdn.hat39.com; connect-src 'self'");
         if (req.path == "/video.mp4") {
-            res.set_header("Cache-Control", "public, max-age=31536000, immutable");
+            // Versioned video URLs are immutable; the bare URL must revalidate
+            // because operators can switch explorerVideoFile between renders.
+            res.set_header("Cache-Control", req.has_param("v")
+                    ? "public, max-age=31536000, immutable"
+                    : "no-cache");
         } else if (req.path.rfind("/api/", 0) == 0) {
             res.set_header("Cache-Control", "no-store");
         }
@@ -512,10 +532,53 @@ TEST_CASE("utxo_explorer" * doctest::skip()) {
         });
     }
 
+    // The history covers the full chain, while the selected video may cover a
+    // bounded block range. Keep API queries in absolute block heights and tell
+    // the UI which absolute block corresponds to video frame zero.
+    auto const videoStartBlock = std::min<size_t>(cfg.startShowAtBlockHeight, numBlocks - 1);
+    auto const videoEndBlock = cfg.endShowAtBlockHeight == 0
+        ? numBlocks - 1
+        : std::min<size_t>(cfg.endShowAtBlockHeight, numBlocks - 1);
+    if (videoStartBlock > videoEndBlock) {
+        throw std::runtime_error("explorer video block range is invalid");
+    }
+    auto videoVersion = std::string("none");
+    if (!cfg.explorerVideoFile.empty()) {
+        auto const size = std::filesystem::file_size(cfg.explorerVideoFile);
+        auto const stamp = std::filesystem::last_write_time(cfg.explorerVideoFile)
+                               .time_since_epoch()
+                               .count();
+        videoVersion = fmt::format("{}-{}", size, stamp);
+    }
+
     // --- config info for the UI ---
+    // Palette bytes for the legend: base map, and the white-hot variant used
+    // at/above whiteHotTailMinSatoshi (or everywhere when that is 0). Exact
+    // bytes, so the legend matches the video instead of approximating it.
+    auto paletteHex = [](buv::ColorMap const& cm) {
+        auto s = std::string();
+        s.reserve(256 * 6);
+        for (int i = 0; i < 256; ++i) {
+            auto c = cm.color(i);
+            s += fmt::format("{:02x}{:02x}{:02x}", c[0], c[1], c[2]);
+        }
+        return s;
+    };
+    auto baseMap = buv::ColorMap::create(cfg.colorMap);
+    auto whaleMap = baseMap;
+    if (cfg.whiteHotTail) {
+        whaleMap.applyWhiteHotTail();
+        if (cfg.whiteHotTailMinSatoshi == 0) {
+            baseMap = whaleMap;
+        }
+    }
+    auto const paletteJson = fmt::format(
+        R"("palette":"{}","paletteWhale":"{}","whiteHotMinSat":{},"maxDensity":{})",
+        paletteHex(baseMap), paletteHex(whaleMap),
+        cfg.whiteHotTail ? cfg.whiteHotTailMinSatoshi : -1, cfg.colorUpperValueLimit);
     server.Get("/api/info", [&](httplib::Request const&, httplib::Response& res) {
         auto json = fmt::format(
-            R"({{"imageWidth":{},"imageHeight":{},"graphRect":[{},{},{},{}],"numBlocks":{},"fps":60,"videoAvailable":{}}})",
+            R"({{"imageWidth":{},"imageHeight":{},"graphRect":[{},{},{},{}],"numBlocks":{},"videoStartBlock":{},"videoEndBlock":{},"videoFrameCount":{},"videoVersion":"{}","fps":60,"videoAvailable":{},"tipDate":"{}",{}}})",
             cfg.imageWidth,
             cfg.imageHeight,
             cfg.graphRect.x,
@@ -523,12 +586,19 @@ TEST_CASE("utxo_explorer" * doctest::skip()) {
             cfg.graphRect.w,
             cfg.graphRect.h,
             numBlocks,
-            cfg.explorerVideoFile.empty() ? "false" : "true");
+            videoStartBlock,
+            videoEndBlock,
+            videoEndBlock - videoStartBlock + 1,
+            videoVersion,
+            cfg.explorerVideoFile.empty() ? "false" : "true",
+            isoDate(hist.blockTime(numBlocks - 1)),
+            paletteJson);
         res.set_content(json, "application/json");
     });
 
     // --- per-pixel lookup ---
     server.Get("/api/pixel", [&](httplib::Request const& req, httplib::Response& res) {
+        // (rate-limited via the pre-routing handler)
         auto blockOpt = parseParam<uint32_t>(req, "block");
         auto xOpt = parseParam<uint32_t>(req, "x");
         auto yOpt = parseParam<uint32_t>(req, "y");
@@ -776,6 +846,93 @@ TEST_CASE("utxo_explorer" * doctest::skip()) {
         }
         json += "]}";
         res.set_content(json, "application/json");
+    });
+
+    // --- hover readout: pixel -> block/amount ranges only (no record scan) ---
+    server.Get("/api/ranges", [&](httplib::Request const& req, httplib::Response& res) {
+        auto blockOpt = parseParam<uint32_t>(req, "block");
+        auto xOpt = parseParam<uint32_t>(req, "x");
+        auto yOpt = parseParam<uint32_t>(req, "y");
+        if (!blockOpt || !xOpt || !yOpt) {
+            sendBadRequest(res, "block, x, y must be non-negative integers");
+            return;
+        }
+        auto block = std::min<uint32_t>(*blockOpt, numBlocks - 1);
+        auto x = static_cast<size_t>(*xOpt);
+        auto y = static_cast<size_t>(*yOpt);
+        if (x >= cfg.imageWidth || y >= cfg.imageHeight) {
+            sendBadRequest(res, "x/y outside image");
+            return;
+        }
+        auto gx = size_t(0);
+        auto gy = size_t(0);
+        if (!inverter.toGraphLocal(x, y, gx, gy)) {
+            res.set_content(R"({"blockRange":null,"satRange":null})", "application/json");
+            return;
+        }
+        inverter.setContext(block);
+        auto json = std::string("{");
+        auto h1 = uint32_t(0);
+        auto h2 = uint32_t(0);
+        if (x > inverter.blockToX(block)) {
+            json += R"("blockRange":null,"future":true)";
+        } else if (inverter.columnBlockRange(gx, block, h1, h2)) {
+            json += fmt::format(R"("blockRange":[{},{}],"blockDates":["{}","{}"])",
+                                h1, h2, isoDate(hist.blockTime(h1)), isoDate(hist.blockTime(h2)));
+        } else {
+            json += R"("blockRange":null)";
+        }
+        auto s1 = int64_t(0);
+        auto s2 = int64_t(0);
+        if (inverter.rowSatoshiRange(gy, s1, s2)) {
+            json += fmt::format(R"(,"satRange":[{},{}])", s1, s2);
+        } else {
+            json += R"(,"satRange":null)";
+        }
+        json += "}";
+        res.set_content(json, "application/json");
+    });
+
+    // --- jump to date: first block whose timestamp is >= the given UTC day ---
+    server.Get("/api/date", [&](httplib::Request const& req, httplib::Response& res) {
+        if (!req.has_param("d")) {
+            sendBadRequest(res, "d=YYYY-MM-DD required");
+            return;
+        }
+        auto const& d = req.get_param_value("d");
+        auto tm = std::tm{};
+        if (d.size() != 10 || strptime(d.c_str(), "%Y-%m-%d", &tm) == nullptr) {
+            sendBadRequest(res, "d must be YYYY-MM-DD");
+            return;
+        }
+        auto const target = static_cast<int64_t>(timegm(&tm));
+        // Block timestamps are only roughly monotonic (miners' clocks drift by
+        // up to ~2h), so a plain binary search can land a few blocks off. Search
+        // the monotone envelope, then step back over any earlier out-of-order
+        // block that also satisfies the date.
+        auto lo = uint32_t(0);
+        auto hi = numBlocks;
+        while (lo < hi) {
+            auto mid = lo + (hi - lo) / 2;
+            if (static_cast<int64_t>(hist.blockTime(mid)) < target) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        auto best = lo;
+        for (auto h = lo; h > 0 && h + 24 > lo; --h) {
+            if (static_cast<int64_t>(hist.blockTime(h - 1)) >= target) {
+                best = h - 1;
+            }
+        }
+        if (best >= numBlocks) {
+            res.set_content(fmt::format(R"({{"block":null,"tipDate":"{}"}})", isoDate(hist.blockTime(numBlocks - 1))),
+                            "application/json");
+            return;
+        }
+        res.set_content(fmt::format(R"({{"block":{},"date":"{}"}})", best, isoDate(hist.blockTime(best))),
+                        "application/json");
     });
 
     // --- txid resolution via Bitcoin Core REST (through SSH tunnel) ---

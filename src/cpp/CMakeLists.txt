@@ -11,6 +11,8 @@ target_sources_local(${PROJECT_NAME}
         app/check_blocks.cpp
         app/Chunk.cpp
         app/decode_change.cpp
+        app/density_palette.cpp
+        app/epoch_transition_mapping.cpp
         app/fetchAllBlockHeaders.cpp
         app/find_distant_color.cpp
         app/Hud.cpp
@@ -43,6 +45,7 @@ if(NOT APPLE)
         PRIVATE
             unit/BlockEncoderTest.cpp
             unit/ChunkTest.cpp
+            unit/DensityFlashWeightTest.cpp
             unit/HexTest.cpp
             unit/OpenCVTest.cpp
             unit/parallelToSequentialTest.cpp

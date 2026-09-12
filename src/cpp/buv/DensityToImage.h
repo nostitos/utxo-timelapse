@@ -8,7 +8,9 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <optional>
 #include <ostream>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -50,10 +52,11 @@ public:
     void update(size_t pixel_idx, double density) {
         // static constexpr auto black = std::array<uint8_t, 3>();
         uint8_t const* rgb_source = nullptr;
+        auto const& colormap = colorMapForPixel(pixel_idx);
         if (density <= 0.0) {
             rgb_source = mColorBackground.data();
         } else if (density >= static_cast<double>(m_max_included_value)) {
-            rgb_source = m_colormap.rgb(255);
+            rgb_source = colormap.rgb(255);
         } else {
             auto val = mDensityScaler(scaleDensityToColor(density));
             auto colIdx = truncate<int>(0, val, 255);
@@ -64,9 +67,21 @@ public:
                     colIdx = floorIdx;
                 }
             }
-            rgb_source = m_colormap.rgb(colIdx);
+            rgb_source = colormap.rgb(colIdx);
         }
         rgb(pixel_idx, rgb_source);
+    }
+
+    // Use an alternate colormap for one contiguous range of image rows. Density
+    // scaling is shared, so palettes that have identical low entries transition
+    // without a visible amount-boundary seam.
+    void setRowColorMapOverride(ColorMap colormap, size_t firstRow, size_t lastRowInclusive) {
+        if (firstRow > lastRowInclusive || lastRowInclusive >= mHeight) {
+            throw std::out_of_range("DensityToImage row colormap override is outside the image");
+        }
+        mRowColorMapOverride = std::move(colormap);
+        mOverrideFirstRow = firstRow;
+        mOverrideLastRow = lastRowInclusive;
     }
 
     // Optional per-row minimum color index ("amount color floor"). When set, any
@@ -106,7 +121,18 @@ public:
 private:
     friend auto operator<<(std::ostream&, DensityToImage const&) -> std::ostream&;
 
+    [[nodiscard]] auto colorMapForPixel(size_t pixel_idx) const -> ColorMap const& {
+        auto const row = pixel_idx / mWidth;
+        if (mRowColorMapOverride && row >= mOverrideFirstRow && row <= mOverrideLastRow) {
+            return *mRowColorMapOverride;
+        }
+        return m_colormap;
+    }
+
     ColorMap const m_colormap;
+    std::optional<ColorMap> mRowColorMapOverride{};
+    size_t mOverrideFirstRow{};
+    size_t mOverrideLastRow{};
     std::vector<uint8_t> m_rgb;
     std::vector<uint8_t> mRowColorFloor{};
     LinearFunction mDensityScaler;

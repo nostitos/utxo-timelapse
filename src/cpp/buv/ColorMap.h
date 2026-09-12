@@ -1,6 +1,8 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <exception>
 #include <initializer_list>
@@ -40,6 +42,8 @@ enum class ColorMapType {
 // Maps an uint8_t to a colormap.
 class ColorMap {
 public:
+    static constexpr int WHITE_HOT_START_INDEX = 180;
+
     ColorMap(std::initializer_list<double> rgbColors)
         : mRgb(rgbColors.size()) {
         if (rgbColors.size() != mRgb.size()) {
@@ -58,6 +62,35 @@ public:
 
     [[nodiscard]] auto rgb(int idx) const -> uint8_t const* {
         return mRgb.data() + (idx * 3);
+    }
+
+    // Blend the top of the colormap toward warm white so perceived brightness
+    // rises monotonically with index. Turbo's endpoint is a dark red whose
+    // luminance is far below the green/yellow midband; without this, a maxed-out
+    // pixel looks dimmer than a mid-density one. From startIdx upward, each
+    // entry is pushed just enough toward warm white that luminance never drops,
+    // ending at warm white at index 255.
+    void applyWhiteHotTail(int startIdx = WHITE_HOT_START_INDEX) {
+        constexpr std::array<double, 3> warmWhite = {255.0, 245.0, 224.0};
+        auto const luminance = [](double r, double g, double b) {
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        };
+        auto const startLuma = luminance(mRgb[startIdx * 3], mRgb[startIdx * 3 + 1], mRgb[startIdx * 3 + 2]);
+        auto const whiteLuma = luminance(warmWhite[0], warmWhite[1], warmWhite[2]);
+        for (int i = startIdx + 1; i < 256; ++i) {
+            auto t = static_cast<double>(i - startIdx) / static_cast<double>(255 - startIdx);
+            t = t * t * (3.0 - 2.0 * t); // smoothstep
+            auto const targetLuma = startLuma + (whiteLuma - startLuma) * t;
+            double const r = mRgb[i * 3];
+            double const g = mRgb[i * 3 + 1];
+            double const b = mRgb[i * 3 + 2];
+            auto const baseLuma = luminance(r, g, b);
+            auto const denominator = whiteLuma - baseLuma;
+            auto const alpha = denominator <= 0.0 ? 1.0 : std::clamp((targetLuma - baseLuma) / denominator, 0.0, 1.0);
+            mRgb[i * 3] = static_cast<uint8_t>(std::lround(r + (warmWhite[0] - r) * alpha));
+            mRgb[i * 3 + 1] = static_cast<uint8_t>(std::lround(g + (warmWhite[1] - g) * alpha));
+            mRgb[i * 3 + 2] = static_cast<uint8_t>(std::lround(b + (warmWhite[2] - b) * alpha));
+        }
     }
 
     [[nodiscard]] auto color(int idx) const -> std::array<uint8_t, 3> {

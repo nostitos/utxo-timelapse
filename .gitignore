@@ -71,3 +71,11 @@ output/
 *.log
 __pycache__/
 *.py[cod]
+
+# Local Cloudflare emulator state and visual scratch captures
+cloudflare/**/.wrangler/
+diagnostics/
+
+# Curated, compact guide media are intentionally versioned
+!site/assets/clips/*.mp4
+!site/assets/clips/*.webm

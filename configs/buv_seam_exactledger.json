@@ -1,6 +1,6 @@
 {
     "bitcoinRpcUrl": "http://127.0.0.1:18332",
-    "blkFile": "/Volumes/4T Data/buv_render/changes.blk1.full",
+    "blkFile": "/Volumes/4T Data/buv_render/changes.blk1.full964k",
     "utxoToChangeNumThreads": 12,
     "utxoToChangeNumResources": 24,
     "imageWidth": 1920,

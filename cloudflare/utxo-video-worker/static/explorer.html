@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>UTXO Pixel Explorer</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0b0e14; color: #d8dee9; font: 14px/1.45 -apple-system, "SF Pro Text", Helvetica, sans-serif; display: flex; height: 100vh; overflow: hidden; }
+  #left { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
+  #videoWrap { position: relative; flex: 1 1 auto; background: #000; min-height: 0; }
+  #videoWrap video { width: 100%; height: 100%; object-fit: contain; display: block; }
+  #clickLayer { position: absolute; inset: 0; cursor: crosshair; }
+  #crosshair { position: absolute; width: 13px; height: 13px; margin: -6px 0 0 -6px; pointer-events: none; display: none; }
+  #crosshair::before, #crosshair::after { content: ""; position: absolute; background: #ff5d5d; }
+  #crosshair::before { left: 6px; top: 0; width: 1px; height: 13px; }
+  #crosshair::after { top: 6px; left: 0; height: 1px; width: 13px; }
+  #loupe { position: absolute; width: 183px; height: 183px; border: 2px solid #7aa2f7; border-radius: 4px; pointer-events: none; display: none; background: #000; z-index: 5; image-rendering: pixelated; overflow: hidden; }
+  #loupe canvas { image-rendering: pixelated; }
+  #loupeCross { position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; margin: -4px 0 0 -4px; }
+  #loupeCross::before { content:""; position:absolute; left:4px; top:0; width:1px; height:9px; background:#ff5d5d; }
+  #loupeCross::after  { content:""; position:absolute; top:4px; left:0; height:1px; width:9px; background:#ff5d5d; }
+  #controls { padding: 8px 12px; background: #11151f; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  #controls input[type=number] { width: 90px; background: #0b0e14; color: inherit; border: 1px solid #2a3245; border-radius: 4px; padding: 4px 6px; }
+  #controls button, #panel button { background: #1c2333; color: inherit; border: 1px solid #2a3245; border-radius: 4px; padding: 4px 10px; cursor: pointer; }
+  #controls button:hover, #panel button:hover { background: #263049; }
+  #blockSteps { display: inline-flex; align-items: center; gap: 2px; }
+  #blockSteps button { min-width: 26px; padding: 5px 6px; font: 600 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -1px; }
+  #blockSteps .stepSplit { width: 1px; height: 18px; margin: 0 3px; background: #2a3245; }
+  #blockLabel { font-variant-numeric: tabular-nums; color: #7aa2f7; min-width: 190px; }
+  #streamStatus { color: #e0af68; font-size: 12px; min-width: 92px; }
+  #controls input[type=date] { background: #0b0e14; color: inherit; border: 1px solid #2a3245; border-radius: 4px; padding: 3px 6px; font: inherit; font-size: 12.5px; color-scheme: dark; }
+  /* hover readout: one line at the bottom of the video, above the controls */
+  #hoverBar { position: absolute; left: 0; right: 0; bottom: 0; padding: 3px 10px; background: #0b0e14b8; color: #9aa5b8; font-size: 12px; font-variant-numeric: tabular-nums; pointer-events: none; display: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; z-index: 4; }
+  #hoverBar b { color: #d8dee9; font-weight: 500; }
+  /* about modal: what this is, how to read it, how to use it; legend lives here */
+  #about { position: fixed; inset: 0; z-index: 20; background: #0b0e14cc; display: none; align-items: center; justify-content: center; padding: 24px; }
+  #about.visible { display: flex; }
+  #aboutCard { background: #11151f; border: 1px solid #2a3245; border-radius: 10px; width: min(760px, 100%); max-height: 100%; overflow-y: auto; padding: 22px 26px 18px; box-shadow: 0 18px 50px #000a; font-size: 13.5px; line-height: 1.5; color: #c8d0dc; }
+  #aboutCard h1 { margin: 0 0 4px; font-size: 20px; color: #7aa2f7; }
+  #aboutCard h3 { margin: 18px 0 6px; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: #565f74; border-bottom: 1px solid #1d2433; padding-bottom: 3px; }
+  #aboutCard p { margin: 4px 0; }
+  #aboutCard .lead { color: #9aa5b8; }
+  #aboutCard kbd { background: #1c2333; border: 1px solid #2a3245; border-radius: 3px; padding: 0 5px; font: 11.5px ui-monospace, Menlo, monospace; }
+  #aboutCard .grid { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; }
+  #aboutCard .grid span:nth-child(odd) { color: #d8dee9; white-space: nowrap; }
+  #legend .row { display: flex; align-items: center; gap: 10px; margin: 4px 0; }
+  #legend .row span:first-child { flex: 0 0 120px; color: #d8dee9; white-space: nowrap; }
+  #legend canvas { flex: 1 1 auto; height: 14px; border-radius: 3px; }
+  #legend .ticks { display: flex; justify-content: space-between; margin-left: 130px; color: #565f74; font-size: 11px; }
+  #legend .sw { display: inline-block; width: 11px; height: 11px; vertical-align: -1px; border-radius: 2px; margin-right: 4px; }
+  #aboutFoot { display: flex; align-items: center; justify-content: space-between; margin-top: 18px; gap: 12px; }
+  #aboutFoot .src { color: #565f74; font-size: 12px; }
+  #aboutClose { padding: 6px 16px; }
+  #helpBtn { min-width: 26px; font-weight: 600; }
+  #fsBtn { min-width: 26px; }
+  body.fs #controls { display: none; }
+  body.fs #videoWrap { height: 100vh; }
+  #copyLink { font-size: 12px; padding: 3px 8px; }
+  #copyLink.done { color: #9ece6a; border-color: #9ece6a; }
+  /* Details drawer: overlays the right edge of the video so the graph keeps the full page width. */
+  #panel { position: absolute; top: 0; right: 0; bottom: 0; width: 480px; background: #11151fd9; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border-left: 1px solid #1d2433; overflow-y: auto; padding: 14px; z-index: 6; transform: translateX(100%); transition: transform 180ms ease; }
+  #panel.open { transform: translateX(0); }
+  #panelHeader { display: grid; grid-template-columns: minmax(0, 1fr) 1cm auto; gap: 12px; align-items: start; }
+  #panelClose { background: none; border: none; color: #9aa5b8; font-size: 18px; line-height: 1; padding: 0 2px; cursor: pointer; }
+  #panelClose:hover { color: #d8dee9; }
+  #panelTab { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 28px; height: 72px; display: none; align-items: center; justify-content: center; background: #11151fd9; border: 1px solid #1d2433; border-right: none; border-radius: 6px 0 0 6px; color: #7aa2f7; cursor: pointer; z-index: 6; writing-mode: vertical-rl; font-size: 12px; letter-spacing: 0.04em; user-select: none; }
+  #panelTab.visible { display: flex; }
+  #panelTab:hover { background: #1c2333f0; }
+  #panel h2 { margin: 0 0 4px; font-size: 15px; color: #7aa2f7; }
+  #panel .meta { color: #9aa5b8; font-size: 12.5px; margin-bottom: 10px; }
+  #pixelSwatch { width: 1cm; height: 1cm; visibility: hidden; background: #000; border: 1px solid #65708a; border-radius: 2px; box-shadow: 0 0 0 1px #080a0f, inset 0 0 0 1px rgba(255,255,255,0.12); }
+  #pixelSwatch.visible { visibility: visible; }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  th, td { text-align: right; padding: 3px 6px; border-bottom: 1px solid #1d2433; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  th { color: #9aa5b8; position: sticky; top: 0; background: #11151f; }
+  td:first-child, th:first-child { text-align: left; }
+  .unspent { color: #9ece6a; }
+  .goneLater { color: #7aa2f7; }
+  .spentTd { color: #e06c75; }
+  .secHead { margin: 14px 0 4px; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: #565f74; border-bottom: 1px solid #1d2433; padding-bottom: 3px; }
+  .splitBar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 6px 0 4px; background: #1d2433; }
+  .splitBar div { height: 100%; }
+  .statGrid { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; font-size: 12.5px; margin: 4px 0; }
+  .statGrid .k { color: #9aa5b8; }
+  .statGrid .v { font-variant-numeric: tabular-nums; }
+  .popWrap { margin: 6px 0 2px; position: relative; }
+  .popWrap canvas { width: 100%; height: 56px; display: block; }
+  .popCaption { display: flex; justify-content: space-between; color: #565f74; font-size: 10.5px; margin-top: 1px; }
+  .fateHead { margin: 12px 0 2px; font-size: 12.5px; font-weight: 600; }
+  .fateHead .sub { font-weight: 400; color: #9aa5b8; }
+  .txbtn { font-size: 11px; padding: 1px 6px; }
+  .txres { font-size: 11px; color: #9aa5b8; }
+  .txres a { color: #7aa2f7; }
+  #hint { color: #565f74; font-size: 12.5px; }
+  label.tog { display: inline-flex; gap: 5px; align-items: center; color: #9aa5b8; font-size: 12.5px; }
+
+  body { height: 100dvh; }
+  #videoWrap { overflow: hidden; }
+  #touchAim { display: none; }
+  @media (max-width: 760px), (pointer: coarse), (max-height: 500px) and (orientation: landscape) {
+    #controls { gap: 6px; padding: 8px max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); flex-shrink: 0; }
+    #controls button, #controls input, #panel button { min-height: 44px; font-size: 16px; touch-action: manipulation; }
+    #controls button { min-width: 44px; }
+    #blockSteps { order: 4; flex: 1 0 100%; justify-content: center; }
+    #blockSteps button { flex: 1; min-width: 38px; }
+    #blockLabel { min-width: 0; flex: 1; font-size: 14px; }
+    #seekBar { order: 3; flex: 1 0 100% !important; width: 100%; margin: 0; }
+    #blockInput, #goBtn, #dateInput, #copyLink, .tog { order: 5; }
+    #controls input[type=date] { font-size: 16px; min-width: 0; width: 145px; }
+    #hint { display: none; }
+    #streamStatus { order: 6; min-width: 0; }
+    #panel { position: fixed; top: auto; left: 0; right: 0; bottom: 0; width: 100%; max-height: 46dvh; padding: 12px 12px max(12px, env(safe-area-inset-bottom)); transform: translateY(110%); border: 1px solid #2a3245; border-radius: 14px 14px 0 0; background: #11151ff5; }
+    #panel.open { transform: translateY(0); }
+    #panelBody { overflow-x: auto; }
+    #panelHeader { position: sticky; top: -12px; background: #11151f; z-index: 2; padding-top: 6px; }
+    #touchAim { display: flex; align-items: center; gap: 6px; margin: 8px 0; }
+    #touchAim span { flex: 1; color: #9aa5b8; font-size: 12px; }
+    #touchAim button { min-width: 44px; }
+    #panelTab { width: 44px; }
+    #about { padding: 10px; }
+    #aboutCard { padding: 16px; }
+    #legend .row span:first-child { flex-basis: 90px; }
+    #legend canvas { min-width: 0; width: 100px; }
+    #aboutFoot { flex-wrap: wrap; }
+    body.fs #controls { display: flex; }
+    body.fs #videoWrap { height: auto; }
+  }
+  @media (max-height: 500px) and (orientation: landscape) {
+    #blockSteps, #dateInput, #copyLink, .tog { display: none; }
+    #controls { padding-top: 2px; padding-bottom: 2px; }
+    #panel { top: 0; left: auto; width: min(420px, 55vw); max-height: 100dvh; border-radius: 0; }
+  }
+</style>
+</head>
+<body>
+<div id="left">
+  <div id="videoWrap">
+    <video id="vid" muted playsinline preload="auto" crossorigin="anonymous"></video>
+    <div id="clickLayer"></div>
+    <div id="crosshair"></div>
+    <div id="loupe"><canvas id="loupeCanvas" width="183" height="183"></canvas><div id="loupeCross"></div></div>
+    <div id="panel">
+      <div id="panelHeader">
+        <div>
+          <h2>UTXO Pixel Explorer</h2>
+          <div class="meta" id="panelMeta">Click a pixel in the graph (pause first for exact aim).</div>
+        </div>
+        <div id="pixelSwatch" role="img" aria-label="No pixel selected"></div>
+        <button id="panelClose" type="button" title="Close details (Esc)" aria-label="Close details">×</button>
+      </div>
+      <div id="touchAim" role="group" aria-label="Fine tune selected pixel"><span>Move 1 pixel</span><button type="button" data-pixel-dx="-1" data-pixel-dy="0" aria-label="Pixel left">←</button><button type="button" data-pixel-dx="0" data-pixel-dy="-1" aria-label="Pixel up">↑</button><button type="button" data-pixel-dx="0" data-pixel-dy="1" aria-label="Pixel down">↓</button><button type="button" data-pixel-dx="1" data-pixel-dy="0" aria-label="Pixel right">→</button></div>
+      <div id="panelBody"></div>
+    </div>
+    <div id="panelTab" role="button" title="Show details" aria-label="Show details">details</div>
+    <div id="hoverBar" aria-hidden="true"></div>
+  </div>
+  <div id="controls">
+    <button id="playBtn">Play</button>
+    <span id="blockSteps" role="group" aria-label="Block navigation">
+      <button type="button" data-block-step="-100" title="Back 100 blocks" aria-label="Back 100 blocks">&lt;&lt;&lt;</button>
+      <button type="button" data-block-step="-10" title="Back 10 blocks" aria-label="Back 10 blocks">&lt;&lt;</button>
+      <button type="button" data-block-step="-1" title="Previous block ([)" aria-label="Previous block">&lt;</button>
+      <span class="stepSplit" aria-hidden="true"></span>
+      <button type="button" data-block-step="1" title="Next block (])" aria-label="Next block">&gt;</button>
+      <button type="button" data-block-step="10" title="Forward 10 blocks" aria-label="Forward 10 blocks">&gt;&gt;</button>
+      <button type="button" data-block-step="100" title="Forward 100 blocks" aria-label="Forward 100 blocks">&gt;&gt;&gt;</button>
+    </span>
+    <span id="blockLabel">block 0</span>
+    <input id="seekBar" type="range" min="0" max="1" step="1" value="0" style="flex:1 1 200px">
+    <input id="blockInput" type="number" min="0" step="1" placeholder="block #">
+    <button id="goBtn">Go</button>
+    <input id="dateInput" type="date" title="Jump to the first block on this date (UTC)">
+    <button id="copyLink" type="button" title="Copy a link to this block and pixel">copy link</button>
+    <label class="tog"><input id="loupeTog" type="checkbox" checked> magnifier</label>
+    <button id="fsBtn" type="button" title="Fullscreen (F)" aria-label="Fullscreen">⤢</button>
+    <button id="helpBtn" type="button" title="What is this? (?)" aria-label="About this explorer">?</button>
+    <span id="hint">pause &amp; click a pixel</span>
+    <span id="streamStatus" aria-live="polite"></span>
+  </div>
+</div>
+<div id="about" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+  <div id="aboutCard">
+    <h1 id="aboutTitle">Bitcoin UTXO Explorer</h1>
+    <p class="lead">Every unspent coin on the Bitcoin blockchain, as one pixel, from the genesis block to today. Play it as a video, pause anywhere, click any pixel to see exactly which coins were there.</p>
+
+    <h3>Reading the picture</h3>
+    <div class="grid">
+      <span>Left → right</span><span>Time, by block height. The newest blocks are drawn at the cursor on the right; older history is progressively squeezed to the left so 17 years fit on one screen.</span>
+      <span>Bottom → top</span><span>Amount of the coin, log scale from 1 sat to 100 k BTC. The 1–100 sat rows and the 10 k–100 k BTC band are compressed.</span>
+      <span>Colour</span><span id="legendNote">How many coins share the pixel (log scale). Coins above 5 BTC count as amount ÷ 5, so one 100 BTC coin weighs like twenty ordinary ones.</span>
+      <span>Black</span><span>Nothing unspent there any more. Spent coins disappear.</span>
+    </div>
+    <div id="legend" style="margin-top:10px">
+      <div class="row"><span>below 10 BTC</span><canvas id="legendBase" width="256" height="14"></canvas></div>
+      <div class="row"><span>10 BTC and up</span><canvas id="legendWhale" width="256" height="14"></canvas></div>
+      <div class="ticks"><span>1 coin</span><span>~10</span><span>~100</span><span id="legendMax">500+</span></div>
+    </div>
+    <p style="margin-top:8px"><span class="sw" style="background:#fff"></span><b>White flashes</b> mark coins created or spent in the current block; the bigger the star, the more BTC moved. <span class="sw" style="background:#ff8c1a;margin-left:8px"></span><b>Orange bars</b> at the cursor show where new coins are being created right now.</p>
+
+    <h3>Using it</h3>
+    <div class="grid">
+      <span>Click a pixel</span><span>Opens the details drawer: which coins were there at that block, their amounts, when they were created, and whether they are still unspent today.</span>
+      <span>Hover</span><span>The strip at the bottom shows the block range, dates and amount range under the cursor.</span>
+      <span>Aim precisely</span><span>Pause, then use the magnifier (click inside it to pick), or nudge with <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> (<kbd>Shift</kbd> = 10 px).</span>
+      <span>Move in time</span><span>Scrub the bar, type a block number, pick a date, or step with <kbd>[</kbd> <kbd>]</kbd> and the <kbd>&lt;</kbd> <kbd>&gt;</kbd> buttons.</span>
+      <span>Share</span><span><b>copy link</b> gives a URL that reopens this exact block and pixel.</span>
+      <span>Keys</span><span><kbd>Space</kbd> play/pause · <kbd>F</kbd> fullscreen · <kbd>Esc</kbd> close drawer · <kbd>?</kbd> this help</span>
+    </div>
+
+    <div id="aboutFoot">
+      <span class="src" id="aboutSrc"></span>
+      <button id="aboutClose" type="button">Got it</button>
+    </div>
+  </div>
+</div>
+<script src="/hls.min.js"></script>
+<script>
+"use strict";
+const vid = document.getElementById("vid");
+const clickLayer = document.getElementById("clickLayer");
+const crosshair = document.getElementById("crosshair");
+const loupe = document.getElementById("loupe");
+const loupeCanvas = document.getElementById("loupeCanvas");
+const loupeTog = document.getElementById("loupeTog");
+const seekBar = document.getElementById("seekBar");
+const blockLabel = document.getElementById("blockLabel");
+const blockInput = document.getElementById("blockInput");
+const panelMeta = document.getElementById("panelMeta");
+const panelBody = document.getElementById("panelBody");
+const pixelSwatch = document.getElementById("pixelSwatch");
+const streamStatus = document.getElementById("streamStatus");
+const panel = document.getElementById("panel");
+const panelTab = document.getElementById("panelTab");
+const hoverBar = document.getElementById("hoverBar");
+
+let info = null;          // /api/info
+let lastBlock = 0;
+let userWantsPlayback = false; // declared early: URL restore / date jump run before the timeline section
+const ZOOM = 6;           // loupe zoom factor
+const frameCanvas = document.createElement("canvas"); // native-res frame for loupe
+let frameCtx = null;
+let frameValid = false;
+let hls = null;
+
+fetch("/api/info", {cache: "no-store"}).then(r => r.json()).then(async d => {
+  info = d;
+  info.videoStartBlock = Number.isFinite(d.videoStartBlock) ? d.videoStartBlock : 0;
+  info.videoEndBlock = Number.isFinite(d.videoEndBlock) ? d.videoEndBlock : d.numBlocks - 1;
+  frameCanvas.width = d.imageWidth;
+  frameCanvas.height = d.imageHeight;
+  frameCtx = frameCanvas.getContext("2d", { willReadFrequently: false });
+  seekBar.min = info.videoStartBlock;
+  seekBar.max = info.videoEndBlock;
+  seekBar.value = info.videoStartBlock;
+  blockInput.min = info.videoStartBlock;
+  blockInput.max = info.videoEndBlock;
+  blockLabel.textContent = "block " + info.videoStartBlock.toLocaleString("en-US");
+  lastBlock = info.videoStartBlock;
+  const dateInput = document.getElementById("dateInput");
+  dateInput.min = "2009-01-03";
+  if (d.tipDate) dateInput.max = d.tipDate;
+  drawLegend();
+  if (d.videoAvailable) {
+    attachVideo(false);
+    restoreFromUrl();
+  }
+});
+
+// ---- shareable links: ?block=N&x=X&y=Y (pixel optional) ----
+function restoreFromUrl() {
+  const q = new URLSearchParams(location.search);
+  const b = parseInt(q.get("block"), 10);
+  const sharedBlock = Number.isFinite(b);
+  const target = Math.max(info.videoStartBlock, Math.min(sharedBlock ? b : 314000, info.videoEndBlock));
+  const x = parseInt(q.get("x"), 10), y = parseInt(q.get("y"), 10);
+  const hasPixel = Number.isFinite(x) && Number.isFinite(y);
+  const go = () => {
+    userWantsPlayback = false;
+    vid.pause();
+    vid.currentTime = blockToVideoTime(target);
+    if (hasPixel) vid.addEventListener("seeked", () => selectPixel(x, y), { once: true });
+    if (!sharedBlock) {
+      vid.muted = true;
+      vid.playsInline = true;
+      userWantsPlayback = true;
+      vid.play().catch(() => {
+        userWantsPlayback = false;
+        streamStatus.textContent = "Tap Play to start video";
+      });
+    }
+  };
+  if (vid.readyState >= 1) go(); else vid.addEventListener("loadedmetadata", go, { once: true });
+}
+document.getElementById("copyLink").onclick = async (e) => {
+  const btn = e.currentTarget;
+  const u = new URL(location.href);
+  u.search = "";
+  u.searchParams.set("block", String(curBlock()));
+  if (selPixel) { u.searchParams.set("x", String(selPixel.nx)); u.searchParams.set("y", String(selPixel.ny)); }
+  history.replaceState(null, "", u.toString());
+  try { await navigator.clipboard.writeText(u.toString()); btn.textContent = "copied"; btn.classList.add("done"); }
+  catch (err) { btn.textContent = "link in address bar"; }
+  setTimeout(() => { btn.textContent = "copy link"; btn.classList.remove("done"); }, 1800);
+};
+
+// ---- jump to date ----
+document.getElementById("dateInput").addEventListener("change", async (e) => {
+  const d = e.target.value;
+  if (!d || !info) return;
+  let resp;
+  try { resp = await fetch("/api/date?v=" + encodeURIComponent(info.videoVersion) + "&d=" + encodeURIComponent(d)).then(r => r.json()); }
+  catch (err) { streamStatus.textContent = "date lookup failed"; return; }
+  if (resp.block === null || resp.block === undefined) { streamStatus.textContent = "after chain tip (" + resp.tipDate + ")"; return; }
+  const target = Math.max(info.videoStartBlock, Math.min(resp.block, info.videoEndBlock));
+  userWantsPlayback = false;
+  vid.pause();
+  vid.currentTime = blockToVideoTime(target);
+  streamStatus.textContent = "";
+});
+
+// ---- colour legend (exact palette bytes from /api/info) ----
+function drawLegend() {
+  const paint = (id, hex) => {
+    const c = document.getElementById(id);
+    if (!c || !hex || hex.length < 256 * 6) return;
+    const ctx = c.getContext("2d");
+    for (let i = 0; i < 256; i++) { ctx.fillStyle = "#" + hex.substr(i * 6, 6); ctx.fillRect(i, 0, 1, c.height); }
+  };
+  paint("legendBase", info.palette);
+  paint("legendWhale", info.paletteWhale);
+  if (info.maxDensity) document.getElementById("legendMax").textContent = info.maxDensity.toLocaleString("en-US") + "+";
+  const split = info.whiteHotMinSat;
+  const rows = document.querySelectorAll("#legend .row span:first-child");
+  const note = document.getElementById("legendNote");
+  const base = "How many coins share the pixel (log scale). Coins above 5 BTC count as amount ÷ 5, so one 100 BTC coin weighs like twenty ordinary ones. ";
+  if (split > 0) {
+    const t = fmtBtc(split);
+    rows[0].textContent = "below " + t; rows[1].textContent = t + " and up";
+    note.textContent = base + "Rows at " + t + " and above run to warm white at the top, so the densest whale pixels stay the brightest.";
+  } else {
+    rows[0].textContent = "all amounts"; rows[1].parentElement.style.display = "none";
+    note.textContent = base + (split === 0 ? "The top of the scale runs to warm white, so the densest pixels stay the brightest." : "");
+  }
+  const src = document.getElementById("aboutSrc");
+  if (info.tipDate) src.textContent = "Blocks 0 – " + (info.numBlocks - 1).toLocaleString("en-US") + " · data to " + info.tipDate + " · " + info.imageWidth + "×" + info.imageHeight + " @ 1 block per frame";
+}
+
+// ---- about modal: shown once on first visit, then from the [?] button or the ? key ----
+const about = document.getElementById("about");
+const ABOUT_KEY = "utxoExplorerAboutSeen";
+function showAbout() { about.classList.add("visible"); document.getElementById("aboutClose").focus(); }
+function hideAbout() { about.classList.remove("visible"); localStorage.setItem(ABOUT_KEY, "1"); }
+document.getElementById("helpBtn").onclick = showAbout;
+document.getElementById("aboutClose").onclick = hideAbout;
+about.addEventListener("click", e => { if (e.target === about) hideAbout(); });
+// Help remains available from [?]; keep the initial playback visible.
+
+// ---- fullscreen: hides the control bar; F toggles, Esc leaves (browser default) ----
+function toggleFullscreen() {
+  const el = document.documentElement;
+  const req = el.requestFullscreen || el.webkitRequestFullscreen;
+  const exit = document.exitFullscreen || document.webkitExitFullscreen;
+  const cur = document.fullscreenElement || document.webkitFullscreenElement;
+  if (cur && exit) { exit.call(document); return; }
+  if (!req && vid.webkitEnterFullscreen) { vid.webkitEnterFullscreen(); return; }
+  if (!req) { streamStatus.textContent = "fullscreen not available here"; setTimeout(() => { streamStatus.textContent = ""; }, 2500); return; }
+  Promise.resolve(req.call(el)).catch(() => { streamStatus.textContent = "fullscreen refused"; setTimeout(() => { streamStatus.textContent = ""; }, 2500); });
+}
+document.getElementById("fsBtn").onclick = toggleFullscreen;
+function onFullscreenChange() {
+  const on = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  document.getElementById("fsBtn").textContent = on ? "⤡" : "⤢";
+  document.body.classList.toggle("fs", on);
+  if (vid.paused) captureFrame();
+  if (selPixel && crosshair.style.display !== "none") {
+    const d = nativeToDisplay(selPixel.nx, selPixel.ny);
+    crosshair.style.left = d.x + "px"; crosshair.style.top = d.y + "px";
+  }
+}
+document.addEventListener("fullscreenchange", onFullscreenChange);
+document.addEventListener("webkitfullscreenchange", onFullscreenChange);
+
+// ---- global keys: ? help · F fullscreen · Space play/pause ----
+document.addEventListener("keydown", e => {
+  const t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === "?") { e.preventDefault(); about.classList.contains("visible") ? hideAbout() : showAbout(); }
+  else if (e.key === "Escape" && about.classList.contains("visible")) { e.preventDefault(); e.stopImmediatePropagation(); hideAbout(); }
+  else if (about.classList.contains("visible")) { return; } // modal open: other shortcuts stay quiet
+  else if (e.key === "f" || e.key === "F") { e.preventDefault(); toggleFullscreen(); }
+  else if (e.key === " ") { e.preventDefault(); playBtn.click(); }
+}, true);
+
+function curBlock() {
+  if (!info) return 0;
+  const frameBlock = info.videoStartBlock + Math.floor(vid.currentTime * info.fps + 1e-6);
+  return Math.max(info.videoStartBlock, Math.min(frameBlock, info.videoEndBlock));
+}
+function blockToVideoTime(block) {
+  return (block - info.videoStartBlock) / info.fps + 1e-4;
+}
+function videoUrl(retry) {
+  const source = (info && info.videoUrl) || "/hls/v1/media.m3u8";
+  return source + (retry ? (source.includes("?") ? "&" : "?") + "retry=" + Date.now() : "");
+}
+function fallbackVideoUrl(retry) {
+  return "https://utxo-cdn.hat39.com/latest-v2/video.mp4" + (retry ? "?retry=" + Date.now() : "");
+}
+function attachVideo(retry) {
+  const source = videoUrl(retry);
+  // Safari can play HEVC HLS natively. Chromium uses hls.js over MediaSource.
+  if (vid.canPlayType("application/vnd.apple.mpegurl")) {
+    if (hls) { hls.destroy(); hls = null; }
+    vid.src = source;
+    vid.load();
+    return;
+  }
+  if (window.Hls && Hls.isSupported()) {
+    if (hls) hls.destroy();
+    hls = new Hls({
+      lowLatencyMode: false,
+      startFragPrefetch: true,
+      maxBufferLength: 30,
+      maxMaxBufferLength: 60,
+      backBufferLength: 30,
+      enableWorker: true
+    });
+    hls.on(Hls.Events.ERROR, (_event, data) => {
+      if (!data.fatal) return;
+      if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+        hls.recoverMediaError();
+      } else if (userWantsPlayback) {
+        recoverVideoStream("HLS " + data.details);
+      }
+    });
+    hls.loadSource(source);
+    hls.attachMedia(vid);
+    return;
+  }
+  // Last-resort direct MP4. HEVC-capable browsers should normally take one of
+  // the HLS paths above.
+  vid.src = fallbackVideoUrl(retry);
+  vid.load();
+}
+function fmtBtc(sat) {
+  const btc = sat / 1e8;
+  if (btc >= 1) return btc.toLocaleString("en-US", {maximumFractionDigits: 8}) + " BTC";
+  if (sat >= 100000) return (sat/1e8).toFixed(8).replace(/0+$/,"") + " BTC";
+  return sat.toLocaleString("en-US") + " sat";
+}
+function fmtAge(blocks) {
+  const years = blocks / 52560; // ~10min blocks
+  if (years >= 1) return years.toFixed(1) + " y";
+  const days = blocks / 144;
+  if (days >= 1) return days.toFixed(0) + " d";
+  return blocks + " blk";
+}
+
+// ---- timeline ----
+const playBtn = document.getElementById("playBtn");
+let streamRecovering = false;
+let streamRetryAttempt = 0;
+let lastPlaybackProgressAt = Date.now();
+let lastPlaybackTime = 0;
+
+playBtn.onclick = () => {
+  if (vid.paused) {
+    userWantsPlayback = true;
+    vid.play().catch(error => {
+      if (error.name === "NotAllowedError") { userWantsPlayback = false; streamStatus.textContent = "Tap Play to start video"; }
+      else recoverVideoStream("play failed");
+    });
+  } else {
+    userWantsPlayback = false;
+    vid.pause();
+  }
+};
+
+vid.addEventListener("play", () => {
+  userWantsPlayback = true;
+  playBtn.textContent = "Pause";
+  frameValid = false;
+  hideLoupe();
+});
+vid.addEventListener("pause", () => {
+  playBtn.textContent = "Play";
+  captureFrame();
+});
+vid.addEventListener("playing", () => {
+  streamRecovering = false;
+  streamRetryAttempt = 0;
+  streamStatus.textContent = "";
+  lastPlaybackProgressAt = Date.now();
+  lastPlaybackTime = vid.currentTime;
+});
+
+function waitForVideoEvent(name, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      vid.removeEventListener(name, done);
+      reject(new Error(name + " timeout"));
+    }, timeoutMs);
+    function done() {
+      clearTimeout(timer);
+      resolve();
+    }
+    vid.addEventListener(name, done, { once: true });
+  });
+}
+
+async function recoverVideoStream(reason) {
+  if (streamRecovering || !userWantsPlayback) return;
+  streamRecovering = true;
+  const resumeAt = Number.isFinite(vid.currentTime) ? vid.currentTime : 0;
+  const delay = Math.min(8000, 1000 * Math.pow(2, streamRetryAttempt++));
+  streamStatus.textContent = "reconnecting…";
+  await new Promise(resolve => setTimeout(resolve, delay));
+  try {
+    attachVideo(true);
+    await waitForVideoEvent("loadedmetadata", 12000);
+    if (resumeAt > 0) {
+      vid.currentTime = resumeAt;
+      await waitForVideoEvent("seeked", 12000);
+    }
+    await vid.play();
+  } catch (error) {
+    streamRecovering = false;
+    streamStatus.textContent = "retrying stream…";
+    setTimeout(() => recoverVideoStream(reason), 1000);
+  }
+}
+
+vid.addEventListener("error", () => recoverVideoStream("media error"));
+vid.addEventListener("stalled", () => {
+  if (userWantsPlayback) streamStatus.textContent = "buffering…";
+});
+
+setInterval(() => {
+  if (!userWantsPlayback || vid.paused || vid.seeking || streamRecovering) return;
+  if (vid.currentTime > lastPlaybackTime + 0.01) {
+    lastPlaybackTime = vid.currentTime;
+    lastPlaybackProgressAt = Date.now();
+    streamStatus.textContent = "";
+    return;
+  }
+  if (Date.now() - lastPlaybackProgressAt > 12000) {
+    recoverVideoStream("playback stalled");
+  }
+}, 3000);
+
+vid.addEventListener("timeupdate", () => {
+  lastPlaybackProgressAt = Date.now();
+  lastPlaybackTime = vid.currentTime;
+  const b = curBlock();
+  if (b !== lastBlock) {
+    lastBlock = b;
+    if (!scrubbing) { blockLabel.textContent = "block " + b.toLocaleString("en-US"); seekBar.value = b; }
+  }
+});
+vid.addEventListener("seeked", () => { crosshair.style.display = "none"; if (vid.paused) captureFrame(); });
+// Scrubbing: every currentTime change opens a new HTTP range request and
+// abandons the previous one. Update the block label while dragging, but do
+// not touch the video until release. This makes one drag exactly one seek,
+// regardless of how far or how quickly the handle moves.
+let scrubbing = false;
+function seekToBar() { if (info) vid.currentTime = blockToVideoTime(Number(seekBar.value)); }
+function stepBlock(delta) {
+  if (!info) return;
+  userWantsPlayback = false;
+  vid.pause();
+  const target = Math.max(info.videoStartBlock, Math.min(curBlock() + delta, info.videoEndBlock));
+  scrubbing = false;
+  seekBar.value = target;
+  blockLabel.textContent = "block " + target.toLocaleString("en-US");
+  vid.currentTime = blockToVideoTime(target);
+}
+document.querySelectorAll("[data-block-step]").forEach(button => {
+  button.addEventListener("click", () => stepBlock(parseInt(button.dataset.blockStep, 10)));
+});
+seekBar.addEventListener("pointerdown", () => { scrubbing = true; });
+seekBar.oninput = () => {
+  if (!info) return;
+  blockLabel.textContent = "block " + parseInt(seekBar.value, 10).toLocaleString("en-US");
+};
+seekBar.addEventListener("change", () => {
+  scrubbing = false;
+  seekToBar();
+});
+document.getElementById("goBtn").onclick = () => {
+  const b = parseInt(blockInput.value, 10);
+  if (info && Number.isFinite(b)) {
+    const target = Math.max(info.videoStartBlock, Math.min(b, info.videoEndBlock));
+    vid.currentTime = blockToVideoTime(target);
+  }
+};
+blockInput.addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("goBtn").click(); });
+
+// Block stepping uses brackets so arrow keys remain dedicated to pixel nudging.
+document.addEventListener("keydown", e => {
+  const t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === "[") {
+    e.preventDefault();
+    stepBlock(-1);
+  } else if (e.key === "]") {
+    e.preventDefault();
+    stepBlock(1);
+  }
+});
+
+function captureFrame() {
+  if (!frameCtx) return;
+  try { frameCtx.drawImage(vid, 0, 0, frameCanvas.width, frameCanvas.height); frameValid = true; }
+  catch (e) { frameValid = false; }
+}
+
+function updatePixelSwatch(nx, ny) {
+  if (!frameCtx || !frameValid) {
+    pixelSwatch.classList.remove("visible");
+    pixelSwatch.setAttribute("aria-label", "Pixel colour unavailable");
+    return;
+  }
+  try {
+    const rgba = frameCtx.getImageData(nx, ny, 1, 1).data;
+    const hex = "#" + [rgba[0], rgba[1], rgba[2]].map(v => v.toString(16).padStart(2, "0")).join("").toUpperCase();
+    const description = "Rendered pixel " + hex + " · rgb(" + rgba[0] + ", " + rgba[1] + ", " + rgba[2] + ")";
+    pixelSwatch.style.backgroundColor = hex;
+    pixelSwatch.title = description;
+    pixelSwatch.setAttribute("aria-label", description);
+    pixelSwatch.classList.add("visible");
+  } catch (e) {
+    pixelSwatch.classList.remove("visible");
+    pixelSwatch.setAttribute("aria-label", "Pixel colour unavailable");
+  }
+}
+
+// ---- coordinate mapping (letterboxed object-fit: contain) ----
+function displayToNative(clientX, clientY) {
+  if (!info) return null;
+  const r = clickLayer.getBoundingClientRect();
+  const scale = Math.min(r.width / info.imageWidth, r.height / info.imageHeight);
+  const dispW = info.imageWidth * scale, dispH = info.imageHeight * scale;
+  const offX = (r.width - dispW) / 2, offY = (r.height - dispH) / 2;
+  const nx = Math.floor((clientX - r.left - offX) / scale);
+  const ny = Math.floor((clientY - r.top - offY) / scale);
+  if (nx < 0 || ny < 0 || nx >= info.imageWidth || ny >= info.imageHeight) return null;
+  return { nx, ny, scale, offX: offX + r.left, offY: offY + r.top };
+}
+function nativeToDisplay(nx, ny) {
+  const r = clickLayer.getBoundingClientRect();
+  const scale = Math.min(r.width / info.imageWidth, r.height / info.imageHeight);
+  const dispW = info.imageWidth * scale, dispH = info.imageHeight * scale;
+  const offX = (r.width - dispW) / 2, offY = (r.height - dispH) / 2;
+  return { x: offX + (nx + 0.5) * scale, y: offY + (ny + 0.5) * scale };
+}
+
+// ---- loupe ----
+const lctx = loupeCanvas.getContext("2d");
+lctx.imageSmoothingEnabled = false;
+function hideLoupe() { loupe.style.display = "none"; }
+clickLayer.addEventListener("mousemove", e => {
+  updateHover(e);
+  if (!loupeTog.checked || !vid.paused || !frameValid) { hideLoupe(); return; }
+  const p = displayToNative(e.clientX, e.clientY);
+  if (!p) { hideLoupe(); return; }
+  loupeCenter = { nx: p.nx, ny: p.ny };
+  const half = Math.floor(loupeCanvas.width / ZOOM / 2); // native px on each side
+  lctx.fillStyle = "#000";
+  lctx.fillRect(0, 0, loupeCanvas.width, loupeCanvas.height);
+  lctx.drawImage(frameCanvas,
+    p.nx - half, p.ny - half, half * 2 + 1, half * 2 + 1,
+    0, 0, loupeCanvas.width, loupeCanvas.height);
+  const wr = clickLayer.getBoundingClientRect();
+  let lx = e.clientX - wr.left + 22, ly = e.clientY - wr.top + 22;
+  if (lx + 187 > wr.width) lx = e.clientX - wr.left - 205;
+  if (ly + 187 > wr.height) ly = e.clientY - wr.top - 205;
+  loupe.style.left = lx + "px"; loupe.style.top = ly + "px";
+  loupe.style.display = "block";
+});
+clickLayer.addEventListener("mouseleave", e => {
+  // moving onto the (clickable) loupe is not a real leave
+  if (e.relatedTarget && loupe.contains(e.relatedTarget)) return;
+  hoverBar.style.display = "none";
+  hoverLast = null;
+  hideLoupe();
+});
+
+// ---- hover readout: block/date + amount ranges under the cursor, no click ----
+let hoverLast = null;       // {nx, ny, block} of the last fetch
+let hoverInFlight = false;
+let hoverPending = null;
+async function fetchHover(p) {
+  hoverInFlight = true;
+  try {
+    const r = await fetch("/api/ranges?v=" + encodeURIComponent(info.videoVersion) + "&block=" + p.block + "&x=" + p.nx + "&y=" + p.ny).then(r => r.json());
+    if (hoverLast && hoverLast.nx === p.nx && hoverLast.ny === p.ny) {
+      let s = "<b>(" + p.nx + ", " + p.ny + ")</b>";
+      if (r.future) s += " · right of the block cursor (orange flow-line overlay)";
+      else if (r.blockRange) s += " · blocks <b>" + r.blockRange[0].toLocaleString("en-US") + " – " + r.blockRange[1].toLocaleString("en-US") + "</b> (" + r.blockDates[0] + " → " + r.blockDates[1] + ")";
+      if (r.satRange) s += " · <b>" + fmtBtc(r.satRange[0]) + " – " + (r.satRange[1] > 1e15 ? "∞" : fmtBtc(r.satRange[1])) + "</b>";
+      if (!r.blockRange && !r.satRange && !r.future) s += " · outside graph";
+      hoverBar.innerHTML = s;
+      hoverBar.style.display = "block";
+    }
+  } catch (err) { /* transient; next move retries */ }
+  hoverInFlight = false;
+  if (hoverPending) { const n = hoverPending; hoverPending = null; fetchHover(n); }
+}
+function updateHover(e) {
+  if (!info) return;
+  const p = displayToNative(e.clientX, e.clientY);
+  if (!p) { hoverBar.style.display = "none"; hoverLast = null; return; }
+  const block = curBlock();
+  if (hoverLast && hoverLast.nx === p.nx && hoverLast.ny === p.ny && hoverLast.block === block) return;
+  hoverLast = { nx: p.nx, ny: p.ny, block };
+  if (hoverInFlight) { hoverPending = hoverLast; return; }
+  fetchHover(hoverLast);
+}
+loupe.addEventListener("mouseleave", e => {
+  if (e.relatedTarget === clickLayer) return;
+  hideLoupe();
+});
+loupeTog.addEventListener("change", () => { if (!loupeTog.checked) hideLoupe(); });
+
+// ---- click -> lookup ----
+let selPixel = null; // {nx, ny} of the current selection (native coords)
+
+// ---- details drawer (overlays the right edge of the video) ----
+function openDrawer() {
+  panel.classList.add("open");
+  panelTab.classList.remove("visible");
+}
+function closeDrawer() {
+  panel.classList.remove("open");
+  panelTab.classList.toggle("visible", !!selPixel);
+}
+document.getElementById("panelClose").onclick = closeDrawer;
+panelTab.onclick = openDrawer;
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && panel.classList.contains("open")) { e.preventDefault(); closeDrawer(); }
+});
+
+async function selectPixel(nx, ny) {
+  if (!info) return;
+  nx = Math.max(0, Math.min(info.imageWidth - 1, nx));
+  ny = Math.max(0, Math.min(info.imageHeight - 1, ny));
+  selPixel = { nx, ny };
+  openDrawer();
+  if (!vid.paused) {
+    userWantsPlayback = false;
+    vid.pause();
+  }
+  captureFrame();
+  updatePixelSwatch(nx, ny);
+  const block = curBlock();
+  const p = { nx, ny };
+
+  const d = nativeToDisplay(p.nx, p.ny);
+  crosshair.style.left = d.x + "px";
+  crosshair.style.top = d.y + "px";
+  crosshair.style.display = "block";
+
+  panelMeta.textContent = "Loading pixel (" + p.nx + ", " + p.ny + ") at block " + block.toLocaleString("en-US") + "...";
+  panelBody.innerHTML = "";
+  let resp;
+  try {
+    resp = await fetch("/api/pixel?v=" + encodeURIComponent(info.videoVersion) + "&block=" + block + "&x=" + p.nx + "&y=" + p.ny).then(r => r.json());
+  } catch (err) {
+    panelMeta.textContent = "Lookup failed: " + err;
+    return;
+  }
+  if (resp.error) { panelMeta.textContent = "(" + p.nx + ", " + p.ny + "): " + resp.error; return; }
+  if (resp.overlay === "flowline") {
+    panelMeta.innerHTML = "pixel (" + p.nx + ", " + p.ny + ") at block <b>" + block.toLocaleString("en-US") + "</b><br>" +
+      "<span style='color:#e0af68'>This is right of the current block cursor (x=" + resp.cursorX + "). " +
+      "Color here is the orange UTXO flow-line overlay (recent creation activity indicator), not UTXO occupancy.</span>";
+    panelBody.innerHTML = "";
+    return;
+  }
+  if (!resp.blockRange) { panelMeta.textContent = "No data in this pixel."; return; }
+
+  const [h1, h2] = resp.blockRange;
+  const [d1, d2] = resp.blockDates;
+  const [s1, s2] = resp.satRange;
+  const stillUn = resp.stillUnspent || 0;
+  const goneLater = resp.count - stillUn;
+  const everCount = resp.count + resp.pastCount;
+  const survivalPct = everCount ? (100 * stillUn / everCount) : 0;
+
+  panelMeta.innerHTML =
+    "pixel (" + p.nx + ", " + p.ny + ") · block <b>" + block.toLocaleString("en-US") + "</b><br>" +
+    "blocks <b>" + h1.toLocaleString("en-US") + " – " + h2.toLocaleString("en-US") + "</b> (" + d1 + " → " + d2 + ")<br>" +
+    "amounts <b>" + fmtBtc(s1) + " – " + fmtBtc(s2) + "</b>";
+
+  let html = "";
+  if (!resp.utxos.length && !resp.pastCount) { panelBody.innerHTML = "<div id='hint'>No UTXOs were created in this pixel's block and amount ranges.</div>"; return; }
+
+  // ---- STATE AT VIEWED BLOCK ----
+  html += "<div class='secHead'>At block " + block.toLocaleString("en-US") + "</div>";
+  if (resp.count) {
+    html += "<div><b>" + resp.count.toLocaleString("en-US") + "</b> UTXOs were unspent · <b>" + fmtBtc(resp.liveSat) + "</b></div>";
+    const gPct = resp.count ? (100 * stillUn / resp.count) : 0;
+    html += "<div class='splitBar'><div style='width:" + gPct + "%;background:#9ece6a'></div><div style='width:" + (100-gPct) + "%;background:#7aa2f7'></div></div>";
+    const stateSummary = [];
+    if (stillUn > 0) {
+      stateSummary.push("<span class='unspent'>" + stillUn.toLocaleString("en-US") + " still unspent today (" + fmtBtc(resp.liveUnspentSat) + ")</span>");
+    }
+    if (goneLater > 0) {
+      stateSummary.push("<span class='goneLater'>" + goneLater.toLocaleString("en-US") + " spent after this block (" + fmtBtc(resp.liveSat - resp.liveUnspentSat) + ")</span>");
+    }
+    html += "<div style='font-size:12.5px'>" + stateSummary.join(" · ") + "</div>";
+  } else {
+    html += "<div style='color:#9aa5b8'>No UTXOs were unspent in this pixel at this block.</div>";
+  }
+
+  // ---- PIXEL TOTALS ----
+  html += "<div class='secHead'>Pixel totals</div>";
+  html += "<div class='statGrid'>" +
+    "<span class='k'>UTXOs ever created in this range</span><span class='v'>" + everCount.toLocaleString("en-US") + " · " + fmtBtc(resp.liveSat + resp.pastSat) + "</span>" +
+    (stillUn > 0 ? "<span class='k'>still unspent today</span><span class='v'>" + stillUn.toLocaleString("en-US") + " (" + survivalPct.toFixed(1) + "%)</span>" : "") +
+    (resp.medianStay >= 0 ? "<span class='k'>median lifespan</span><span class='v'>" + resp.medianStay.toLocaleString("en-US") + " blocks (~" + fmtAge(resp.medianStay) + ")</span>" : "") +
+    "</div>";
+  if (resp.pop && resp.pop.some(v => v > 0)) {
+    html += "<div class='popWrap'><canvas id='popChart' width='452' height='56'></canvas>" +
+      "<div class='popCaption'><span>" + d1 + "</span><span>unspent count over time</span></div></div>";
+  }
+
+  // ---- UTXOS, grouped by ledger state, ordered by spend height ----
+  const liveNow = resp.utxos;
+  const stayers = liveNow.filter(u => u.spent === null);
+  const leavers = liveNow.filter(u => u.spent !== null);
+  let btnSeq = 0;
+  const rowsOf = (list, kind) => {
+    let out = "<table><tr><th>amount</th><th>created</th><th>date</th>" +
+      (kind === "stay" ? "<th>age at block</th>" : "<th>spent @</th><th>lifespan</th>") + "<th>tx</th></tr>";
+    list.forEach(u => {
+      const id = "b" + (btnSeq++);
+      out += "<tr><td>" + fmtBtc(u.sat) + "</td><td>" + u.created.toLocaleString("en-US") + "</td><td>" + u.createdDate + "</td>";
+      if (kind === "stay") {
+        out += "<td class='unspent'>" + fmtAge(u.age) + "</td>";
+      } else {
+        const leaveH = u.spent;
+        const stayed = leaveH - u.created;
+        out += "<td class='goneLater'>@" + leaveH.toLocaleString("en-US") + (u.spentDate ? " · " + u.spentDate : "") + "</td><td>" + fmtAge(stayed) + "</td>";
+      }
+      out += "<td><button class='txbtn' data-h='" + u.created + "' data-s='" + u.sat + "' data-i='" + id + "'>txid</button><div class='txres' id='txres" + id + "'></div></td></tr>";
+    });
+    return out + "</table>";
+  };
+
+  if (stayers.length) {
+    html += "<div class='fateHead unspent'>● Still unspent today <span class='sub'>(" + stayers.length.toLocaleString("en-US") + ")</span></div>" + rowsOf(stayers, "stay");
+  }
+  if (leavers.length) {
+    html += "<div class='fateHead goneLater'>● Spent after this block <span class='sub'>(" + leavers.length.toLocaleString("en-US") + ", earliest spend first)</span></div>" + rowsOf(leavers, "leave");
+  }
+  if (resp.truncated) {
+    html += "<div id='hint'>unspent-at-block list capped at 500</div>";
+  }
+  if (resp.pastUtxos && resp.pastUtxos.length) {
+    html += "<details" + (resp.utxos.length ? "" : " open") + " style='margin-top:10px'><summary class='fateHead' style='cursor:pointer;color:#e06c75'>● Spent before this block <span class='sub'>(" +
+      resp.pastCount.toLocaleString("en-US") + (resp.pastTruncated ? ", earliest 100 spends" : "") + ")</span></summary>" + rowsOf(resp.pastUtxos, "leave") + "</details>";
+  }
+  panelBody.innerHTML = html;
+
+  // draw population curve
+  const pc = document.getElementById("popChart");
+  if (pc && resp.pop) {
+    const ctx = pc.getContext("2d");
+    const W = pc.width, H = pc.height, n = resp.pop.length;
+    const maxV = Math.max(...resp.pop, 1);
+    ctx.clearRect(0, 0, W, H);
+    ctx.beginPath();
+    ctx.moveTo(0, H);
+    for (let i = 0; i < n; i++) {
+      const x = i / (n - 1) * (W - 1);
+      const y = H - 2 - (resp.pop[i] / maxV) * (H - 6);
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(W - 1, H);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(122,162,247,0.25)";
+    ctx.fill();
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const x = i / (n - 1) * (W - 1);
+      const y = H - 2 - (resp.pop[i] / maxV) * (H - 6);
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.strokeStyle = "#7aa2f7";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // marker at the viewed block
+    const vx = resp.viewBin / (n - 1) * (W - 1);
+    ctx.beginPath();
+    ctx.moveTo(vx, 0);
+    ctx.lineTo(vx, H);
+    ctx.strokeStyle = "#ff5d5d";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+  panelBody.querySelectorAll(".txbtn").forEach(btn => {
+    btn.onclick = async () => {
+      const el = document.getElementById("txres" + btn.dataset.i);
+      el.textContent = "resolving…";
+      try {
+        const r = await fetch("/api/txid?height=" + btn.dataset.h + "&satoshi=" + btn.dataset.s).then(x => x.json());
+        if (r.error) { el.textContent = r.error; return; }
+        if (!r.matches.length) { el.textContent = "no exact match"; return; }
+        el.innerHTML = r.matches.map(m =>
+          "<a target='_blank' href='https://mempool.space/tx/" + m.txid + "'>" + m.txid.slice(0, 12) + "…:" + m.vout + "</a>"
+        ).join("<br>");
+      } catch (err) { el.textContent = "failed: " + err; }
+    };
+  });
+}
+
+clickLayer.addEventListener("click", e => {
+  if (!info) return;
+  const p = displayToNative(e.clientX, e.clientY);
+  if (!p) return;
+  const [gx, gy, gw, gh] = info.graphRect;
+  if (p.nx < gx || p.ny < gy || p.nx >= gx + gw || p.ny >= gy + gh) {
+    // Outside the graph (HUD / axis labels): treat as "dismiss".
+    closeDrawer();
+    return;
+  }
+  selectPixel(p.nx, p.ny);
+});
+
+// ---- PiP: overlays and keyboard aids cannot render in the floating window ----
+function pipNotice(show) {
+  let el = document.getElementById("pipNote");
+  if (show && !el) {
+    el = document.createElement("div");
+    el.id = "pipNote";
+    el.style.cssText = "position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:8;background:#1c2333f0;border:1px solid #2a3245;border-radius:8px;padding:14px 20px;font-size:13px;color:#d8dee9;text-align:center;max-width:340px";
+    el.innerHTML = "<b>Picture-in-Picture active.</b><br>Pixel picking, crosshair and arrow-key nudge only work in this page view — PiP is fine for just watching.<br><br><button style='background:#263049;color:inherit;border:1px solid #2a3245;border-radius:4px;padding:5px 12px;cursor:pointer'>Exit PiP</button>";
+    el.querySelector("button").onclick = () => { if (document.pictureInPictureElement) document.exitPictureInPicture(); };
+    document.getElementById("videoWrap").appendChild(el);
+  } else if (!show && el) {
+    el.remove();
+  }
+}
+vid.addEventListener("enterpictureinpicture", () => pipNotice(true));
+vid.addEventListener("leavepictureinpicture", () => { pipNotice(false); if (vid.paused) captureFrame(); });
+
+// ---- keep the crosshair glued to its native pixel across window resizes ----
+window.addEventListener("resize", () => {
+  if (!selPixel || crosshair.style.display === "none" || !info) return;
+  const d = nativeToDisplay(selPixel.nx, selPixel.ny);
+  crosshair.style.left = d.x + "px";
+  crosshair.style.top = d.y + "px";
+});
+
+document.querySelectorAll("[data-pixel-dx]").forEach(button => {
+  button.addEventListener("click", () => {
+    if (selPixel) selectPixel(selPixel.nx + Number(button.dataset.pixelDx), selPixel.ny + Number(button.dataset.pixelDy));
+  });
+});
+
+// ---- arrow-key pixel nudge (exact 1-native-px steps; Shift = 10) ----
+document.addEventListener("keydown", e => {
+  if (!selPixel || !info) return;
+  const t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+  const step = e.shiftKey ? 10 : 1;
+  let dx = 0, dy = 0;
+  if (e.key === "ArrowLeft") dx = -step;
+  else if (e.key === "ArrowRight") dx = step;
+  else if (e.key === "ArrowUp") dy = -step;
+  else if (e.key === "ArrowDown") dy = step;
+  else return;
+  e.preventDefault();
+  selectPixel(selPixel.nx + dx, selPixel.ny + dy);
+});
+
+// ---- clickable loupe: click inside it selects the exact native pixel under the loupe cursor ----
+let loupeCenter = null; // {nx, ny} native pixel at loupe center
+loupe.style.pointerEvents = "auto";
+loupe.style.cursor = "crosshair";
+loupe.addEventListener("click", e => {
+  if (!loupeCenter) return;
+  e.stopPropagation();
+  const r = loupe.getBoundingClientRect();
+  const half = Math.floor(loupeCanvas.width / ZOOM / 2);
+  const nx = loupeCenter.nx - half + Math.floor((e.clientX - r.left) / ZOOM);
+  const ny = loupeCenter.ny - half + Math.floor((e.clientY - r.top) / ZOOM);
+  selectPixel(nx, ny);
+  hideLoupe();
+});
+
+</script>
+</body>
+</html>

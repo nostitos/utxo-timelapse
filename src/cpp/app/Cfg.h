@@ -48,6 +48,12 @@ struct Cfg {
     uint32_t epochBlocks{25000};  // Epoch size in blocks (for epochLog/normalizedGeometric modes)
     double epochRatio{0.5};       // Geometric series ratio (0.5 = each older epoch is half width)
 
+    // Smooth epoch transitions (normalizedGeometric only): number of blocks over
+    // which the layout slides from the old epoch geometry to the new one, with
+    // smoothstep easing. 0 keeps the legacy one-frame cut. Density is rebuilt
+    // exactly from the alive ledger on every frame of the slide.
+    uint32_t epochTransitionBlocks{0};
+
     // Continuous log mode settings
     double logCompressionFactor{4.85};  // Power-law exponent: x = (h/N)^k, higher = more compression
     uint32_t resampleEveryNBlocks{100}; // How often to resample pixels for continuous log mode
@@ -55,10 +61,33 @@ struct Cfg {
     // Y-axis compression: compress 1-100 sat range to half height
     bool compressLowSatoshi{false};
 
+    // Y-axis top band: extend the axis to 100 kBTC with a slim compressed band.
+    // The 10 kBTC - 100 kBTC decade gets 15% of the height of a normal decade,
+    // restoring positional separation among whale coins that would otherwise all
+    // share one saturated top row. Requires compressLowSatoshi and maxSatoshi >= 1e13.
+    bool compressTopSatoshi{false};
+
     // Amount color floor: occupied pixels above ~0.1 BTC get a minimum color that
     // rises with the row's BTC amount (log scale), so sparse whale rows stand out.
     // 1 BTC floors at turbo index 45; 100k BTC (top of axis) floors at peak red 255.
     bool amountColorFloor{false};
+
+    // Amount-weighted density: a UTXO above 5 BTC contributes amount/5BTC to its
+    // pixel's persistent density instead of 1 (a single 100 BTC coin counts like
+    // 20 ordinary coins). Flash size is separate and follows the actual total BTC
+    // value changing at that pixel, with no minimum contribution per UTXO.
+    bool amountWeightedDensity{false};
+
+    // White-hot colormap tail: blend the top of the colormap toward warm white so
+    // perceived brightness rises monotonically with density (the densest pixel is
+    // always the brightest; fixes turbo's dark-red endpoint).
+    bool whiteHotTail{false};
+
+    // Optional amount threshold for the white-hot palette. Zero preserves the
+    // existing behavior and applies white-hot globally. A positive value keeps
+    // the base colormap below that satoshi amount and applies white-hot only to
+    // the threshold row and higher-amount rows.
+    int64_t whiteHotTailMinSatoshi{0};
 
     // Coinjoin filter: only show UTXOs with coinjoin-typical denominations
     bool coinjoinFilter{false};

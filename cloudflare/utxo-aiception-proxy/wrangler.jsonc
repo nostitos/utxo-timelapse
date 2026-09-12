@@ -1,0 +1,8 @@
+{
+  "name": "utxo-aiception-proxy",
+  "account_id": "69090d07eb094199e9f05b0a4af18b53",
+  "main": "worker.js",
+  "compatibility_date": "2026-09-09",
+  "workers_dev": true,
+  "routes": [{ "pattern": "utxo.aiception.ai", "custom_domain": true }]
+}

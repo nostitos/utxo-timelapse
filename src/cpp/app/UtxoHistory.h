@@ -23,6 +23,11 @@
 //                unsorted within a height group
 //
 // Records store spendHeight = UINT32_MAX when unspent at the end of the data.
+//
+// Section order is defined ONLY by the header offsets. The full builder writes
+// blockTimes/heightIndex before the records; the incremental updater
+// ('utxo_history_update') rewrites those small arrays BEHIND the enlarged
+// record array. Readers must always go through the offsets.
 
 #include <cstdint>
 

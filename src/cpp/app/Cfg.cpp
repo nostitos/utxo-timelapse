@@ -114,6 +114,14 @@ auto parseCfg(std::filesystem::path const& cfgFile) -> Cfg {
     } catch (...) {
         cfg.epochRatio = 0.5;  // Default: each older epoch is half width
     }
+    try {
+        cfg.epochTransitionBlocks = static_cast<uint32_t>(load<uint64_t>(data, "epochTransitionBlocks"));
+    } catch (...) {
+        cfg.epochTransitionBlocks = 0;  // Default: one-frame cut
+    }
+    if (cfg.epochTransitionBlocks >= cfg.epochBlocks) {
+        throw std::runtime_error("epochTransitionBlocks must be smaller than epochBlocks");
+    }
 
     // Continuous log mode settings
     try {
@@ -134,11 +142,40 @@ auto parseCfg(std::filesystem::path const& cfgFile) -> Cfg {
         cfg.compressLowSatoshi = false;  // Default: no compression
     }
 
+    // Optional Y-axis top band (10 kBTC - 100 kBTC at 15% decade height)
+    try {
+        cfg.compressTopSatoshi = load<bool>(data, "compressTopSatoshi");
+    } catch (...) {
+        cfg.compressTopSatoshi = false;
+    }
+
     // Optional amount color floor (whale-band visibility)
     try {
         cfg.amountColorFloor = load<bool>(data, "amountColorFloor");
     } catch (...) {
         cfg.amountColorFloor = false;  // Default: original colors
+    }
+
+    // Optional amount-weighted density (whales add amount/5BTC to density)
+    try {
+        cfg.amountWeightedDensity = load<bool>(data, "amountWeightedDensity");
+    } catch (...) {
+        cfg.amountWeightedDensity = false;
+    }
+
+    // Optional white-hot colormap tail (monotonic perceived brightness)
+    try {
+        cfg.whiteHotTail = load<bool>(data, "whiteHotTail");
+    } catch (...) {
+        cfg.whiteHotTail = false;
+    }
+    try {
+        cfg.whiteHotTailMinSatoshi = load<int64_t>(data, "whiteHotTailMinSatoshi");
+    } catch (...) {
+        cfg.whiteHotTailMinSatoshi = 0;
+    }
+    if (cfg.whiteHotTailMinSatoshi < 0) {
+        throw std::runtime_error("whiteHotTailMinSatoshi must be zero or positive");
     }
 
     if (cfg.xAxisMode == "continuousLog") {
@@ -147,6 +184,10 @@ auto parseCfg(std::filesystem::path const& cfgFile) -> Cfg {
     } else {
         LOG("X-axis mode: {}, epochBlocks: {}, epochRatio: {}",
             cfg.xAxisMode, cfg.epochBlocks, cfg.epochRatio);
+        if (cfg.epochTransitionBlocks > 0) {
+            LOG("Smooth epoch transitions: {} blocks per slide (smoothstep), density rebuilt from ledger each frame",
+                cfg.epochTransitionBlocks);
+        }
     }
     // Optional coinjoin filter
     try {
@@ -156,8 +197,24 @@ auto parseCfg(std::filesystem::path const& cfgFile) -> Cfg {
     }
 
     LOG("compressLowSatoshi: {}", cfg.compressLowSatoshi);
+    if (cfg.compressTopSatoshi) {
+        LOG("compressTopSatoshi: ENABLED (10kBTC-100kBTC band at 15% decade height)");
+    }
     if (cfg.amountColorFloor) {
         LOG("amountColorFloor: ENABLED (>=0.1 BTC rows get amount-scaled minimum color)");
+    }
+    if (cfg.amountWeightedDensity) {
+        LOG("amountWeightedDensity: ENABLED (UTXOs above 5 BTC add amount/5BTC density; flashes use actual BTC moved)");
+    }
+    if (cfg.whiteHotTail) {
+        if (cfg.whiteHotTailMinSatoshi > 0) {
+            LOG("whiteHotTail: ENABLED at and above {} satoshi (lower rows retain the base colormap)",
+                cfg.whiteHotTailMinSatoshi);
+        } else {
+            LOG("whiteHotTail: ENABLED globally (colormap top blends to warm white, monotonic brightness)");
+        }
+    } else if (cfg.whiteHotTailMinSatoshi > 0) {
+        LOG("whiteHotTailMinSatoshi ignored because whiteHotTail is disabled");
     }
     if (cfg.coinjoinFilter) {
         LOG("Coinjoin filter: ENABLED");

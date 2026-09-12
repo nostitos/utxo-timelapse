@@ -1,0 +1,48 @@
+{
+    "bitcoinRpcUrl": "http://127.0.0.1:18332",
+    "blkFile": "/Volumes/4T Data/buv_render/changes.blk1.full964k",
+    "utxoToChangeNumThreads": 12,
+    "utxoToChangeNumResources": 24,
+    "imageWidth": 1920,
+    "imageHeight": 1080,
+    "graphRect": [
+        0,
+        5,
+        1860,
+        1036
+    ],
+    "minSatoshi": 1,
+    "maxSatoshi": 10000000000000,
+    "skipBlocks": 0,
+    "repeatLastBlockTimes": 60,
+    "startShowAtBlockHeight": 195000,
+    "endShowAtBlockHeight": 225000,
+    "connectionIpAddr": "127.0.0.1",
+    "connectionSocket": 12987,
+    "colorMap": "turbo",
+    "colorUpperValueLimit": 500,
+    "colorHighlightRGB": [
+        255,
+        255,
+        255
+    ],
+    "colorBackgroundRGB": [
+        0,
+        0,
+        0
+    ],
+    "checkpointFile": "",
+    "checkpointIntervalBlocks": 0,
+    "xAxisMode": "normalizedGeometric",
+    "epochBlocks": 105000,
+    "epochRatio": 0.5,
+    "logCompressionFactor": 4.85,
+    "resampleEveryNBlocks": 100,
+    "compressLowSatoshi": true,
+    "compressTopSatoshi": true,
+    "amountColorFloor": false,
+    "amountWeightedDensity": true,
+    "whiteHotTail": true,
+    "whiteHotTailMinSatoshi": 1000000000,
+    "epochTransitionBlocks": 0
+}

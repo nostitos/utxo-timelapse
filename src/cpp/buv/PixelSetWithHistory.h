@@ -1,6 +1,8 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <vector>
 
@@ -17,6 +19,13 @@ public:
         uint32_t block_height{};
         size_t pixel_idx{};
         uint16_t pixel_distance{};  // Distance from origin block to current block (for variable fade)
+        uint16_t min_fade_duration{}; // Amount-scaled lower bound; 0 keeps the distance-only behavior.
+        // Anchor for smooth epoch slides: the creation height whose column this
+        // flash belongs to, and this pixel's offset from that column. Lets the
+        // flash follow its column when the X mapping is re-blended each frame.
+        uint32_t anchor_height{};
+        int16_t anchor_dx{};
+        bool anchored{false};
     };
     using BlockheightPixelCollection = std::vector<BlockheightPixelidx>;
 
@@ -25,18 +34,55 @@ public:
         , m_pixel(size, sentinel) {}
 
     // Assumes that idx < size. O(1) operation.
-    void insert(uint32_t block_height, size_t pixel_idx, uint16_t pixel_distance = 0) {
+    void insert(uint32_t block_height,
+                size_t pixel_idx,
+                uint16_t pixel_distance = 0,
+                uint16_t min_fade_duration = 0,
+                bool anchored = false,
+                uint32_t anchor_height = 0,
+                int16_t anchor_dx = 0) {
         if (sentinel == m_pixel[pixel_idx]) {
             // not set: create entry
             m_pixel[pixel_idx] = m_blockheight_pixelidx.size();
-            m_blockheight_pixelidx.emplace_back(BlockheightPixelidx{block_height, pixel_idx, pixel_distance});
+            m_blockheight_pixelidx.emplace_back(
+                BlockheightPixelidx{block_height, pixel_idx, pixel_distance, min_fade_duration,
+                                    anchor_height, anchor_dx, anchored});
         } else {
-            // pixel already set: update it with the max
+            // Pixel already set: keep the brightest (youngest) overlay while
+            // retaining the longest fade requested by overlapping flashes.
             auto& pos = m_blockheight_pixelidx[m_pixel[pixel_idx]];
             if (block_height > pos.block_height) {
                 pos.block_height = block_height;
-                pos.pixel_distance = pixel_distance;
+                if (anchored) {
+                    pos.anchored = true;
+                    pos.anchor_height = anchor_height;
+                    pos.anchor_dx = anchor_dx;
+                }
             }
+            pos.pixel_distance = std::max(pos.pixel_distance, pixel_distance);
+            pos.min_fade_duration = std::max(pos.min_fade_duration, min_fade_duration);
+        }
+    }
+
+    // Move every anchored entry to the column its anchor height maps to now.
+    // columnOf(height) returns the absolute image x for a creation height.
+    // Unanchored entries are dropped (they cannot be placed under a new map).
+    // Collisions keep the youngest entry; off-image results are dropped.
+    void remap(size_t imageWidth, size_t imageHeight, std::function<size_t(uint32_t)> const& columnOf) {
+        auto old = std::move(m_blockheight_pixelidx);
+        m_blockheight_pixelidx.clear();
+        std::fill(m_pixel.begin(), m_pixel.end(), sentinel);
+        for (auto const& e : old) {
+            if (!e.anchored) {
+                continue;
+            }
+            auto const y = e.pixel_idx / imageWidth;
+            auto const x = static_cast<long>(columnOf(e.anchor_height)) + e.anchor_dx;
+            if (x < 0 || x >= static_cast<long>(imageWidth) || y >= imageHeight) {
+                continue;
+            }
+            auto const idx = y * imageWidth + static_cast<size_t>(x);
+            insert(e.block_height, idx, e.pixel_distance, e.min_fade_duration, true, e.anchor_height, e.anchor_dx);
         }
     }
 
@@ -47,7 +93,9 @@ public:
             auto& pos_at_idx = m_blockheight_pixelidx[idx];
 
             // Calculate per-pixel fade duration: 10 blocks (near) to 300 blocks (far)
-            uint32_t fade_duration = getFadeDuration(pos_at_idx.pixel_distance);
+            uint32_t fade_duration = std::max(
+                getFadeDuration(pos_at_idx.pixel_distance),
+                static_cast<uint32_t>(pos_at_idx.min_fade_duration));
 
             if (pos_at_idx.block_height + fade_duration < current_block_height) {
                 // clear that pixel

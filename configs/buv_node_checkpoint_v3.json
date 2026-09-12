@@ -20,7 +20,7 @@
     "colorBackgroundRGB": [0, 0, 0],
     "checkpointFile": "/buv_data/checkpoint_v3.utxo",
     "checkpointIntervalBlocks": 5000,
-    "allowBlkFileTruncate": true,
+    "allowBlkFileTruncate": false,
     "xAxisMode": "linear",
     "epochBlocks": 210000,
     "epochRatio": 0.5,

@@ -1,6 +1,6 @@
 {
     "bitcoinRpcUrl": "http://127.0.0.1:8332",
-    "blkFile": "/buv_data/changes.blk1",
+    "blkFile": "/buv_data/changes.blk1.v3",
     "utxoToChangeNumThreads": 12,
     "utxoToChangeNumResources": 24,
     "imageWidth": 3840,
@@ -18,8 +18,9 @@
     "colorUpperValueLimit": 500,
     "colorHighlightRGB": [255, 255, 255],
     "colorBackgroundRGB": [0, 0, 0],
-    "checkpointFile": "/buv_data/checkpoint.utxo",
+    "checkpointFile": "/buv_data/checkpoint_v3.utxo",
     "checkpointIntervalBlocks": 10000,
+    "allowBlkFileTruncate": false,
     "xAxisMode": "linear",
     "epochBlocks": 210000,
     "epochRatio": 0.5,

@@ -350,7 +350,9 @@ public:
         // draw satoshi lines
         auto x = mSatoshiBlockheightToPixel.blockheightToPixelWidth(blockHeader.blockHeight);
         auto oneBtc = int64_t(100'000'000);
-        for (int64_t mult = 1; mult <= oneBtc * 10000; mult *= 10) {
+        auto const topBand = mCfg.compressTopSatoshi && mCfg.maxSatoshi >= 10'000'000'000'000LL;
+        auto const maxTickMult = topBand ? oneBtc * 100000 : oneBtc * 10000;
+        for (int64_t mult = 1; mult <= maxTickMult; mult *= 10) {
             for (int64_t digit = 1; digit < 10; ++digit) {
                 auto y = mSatoshiBlockheightToPixel.satoshiToPixelHeight(digit * mult);
                 auto offset = 4;
@@ -402,12 +404,30 @@ public:
         write(mMat, x, offset + 40 + 17, Origin::top_center, "{}", formattedTime);
 
         // draw the legend
-        writeAmount(x,
-                    mSatoshiBlockheightToPixel.satoshiToPixelHeight(10000 * oneBtc),
-                    "10",
-                    "kBTC",
-                    Origin::top_right,
-                    Origin::top_left);
+        if (topBand) {
+            writeAmount(x,
+                        mSatoshiBlockheightToPixel.satoshiToPixelHeight(100000 * oneBtc),
+                        "100",
+                        "kBTC",
+                        Origin::top_right,
+                        Origin::top_left);
+            // Keep the 10 kBTC label below the compressed top band. Centering it
+            // on the boundary overlaps the 100 kBTC label at 1080p, where the
+            // entire 10k-100k band is only about 15 pixels tall.
+            writeAmount(x,
+                        mSatoshiBlockheightToPixel.satoshiToPixelHeight(10000 * oneBtc),
+                        "10",
+                        "kBTC",
+                        Origin::top_right,
+                        Origin::top_left);
+        } else {
+            writeAmount(x,
+                        mSatoshiBlockheightToPixel.satoshiToPixelHeight(10000 * oneBtc),
+                        "10",
+                        "kBTC",
+                        Origin::top_right,
+                        Origin::top_left);
+        }
         writeAmount(x, mSatoshiBlockheightToPixel.satoshiToPixelHeight(1000 * oneBtc), "1", "kBTC");
         writeAmount(x, mSatoshiBlockheightToPixel.satoshiToPixelHeight(100 * oneBtc), "100", "BTC");
         writeAmount(x, mSatoshiBlockheightToPixel.satoshiToPixelHeight(10 * oneBtc), "10", "BTC");
@@ -433,6 +453,10 @@ public:
 
     void setCurrentEpoch(uint32_t epoch) override {
         mSatoshiBlockheightToPixel.setCurrentEpoch(epoch);
+    }
+
+    void syncAxis(SatoshiBlockheightToPixel const& source) override {
+        mSatoshiBlockheightToPixel.copyTransitionFrom(source);
     }
 
     void setTotalBlocks(uint32_t totalBlocks) override {

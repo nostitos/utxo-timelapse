@@ -5,6 +5,7 @@
 #include <buv/truncate.h>
 #include <util/log.h>
 
+#include <algorithm>
 #include <cmath>
 
 namespace buv {
@@ -22,6 +23,14 @@ class SatoshiBlockheightToPixel {
     double mPixelWidth{0};
     double mEpochRatio{0.5};  // Geometric series ratio
 
+    // Smooth epoch transition (normalizedGeometric only). While active, the
+    // layout is a smoothstep blend between the layout for mTransitionFrom and
+    // the layout for mCurrentEpoch. t == 1 (or inactive) is exactly the plain
+    // mCurrentEpoch layout, so the end state of a slide equals a hard cut.
+    bool mTransitionActive{false};
+    uint32_t mTransitionFrom{0};
+    double mTransitionEase{1.0};  // smoothstep(t), cached
+
     // Continuous log mode settings
     double mLogCompressionFactor{4.85};   // Power-law exponent k: x = (h/N)^k
     uint32_t mResampleEveryNBlocks{100};  // Resample every N blocks
@@ -30,6 +39,7 @@ class SatoshiBlockheightToPixel {
 
     // Y-axis compression settings
     bool mCompressLowSatoshi{false};
+    bool mCompressTopSatoshi{false};
 
 public:
     inline explicit SatoshiBlockheightToPixel(Cfg const& cfg, uint32_t numBlocks)
@@ -49,7 +59,16 @@ public:
         , mResampleEveryNBlocks(cfg.resampleEveryNBlocks)
         , mTotalBlocks(numBlocks)
         , mLastResampleBlock(0)
-        , mCompressLowSatoshi(cfg.compressLowSatoshi) {
+        , mCompressLowSatoshi(cfg.compressLowSatoshi)
+        , mCompressTopSatoshi(cfg.compressTopSatoshi) {
+
+        // The slim 10kBTC-100kBTC top band needs the three-zone mapping (which
+        // builds on the compressed low zone) and an axis that actually reaches
+        // 100 kBTC. Fall back to the legacy behavior otherwise.
+        if (mCompressTopSatoshi && (!mCompressLowSatoshi || cfg.maxSatoshi < 10'000'000'000'000LL)) {
+            LOG("WARNING: compressTopSatoshi requires compressLowSatoshi=true and maxSatoshi >= 1e13; disabling top band");
+            mCompressTopSatoshi = false;
+        }
 
         // For continuous log mode, start with mTotalBlocks = 1 so blocks expand to fill screen
         // initially, then compress left as more blocks are added
@@ -69,6 +88,9 @@ public:
         if (mCompressLowSatoshi) {
             LOG("Y-axis compression enabled: 1-100 sat range compressed to 1/3 height");
         }
+        if (mCompressTopSatoshi) {
+            LOG("Y-axis top band enabled: 10kBTC-100kBTC compressed to 15% of a decade");
+        }
     }
 
     [[nodiscard]] inline auto satoshiToPixelHeight(int64_t satoshi) const -> size_t {
@@ -77,6 +99,42 @@ public:
         if (!mCompressLowSatoshi) {
             // Original linear log scale
             return mRect.y + truncate<size_t>(0, static_cast<size_t>(mFnSatoshi(std::log(famount))), mRect.h - 1);
+        }
+
+        if (mCompressTopSatoshi) {
+            // Three-zone mapping (top of screen first):
+            //   top:  1e12 - 1e13 sat (10kBTC-100kBTC), 15% of a normal decade
+            //   mid:  100 sat - 1e12, log-linear, fills the remainder
+            //   low:  1 - 100 sat, compressed to 1/3 (existing rule)
+            // Amounts >= 1e13 truncate to y = 0: the 100 kBTC line doubles as
+            // the ">= 100 kBTC" line.
+            double const logValue = std::log(static_cast<double>(famount));
+            double const log100 = std::log(100.0);
+            double const logTop = std::log(1e12);   // 10 kBTC
+            double const logMax = std::log(1e13);   // 100 kBTC
+            double const totalHeight = static_cast<double>(mRect.h);
+
+            // Low zone keeps the 1/3 rule against the 13-decade total.
+            double const lowHeight = ((log100 / logMax) * totalHeight) / 3.0;
+            // Remainder splits as 10 decade-units (mid) + 0.15 decade-units (top).
+            double const decadeUnit = (totalHeight - lowHeight) / 10.15;
+            double const midHeight = 10.0 * decadeUnit;
+            double const topHeight = 0.15 * decadeUnit;
+
+            double pixelY;
+            if (logValue >= logMax) {
+                pixelY = 0.0;
+            } else if (logValue >= logTop) {
+                double const t = (logValue - logTop) / (logMax - logTop);
+                pixelY = topHeight * (1.0 - t);
+            } else if (logValue > log100) {
+                double const t = (logValue - log100) / (logTop - log100);
+                pixelY = topHeight + midHeight * (1.0 - t);
+            } else {
+                double const t = logValue / log100; // log(1) == 0
+                pixelY = totalHeight - lowHeight * t;
+            }
+            return mRect.y + truncate<size_t>(0, static_cast<size_t>(pixelY), mRect.h - 1);
         }
 
         // Compressed Y-axis: 1-100 sat takes 1/3 of normal space (redistributed to higher values)
@@ -138,7 +196,17 @@ public:
         }
 
         if (mXAxisMode == "normalizedGeometric") {
-            // Normalized geometric distribution
+            // Normalized geometric distribution (blended during a transition)
+            if (mTransitionActive) {
+                auto const xOld = blockheightToPixelWidthNormalizedDouble(blockHeight, mTransitionFrom);
+                auto const xNew = blockheightToPixelWidthNormalizedDouble(blockHeight, mCurrentEpoch);
+                auto const x = xOld + (xNew - xOld) * mTransitionEase;
+                auto pixel_x = static_cast<size_t>(x);
+                if (pixel_x > mRect.w - 1) {
+                    pixel_x = mRect.w - 1;
+                }
+                return mRect.x + pixel_x;
+            }
             return mRect.x + blockheightToPixelWidthNormalized(blockHeight, mCurrentEpoch);
         }
 
@@ -362,6 +430,39 @@ public:
             LOG("Epoch transition: {} -> {}", mCurrentEpoch, epoch);
             mCurrentEpoch = epoch;
         }
+        mTransitionActive = false;
+        mTransitionEase = 1.0;
+    }
+
+    // Put the mapper mid-slide between two epoch layouts. t in [0,1] is the
+    // linear progress; the blend uses smoothstep(t) so both ends are gentle.
+    // Only normalizedGeometric blends; other modes ignore the transition state
+    // and simply adopt toEpoch.
+    inline void setEpochTransition(uint32_t fromEpoch, uint32_t toEpoch, double t) {
+        if (mCurrentEpoch != toEpoch) {
+            LOG("Epoch transition: {} -> {}", mCurrentEpoch, toEpoch);
+            mCurrentEpoch = toEpoch;
+        }
+        if (mXAxisMode != "normalizedGeometric" || t >= 1.0) {
+            mTransitionActive = false;
+            mTransitionEase = 1.0;
+            return;
+        }
+        t = std::max(0.0, t);
+        mTransitionActive = true;
+        mTransitionFrom = fromEpoch;
+        mTransitionEase = t * t * (3.0 - 2.0 * t);
+    }
+
+    [[nodiscard]] inline auto transitionActive() const -> bool { return mTransitionActive; }
+    [[nodiscard]] inline auto transitionFrom() const -> uint32_t { return mTransitionFrom; }
+    // Returns the linear progress t (inverse of the cached smoothstep) only for
+    // syncing another mapper; callers should copy state via copyTransitionFrom.
+    inline void copyTransitionFrom(SatoshiBlockheightToPixel const& other) {
+        mCurrentEpoch = other.mCurrentEpoch;
+        mTransitionActive = other.mTransitionActive;
+        mTransitionFrom = other.mTransitionFrom;
+        mTransitionEase = other.mTransitionEase;
     }
 
     [[nodiscard]] inline auto getCurrentEpoch() const -> uint32_t {

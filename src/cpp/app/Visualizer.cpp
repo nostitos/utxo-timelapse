@@ -105,7 +105,7 @@ TEST_CASE("visualizer" * doctest::skip()) {
 
         density.end_block(blockHeight, [&](uint8_t const* data) {
             // Sync HUD with Density for correct legend positioning
-            hud->setCurrentEpoch(density.getCurrentEpoch());
+            hud->syncAxis(density.axisMapper());
             hud->setTotalBlocks(density.getTotalBlocks());
             hud->draw(data, cib);
             socketStream->write(hud->data(), hud->size());
@@ -131,7 +131,7 @@ TEST_CASE("visualizer" * doctest::skip()) {
     // fade out & keep last image for 1 minute
     for (uint32_t i = 0; i < cfg.repeatLastBlockTimes; ++i) {
         density.fadeOut(lastCib.blockData().blockHeight + i + 1, [&](uint8_t const* data) {
-            hud->setCurrentEpoch(density.getCurrentEpoch());
+            hud->syncAxis(density.axisMapper());
             hud->setTotalBlocks(density.getTotalBlocks());
             hud->draw(data, lastCib);
             socketStream->write(hud->data(), hud->size());

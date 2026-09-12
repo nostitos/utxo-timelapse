@@ -1,5 +1,12 @@
 # Updating `changes.blk1`
 
+For the current Mac/Umbrel installation, use the retained v3 files and runtime
+listed in [Current render and update files](render-files.md). The September 2026
+cleanup retired v1/v2 datasets and old render outputs. The node's working updater
+is `buv_blk_v3` / `buv:checkpoint-v3`; use that v3 runtime with the canonical update
+config, not a legacy cached `buv:latest` image. `allowBlkFileTruncate` is disabled
+for routine updates.
+
 `buv` does not render directly from Bitcoin Core. Its `utxo_to_change` task first
 converts the chain into a compact, sequential file named `changes.blk1`. The
 visualizer memory-maps that file and emits one RGB frame for each rendered block.

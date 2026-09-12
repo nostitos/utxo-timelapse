@@ -1,0 +1,9 @@
+name = "utxo-video-cdn"
+main = "src/index.js"
+compatibility_date = "2026-09-04"
+workers_dev = true
+preview_urls = false
+
+[[r2_buckets]]
+binding = "VIDEO_BUCKET"
+bucket_name = "utxo-video"

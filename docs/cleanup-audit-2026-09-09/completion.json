@@ -1,0 +1,74 @@
+{
+  "completedAt": "2026-09-10T02:35:21.185862+00:00",
+  "noAdditionalBackupCopies": true,
+  "retainedWorkingDataBytes": 189064619159,
+  "deletedBytesByHost": {
+    "mac-external": 2182155430116,
+    "mac-internal": 26317442826,
+    "umbrel": 143061746997
+  },
+  "measuredFreeSpaceChangeBytes": {
+    "/dev/disk3s5": -533069824,
+    "/dev/disk5s1": 2182152970240,
+    "umbrel": 143966048256
+  },
+  "completedFileDeletions": 1890,
+  "retainedLargeFiles": [
+    {
+      "host": "mac-external",
+      "path": "/Volumes/4T Data/buv_render/changes.blk1.full964k",
+      "bytes": 18219536984
+    },
+    {
+      "host": "mac-external",
+      "path": "/Volumes/4T Data/buv_render/utxo_4k_epoch105k_60fps_exactledger_weighted_topband_splitpalette_transition_crf21.mp4",
+      "bytes": 83926791196
+    },
+    {
+      "host": "mac-external",
+      "path": "/Volumes/4T Data/buv_render/utxo_history.bin",
+      "bytes": 58248613812
+    },
+    {
+      "host": "umbrel",
+      "path": "/home/umbrel/buv_data/changes.blk1.v3",
+      "bytes": 18223221539
+    },
+    {
+      "host": "umbrel",
+      "path": "/home/umbrel/buv_data/checkpoint_v3.utxo",
+      "bytes": 10446455628
+    }
+  ],
+  "cloudObjectsChecked": 1610,
+  "publicAfter": {
+    "info": "ok",
+    "playlist": "ok",
+    "pixel": "ok",
+    "segment_00000.m4s": 206,
+    "segment_00804.m4s": 206,
+    "segment_01607.m4s": 206
+  },
+  "nodeFinal": {
+    "removedContainers": [
+      "buv_blk_v2",
+      "buv_blk964k",
+      "buv_blk",
+      "buv_visualizer"
+    ],
+    "result": "17d69d3e022db706768a95bec168a5983ca8ca53369bc4dd76196e6342119f9d\n15ca577f8d5b3871f2c35b2dde8a8bd18f717ff6a381a72078b4b38e567c69e6\n4c68dfc8e09560636d4937766b05bddb7c4728ea72d5d72ad184f0f08f343dbc\n66de30aff1013c4b3bd5347972a267be44cd430c6e4046670b33f72957495a5b\n",
+    "v3": "buv_blk_v3 Exited (0) 11 days ago\n",
+    "core": {
+      "chain": "main",
+      "blocks": 966297,
+      "headers": 966297,
+      "initialblockdownload": false
+    },
+    "df": "Filesystem      1K-blocks       Used Available Use% Mounted on\n/dev/sda4      1546136516 1323075820 223044312  86% /home\n"
+  },
+  "historyHeader": {
+    "blocks": 964389,
+    "records": 3639092848
+  },
+  "macSpaceNote": "Project files removed; internal free space has not increased. Nine purgeable Time Machine snapshots exist; no deleted BUV data file is open. Snapshots/shared extents likely retain old blocks. OS snapshots were not removed."
+}

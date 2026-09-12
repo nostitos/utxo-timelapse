@@ -1,0 +1,55 @@
+{
+  "auditDateToronto": "2026-09-09",
+  "status": "completed",
+  "requiredNodeBackupBytes": 0,
+  "nodeV3": {
+    "height": 964483,
+    "blkBytes": 18223221539,
+    "checkpointBytes": 10446455628,
+    "tailOffset": 18223182086,
+    "headerMagic": "UTX3",
+    "fullTailContentRechecked": true
+  },
+  "publicExplorer": {
+    "url": "https://utxo.aiception.ai/",
+    "version": "hls-v1-crf21",
+    "playlistSegments": 1608,
+    "playlistMatchesLocal": true,
+    "sampledRangeResponses": {
+      "init.mp4": 206,
+      "segment_00000.m4s": 206,
+      "segment_00804.m4s": 206,
+      "segment_01607.m4s": 206
+    },
+    "pixelQuerySucceeded": true,
+    "allCloudObjectsRechecked": true
+  },
+  "activeBuvJobsFound": false,
+  "localExplorerListening": false,
+  "sourceMediaChecks": "ffprobe current and two fallbacks; current log diagnostics; no new full media hash scan",
+  "retentionPolicy": "Latest video and working files in their existing roles; no extra backup copies",
+  "previousPolicyProposedDeletionBytes": {
+    "mac-external": 1943068237580,
+    "mac-internal": 26317442801,
+    "umbrel": 124842210013
+  },
+  "revisedCandidateBytesIncludingConditional": {
+    "mac-external": 2182155429942,
+    "mac-internal": 26317442801,
+    "umbrel": 143061746997
+  },
+  "requiredLogicalWorkingDataBytes": 189064619159,
+  "retainedLargeArtifactCount": 5,
+  "conditionalChecksPending": [],
+  "nodeBackupPolicy": "No extra backup copy, per user instruction; retained updater pair on node and existing working input on Mac",
+  "deletedBytesByHost": {
+    "mac-external": 2182155430116,
+    "mac-internal": 26317442826,
+    "umbrel": 143061746997
+  },
+  "measuredFreeSpaceChangeBytes": {
+    "/dev/disk3s5": -533069824,
+    "/dev/disk5s1": 2182152970240,
+    "umbrel": 143966048256
+  }
+}

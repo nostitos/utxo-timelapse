@@ -2,6 +2,7 @@
 
 #include <app/BlockEncoder.h>
 #include <app/Cfg.h>
+#include <buv/SatoshiBlockheightToPixel.h>
 #include <util/Mmap.h>
 
 #include <memory>
@@ -32,6 +33,10 @@ public:
 
     // Update the current epoch for epoch-based logarithmic compression
     virtual void setCurrentEpoch(uint32_t epoch) = 0;
+
+    // Copy the full X-axis state (epoch plus any in-progress smooth slide) from
+    // the density's mapper so ticks and labels move with the picture.
+    virtual void syncAxis(SatoshiBlockheightToPixel const& source) = 0;
 
     // Update total blocks for continuous log mode (keeps HUD in sync with Density)
     virtual void setTotalBlocks(uint32_t totalBlocks) = 0;
