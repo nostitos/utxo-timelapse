@@ -18,6 +18,8 @@ Test the hero/clip play controls, keyboard image lightbox, era links, before/aft
 
 ## Media provenance
 
+The hero statistics are conservative lower bounds that remain true as updates are appended. “8 trillion+ pixels rendered” counts 3,840 × 2,160 × 966,361 block frames = 8,015,384,678,400 pixel positions across the September 10, 2026 master, excluding its final hold frames. This measures frame pixels, not CPU instructions or distinct outputs. The output-record count and frame count come from `assets/manifest.json`; the dated captions describe those source snapshots, while the explorer may contain a newer published timeline.
+
 All chain imagery comes from the retained 4K master. `assets/manifest.json` records source filename, edition, exact frame blocks/timestamps and clip ranges. The 1080p WebP images are gallery previews; clicking opens 4K WebP. Four short clips have H.264 and VP9 versions. These are lossy previews, not original RGB evidence.
 
 ```sh
