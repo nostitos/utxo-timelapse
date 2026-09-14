@@ -14,43 +14,6 @@ if(lightbox){
  $('#lightbox-close').addEventListener('click',()=>lightbox.close());
  lightbox.addEventListener('click',e=>{if(e.target===lightbox){const r=lightbox.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)lightbox.close();}});
 }
-const compare=$('#compare-range');
-if(compare){
- const comparison=$('#comparison');
- const updateComparison=()=>{
-  comparison.style.setProperty('--split',compare.value+'%');
-  compare.setAttribute('aria-valuetext',`${compare.value}% original, ${100-Number(compare.value)}% UTXO Timelapse`);
- };
- // The native range provides keyboard and assistive-technology controls. Pointer
- // coordinates follow the image itself, without an invisible native thumb offset.
- const moveComparison=e=>{
-  const bounds=compare.getBoundingClientRect();
-  if(!bounds.width)return;
-  compare.value=String(Math.round(Math.max(0,Math.min(1,(e.clientX-bounds.left)/bounds.width))*100));
-  updateComparison();
- };
- let pointer=null;
- compare.addEventListener('input',updateComparison);
- compare.addEventListener('pointerdown',e=>{
-  if(!e.isPrimary||e.button!==0)return;
-  e.preventDefault();
-  pointer=e.pointerId;
-  compare.focus({preventScroll:true});
-  compare.setPointerCapture(pointer);
-  moveComparison(e);
- });
- compare.addEventListener('pointermove',e=>{if(e.pointerId===pointer)moveComparison(e);});
- compare.addEventListener('pointerup',e=>{
-  if(e.pointerId!==pointer)return;
-  moveComparison(e);
-  compare.releasePointerCapture(pointer);
-  pointer=null;
- });
- const cancel=()=>{pointer=null;};
- compare.addEventListener('pointercancel',cancel);
- compare.addEventListener('lostpointercapture',cancel);
- updateComparison();
-}
 // Previews load on explicit request, or when visible with motion enabled. Playback always has a pause control.
 const userPaused=new WeakSet();
 function loadVideo(v){if(v.dataset.loaded)return;v.querySelectorAll('source[data-src]').forEach(s=>s.src=s.dataset.src);v.dataset.loaded='true';v.load();}

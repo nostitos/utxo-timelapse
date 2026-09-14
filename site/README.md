@@ -14,7 +14,7 @@ node --experimental-default-type=module scripts/check_site_mapping.mjs
 
 Open `http://localhost:8080/`. Also validate under a `/utxo-timelapse/` prefix before publishing. The Pages workflow runs link/asset/config coverage and mapper checks, then deploys only `site/` on pushes to `master`. Pull requests validate without deploying. Repository Pages settings must select **GitHub Actions**.
 
-Test the hero/clip play controls, keyboard image lightbox, era links, before/after slider, epoch demo, configuration filter, mobile navigation and technical table scrolling. Respect reduced motion; all editorial text and image links remain available without JavaScript. Review desktop and narrow-screen screenshots after visual changes.
+Test the hero/clip play controls, keyboard image lightbox, era links, epoch demo, configuration filter, mobile navigation and technical table scrolling. Respect reduced motion; all editorial text and image links remain available without JavaScript. Review desktop and narrow-screen screenshots after visual changes.
 
 ## Media provenance
 
@@ -32,7 +32,7 @@ Requires FFmpeg, cwebp and ImageMagick. Existing outputs are retained unless `--
 
 `assets/ui/` contains actual browser captures of the branded explorer, verified against the production video/history. Screenshot source and states are recorded in `assets/ui/provenance.json`. `assets/readme/annotated-frame.jpg` uses a real frame with editorial labels. `assets/readme/social.jpg` is a social preview crop. `assets/diagrams/` contains authored explanatory SVGs. No generated illustration stands in for observed blockchain data.
 
-`assets/upstream/` contains the three original comparison images/animation from **[Martinus's BitcoinUtxoVisualizer](https://github.com/martinus/BitcoinUtxoVisualizer)**, retained under the repository's original MIT license. These are explicitly labelled as upstream material. Development palette comparisons are labelled separately.
+`assets/upstream/` preserves two archival images and an animation from **[Martinus's BitcoinUtxoVisualizer](https://github.com/martinus/BitcoinUtxoVisualizer)** under the repository's original MIT license. Development palette comparisons are labelled separately.
 
 ## Asset budgets and licenses
 

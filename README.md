@@ -83,4 +83,4 @@ Requires a C++17 compiler, CMake, OpenCV and TBB. FFmpeg encodes the frames. Bit
 
 **[Martinus's BitcoinUtxoVisualizer](https://github.com/martinus/BitcoinUtxoVisualizer)** supplied the original visualization concept and code foundation. That inspiration deserves clear credit. UTXO Timelapse is maintained by **[nostitos](https://github.com/nostitos)** and has its own visual direction, accounting model, explorer, cloud delivery and update workflow.
 
-The original [MIT license and copyright](LICENSE) are preserved. The guide labels the upstream images used in its origin comparison. Dependencies and font/media licenses are listed in the [technical credits](https://nostitos.github.io/utxo-timelapse/technical.html#credits).
+The original [MIT license and copyright](LICENSE) are preserved. Dependencies and font/media licenses are listed in the [technical credits](https://nostitos.github.io/utxo-timelapse/technical.html#credits).
