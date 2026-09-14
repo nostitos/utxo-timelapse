@@ -7,7 +7,7 @@
 An evolving landscape of creation, survival and spending.<br>
 Explore 966,361 blocks in a 4K film. Pause any moment and inspect the outputs behind a pixel.
 
-**[Read the illustrated guide](https://nostitos.github.io/utxo-timelapse/)** · **[Open the explorer](https://utxo.aiception.ai/)** · **[Under the hood](https://nostitos.github.io/utxo-timelapse/technical.html)**
+**[Read the illustrated guide](https://nostitos.github.io/utxo-timelapse/)** · **[Open the explorer](https://bitcointimelapse.com/)** · **[Under the hood](https://nostitos.github.io/utxo-timelapse/technical.html)**
 
 [![A moving landscape of Bitcoin outputs, extracted from the published 4K film](site/assets/readme/hero.gif)](https://nostitos.github.io/utxo-timelapse/)
 
@@ -28,9 +28,9 @@ The **[visual guide](https://nostitos.github.io/utxo-timelapse/)** walks through
 
 ## Go from a picture to evidence
 
-[![The explorer at block 314000, showing the lifecycle of outputs in one selected pixel](site/assets/ui/explorer-drawer.webp)](https://utxo.aiception.ai/?block=314000&x=3000&y=1525)
+[![The explorer at block 314000, showing the lifecycle of outputs in one selected pixel](site/assets/ui/explorer-drawer.webp)](https://bitcointimelapse.com/?block=314000&x=3000&y=1525)
 
-**[Open this exact view](https://utxo.aiception.ai/?block=314000&x=3000&y=1525).** At block 314,000, this pixel contains two unspent outputs. One remains unspent at the published cutoff; the other was spent in 2018. The drawer shows amounts, dates, population over time and candidate transaction matches.
+**[Open this exact view](https://bitcointimelapse.com/?block=314000&x=3000&y=1525).** At block 314,000, this pixel contains two unspent outputs. One remains unspent at the published cutoff; the other was spent in 2018. The drawer shows amounts, dates, population over time and candidate transaction matches.
 
 - Pause, magnify and inspect native image pixels.
 - Jump by block or UTC date; step through individual frames.

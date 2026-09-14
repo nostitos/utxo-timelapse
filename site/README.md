@@ -1,6 +1,6 @@
 # The illustrated guide
 
-Published at **https://nostitos.github.io/utxo-timelapse/**. Plain HTML, CSS and ES modules; no package install or build step. `index.html` is the visual guide and `technical.html` the engineering reference. The main explorer remains at **https://utxo.aiception.ai/**.
+Published at **https://nostitos.github.io/utxo-timelapse/**. Plain HTML, CSS and ES modules; no package install or build step. `index.html` is the visual guide and `technical.html` the engineering reference. The main explorer is **https://bitcointimelapse.com/**; **https://utxo.aiception.ai/** remains an alias.
 
 ## Preview and validate
 

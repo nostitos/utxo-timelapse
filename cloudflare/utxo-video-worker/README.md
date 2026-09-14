@@ -1,6 +1,6 @@
 # UTXO Timelapse cloud explorer
 
-The production explorer at **https://utxo.aiception.ai/** runs independently of the rendering Mac and Bitcoin node. A proxy forwards to this Worker, which serves the UI, APIs and video from private R2. The [illustrated guide](https://nostitos.github.io/utxo-timelapse/) runs separately on GitHub Pages.
+The production explorer at **https://bitcointimelapse.com/** runs independently of the rendering Mac and Bitcoin node. The legacy **https://utxo.aiception.ai/** address proxies to this Worker and remains an alias. The Worker serves the UI, APIs and video from private R2. The [illustrated guide](https://nostitos.github.io/utxo-timelapse/) runs separately on GitHub Pages.
 
 ## Current architecture
 
@@ -56,11 +56,11 @@ All paths above are under the root `scripts/` directory. Several scripts are tie
 ## APIs and verification
 
 ```sh
-curl -fsSI https://utxo.aiception.ai/
-curl -fsS https://utxo.aiception.ai/health
-curl -fsS https://utxo.aiception.ai/api/info
-curl -fsS https://utxo.aiception.ai/hls/v3/media.m3u8
-curl -fsS 'https://utxo.aiception.ai/api/pixel?block=314000&x=3000&y=1525'
+curl -fsSI https://bitcointimelapse.com/
+curl -fsS https://bitcointimelapse.com/health
+curl -fsS https://bitcointimelapse.com/api/info
+curl -fsS https://bitcointimelapse.com/hls/v5/media.m3u8
+curl -fsS 'https://bitcointimelapse.com/api/pixel?block=314000&x=3000&y=1525'
 ```
 
 At the published cutoff, the example pixel has two outputs unspent at block 314,000, totalling 42,430 sat. One was spent at block 520,664; one remains unspent at the cutoff. Compare counts and sums with the local index when changing data routing.
