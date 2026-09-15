@@ -148,19 +148,51 @@
   #shareView { font-size:12px; white-space:nowrap; }
   .guideLink { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
   :is(button,a,select,input,textarea):focus-visible { outline:2px solid #a8d6b3; outline-offset:3px; }
-  #shareDialog { width:min(520px,calc(100% - 32px)); max-height:calc(100dvh - 32px); overflow:auto; margin:auto; padding:24px; background:#11151f; color:#d8dee9; border:1px solid #394359; border-radius:12px; box-shadow:0 24px 80px #0009; }
-  #shareDialog::backdrop { background:#000b; }
-  .shareHeader { display:flex; align-items:center; justify-content:space-between; gap:16px; }
-  .shareHeader h2 { margin:0; font-size:21px; }
-  #shareDialog button, #shareDialog a { font:inherit; color:inherit; border:1px solid #394359; border-radius:6px; padding:9px 14px; background:#1c2333; cursor:pointer; text-decoration:none; }
-  #shareDialog button[hidden] { display:none; }
-  #shareDialog #shareClose { font-size:24px; padding:0; width:36px; height:36px; background:none; border:none; }
-  #shareContext { color:#9aa5b8; margin:14px 0 22px; }
-  #shareDialog label { display:block; font-size:12px; margin-bottom:8px; color:#9aa5b8; }
-  #shareUrl { display:block; width:100%; resize:none; overflow-wrap:anywhere; background:#0b0e14; color:#d8dee9; border:1px solid #394359; border-radius:6px; padding:10px; font:13px/1.6 ui-monospace,monospace; }
-  .shareActions { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
-  #shareDialog #shareCopy { background:#a8d6b3; border-color:#a8d6b3; color:#12221b; }
-  #shareStatus { margin:14px 0 0; min-height:20px; font-size:13px; color:#a8d6b3; }
+  #shareDialog { width:min(580px,calc(100% - 28px)); max-height:calc(100dvh - 28px); overflow:auto; margin:auto; padding:26px; background:#101720; color:#e4eaf0; border:1px solid #354452; border-radius:22px; box-shadow:0 28px 100px #000b; }
+  #shareDialog::backdrop { background:#030609bf; backdrop-filter:blur(5px); }
+  .shareHeader { display:flex; align-items:center; justify-content:space-between; gap:20px; margin-bottom:24px; }
+  .shareEyebrow { display:block; color:#9eacba; font-size:10px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; margin-bottom:6px; }
+  .shareHeader h2 { margin:0; font-size:26px; font-weight:650; letter-spacing:-.04em; }
+  #shareDialog button, #shareDialog a { font:inherit; color:inherit; cursor:pointer; text-decoration:none; }
+  #shareDialog [hidden] { display:none!important; }
+  #shareDialog #shareClose { flex:none; font-size:26px; line-height:1; padding:0; width:38px; height:38px; border:1px solid #2d3a47; border-radius:50%; color:#b2bfcb; background:#18222d; }
+  #shareDialog svg { width:22px; height:22px; flex:none; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+  #shareDialog .xLogo { fill:currentColor; stroke:none; width:19px; height:19px; }
+  .shareModes { display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:0; margin:0 0 18px; border:0; min-width:0; }
+  .shareModes legend { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+  .shareMode { display:flex; align-items:center; gap:12px; padding:14px; border:1px solid #31404e; border-radius:12px; background:#151f2a; cursor:pointer; min-width:0; }
+  .shareMode input { position:absolute; opacity:0; width:1px; height:1px; }
+  .shareMode strong, .sharePlayback strong { display:block; font-size:14px; font-weight:600; }
+  .shareMode small, .sharePlayback small { display:block; color:#9fadb9; font-size:12px; line-height:1.45; margin-top:3px; }
+  .shareMode:has(:checked) { background:#a8d6b311; border-color:#a8d6b3; color:#c5e9cd; }
+  .shareMode:has(:disabled) { opacity:.42; cursor:default; }
+  .shareMode:has(:focus-visible), .sharePlayback:has(:focus-visible) { outline:2px solid #a8d6b3; outline-offset:3px; }
+  .shareSummary { display:flex; align-items:center; gap:15px; min-height:84px; padding:11px; background:#080e15; border:1px solid #202e3b; border-radius:12px; }
+  #sharePreview { width:110px; height:62px; flex:none; border-radius:6px; background:black; }
+  #shareBlockNumber { display:block; font-size:19px; font-weight:550; font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
+  #shareContext { color:#99abba; font-size:12px; margin:5px 0 0; line-height:1.5; }
+  .sharePlayback { position:relative; display:flex; align-items:center; justify-content:space-between; gap:16px; padding:19px 1px; cursor:pointer; }
+  .sharePlayback input { position:absolute; right:0; opacity:0; width:44px; height:26px; }
+  .shareSwitch { flex:none; width:42px; height:24px; border-radius:20px; background:#354352; border:1px solid #455665; padding:3px; transition:background .15s; }
+  .shareSwitch:after { content:""; display:block; width:16px; height:16px; border-radius:50%; background:#d6e0e8; transition:transform .15s; }
+  .sharePlayback input:checked+.shareSwitch { background:#a8d6b3; border-color:#a8d6b3; }
+  .sharePlayback input:checked+.shareSwitch:after { background:#10251a; transform:translateX(18px); }
+  .sharePlayback:has(:disabled) { cursor:default; }
+  .sharePlayback input:disabled+.shareSwitch { opacity:.4; }
+  .shareLinkField>label { display:block; font-size:11px; color:#a0b0be; margin-bottom:8px; }
+  .shareLinkRow { display:flex; align-items:stretch; border:1px solid #334452; border-radius:10px; overflow:hidden; background:#0b121b; }
+  #shareUrl { display:block; width:100%; min-width:0; resize:none; overflow-wrap:anywhere; background:transparent; color:#bacbd9; border:0; padding:11px; font:11px/1.6 ui-monospace,monospace; }
+  #shareDialog #shareCopy { display:flex; align-items:center; justify-content:center; flex-direction:column; gap:5px; min-width:90px; border:0; border-left:1px solid #334452; background:#a8d6b3; color:#13271c; font-size:12px; font-weight:600; }
+  #shareCopy.copied { background:#c2e8cb!important; }
+  #shareStatus { margin:8px 0; min-height:18px; font-size:12px; color:#a8d6b3; }
+  .shareDestinations { display:flex; gap:10px; padding-top:17px; border-top:1px solid #293744; }
+  .shareDestinations a, .shareDestinations button { display:flex; align-items:center; justify-content:center; gap:8px; flex:1; min-height:46px; padding:10px; border:1px solid #31404e; border-radius:10px; background:#17222e; font-size:13px!important; white-space:nowrap; }
+  .shareDestinations a:hover, .shareDestinations button:hover { background:#223343; border-color:#587080; }
+  @media (max-width:430px) {
+    .shareHeader { margin-bottom:18px; }.shareHeader h2 { font-size:24px; }.shareMode { gap:8px; padding:12px 10px; }.shareMode strong { font-size:13px; }.shareMode small { font-size:11px; }
+    #sharePreview { width:90px; height:51px; }#shareBlockNumber { font-size:17px; }.shareDestinations { gap:7px; }.shareDestinations a, .shareDestinations button { flex-direction:column; gap:5px; font-size:12px!important; }
+  }
+  @media (prefers-reduced-motion:reduce) { .shareSwitch, .shareSwitch:after { transition:none; } }
   @media (max-width:760px), (pointer:coarse), (max-height:500px) and (orientation:landscape) {
     #controls { gap:8px; }
     #blockLabel { order:0; flex:1; min-width:100px; }
@@ -272,7 +304,7 @@
       <span>Aim precisely</span><span>Pause, then use the magnifier (click inside it to pick), or nudge with <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> (<kbd>Shift</kbd> = 10 px).</span>
       <span>Move in time</span><span>Scrub the bar, type a block number, pick a date, or step with <kbd>[</kbd> <kbd>]</kbd> or use the controls to step by 1 or 20 blocks.</span>
       <span>Playback speed</span><span>Use <b>Speed</b> to slow the film down to 0.1× or speed it up to 4×. One frame still represents one block.</span>
-      <span>Share</span><span><b>Share this view</b> pauses the film and shows a link to the current block and selected pixel, with copy and sharing options.</span>
+      <span>Share</span><span><b>Share this view</b> lets you share the block with autoplay on or off, or a selected pixel paused with its details open. Copy the link or share through X.com, email or your device.</span>
       <span>Keys</span><span><kbd>Space</kbd> play/pause · <kbd>F</kbd> fullscreen · <kbd>Esc</kbd> close drawer · <kbd>?</kbd> this help</span>
     </div>
 
@@ -284,16 +316,20 @@
   </div>
 </div>
 <dialog id="shareDialog" aria-labelledby="shareTitle" aria-describedby="shareContext">
-  <div class="shareHeader"><h2 id="shareTitle">Share this view</h2><button id="shareClose" type="button" aria-label="Close share dialog">×</button></div>
-  <p id="shareContext"></p>
-  <label for="shareUrl">Link to this view</label>
-  <textarea id="shareUrl" rows="2" readonly spellcheck="false"></textarea>
-  <div class="shareActions">
-    <button id="shareCopy" type="button">Copy link</button>
-    <button id="shareNative" type="button" hidden>Share with apps…</button>
-    <a id="shareEmail">Email</a>
-  </div>
+  <div class="shareHeader"><div><span class="shareEyebrow">Bitcoin Timelapse</span><h2 id="shareTitle">Share this view</h2></div><button id="shareClose" type="button" aria-label="Close share dialog">×</button></div>
+  <fieldset class="shareModes"><legend>What to share</legend>
+    <label class="shareMode"><input type="radio" name="shareMode" id="shareBlockMode" value="block" aria-label="Block" checked><svg viewBox="0 0 24 24" aria-hidden="true" ><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9l5 3-5 3Z"/></svg><span><strong>Block</strong><small>Full timelapse view</small></span></label>
+    <label class="shareMode"><input type="radio" name="shareMode" id="sharePixelMode" value="pixel" aria-label="Selected pixel" disabled><svg viewBox="0 0 24 24" aria-hidden="true" ><path d="M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg><span><strong>Selected pixel</strong><small id="sharePixelHelp">Select a pixel first</small></span></label>
+  </fieldset>
+  <div class="shareSummary"><canvas id="sharePreview" width="320" height="180" aria-label="Preview of the shared block"></canvas><div><strong id="shareBlockNumber"></strong><p id="shareContext"></p></div></div>
+  <label class="sharePlayback" for="shareAutoplay"><span><strong>Autoplay</strong><small id="shareAutoplayHelp">Start the video when the link is opened.</small></span><input type="checkbox" id="shareAutoplay" role="switch" aria-label="Autoplay"><span class="shareSwitch" aria-hidden="true"></span></label>
+  <div class="shareLinkField"><label for="shareUrl">Link to this view</label><div class="shareLinkRow"><textarea id="shareUrl" rows="2" readonly spellcheck="false"></textarea><button id="shareCopy" type="button"><svg viewBox="0 0 24 24" aria-hidden="true" ><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></svg><span id="shareCopyLabel">Copy link</span></button></div></div>
   <p id="shareStatus" role="status" aria-live="polite"></p>
+  <div class="shareDestinations" aria-label="Sharing options">
+    <a id="shareX" target="_blank" rel="noopener noreferrer" aria-label="Share on X.com"><svg viewBox="0 0 24 24" aria-hidden="true" class="xLogo"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.64 7.584H.47l8.6-9.835L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg><span>X.com</span></a>
+    <a id="shareEmail" aria-label="Share by email"><svg viewBox="0 0 24 24" aria-hidden="true" ><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m3 7 9 6 9-6"/></svg><span>Email</span></a>
+    <button id="shareNative" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true" ><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg><span>More options</span></button>
+  </div>
 </dialog>
 <script>
 "use strict";
@@ -347,26 +383,64 @@ fetch("/api/info").then(r => r.json()).then(d => {
   }
 });
 
-// ---- shareable links: ?block=N&x=X&y=Y (pixel optional) ----
+// ---- share contract: block links never inherit a hidden pixel ----
+function shareInteger(params, key) {
+  const value = params.get(key);
+  return value !== null && /^-?\d+$/.test(value) && Number.isSafeInteger(Number(value)) ? Number(value) : null;
+}
+function readSharedView(search, metadata) {
+  const params = new URLSearchParams(search);
+  const block = shareInteger(params, "block");
+  const x = shareInteger(params, "x"), y = shareInteger(params, "y");
+  const pixel = x !== null && y !== null && x >= 0 && y >= 0 &&
+    x < metadata.imageWidth && y < metadata.imageHeight ? { nx: x, ny: y } : null;
+  return {
+    block: Math.max(metadata.videoStartBlock, Math.min(block === null ? 313800 : block, metadata.videoEndBlock)),
+    pixel,
+    autoplay: !pixel && (params.get("autoplay") === "1" || (block === null && params.get("autoplay") !== "0"))
+  };
+}
+function activeSharePixel(pixel, block, drawerOpen, crosshairVisible, playing, seeking) {
+  return pixel && pixel.block === block && drawerOpen && crosshairVisible && !playing && !seeking ?
+    { nx: pixel.nx, ny: pixel.ny } : null;
+}
+function buildShareUrl(href, view) {
+  const source = new URL(href);
+  const publicHost = ["bitcointimelapse.com", "www.bitcointimelapse.com", "utxo.aiception.ai", "utxo-cdn.hat39.com"].includes(source.hostname);
+  const url = new URL(publicHost ? "https://bitcointimelapse.com/explorer" : href);
+  url.search = ""; url.hash = "";
+  url.searchParams.set("block", String(view.block));
+  if (view.pixel) { url.searchParams.set("x", String(view.pixel.nx)); url.searchParams.set("y", String(view.pixel.ny)); }
+  url.searchParams.set("autoplay", view.pixel ? "0" : view.autoplay ? "1" : "0");
+  return url.toString();
+}
+// ---- end share contract ----
+
 function restoreFromUrl() {
-  const q = new URLSearchParams(location.search);
-  const b = parseInt(q.get("block"), 10);
-  const sharedBlock = Number.isFinite(b);
-  const target = Math.max(info.videoStartBlock, Math.min(sharedBlock ? b : 313800, info.videoEndBlock));
-  const x = parseInt(q.get("x"), 10), y = parseInt(q.get("y"), 10);
-  const hasPixel = Number.isFinite(x) && Number.isFinite(y);
+  const view = readSharedView(location.search, info);
   const go = () => {
     userWantsPlayback = false;
     vid.pause();
-    vid.currentTime = blockToVideoTime(target);
-    if (hasPixel) vid.addEventListener("seeked", () => selectPixel(x, y), { once: true });
-    if (!sharedBlock) {
+    let restorePixel = null;
+    if (view.pixel) {
+      let restored = false;
+      restorePixel = () => {
+        if (restored || vid.readyState < 2) return;
+        restored = true;
+        vid.removeEventListener("seeked", restorePixel);
+        selectPixel(view.pixel.nx, view.pixel.ny);
+      };
+      vid.addEventListener("seeked", restorePixel);
+    }
+    vid.currentTime = blockToVideoTime(view.block);
+    if (restorePixel && !vid.seeking) restorePixel();
+    if (view.autoplay) {
       vid.muted = true;
       vid.playsInline = true;
       userWantsPlayback = true;
       vid.play().catch(() => {
         userWantsPlayback = false;
-        streamStatus.textContent = "Press Play to start";
+        streamStatus.textContent = "Tap Play to start video";
       });
     }
   };
@@ -377,37 +451,79 @@ const shareUrl = document.getElementById("shareUrl");
 const shareStatus = document.getElementById("shareStatus");
 const shareNative = document.getElementById("shareNative");
 const shareView = document.getElementById("shareView");
+const sharePixelMode = document.getElementById("sharePixelMode");
+const shareBlockMode = document.getElementById("shareBlockMode");
+const shareAutoplay = document.getElementById("shareAutoplay");
+let shareSnapshot = null;
+let shareBlockAutoplay = false;
 let shareTitle = "";
 shareNative.hidden = typeof navigator.share !== "function";
+
+function updateShareView() {
+  if (!shareSnapshot) return;
+  const pixel = sharePixelMode.checked ? shareSnapshot.pixel : null;
+  shareAutoplay.disabled = !!pixel;
+  shareAutoplay.checked = pixel ? false : shareBlockAutoplay;
+  document.getElementById("shareAutoplayHelp").textContent = pixel ?
+    "Pixel links open paused, with the details panel open." : "Start the video when the link is opened.";
+  const view = { block: shareSnapshot.block, pixel, autoplay: shareAutoplay.checked };
+  shareUrl.value = buildShareUrl(location.href, view);
+  shareTitle = "Bitcoin at block " + view.block.toLocaleString("en-US") +
+    (pixel ? " · pixel (" + pixel.nx + ", " + pixel.ny + ")" : "");
+  document.getElementById("shareBlockNumber").textContent = "Block " + view.block.toLocaleString("en-US");
+  document.getElementById("shareContext").textContent = pixel ?
+    "Pixel (" + pixel.nx + ", " + pixel.ny + ") · paused with details" :
+    view.autoplay ? "Full block view · autoplay on" : "Full block view · paused";
+  document.getElementById("shareEmail").href = "mailto:?subject=" + encodeURIComponent(shareTitle) + "&body=" + encodeURIComponent(shareUrl.value);
+  document.getElementById("shareX").href = "https://x.com/intent/tweet?text=" + encodeURIComponent(shareTitle) + "&url=" + encodeURIComponent(shareUrl.value);
+  shareStatus.textContent = "";
+  document.getElementById("shareCopyLabel").textContent = "Copy link";
+  document.getElementById("shareCopy").classList.remove("copied");
+}
 shareView.onclick = () => {
   if (!info) return;
+  const playing = !vid.paused, seeking = vid.seeking;
   userWantsPlayback = false;
   vid.pause();
-  const publicHost = ["bitcointimelapse.com", "www.bitcointimelapse.com", "utxo.aiception.ai", "utxo-cdn.hat39.com"].includes(location.hostname);
-  const u = new URL(publicHost ? "https://bitcointimelapse.com/explorer" : location.href);
-  u.search = ""; u.hash = "";
   const block = curBlock();
-  u.searchParams.set("block", String(block));
-  if (selPixel) { u.searchParams.set("x", String(selPixel.nx)); u.searchParams.set("y", String(selPixel.ny)); }
-  shareTitle = "Bitcoin at block " + block.toLocaleString("en-US");
-  document.getElementById("shareContext").textContent = "Block " + block.toLocaleString("en-US") +
-    (selPixel ? " · pixel (" + selPixel.nx + ", " + selPixel.ny + ")" : "") + ". The link opens this paused view.";
-  shareUrl.value = u.toString();
-  shareStatus.textContent = "";
-  document.getElementById("shareEmail").href = "mailto:?subject=" + encodeURIComponent(shareTitle) + "&body=" + encodeURIComponent(u.toString());
+  shareSnapshot = {
+    block,
+    pixel: activeSharePixel(selPixel, block, panel.classList.contains("open"), crosshair.style.display !== "none", playing, seeking)
+  };
+  shareBlockAutoplay = playing;
+  shareBlockMode.checked = true;
+  sharePixelMode.checked = false;
+  sharePixelMode.disabled = !shareSnapshot.pixel;
+  document.getElementById("sharePixelHelp").textContent = shareSnapshot.pixel ?
+    "(" + shareSnapshot.pixel.nx + ", " + shareSnapshot.pixel.ny + ") + details" : "Select a pixel first";
+  const preview = document.getElementById("sharePreview");
+  preview.hidden = vid.readyState < 2 || seeking;
+  if (!preview.hidden) {
+    try { preview.getContext("2d").drawImage(vid, 0, 0, preview.width, preview.height); }
+    catch { preview.hidden = true; }
+  }
+  updateShareView();
   shareDialog.showModal();
-  document.getElementById("shareCopy").focus();
+  shareBlockMode.focus();
 };
+shareBlockMode.addEventListener("change", updateShareView);
+sharePixelMode.addEventListener("change", updateShareView);
+shareAutoplay.addEventListener("change", () => { shareBlockAutoplay = shareAutoplay.checked; updateShareView(); });
 document.getElementById("shareClose").onclick = () => shareDialog.close();
-shareDialog.addEventListener("close", () => shareView.focus());
+shareDialog.addEventListener("close", () => { shareSnapshot = null; shareView.focus(); });
 shareDialog.addEventListener("click", e => {
   const r = shareDialog.getBoundingClientRect();
   if (e.target === shareDialog && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) shareDialog.close();
 });
 document.getElementById("shareCopy").onclick = async () => {
+  const url = shareUrl.value;
   try {
-    await navigator.clipboard.writeText(shareUrl.value);
-    shareStatus.textContent = "Link copied to clipboard.";
+    await navigator.clipboard.writeText(url);
+    if (shareDialog.open && shareUrl.value === url) {
+      shareStatus.textContent = "Link copied to clipboard.";
+      document.getElementById("shareCopyLabel").textContent = "Copied";
+      document.getElementById("shareCopy").classList.add("copied");
+    }
   } catch {
     shareUrl.focus(); shareUrl.select();
     shareStatus.textContent = "Select and copy the link above; clipboard access is unavailable here.";
@@ -852,7 +968,7 @@ async function selectPixel(nx, ny) {
   if (!info) return;
   nx = Math.max(0, Math.min(info.imageWidth - 1, nx));
   ny = Math.max(0, Math.min(info.imageHeight - 1, ny));
-  selPixel = { nx, ny };
+  selPixel = { nx, ny, block: null };
   openDrawer();
   if (!vid.paused) {
     userWantsPlayback = false;
@@ -861,6 +977,8 @@ async function selectPixel(nx, ny) {
   captureFrame();
   updatePixelSwatch(nx, ny);
   const block = curBlock();
+  const selection = selPixel;
+  selection.block = block;
   const p = { nx, ny };
 
   const d = nativeToDisplay(p.nx, p.ny);
@@ -874,9 +992,11 @@ async function selectPixel(nx, ny) {
   try {
     resp = await fetch("/api/pixel?block=" + block + "&x=" + p.nx + "&y=" + p.ny).then(r => r.json());
   } catch (err) {
+    if (selPixel !== selection || curBlock() !== block) return;
     panelMeta.textContent = "Lookup failed: " + err;
     return;
   }
+  if (selPixel !== selection || curBlock() !== block) return;
   if (resp.error) { panelMeta.textContent = "(" + p.nx + ", " + p.ny + "): " + resp.error; return; }
   if (resp.overlay === "flowline") {
     panelMeta.innerHTML = "pixel (" + p.nx + ", " + p.ny + ") at block <b>" + block.toLocaleString("en-US") + "</b><br>" +
