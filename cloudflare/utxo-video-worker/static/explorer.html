@@ -27,7 +27,6 @@
   #controls button:hover, #panel button:hover { background: #263049; }
   #blockSteps { display: inline-flex; align-items: center; gap: 2px; }
   #blockSteps button { min-width: 26px; padding: 5px 6px; font: 600 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -1px; }
-  #blockSteps .stepSplit { width: 1px; height: 18px; margin: 0 3px; background: #2a3245; }
   #blockLabel { font-variant-numeric: tabular-nums; color: #7aa2f7; min-width: 190px; }
   #streamStatus { color: #e0af68; font-size: 12px; min-width: 92px; }
   #controls input[type=date] { background: #0b0e14; color: inherit; border: 1px solid #2a3245; border-radius: 4px; padding: 3px 6px; font: inherit; font-size: 12.5px; color-scheme: dark; }
@@ -57,8 +56,7 @@
   #fsBtn { min-width: 26px; }
   body.fs #controls { display: none; }
   body.fs #videoWrap { height: 100vh; }
-  #copyLink { font-size: 12px; padding: 3px 8px; }
-  #copyLink.done { color: #9ece6a; border-color: #9ece6a; }
+  #shareView { font-size: 12px; padding: 3px 8px; }
   /* Details drawer: overlays the right edge of the video so the graph keeps the full page width. */
   #panel { position: absolute; top: 0; right: 0; bottom: 0; width: 480px; background: #11151fd9; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border-left: 1px solid #1d2433; overflow-y: auto; padding: 14px; z-index: 6; transform: translateX(100%); transition: transform 180ms ease; }
   #panel.open { transform: translateX(0); }
@@ -107,7 +105,7 @@
     #blockSteps button { flex: 1; min-width: 38px; }
     #blockLabel { min-width: 0; flex: 1; font-size: 14px; }
     #seekBar { order: 3; flex: 1 0 100% !important; width: 100%; margin: 0; }
-    #blockInput, #goBtn, #dateInput, #copyLink, .tog { order: 5; }
+    #blockInput, #goBtn, #dateInput, #shareView, .tog { order: 5; }
     #controls input[type=date] { font-size: 16px; min-width: 0; width: 145px; }
     #hint { display: none; }
     #streamStatus { order: 6; min-width: 0; }
@@ -128,12 +126,64 @@
     body.fs #videoWrap { height: auto; }
   }
   @media (max-height: 500px) and (orientation: landscape) {
-    #blockSteps, #dateInput, #copyLink, .tog { display: none; }
+    #blockInput, #goBtn, #dateInput, .tog, #helpBtn { display: none; }
     #controls { padding-top: 2px; padding-bottom: 2px; }
     #panel { top: 0; left: auto; width: min(420px, 55vw); max-height: 100dvh; border-radius: 0; }
   }
   .guideLink { color:inherit; text-decoration:none; border:1px solid #2a3245; border-radius:4px; padding:4px 10px; font-size:12px; white-space:nowrap; }
   .guideLink:hover { color:#a8d6b3; border-color:#a8d6b3; }
+
+  /* Transport keeps play between the two directions at every viewport size. */
+  .transport { display:flex; align-items:center; gap:14px; flex-shrink:0; }
+  #blockSteps { gap:4px; flex:none; }
+  #blockSteps button { width:34px; height:40px; font:24px/1 system-ui,sans-serif; letter-spacing:-3px; padding:0 4px 2px 1px; }
+  #blockSteps #playBtn { width:52px; height:52px; border-radius:50%; margin:0 4px; display:grid; place-items:center; background:#a8d6b3; border-color:#a8d6b3; color:#12221b; padding:0; }
+  #blockSteps #playBtn:hover { background:#c4e5cc; }
+  #playBtn svg { width:29px; height:29px; fill:currentColor; }
+  #playBtn .pauseIcon, #playBtn.is-playing .playIcon { display:none; }
+  #playBtn.is-playing .pauseIcon { display:block; }
+  .speedControl { display:flex; align-items:center; gap:6px; font-size:12px; color:#9aa5b8; }
+  #playbackSpeed { height:36px; min-width:66px; background:#1c2333; color:#d8dee9; border:1px solid #2a3245; border-radius:4px; padding:4px; font:inherit; cursor:pointer; }
+  #blockLabel { min-width:108px; }
+  #shareView { font-size:12px; white-space:nowrap; }
+  .guideLink { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+  :is(button,a,select,input,textarea):focus-visible { outline:2px solid #a8d6b3; outline-offset:3px; }
+  #shareDialog { width:min(520px,calc(100% - 32px)); max-height:calc(100dvh - 32px); overflow:auto; margin:auto; padding:24px; background:#11151f; color:#d8dee9; border:1px solid #394359; border-radius:12px; box-shadow:0 24px 80px #0009; }
+  #shareDialog::backdrop { background:#000b; }
+  .shareHeader { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+  .shareHeader h2 { margin:0; font-size:21px; }
+  #shareDialog button, #shareDialog a { font:inherit; color:inherit; border:1px solid #394359; border-radius:6px; padding:9px 14px; background:#1c2333; cursor:pointer; text-decoration:none; }
+  #shareDialog button[hidden] { display:none; }
+  #shareDialog #shareClose { font-size:24px; padding:0; width:36px; height:36px; background:none; border:none; }
+  #shareContext { color:#9aa5b8; margin:14px 0 22px; }
+  #shareDialog label { display:block; font-size:12px; margin-bottom:8px; color:#9aa5b8; }
+  #shareUrl { display:block; width:100%; resize:none; overflow-wrap:anywhere; background:#0b0e14; color:#d8dee9; border:1px solid #394359; border-radius:6px; padding:10px; font:13px/1.6 ui-monospace,monospace; }
+  .shareActions { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+  #shareDialog #shareCopy { background:#a8d6b3; border-color:#a8d6b3; color:#12221b; }
+  #shareStatus { margin:14px 0 0; min-height:20px; font-size:13px; color:#a8d6b3; }
+  @media (max-width:760px), (pointer:coarse), (max-height:500px) and (orientation:landscape) {
+    #controls { gap:8px; }
+    #blockLabel { order:0; flex:1; min-width:100px; }
+    #shareView, .guideLink { order:0; min-height:44px; padding:8px; font-size:13px; }
+    .transport { order:1; flex:1 0 100%; justify-content:center; gap:14px; }
+    #blockSteps { order:0; flex:0 0 auto; }
+    #blockSteps button { flex:none; min-width:34px; }
+    #blockSteps #playBtn { min-width:52px; }
+    #playbackSpeed { min-height:44px; font-size:16px; }
+    .speedControl { gap:4px; }
+    #seekBar { order:2; }
+    #blockInput, #goBtn, #dateInput, .tog, #fsBtn, #helpBtn { order:3; }
+    #shareDialog { padding:18px; }
+    #shareDialog button, #shareDialog a { min-height:44px; }
+  }
+  @media (max-width:380px) { .transport { gap:8px; }.speedControl { font-size:0; }#playbackSpeed { font-size:16px; } }
+  @media (max-height:500px) and (orientation:landscape) {
+    .transport { order:0; flex:0 0 auto; }
+    #blockSteps { display:inline-flex; }
+    #shareView, .guideLink { display:inline-flex; }
+    #controls .tog { display:none; }
+    #fsBtn { order:0; }
+  }
 </style>
 </head>
 <body>
@@ -159,25 +209,38 @@
     <div id="hoverBar" aria-hidden="true"></div>
   </div>
   <div id="controls">
-    <button id="playBtn">Play</button>
-    <span id="blockSteps" role="group" aria-label="Block navigation">
-      <button type="button" data-block-step="-100" title="Back 100 blocks" aria-label="Back 100 blocks">&lt;&lt;&lt;</button>
-      <button type="button" data-block-step="-10" title="Back 10 blocks" aria-label="Back 10 blocks">&lt;&lt;</button>
-      <button type="button" data-block-step="-1" title="Previous block ([)" aria-label="Previous block">&lt;</button>
-      <span class="stepSplit" aria-hidden="true"></span>
-      <button type="button" data-block-step="1" title="Next block (])" aria-label="Next block">&gt;</button>
-      <button type="button" data-block-step="10" title="Forward 10 blocks" aria-label="Forward 10 blocks">&gt;&gt;</button>
-      <button type="button" data-block-step="100" title="Forward 100 blocks" aria-label="Forward 100 blocks">&gt;&gt;&gt;</button>
-    </span>
+    <div class="transport">
+      <span id="blockSteps" role="group" aria-label="Playback and block navigation">
+        <button type="button" data-block-step="-20" title="Back 20 blocks" aria-label="Back 20 blocks">‹‹</button>
+        <button type="button" data-block-step="-1" title="Previous block ([)" aria-label="Previous block">‹</button>
+        <button id="playBtn" type="button" aria-label="Play" title="Play (Space)">
+          <svg class="playIcon" viewBox="0 0 32 32" aria-hidden="true"><path d="M10 5L28 16L10 27Z"/></svg>
+          <svg class="pauseIcon" viewBox="0 0 32 32" aria-hidden="true"><path d="M8 5H14V27H8ZM20 5H26V27H20Z"/></svg>
+        </button>
+        <button type="button" data-block-step="1" title="Next block (])" aria-label="Next block">›</button>
+        <button type="button" data-block-step="20" title="Forward 20 blocks" aria-label="Forward 20 blocks">››</button>
+      </span>
+      <label class="speedControl" for="playbackSpeed">Speed
+        <select id="playbackSpeed" aria-label="Playback speed">
+          <option value="0.1">0.1×</option><option value="0.2">0.2×</option>
+          <option value="0.25">0.25×</option><option value="0.3333333333333333">⅓×</option>
+          <option value="0.5">0.5×</option><option value="0.6666666666666666">⅔×</option>
+          <option value="0.75">0.75×</option><option value="0.9">0.9×</option>
+          <option value="1" selected>1×</option><option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option><option value="2">2×</option>
+          <option value="3">3×</option><option value="4">4×</option>
+        </select>
+      </label>
+    </div>
     <span id="blockLabel">block 0</span>
     <input id="seekBar" type="range" min="0" max="1" step="1" value="0" style="flex:1 1 200px">
     <input id="blockInput" type="number" min="0" step="1" placeholder="block #">
     <button id="goBtn">Go</button>
     <input id="dateInput" type="date" title="Jump to the first block on this date (UTC)">
-    <button id="copyLink" type="button" title="Copy a link to this block and pixel">copy link</button>
+    <button id="shareView" type="button" aria-haspopup="dialog">Share this view</button>
     <label class="tog"><input id="loupeTog" type="checkbox" checked> magnifier</label>
     <button id="fsBtn" type="button" title="Fullscreen (F)" aria-label="Fullscreen">⤢</button>
-    <a class="guideLink" href="https://nostitos.github.io/utxo-timelapse/" target="_blank" rel="noopener">Guide ↗</a>
+    <a class="guideLink" href="https://bitcointimelapse.com/guide/" target="_blank" rel="noopener">Guide ↗</a>
     <button id="helpBtn" type="button" title="What is this? (?)" aria-label="About this explorer">?</button>
     <span id="hint">pause &amp; click a pixel</span>
     <span id="streamStatus" aria-live="polite"></span>
@@ -207,18 +270,31 @@
       <span>Click a pixel</span><span>Opens the details drawer: which coins were there at that block, their amounts, when they were created, and whether they remained unspent at the published data cutoff.</span>
       <span>Hover</span><span>The strip at the bottom shows the block range, dates and amount range under the cursor.</span>
       <span>Aim precisely</span><span>Pause, then use the magnifier (click inside it to pick), or nudge with <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> (<kbd>Shift</kbd> = 10 px).</span>
-      <span>Move in time</span><span>Scrub the bar, type a block number, pick a date, or step with <kbd>[</kbd> <kbd>]</kbd> and the <kbd>&lt;</kbd> <kbd>&gt;</kbd> buttons.</span>
-      <span>Share</span><span><b>copy link</b> gives a URL that reopens this exact block and pixel.</span>
+      <span>Move in time</span><span>Scrub the bar, type a block number, pick a date, or step with <kbd>[</kbd> <kbd>]</kbd> or use the controls to step by 1 or 20 blocks.</span>
+      <span>Playback speed</span><span>Use <b>Speed</b> to slow the film down to 0.1× or speed it up to 4×. One frame still represents one block.</span>
+      <span>Share</span><span><b>Share this view</b> pauses the film and shows a link to the current block and selected pixel, with copy and sharing options.</span>
       <span>Keys</span><span><kbd>Space</kbd> play/pause · <kbd>F</kbd> fullscreen · <kbd>Esc</kbd> close drawer · <kbd>?</kbd> this help</span>
     </div>
 
     <div id="aboutFoot">
       <span class="src" id="aboutSrc"></span>
-      <a href="https://nostitos.github.io/utxo-timelapse/" target="_blank" rel="noopener">Read the illustrated guide ↗</a>
+      <a href="https://bitcointimelapse.com/guide/" target="_blank" rel="noopener">Read the illustrated guide ↗</a>
       <button id="aboutClose" type="button">Got it</button>
     </div>
   </div>
 </div>
+<dialog id="shareDialog" aria-labelledby="shareTitle" aria-describedby="shareContext">
+  <div class="shareHeader"><h2 id="shareTitle">Share this view</h2><button id="shareClose" type="button" aria-label="Close share dialog">×</button></div>
+  <p id="shareContext"></p>
+  <label for="shareUrl">Link to this view</label>
+  <textarea id="shareUrl" rows="2" readonly spellcheck="false"></textarea>
+  <div class="shareActions">
+    <button id="shareCopy" type="button">Copy link</button>
+    <button id="shareNative" type="button" hidden>Share with apps…</button>
+    <a id="shareEmail">Email</a>
+  </div>
+  <p id="shareStatus" role="status" aria-live="polite"></p>
+</dialog>
 <script src="/hls.min.js"></script>
 <script>
 "use strict";
@@ -277,7 +353,7 @@ function restoreFromUrl() {
   const q = new URLSearchParams(location.search);
   const b = parseInt(q.get("block"), 10);
   const sharedBlock = Number.isFinite(b);
-  const target = Math.max(info.videoStartBlock, Math.min(sharedBlock ? b : 314000, info.videoEndBlock));
+  const target = Math.max(info.videoStartBlock, Math.min(sharedBlock ? b : 313800, info.videoEndBlock));
   const x = parseInt(q.get("x"), 10), y = parseInt(q.get("y"), 10);
   const hasPixel = Number.isFinite(x) && Number.isFinite(y);
   const go = () => {
@@ -297,17 +373,72 @@ function restoreFromUrl() {
   };
   if (vid.readyState >= 1) go(); else vid.addEventListener("loadedmetadata", go, { once: true });
 }
-document.getElementById("copyLink").onclick = async (e) => {
-  const btn = e.currentTarget;
-  const u = new URL(location.href);
-  u.search = "";
-  u.searchParams.set("block", String(curBlock()));
+const shareDialog = document.getElementById("shareDialog");
+const shareUrl = document.getElementById("shareUrl");
+const shareStatus = document.getElementById("shareStatus");
+const shareNative = document.getElementById("shareNative");
+const shareView = document.getElementById("shareView");
+let shareTitle = "";
+shareNative.hidden = typeof navigator.share !== "function";
+shareView.onclick = () => {
+  if (!info) return;
+  userWantsPlayback = false;
+  vid.pause();
+  const publicHost = ["bitcointimelapse.com", "www.bitcointimelapse.com", "utxo.aiception.ai", "utxo-cdn.hat39.com"].includes(location.hostname);
+  const u = new URL(publicHost ? "https://bitcointimelapse.com/explorer" : location.href);
+  u.search = ""; u.hash = "";
+  const block = curBlock();
+  u.searchParams.set("block", String(block));
   if (selPixel) { u.searchParams.set("x", String(selPixel.nx)); u.searchParams.set("y", String(selPixel.ny)); }
-  history.replaceState(null, "", u.toString());
-  try { await navigator.clipboard.writeText(u.toString()); btn.textContent = "copied"; btn.classList.add("done"); }
-  catch (err) { btn.textContent = "link in address bar"; }
-  setTimeout(() => { btn.textContent = "copy link"; btn.classList.remove("done"); }, 1800);
+  shareTitle = "Bitcoin at block " + block.toLocaleString("en-US");
+  document.getElementById("shareContext").textContent = "Block " + block.toLocaleString("en-US") +
+    (selPixel ? " · pixel (" + selPixel.nx + ", " + selPixel.ny + ")" : "") + ". The link opens this paused view.";
+  shareUrl.value = u.toString();
+  shareStatus.textContent = "";
+  document.getElementById("shareEmail").href = "mailto:?subject=" + encodeURIComponent(shareTitle) + "&body=" + encodeURIComponent(u.toString());
+  shareDialog.showModal();
+  document.getElementById("shareCopy").focus();
 };
+document.getElementById("shareClose").onclick = () => shareDialog.close();
+shareDialog.addEventListener("close", () => shareView.focus());
+shareDialog.addEventListener("click", e => {
+  const r = shareDialog.getBoundingClientRect();
+  if (e.target === shareDialog && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) shareDialog.close();
+});
+document.getElementById("shareCopy").onclick = async () => {
+  try {
+    await navigator.clipboard.writeText(shareUrl.value);
+    shareStatus.textContent = "Link copied to clipboard.";
+  } catch {
+    shareUrl.focus(); shareUrl.select();
+    shareStatus.textContent = "Select and copy the link above; clipboard access is unavailable here.";
+  }
+};
+shareNative.onclick = async () => {
+  try { await navigator.share({ title: shareTitle, url: shareUrl.value }); }
+  catch (e) { if (e.name !== "AbortError") shareStatus.textContent = "Sharing is unavailable here. You can copy or email the link."; }
+};
+
+// Persist speed and reapply it after stream recovery or a source reload.
+const speedSelect = document.getElementById("playbackSpeed");
+const SPEED_KEY = "utxoPlaybackSpeed";
+let playbackSpeed = 1;
+try {
+  const saved = localStorage.getItem(SPEED_KEY);
+  if ([...speedSelect.options].some(o => o.value === saved)) playbackSpeed = Number(saved);
+} catch {}
+function applyPlaybackSpeed() {
+  try { vid.defaultPlaybackRate = playbackSpeed; vid.playbackRate = playbackSpeed; }
+  catch { playbackSpeed = 1; vid.defaultPlaybackRate = 1; vid.playbackRate = 1; streamStatus.textContent = "That speed is unavailable in this browser."; }
+  speedSelect.value = String(playbackSpeed);
+}
+speedSelect.addEventListener("change", () => {
+  playbackSpeed = Number(speedSelect.value);
+  applyPlaybackSpeed();
+  try { localStorage.setItem(SPEED_KEY, String(playbackSpeed)); } catch {}
+});
+vid.addEventListener("loadedmetadata", applyPlaybackSpeed);
+applyPlaybackSpeed();
 
 // ---- jump to date ----
 document.getElementById("dateInput").addEventListener("change", async (e) => {
@@ -355,7 +486,7 @@ function drawLegend() {
 const about = document.getElementById("about");
 const ABOUT_KEY = "utxoExplorerAboutSeen";
 function showAbout() { about.classList.add("visible"); document.getElementById("aboutClose").focus(); }
-function hideAbout() { about.classList.remove("visible"); localStorage.setItem(ABOUT_KEY, "1"); }
+function hideAbout() { about.classList.remove("visible"); try { localStorage.setItem(ABOUT_KEY, "1"); } catch {} }
 document.getElementById("helpBtn").onclick = showAbout;
 document.getElementById("aboutClose").onclick = hideAbout;
 about.addEventListener("click", e => { if (e.target === about) hideAbout(); });
@@ -388,6 +519,7 @@ document.addEventListener("webkitfullscreenchange", onFullscreenChange);
 
 // ---- global keys: ? help · F fullscreen · Space play/pause ----
 document.addEventListener("keydown", e => {
+  if (shareDialog.open) return;
   const t = e.target;
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -472,6 +604,11 @@ let streamRetryAttempt = 0;
 let lastPlaybackProgressAt = Date.now();
 let lastPlaybackTime = 0;
 
+function setPlayIcon(playing) {
+  playBtn.classList.toggle("is-playing", playing);
+  playBtn.setAttribute("aria-label", playing ? "Pause" : "Play");
+  playBtn.title = (playing ? "Pause" : "Play") + " (Space)";
+}
 playBtn.onclick = () => {
   if (vid.paused) {
     userWantsPlayback = true;
@@ -487,12 +624,12 @@ playBtn.onclick = () => {
 
 vid.addEventListener("play", () => {
   userWantsPlayback = true;
-  playBtn.textContent = "Pause";
+  setPlayIcon(true);
   frameValid = false;
   hideLoupe();
 });
 vid.addEventListener("pause", () => {
-  playBtn.textContent = "Play";
+  setPlayIcon(false);
   captureFrame();
 });
 vid.addEventListener("playing", () => {
@@ -606,6 +743,7 @@ blockInput.addEventListener("keydown", e => { if (e.key === "Enter") document.ge
 
 // Block stepping uses brackets so arrow keys remain dedicated to pixel nudging.
 document.addEventListener("keydown", e => {
+  if (shareDialog.open) return;
   const t = e.target;
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -747,6 +885,7 @@ function closeDrawer() {
 document.getElementById("panelClose").onclick = closeDrawer;
 panelTab.onclick = openDrawer;
 document.addEventListener("keydown", e => {
+  if (shareDialog.open) return;
   if (e.key === "Escape" && panel.classList.contains("open")) { e.preventDefault(); closeDrawer(); }
 });
 
@@ -971,9 +1110,10 @@ document.querySelectorAll("[data-pixel-dx]").forEach(button => {
 
 // ---- arrow-key pixel nudge (exact 1-native-px steps; Shift = 10) ----
 document.addEventListener("keydown", e => {
+  if (shareDialog.open) return;
   if (!selPixel || !info) return;
   const t = e.target;
-  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
   const step = e.shiftKey ? 10 : 1;
   let dx = 0, dy = 0;
   if (e.key === "ArrowLeft") dx = -step;

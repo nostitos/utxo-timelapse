@@ -21,6 +21,7 @@ jobs:
           node-version: '22'
       - run: python3 scripts/check_site.py
       - run: node --experimental-default-type=module scripts/check_site_mapping.mjs
+      - run: node --experimental-default-type=module scripts/check_explorer_navigation.mjs
       - uses: actions/upload-pages-artifact@v4
         if: github.event_name != 'pull_request'
         with:

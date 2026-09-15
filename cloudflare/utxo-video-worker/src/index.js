@@ -1,4 +1,5 @@
 import { RELEASE } from './release.js';
+import { navigationRoute, explorerCookie, fetchGuide } from './navigation.js';
 import { txidResponse } from "./bitcoin.js";
 import { dateResponse, pixelResponse, rangesResponse } from "./history.js";
 
@@ -226,15 +227,23 @@ async function handle(request, env, ctx) {
     return withHeaders(new Response("ok\n", { headers: { "Cache-Control": "no-store" } }));
   }
   if (url.pathname === "/robots.txt") {
-    return withHeaders(new Response("User-agent: *\nDisallow: /\n", {
+    return withHeaders(new Response("User-agent: *\nAllow: /\nDisallow: /explorer\nDisallow: /api/\nDisallow: /hls/\n", {
       headers: { "Content-Type": "text/plain", "Cache-Control": "public, max-age=86400" },
     }));
   }
-  if (url.pathname === "/" || url.pathname === "/explorer.html") {
-    return serveR2(request, env, ctx, `${SITE_PREFIX}/explorer.html`, {
+  const navigation = navigationRoute(request);
+  if (navigation?.kind === "redirect") {
+    return withHeaders(new Response(null, { status: 302, headers: {
+      Location: new URL(navigation.path, url).toString(), "Cache-Control": "no-store", Vary: "Cookie",
+    } }));
+  }
+  if (navigation?.kind === "guide") return withHeaders(await fetchGuide(request, navigation));
+  if (navigation?.kind === "explorer") {
+    const response = await serveR2(request, env, ctx, `${SITE_PREFIX}/explorer.html`, {
       contentType: CONTENT_TYPES.html,
-      cacheControl: "no-cache",
+      cacheControl: "no-store",
     });
+    return response.ok ? withHeaders(response, { "Set-Cookie": explorerCookie(request) }) : response;
   }
   if (url.pathname === "/hls.min.js") {
     return serveR2(request, env, ctx, `${SITE_PREFIX}/hls.min.js`, {
