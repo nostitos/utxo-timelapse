@@ -29,6 +29,7 @@ try {
   const input = new Request('https://bitcointimelapse.com/', { headers: { Cookie: 'private=1', Authorization: 'private', Range: 'bytes=0-99' } });
   const output = await fetchGuide(input, navigationRoute(input));
   assert.equal(observed.url, GUIDE_ORIGIN + 'index.html');
+  assert.equal(observed.redirect, 'manual'); // Workers supports manual/follow, not redirect:error.
   assert.equal(observed.headers.get('Range'), 'bytes=0-99');
   assert.equal(observed.headers.get('Cookie'), null);
   assert.equal(observed.headers.get('Authorization'), null);

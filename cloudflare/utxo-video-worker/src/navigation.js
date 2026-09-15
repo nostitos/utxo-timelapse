@@ -39,7 +39,10 @@ export async function fetchGuide(request, route) {
   // Never forward the visitor's cookies or authorization headers to the origin.
   const html = route.path.endsWith(".html");
   if (html) { headers.delete("If-None-Match"); headers.delete("If-Modified-Since"); }
-  const source = await fetch(url, { method: request.method, headers, redirect: "error" });
+  const source = await fetch(url, { method: request.method, headers, redirect: "manual" });
+  if (source.status >= 300 && source.status < 400 && source.status !== 304) {
+    throw new Error("Guide origin redirected unexpectedly");
+  }
   const output = new Headers(source.headers);
   output.delete("Set-Cookie");
   if (route.entry) {
