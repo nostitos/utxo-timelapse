@@ -205,6 +205,36 @@ def validate_stage(root, plan):
     return [(root, entry) for entry in plan['objects']], [(root, plan['playlist'])]
 
 
+def validate_rendition_timelines(config, stages):
+    """Do not advertise blocks missing from a retained compatibility stream."""
+    from fractions import Fraction
+    info = config['info']
+    renditions = info.get('videoRenditions')
+    if not renditions:
+        return
+    frames, fps = info.get('videoFrameCount'), info.get('fps')
+    if type(frames) is not int or frames <= 0 or type(fps) not in (int, float) or fps <= 0:
+        raise ValueError('renditions require frame count and FPS')
+    previous_counts = {check['expected']['videoFrameCount'] for check in config['beforeChecks']
+                       if check['kind'] == 'info' and 'videoFrameCount' in check['expected']}
+    if len(previous_counts) != 1:
+        raise ValueError('renditions require a pinned previous frame count')
+    staged = {'/'+plan['playlist']['key']: (root, plan) for root, plan in stages}
+    expected = Fraction(frames) / Fraction(str(fps))
+    for rendition in renditions.values():
+        entry = staged.get(rendition['url'])
+        if entry is None:
+            if frames != next(iter(previous_counts)):
+                raise ValueError('changed cutoff requires every rendition to be staged')
+            continue
+        root, _ = entry
+        ledger = json.loads((root/'segments.json').read_text())
+        duration = Fraction(sum(e['durationTicks'] for e in ledger['segments']), ledger['timescale'])
+        # HEVC appends may inherit millisecond rounding from the recording MKV.
+        if abs(duration-expected) > max(Fraction(1, ledger['timescale']), Fraction(1, 1000)):
+            raise ValueError('rendition timeline mismatch: '+rendition['url'])
+
+
 def execute_publication(manifest, *, expected_sha256, client=None, checker=check_public, runner=run_commands):
     root = Path(manifest).resolve().parent
     raw = Path(manifest).read_bytes()
@@ -218,6 +248,7 @@ def execute_publication(manifest, *, expected_sha256, client=None, checker=check
         journal = root/'execution-state.json'
         if journal.exists():
             raise ValueError('execution already attempted; inspect journal and explicitly recover before a fresh staging run')
+        stages = [(root, plan)]
         objects, playlists = validate_stage(root, plan)
         for reference in config.get('additionalStages', []):
             path = Path(reference['manifest'])
@@ -227,9 +258,11 @@ def execute_publication(manifest, *, expected_sha256, client=None, checker=check
             additional = json.loads(body)
             if 'execution' in additional:
                 raise ValueError('additional stage cannot deploy or nest stages')
+            stages.append((path.parent, additional))
             more_objects, more_playlists = validate_stage(path.parent, additional)
             objects.extend(more_objects)
             playlists.extend(more_playlists)
+        validate_rendition_timelines(config, stages)
         entries = [*objects, *playlists]
         seen = set()
         for entry_root, entry in entries:

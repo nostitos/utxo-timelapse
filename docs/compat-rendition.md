@@ -78,6 +78,11 @@ compatibility stage here when publishing both renditions. All stage manifests,
 ledgers and object hashes are checked before network activity. Upload every
 new media object across both stages before either playlist, then deploy once.
 Any failed post-deployment check rolls back the single release pointer.
+Advertised renditions require a pinned previous frame count in the before-checks.
+If the cutoff changes, every rendition must have a staged playlist. Staged
+durations must match the new frame count and FPS (within one millisecond for
+legacy HEVC timing). This prevents advancing 4K while retaining a stale default
+H.264 timeline.
 
 `/api/info` adds `videoDefaultRendition: "compat"` and `videoRenditions.full` /
 `videoRenditions.compat` entries containing `url`, `codecs`, `width`, `height`,

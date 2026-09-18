@@ -220,6 +220,22 @@ class CommandTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'additional stage manifest digest'):
             self.execute(path,client=FakeClient(),checker=lambda _:self.fail('network before verification'))
 
+    def test_changed_cutoff_requires_both_renditions(self):
+        self.config['info'].update(fps=1, videoFrameCount=2, videoRenditions={
+            'full': {'url':'/hls/new/media.m3u8'}, 'compat': {'url':'/hls/compat1/media.m3u8'}})
+        self.config['beforeChecks'][0]['expected']['videoFrameCount']=1
+        path=self.stage(2)
+        with self.assertRaisesRegex(ValueError,'requires every rendition'):
+            self.execute(path,client=FakeClient(),checker=lambda _:self.fail('network before timeline check'))
+
+    def test_wrong_rendition_duration_rejected_even_with_valid_object_hashes(self):
+        self.config['info'].update(fps=1,videoFrameCount=2,videoRenditions={
+            'compat': {'url':'/hls/new/media.m3u8'}})
+        self.config['beforeChecks'][0]['expected']['videoFrameCount']=2
+        path=self.stage(1)
+        with self.assertRaisesRegex(ValueError,'timeline mismatch'):
+            self.execute(path,client=FakeClient(),checker=lambda _:self.fail('network before timeline check'))
+
     def test_immutable_conflict_not_replaced(self):
         client = FakeClient()
         entry = {'key': 'new/test', 'file': 'x.json', 'sha256': hashlib.sha256(b'new').hexdigest()}
