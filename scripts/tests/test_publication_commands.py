@@ -200,6 +200,9 @@ class CommandTest(unittest.TestCase):
         self.assertIs(run.call_args.kwargs['shell'], False)
 
     def test_two_renditions_upload_before_single_deploy(self):
+        self.config['info'].update(fps=1,videoFrameCount=1,videoRenditions={
+            'full': {'url':'/hls/new/media.m3u8'}, 'compat': {'url':'/hls/compat1/media.m3u8'}})
+        self.config['beforeChecks'][0]['expected']['videoFrameCount']=0
         fm.append(self.root/'compat', init=b'avc-init', fragments=[(fragment(), 1000)],
                   timescale=1000, expected_count=0)
         prepare(self.root/'compat',self.root/'compat-stage',object_prefix='hls/compat1')
