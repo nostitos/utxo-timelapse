@@ -691,7 +691,7 @@ export const RELEASE = Object.freeze({
     997,
     998,
     999,
-    1000,
+    1000.0,
     1001,
     1002,
     1003,
@@ -1576,8 +1576,8 @@ export const RELEASE = Object.freeze({
     1882
   ],
   "numBlocks": 966828,
-  "sitePrefix": "explorer/sharing-20260915/site",
-  "version": "sharing-20260915",
+  "sitePrefix": "explorer/compat-1440p-20260918/site",
+  "version": "compat-1440p-20260918",
   "historyBlockTimesKey": "explorer/append966827-20260913-journal/history/block_times.bin",
   "historyShardSources": {
     "0": {

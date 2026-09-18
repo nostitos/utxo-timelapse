@@ -32,6 +32,7 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+import time
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
@@ -103,6 +104,10 @@ def validate_execution(config):
         validate_checks(config[phase])
 
 
+class ReleasePropagationPending(ValueError):
+    """The responding edge still runs a different Worker release."""
+
+
 def check_public(checks, *, opener=urlopen):
     for check in checks:
         headers = {'Cache-Control': 'no-cache', 'Accept-Encoding': 'identity',
@@ -114,7 +119,9 @@ def check_public(checks, *, opener=urlopen):
                 raise ValueError('unexpected verification redirect')
             for name, expected in check.get('expectedHeaders', {}).items():
                 if response.headers.get(name) != expected:
-                    raise ValueError('public header mismatch: '+name)
+                    error = ReleasePropagationPending if name.lower() == 'x-worker-version' else ValueError
+                    raise error(f"public header mismatch: {name} at {check['url']}: "
+                                f"expected {expected!r}, got {response.headers.get(name)!r}")
             if check['kind'] == 'info':
                 if response.status != 200:
                     raise ValueError('info status mismatch')
@@ -132,6 +139,17 @@ def check_public(checks, *, opener=urlopen):
                 body = response.read(length+1)
                 if len(body) != length or hashlib.sha256(body).hexdigest() != check['sha256']:
                     raise ValueError('Range payload mismatch')
+
+
+def check_transition(checks, checker, *, attempts=30, sleeper=time.sleep):
+    """Allow bounded edge propagation after deploy/rollback, never before it."""
+    for attempt in range(attempts):
+        try:
+            return checker(checks)
+        except ReleasePropagationPending:
+            if attempt == attempts-1:
+                raise
+            sleeper(2)
 
 
 def make_client(config):
@@ -292,12 +310,12 @@ def execute_publication(manifest, *, expected_sha256, client=None, checker=check
         state('deploying')  # Durable intent before potentially partial command side effects.
         try:
             runner(config['deploy'], root)
-            checker(config['afterChecks'])
+            check_transition(config['afterChecks'], checker)
         except BaseException as exc:
             try:
                 state('rolling_back', error=str(exc))
                 runner(config['rollback'], root)
-                checker(config['rollbackChecks'])
+                check_transition(config['rollbackChecks'], checker)
                 state('rolled_back', error=str(exc))
             except BaseException as rollback_error:
                 state('rollback_failed', error=str(exc), rollbackError=str(rollback_error))
@@ -323,7 +341,7 @@ def recover_publication(manifest, *, expected_sha256, checker=check_public, runn
             raise ValueError('no interrupted deployment to recover')
         try:
             runner(config['rollback'], root)
-            checker(config['rollbackChecks'])
+            check_transition(config['rollbackChecks'], checker)
         except BaseException as exc:
             atomic_json(journal, dict(state, phase='rollback_failed', rollbackError=str(exc)))
             raise

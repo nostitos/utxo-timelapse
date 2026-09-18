@@ -77,7 +77,10 @@ each entry has an absolute `manifest` path and its exact `sha256`. Use a prepare
 compatibility stage here when publishing both renditions. All stage manifests,
 ledgers and object hashes are checked before network activity. Upload every
 new media object across both stages before either playlist, then deploy once.
-Any failed post-deployment check rolls back the single release pointer.
+Worker-version checks allow up to 30 attempts, two seconds apart, after deploy
+or rollback for edge propagation. Pre-deploy checks remain immediate, and
+content/hash mismatches are not retried. A failed post-deployment check rolls
+back the single release pointer.
 Advertised renditions require a pinned previous frame count in the before-checks.
 If the cutoff changes, every rendition must have a staged playlist. Staged
 durations must match the new frame count and FPS (within one millisecond for

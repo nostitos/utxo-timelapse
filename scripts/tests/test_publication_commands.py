@@ -59,6 +59,28 @@ def checks(version):
 
 
 class CommandTest(unittest.TestCase):
+    def test_transition_waits_for_edge_version(self):
+        observed, sleeps = [], []
+        def check(c):
+            observed.append(c)
+            if len(observed) < 3:
+                raise pc.ReleasePropagationPending('old edge version')
+        pc.check_transition(checks('new'), check, attempts=3, sleeper=sleeps.append)
+        self.assertEqual(len(observed), 3)
+        self.assertEqual(sleeps, [2, 2])
+
+    def test_transition_failure_remains_bounded_and_strict(self):
+        sleeps = []
+        def stale(_):
+            raise pc.ReleasePropagationPending('old edge version')
+        with self.assertRaises(pc.ReleasePropagationPending):
+            pc.check_transition(checks('new'), stale, attempts=3, sleeper=sleeps.append)
+        self.assertEqual(sleeps, [2, 2])
+        def corrupt(_):
+            raise ValueError('Range payload mismatch')
+        with self.assertRaisesRegex(ValueError, 'Range payload mismatch'):
+            pc.check_transition(checks('new'), corrupt, sleeper=lambda _: self.fail('corrupt payload retried'))
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)

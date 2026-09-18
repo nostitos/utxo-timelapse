@@ -51,5 +51,11 @@ Legacy `buv_data/buv_resume.json` and `buv_data/buv_update_mac.json`, v2 presets
 The 1440p H.264 conversion uses fresh run directory `compat1440-20260918/` beside
 the retained masters. Its `encode/` staging, immutable `ledger/`, verification
 receipt and publication catalog are described in [compatibility operations](compat-rendition.md).
+The September 18 conversion uses the September 13 master
+`utxo_4k_epoch105k_60fps_transition_crf21_to_966827.mp4`: 84,200,687,245 bytes,
+967,128 frames through block 966,827 plus its repeated ending, and 4:28:38.800
+at 60 fps. Its compatibility init and 4,030 segments total 19,836,027,329 bytes.
+See the [measured compatibility release](history/compat-rendition-2026-09-18.md).
+
 The old `mobile-966360/` experiment is incomplete and is not a publication input.
 It remains untouched. New renditions never overwrite the HEVC master or chain data.
