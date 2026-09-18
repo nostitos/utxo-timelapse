@@ -45,3 +45,11 @@ The node checkpoint accelerates the **data update**. The renderer still replays 
 The five core working files are the latest master, local BLK/history, and node BLK/checkpoint, excluding Bitcoin Core data, software and cloud-hosted copies. The prior 83.93 GB local master is temporarily retained as the verified rollback source for this update; it is not required for the next append once using the new master. The Mac input is a working dataset and the node pair is the updater's state; there is no extra backup pair.
 
 Legacy `buv_data/buv_resume.json` and `buv_data/buv_update_mac.json`, v2 presets and `buv_deploy` recipes are historical source records. Their old datasets were retired. The current local render presets and canonical v3 update configuration are the maintained paths above.
+
+## Compatibility rendition
+
+The 1440p H.264 conversion uses fresh run directory `compat1440-20260918/` beside
+the retained masters. Its `encode/` staging, immutable `ledger/`, verification
+receipt and publication catalog are described in [compatibility operations](compat-rendition.md).
+The old `mobile-966360/` experiment is incomplete and is not a publication input.
+It remains untouched. New renditions never overwrite the HEVC master or chain data.

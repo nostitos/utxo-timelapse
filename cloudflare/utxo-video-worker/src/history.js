@@ -1,4 +1,5 @@
 import { RELEASE } from './release.js';
+import { historySource } from './history_sources.js';
 import { parseSpendPatchIndex, parseSpendPatchRecords } from './spend_patch.js';
 import {
   CONFIG,
@@ -8,9 +9,7 @@ import {
   validatePixelParams,
 } from "./mapping.js";
 
-const PATCH_SHARDS = new Set(RELEASE.historyPatchShards);
-const FULL_SHARDS = new Set(RELEASE.historyFullShards);
-const BLOCK_TIMES_KEY = `${RELEASE.historyDeltaPrefix}/block_times.bin`;
+const BLOCK_TIMES_KEY = RELEASE.historyBlockTimesKey || `${RELEASE.historyDeltaPrefix}/block_times.bin`;
 const SHARD_BLOCKS = 512;
 const ROWS = CONFIG.graphRect.h;
 const SHARD_HEADER_BYTES = 32;
@@ -93,8 +92,8 @@ function pastBetter(a, b) {
 }
 
 async function scanShard(bucket, shard, row, bounds, aggregate) {
-  const prefix = FULL_SHARDS.has(shard) ? RELEASE.historyDeltaPrefix : RELEASE.historyBasePrefix;
-  const key = `${prefix}/shards/${String(shard).padStart(5, "0")}.bin`;
+  const source = historySource(RELEASE, shard);
+  const key = source.baseKey;
   const indexBuffer = await objectBytes(
     bucket,
     key,
@@ -110,13 +109,13 @@ async function scanShard(bucket, shard, row, bounds, aggregate) {
   const firstRecord = Number(index.getBigUint64(SHARD_HEADER_BYTES + row * 8, true));
   const finalRecord = Number(index.getBigUint64(SHARD_HEADER_BYTES + (row + 1) * 8, true));
   let spendPatch = new Map();
-  if (PATCH_SHARDS.has(shard)) {
-    const patchKey = `${RELEASE.historyDeltaPrefix}/spends/${String(shard).padStart(5, "0")}.bin`;
+  if (source.patchKey) {
+    const patchKey = source.patchKey;
     const patchIndex = await objectBytes(bucket, patchKey, 0, SHARD_HEADER_BYTES + SHARD_INDEX_BYTES);
     const range = parseSpendPatchIndex(patchIndex, row, ROWS, shard);
     if (range.length) {
       const patchRows = await objectBytes(bucket, patchKey, range.offset, range.length);
-      spendPatch = parseSpendPatchRecords(patchRows, firstRecord, finalRecord, RELEASE.historyOldTip, CONFIG.numBlocks - 1);
+      spendPatch = parseSpendPatchRecords(patchRows, firstRecord, finalRecord, source.baseTip, CONFIG.numBlocks - 1);
     }
   }
   let record = firstRecord;

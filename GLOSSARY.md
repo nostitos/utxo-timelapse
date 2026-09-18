@@ -18,6 +18,10 @@ Code identifiers are canonical. The [technical reference](https://nostitos.githu
 
 ## Image
 
+**Compatibility rendition:** a 2560×1440 H.264 delivery copy transcoded from the
+4K master. It preserves frame/block timing; explorer lookups continue to use
+the master pixel grid. See [operations](docs/compat-rendition.md).
+
 | Term / identifier | Meaning |
 |---|---|
 | `graphRect` | `[x,y,width,height]` plotting rectangle inside the frame. Published: `[0,10,3720,2072]` within 3840×2160. |
