@@ -1,0 +1,25 @@
+name: Compatibility video checks
+on:
+  pull_request:
+    paths: ['scripts/**', 'cloudflare/utxo-video-worker/**', 'src/cpp/app/explorer_ui/**', '.github/workflows/compatibility-video.yml']
+  push:
+    branches: [master]
+    paths: ['scripts/**', 'cloudflare/utxo-video-worker/**', 'src/cpp/app/explorer_ui/**', '.github/workflows/compatibility-video.yml']
+permissions:
+  contents: read
+jobs:
+  media:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install fixture encoder
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Verify real H.264 build and append, fragment integrity, and publication rollback
+        env:
+          PYTHONPATH: scripts/tests
+        run: python3 -m unittest test_compat_rendition test_fragment_publication test_replace_tail test_import_hls_catalog test_publication_commands -v
+      - run: node scripts/check_explorer_quality.cjs
+      - run: node --experimental-default-type=module scripts/check_hls_routes.mjs

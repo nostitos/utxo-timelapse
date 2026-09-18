@@ -2,9 +2,9 @@ name: Publish illustrated guide
 on:
   push:
     branches: [master]
-    paths: ['site/**', 'scripts/check_site*', 'scripts/check_explorer*', 'cloudflare/utxo-video-worker/static/explorer.html', 'src/cpp/app/explorer_ui/explorer.html', 'src/cpp/app/Cfg.cpp', 'cloudflare/utxo-video-worker/src/**', 'README.md', 'AGENTS.md', 'CLAUDE.md', 'GLOSSARY.md', 'docs/**', '.github/workflows/pages.yml']
+    paths: ['site/**', 'scripts/check_site*', 'scripts/check_hls*', 'scripts/check_explorer*', 'cloudflare/utxo-video-worker/static/explorer.html', 'src/cpp/app/explorer_ui/explorer.html', 'src/cpp/app/Cfg.cpp', 'cloudflare/utxo-video-worker/src/**', 'README.md', 'AGENTS.md', 'CLAUDE.md', 'GLOSSARY.md', 'docs/**', '.github/workflows/pages.yml']
   pull_request:
-    paths: ['site/**', 'scripts/check_site*', 'scripts/check_explorer*', 'cloudflare/utxo-video-worker/static/explorer.html', 'src/cpp/app/explorer_ui/explorer.html', 'src/cpp/app/Cfg.cpp', 'cloudflare/utxo-video-worker/src/**', 'README.md', 'AGENTS.md', 'CLAUDE.md', 'GLOSSARY.md', 'docs/**', '.github/workflows/pages.yml']
+    paths: ['site/**', 'scripts/check_site*', 'scripts/check_hls*', 'scripts/check_explorer*', 'cloudflare/utxo-video-worker/static/explorer.html', 'src/cpp/app/explorer_ui/explorer.html', 'src/cpp/app/Cfg.cpp', 'cloudflare/utxo-video-worker/src/**', 'README.md', 'AGENTS.md', 'CLAUDE.md', 'GLOSSARY.md', 'docs/**', '.github/workflows/pages.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -23,6 +23,8 @@ jobs:
       - run: node --experimental-default-type=module scripts/check_site_mapping.mjs
       - run: node --experimental-default-type=module scripts/check_explorer_navigation.mjs
       - run: node scripts/check_explorer_sharing.cjs
+      - run: node scripts/check_explorer_quality.cjs
+      - run: node --experimental-default-type=module scripts/check_hls_routes.mjs
       - uses: actions/upload-pages-artifact@v4
         if: github.event_name != 'pull_request'
         with:

@@ -142,8 +142,8 @@
   #playBtn svg { width:29px; height:29px; fill:currentColor; }
   #playBtn .pauseIcon, #playBtn.is-playing .playIcon { display:none; }
   #playBtn.is-playing .pauseIcon { display:block; }
-  .speedControl { display:flex; align-items:center; gap:6px; font-size:12px; color:#9aa5b8; }
-  #playbackSpeed { height:36px; min-width:66px; background:#1c2333; color:#d8dee9; border:1px solid #2a3245; border-radius:4px; padding:4px; font:inherit; cursor:pointer; }
+  .speedControl, .qualityControl { display:flex; align-items:center; gap:6px; font-size:12px; color:#9aa5b8; }
+  #playbackSpeed, #quality { height:36px; min-width:66px; background:#1c2333; color:#d8dee9; border:1px solid #2a3245; border-radius:4px; padding:4px; font:inherit; cursor:pointer; }
   #blockLabel { min-width:108px; }
   #shareView { font-size:12px; white-space:nowrap; }
   .guideLink { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
@@ -197,18 +197,22 @@
     #controls { gap:8px; }
     #blockLabel { order:0; flex:1; min-width:100px; }
     #shareView, .guideLink { order:0; min-height:44px; padding:8px; font-size:13px; }
+    #shareView .share-long { display:none; }
     .transport { order:1; flex:1 0 100%; justify-content:center; gap:14px; }
     #blockSteps { order:0; flex:0 0 auto; }
     #blockSteps button { flex:none; min-width:34px; }
     #blockSteps #playBtn { min-width:52px; }
-    #playbackSpeed { min-height:44px; font-size:16px; }
+    #playbackSpeed, #quality { min-height:44px; font-size:16px; }
     .speedControl { gap:4px; }
     #seekBar { order:2; }
     #blockInput, #goBtn, #dateInput, .tog, #fsBtn, #helpBtn { order:3; }
     #shareDialog { padding:18px; }
     #shareDialog button, #shareDialog a { min-height:44px; }
   }
-  @media (max-width:380px) { .transport { gap:8px; }.speedControl { font-size:0; }#playbackSpeed { font-size:16px; } }
+  .qualityControl[hidden] { display:none; }
+  #qualityStatus { color:#f0bc72; font-size:12px; }
+  @media (max-width:760px), (pointer:coarse) { .transport { flex-wrap:wrap; } .qualityControl { font-size:0; } }
+  @media (max-width:430px) { .transport { gap:8px; }.speedControl { font-size:0; }#playbackSpeed { font-size:16px; } }
   @media (max-height:500px) and (orientation:landscape) {
     .transport { order:0; flex:0 0 auto; }
     #blockSteps { display:inline-flex; }
@@ -263,19 +267,20 @@
           <option value="3">3×</option><option value="4">4×</option>
         </select>
       </label>
+      <label class="qualityControl" for="quality" hidden>Quality <select id="quality" aria-label="Video quality"><option value="compat">1440p</option><option value="full">4K</option></select></label>
     </div>
     <span id="blockLabel">block 0</span>
     <input id="seekBar" type="range" min="0" max="1" step="1" value="0" style="flex:1 1 200px">
     <input id="blockInput" type="number" min="0" step="1" placeholder="block #">
     <button id="goBtn">Go</button>
     <input id="dateInput" type="date" title="Jump to the first block on this date (UTC)">
-    <button id="shareView" type="button" aria-haspopup="dialog">Share this view</button>
+    <button id="shareView" type="button" aria-haspopup="dialog" aria-label="Share this view">Share<span class="share-long"> this view</span></button>
     <label class="tog"><input id="loupeTog" type="checkbox" checked> magnifier</label>
     <button id="fsBtn" type="button" title="Fullscreen (F)" aria-label="Fullscreen">⤢</button>
     <a class="guideLink" href="https://bitcointimelapse.com/guide/" target="_blank" rel="noopener">Guide ↗</a>
     <button id="helpBtn" type="button" title="What is this? (?)" aria-label="About this explorer">?</button>
     <span id="hint">pause &amp; click a pixel</span>
-    <span id="streamStatus" aria-live="polite"></span>
+    <span id="qualityStatus" role="status"></span><span id="streamStatus" aria-live="polite"></span>
   </div>
 </div>
 <div id="about" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
@@ -297,6 +302,7 @@
     </div>
     <p style="margin-top:8px"><span class="sw" style="background:#fff"></span><b>White flashes</b> mark coins created or spent in the current block; the bigger the star, the more BTC moved. <span class="sw" style="background:#ff8c1a;margin-left:8px"></span><b>Orange bars</b> at the cursor show where new coins are being created right now.</p>
 
+    <p id="renditionNote" hidden>At 1440p, magnifier colours are resampled. Pixel coordinates and coin lookups use the 4K master grid.</p>
     <h3>Using it</h3>
     <div class="grid">
       <span>Click a pixel</span><span>Opens the details drawer: which coins were there at that block, their amounts, when they were created, and whether they remained unspent at the published data cutoff.</span>
@@ -310,6 +316,7 @@
 
     <div id="aboutFoot">
       <span class="src" id="aboutSrc"></span>
+      <span class="src" id="renditionCaption"></span>
       <a href="https://bitcointimelapse.com/guide/" target="_blank" rel="noopener">Read the illustrated guide ↗</a>
       <button id="aboutClose" type="button">Got it</button>
     </div>
@@ -378,6 +385,7 @@ fetch("/api/info", {cache: "no-store"}).then(r => r.json()).then(async d => {
   dateInput.min = "2009-01-03";
   if (d.tipDate) dateInput.max = d.tipDate;
   drawLegend();
+  initializeQuality();
   if (d.videoAvailable) {
     attachVideo(false);
     restoreFromUrl();
@@ -646,6 +654,7 @@ document.addEventListener("keydown", e => {
   else if (e.key === " ") { e.preventDefault(); playBtn.click(); }
 }, true);
 
+
 function curBlock() {
   if (!info) return 0;
   const frameBlock = info.videoStartBlock + Math.floor(vid.currentTime * info.fps + 1e-6);
@@ -657,7 +666,7 @@ function blockToVideoTime(block) {
   return (block - info.videoStartBlock + 0.5) / info.fps;
 }
 function videoUrl(retry) {
-  const source = (info && info.videoUrl) || "/hls/v1/media.m3u8";
+  const source = info?.videoRenditions?.[activeRendition]?.url || (info && info.videoUrl) || "/hls/v1/media.m3u8";
   return source + (retry ? (source.includes("?") ? "&" : "?") + "retry=" + Date.now() : "");
 }
 function fallbackVideoUrl(retry) {
@@ -682,12 +691,15 @@ function attachVideo(retry) {
       backBufferLength: 30,
       enableWorker: true
     });
+    const player = hls;
     hls.on(Hls.Events.ERROR, (_event, data) => {
-      if (!data.fatal) return;
-      if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-        hls.recoverMediaError();
-      } else if (userWantsPlayback) {
-        recoverVideoStream("HLS " + data.details);
+      if (player !== hls || !data.fatal) return;
+      if (data.type === Hls.ErrorTypes.MEDIA_ERROR && mediaRecoveryCount++ === 0) {
+        player.recoverMediaError();
+        setTimeout(() => { if (player === hls && vid.readyState < 2) fallbackRendition(); }, 5000);
+      } else if (!fallbackRendition()) {
+        if (userWantsPlayback) recoverVideoStream("HLS " + data.details);
+        else streamStatus.textContent = "Video could not load. Tap Play to retry.";
       }
     });
     hls.loadSource(source);
@@ -696,6 +708,10 @@ function attachVideo(retry) {
   }
   // Last-resort direct MP4. HEVC-capable browsers should normally take one of
   // the HLS paths above.
+  if (activeRendition === "compat") {
+    streamStatus.textContent = "This browser does not support streaming playback.";
+    return;
+  }
   vid.src = fallbackVideoUrl(retry);
   vid.load();
 }
@@ -712,6 +728,131 @@ function fmtAge(blocks) {
   if (days >= 1) return days.toFixed(0) + " d";
   return blocks + " blk";
 }
+
+// ---- quality contract: delivery resolution never changes lookup coordinates ----
+function chooseRendition(metadata, {query, stored, canPlay4K} = {}) {
+  if (!metadata?.videoRenditions?.compat) return "full";
+  const aliases = {"4k":"full", "1440p":"compat", full:"full", compat:"compat"};
+  const wanted = aliases[query || stored || metadata.videoDefaultRendition || "compat"] || "compat";
+  return wanted === "full" && canPlay4K && metadata.videoRenditions.full ? "full" : "compat";
+}
+function supportsFullRendition(metadata, video, scope) {
+  const full = metadata?.videoRenditions?.full;
+  if (!full?.codecs) return false;
+  const type = 'video/mp4; codecs="' + full.codecs + '"';
+  try {
+    if (video.canPlayType("application/vnd.apple.mpegurl") && video.canPlayType(type)) return true;
+    return !!(scope.MediaSource?.isTypeSupported(type) && scope.Hls?.isSupported());
+  } catch { return false; }
+}
+// ---- end quality contract ----
+
+let activeRendition = "full";
+let renditionGeneration = 0;
+let renditionAbort = null;
+let renditionSwitching = false;
+let pendingRenditionBlock = null;
+let mediaRecoveryCount = 0;
+const qualitySelect = document.getElementById("quality");
+const qualityStatus = document.getElementById("qualityStatus");
+function initializeQuality() {
+  let stored;
+  try { stored = localStorage.getItem("btl.quality"); } catch {}
+  const canPlay4K = supportsFullRendition(info, vid, window);
+  activeRendition = chooseRendition(info, {
+    query:new URLSearchParams(location.search).get("quality"), stored, canPlay4K
+  });
+  qualitySelect.closest("label").hidden = !info.videoRenditions?.compat;
+  const fullOption = qualitySelect.querySelector('option[value="full"]');
+  fullOption.disabled = !canPlay4K;
+  fullOption.title = canPlay4K ? "" : "HEVC 4:4:4 is not supported by this browser";
+  pendingRenditionBlock = readSharedView(location.search, info).block;
+  updateQualityDisplay();
+}
+function updateQualityDisplay() {
+  qualitySelect.value = activeRendition;
+  const selected = info.videoRenditions?.[activeRendition];
+  const caption = document.getElementById("renditionCaption");
+  caption.textContent = selected ? info.imageWidth + "×" + info.imageHeight +
+    " master · streaming " + selected.width + "×" + selected.height +
+    (activeRendition === "compat" ? " H.264" : " HEVC 4:4:4") : "";
+  document.getElementById("renditionNote").hidden = activeRendition !== "compat";
+}
+function renditionEvent(name, signal, timeoutMs=15000) {
+  return new Promise((resolve,reject) => {
+    const cleanup = () => { clearTimeout(timer); vid.removeEventListener(name,done); signal.removeEventListener("abort",cancel); };
+    const done = () => { cleanup(); resolve(); };
+    const cancel = () => { cleanup(); reject(new DOMException("Superseded","AbortError")); };
+    const timer = setTimeout(() => { cleanup(); reject(new Error(name+" timeout")); },timeoutMs);
+    vid.addEventListener(name,done,{once:true});
+    signal.addEventListener("abort",cancel,{once:true});
+    if (signal.aborted) cancel();
+  });
+}
+async function setRendition(id, {persist=false, retry=false, notice=""} = {}) {
+  if (!info) return;
+  if (!info.videoRenditions?.[id]) id = "full";
+  if (id === "full" && info.videoRenditions?.compat && !supportsFullRendition(info,vid,window)) id = "compat";
+  const block = pendingRenditionBlock ?? curBlock();
+  renditionAbort?.abort();
+  const controller = renditionAbort = new AbortController();
+  const generation = ++renditionGeneration;
+  renditionSwitching = true;
+  pendingRenditionBlock = block;
+  activeRendition = id;
+  mediaRecoveryCount = 0;
+  frameValid = false;
+  hideLoupe();
+  if (persist) { try { localStorage.setItem("btl.quality",id); } catch {} }
+  updateQualityDisplay();
+  qualityStatus.textContent = notice;
+  try {
+    const metadataReady = renditionEvent("loadedmetadata",controller.signal);
+    attachVideo(retry);
+    await metadataReady;
+    if (generation !== renditionGeneration) return;
+    const seekReady = renditionEvent("seeked",controller.signal);
+    vid.currentTime = blockToVideoTime(block);
+    await seekReady;
+    if (generation !== renditionGeneration) return;
+    pendingRenditionBlock = null;
+    renditionSwitching = false;
+    applyPlaybackSpeed();
+    if (userWantsPlayback) await vid.play();
+    else {
+      vid.pause(); captureFrame();
+      if (selPixel?.block === block) {
+        updatePixelSwatch(selPixel.nx, selPixel.ny);
+        const point = nativeToDisplay(selPixel.nx, selPixel.ny);
+        crosshair.style.left = point.x + "px";
+        crosshair.style.top = point.y + "px";
+        crosshair.style.display = "block";
+      }
+    }
+    setPlayIcon(!vid.paused);
+  } catch (error) {
+    if (generation !== renditionGeneration || error.name === "AbortError") return;
+    renditionSwitching = false;
+    if (error.name === "NotAllowedError") {
+      userWantsPlayback = false; streamStatus.textContent = "Tap Play to start video";
+    } else if (!fallbackRendition()) {
+      streamStatus.textContent = "Video could not load. Tap Play to retry.";
+      streamRecovering = false;
+    }
+  }
+}
+function fallbackRendition() {
+  if (activeRendition !== "full" || !info?.videoRenditions?.compat) return false;
+  streamRecovering = false;
+  streamRetryAttempt = 0;
+  void setRendition("compat",{persist:true,notice:"4K is not playable here — switched to 1440p"});
+  return true;
+}
+qualitySelect.addEventListener("change", () => {
+  streamRecovering = false; streamRetryAttempt = 0;
+  void setRendition(qualitySelect.value,{persist:true});
+});
+vid.addEventListener("seeked", () => { if (!renditionSwitching) pendingRenditionBlock = null; });
 
 // ---- timeline ----
 const playBtn = document.getElementById("playBtn");
@@ -748,6 +889,7 @@ vid.addEventListener("pause", () => {
   setPlayIcon(false);
   captureFrame();
 });
+vid.addEventListener("ended", () => { userWantsPlayback = false; setPlayIcon(false); });
 vid.addEventListener("playing", () => {
   streamRecovering = false;
   streamRetryAttempt = 0;
@@ -771,34 +913,27 @@ function waitForVideoEvent(name, timeoutMs) {
 }
 
 async function recoverVideoStream(reason) {
-  if (streamRecovering || !userWantsPlayback) return;
+  if (streamRecovering || renditionSwitching || !userWantsPlayback) return;
+  if (activeRendition === "full" && streamRetryAttempt >= 1 && fallbackRendition()) return;
   streamRecovering = true;
-  const resumeAt = Number.isFinite(vid.currentTime) ? vid.currentTime : 0;
+  const generation = renditionGeneration;
   const delay = Math.min(8000, 1000 * Math.pow(2, streamRetryAttempt++));
   streamStatus.textContent = "reconnecting…";
   await new Promise(resolve => setTimeout(resolve, delay));
-  try {
-    attachVideo(true);
-    await waitForVideoEvent("loadedmetadata", 12000);
-    if (resumeAt > 0) {
-      vid.currentTime = resumeAt;
-      await waitForVideoEvent("seeked", 12000);
-    }
-    await vid.play();
-  } catch (error) {
-    streamRecovering = false;
-    streamStatus.textContent = "retrying stream…";
-    setTimeout(() => recoverVideoStream(reason), 1000);
-  }
+  if (generation !== renditionGeneration || !userWantsPlayback) { streamRecovering = false; return; }
+  await setRendition(activeRendition,{retry:true});
+  streamRecovering = false;
 }
 
-vid.addEventListener("error", () => recoverVideoStream("media error"));
+vid.addEventListener("error", () => {
+  if (!fallbackRendition()) recoverVideoStream("media error");
+});
 vid.addEventListener("stalled", () => {
   if (userWantsPlayback) streamStatus.textContent = "buffering…";
 });
 
 setInterval(() => {
-  if (!userWantsPlayback || vid.paused || vid.seeking || streamRecovering) return;
+  if (!userWantsPlayback || vid.ended || vid.seeking || streamRecovering || renditionSwitching) return;
   if (vid.currentTime > lastPlaybackTime + 0.01) {
     lastPlaybackTime = vid.currentTime;
     lastPlaybackProgressAt = Date.now();
@@ -944,8 +1079,7 @@ clickLayer.addEventListener("mousemove", e => {
 clickLayer.addEventListener("mouseleave", e => {
   // moving onto the (clickable) loupe is not a real leave
   if (e.relatedTarget && loupe.contains(e.relatedTarget)) return;
-  hoverBar.style.display = "none";
-  hoverLast = null;
+  clearHover();
   hideLoupe();
 });
 
@@ -953,11 +1087,27 @@ clickLayer.addEventListener("mouseleave", e => {
 let hoverLast = null;       // {nx, ny, block} of the last fetch
 let hoverInFlight = false;
 let hoverPending = null;
+let hoverTimer = null;
+function clearHover() {
+  clearTimeout(hoverTimer); hoverTimer = null;
+  hoverPending = null; hoverLast = null;
+  hoverBar.style.display = "none";
+}
+function scheduleHover() {
+  clearTimeout(hoverTimer);
+  hoverTimer = setTimeout(() => {
+    hoverTimer = null;
+    if (!hoverInFlight && hoverPending) {
+      const p = hoverPending; hoverPending = null;
+      fetchHover(p);
+    }
+  }, 120);
+}
 async function fetchHover(p) {
   hoverInFlight = true;
   try {
-    const r = await fetch("/api/ranges?v=" + encodeURIComponent(info.videoVersion) + "&block=" + p.block + "&x=" + p.nx + "&y=" + p.ny).then(r => r.json());
-    if (hoverLast && hoverLast.nx === p.nx && hoverLast.ny === p.ny) {
+    const r = await fetch("/api/ranges?v=" + encodeURIComponent(info.videoVersion) + "&block=" + p.block + "&x=" + p.nx + "&y=" + p.ny).then(r => { if (!r.ok) throw new Error("hover lookup failed"); return r.json(); });
+    if (hoverLast && hoverLast.nx === p.nx && hoverLast.ny === p.ny && hoverLast.block === p.block && curBlock() === p.block) {
       let s = "<b>(" + p.nx + ", " + p.ny + ")</b>";
       if (r.future) s += " · right of the block cursor (orange flow-line overlay)";
       else if (r.blockRange) s += " · blocks <b>" + r.blockRange[0].toLocaleString("en-US") + " – " + r.blockRange[1].toLocaleString("en-US") + "</b> (" + r.blockDates[0] + " → " + r.blockDates[1] + ")";
@@ -968,17 +1118,20 @@ async function fetchHover(p) {
     }
   } catch (err) { /* transient; next move retries */ }
   hoverInFlight = false;
-  if (hoverPending) { const n = hoverPending; hoverPending = null; fetchHover(n); }
+  if (hoverPending && !hoverTimer) scheduleHover();
 }
 function updateHover(e) {
   if (!info) return;
   const p = displayToNative(e.clientX, e.clientY);
-  if (!p) { hoverBar.style.display = "none"; hoverLast = null; return; }
+  const [gx, gy, gw, gh] = info.graphRect;
+  if (!p || p.nx < gx || p.nx >= gx + gw || p.ny < gy || p.ny >= gy + gh) {
+    clearHover(); return;
+  }
   const block = curBlock();
   if (hoverLast && hoverLast.nx === p.nx && hoverLast.ny === p.ny && hoverLast.block === block) return;
   hoverLast = { nx: p.nx, ny: p.ny, block };
-  if (hoverInFlight) { hoverPending = hoverLast; return; }
-  fetchHover(hoverLast);
+  hoverPending = hoverLast;
+  scheduleHover();
 }
 loupe.addEventListener("mouseleave", e => {
   if (e.relatedTarget === clickLayer) return;

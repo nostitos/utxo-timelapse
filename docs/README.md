@@ -38,6 +38,7 @@ Build Docker from the repository root: `docker build -t buv .`. The entry point 
 | Inspect locally | `utxo_explorer`, adapted [`buv_explorer.json`](../configs/buv_explorer.json) |
 | Retained files / next update | [`render-files.md`](render-files.md) |
 | Last measured video append | [`video-update-2026-09-10.md`](video-update-2026-09-10.md) |
+| Build/publish mobile-compatible playback | [1440p H.264 rendition](compat-rendition.md), `compat_rendition.py` |
 | Publish the explorer | [Video Worker README](../cloudflare/utxo-video-worker/README.md) |
 | Publish the guide | [`site/README.md`](../site/README.md) |
 
