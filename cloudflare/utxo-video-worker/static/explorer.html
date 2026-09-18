@@ -819,7 +819,16 @@ async function setRendition(id, {persist=false, retry=false, notice=""} = {}) {
     renditionSwitching = false;
     applyPlaybackSpeed();
     if (userWantsPlayback) await vid.play();
-    else { vid.pause(); captureFrame(); }
+    else {
+      vid.pause(); captureFrame();
+      if (selPixel?.block === block) {
+        updatePixelSwatch(selPixel.nx, selPixel.ny);
+        const point = nativeToDisplay(selPixel.nx, selPixel.ny);
+        crosshair.style.left = point.x + "px";
+        crosshair.style.top = point.y + "px";
+        crosshair.style.display = "block";
+      }
+    }
     setPlayIcon(!vid.paused);
   } catch (error) {
     if (generation !== renditionGeneration || error.name === "AbortError") return;
