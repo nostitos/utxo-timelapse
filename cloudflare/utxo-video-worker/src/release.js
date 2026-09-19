@@ -1576,8 +1576,8 @@ export const RELEASE = Object.freeze({
     1882
   ],
   "numBlocks": 966828,
-  "sitePrefix": "explorer/compat-1440p-20260918/site",
-  "version": "compat-1440p-20260918",
+  "sitePrefix": "explorer/compact-controls-20260918/site",
+  "version": "compact-controls-20260918",
   "historyBlockTimesKey": "explorer/append966827-20260913-journal/history/block_times.bin",
   "historyShardSources": {
     "0": {
