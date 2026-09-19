@@ -98,17 +98,7 @@
   #videoWrap { overflow: hidden; }
   #touchAim { display: none; }
   @media (max-width: 760px), (pointer: coarse), (max-height: 500px) and (orientation: landscape) {
-    #controls { gap: 6px; padding: 8px max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); flex-shrink: 0; }
-    #controls button, #controls input, #panel button { min-height: 44px; font-size: 16px; touch-action: manipulation; }
-    #controls button { min-width: 44px; }
-    #blockSteps { order: 4; flex: 1 0 100%; justify-content: center; }
-    #blockSteps button { flex: 1; min-width: 38px; }
-    #blockLabel { min-width: 0; flex: 1; font-size: 14px; }
-    #seekBar { order: 3; flex: 1 0 100% !important; width: 100%; margin: 0; }
-    #blockInput, #goBtn, #dateInput, #shareView, .tog { order: 5; }
-    #controls input[type=date] { font-size: 16px; min-width: 0; width: 145px; }
-    #hint { display: none; }
-    #streamStatus { order: 6; min-width: 0; }
+    #panel button { min-height:44px; font-size:16px; touch-action:manipulation; }
     #panel { position: fixed; top: auto; left: 0; right: 0; bottom: 0; width: 100%; max-height: 46dvh; padding: 12px 12px max(12px, env(safe-area-inset-bottom)); transform: translateY(110%); border: 1px solid #2a3245; border-radius: 14px 14px 0 0; background: #11151ff5; }
     #panel.open { transform: translateY(0); }
     #panelBody { overflow-x: auto; }
@@ -122,12 +112,8 @@
     #legend .row span:first-child { flex-basis: 90px; }
     #legend canvas { min-width: 0; width: 100px; }
     #aboutFoot { flex-wrap: wrap; }
-    body.fs #controls { display: flex; }
-    body.fs #videoWrap { height: auto; }
   }
   @media (max-height: 500px) and (orientation: landscape) {
-    #blockInput, #goBtn, #dateInput, .tog, #helpBtn { display: none; }
-    #controls { padding-top: 2px; padding-bottom: 2px; }
     #panel { top: 0; left: auto; width: min(420px, 55vw); max-height: 100dvh; border-radius: 0; }
   }
   .guideLink { color:inherit; text-decoration:none; border:1px solid #2a3245; border-radius:4px; padding:4px 10px; font-size:12px; white-space:nowrap; }
@@ -193,32 +179,79 @@
     #sharePreview { width:90px; height:51px; }#shareBlockNumber { font-size:17px; }.shareDestinations { gap:7px; }.shareDestinations a, .shareDestinations button { flex-direction:column; gap:5px; font-size:12px!important; }
   }
   @media (prefers-reduced-motion:reduce) { .shareSwitch, .shareSwitch:after { transition:none; } }
+  .qualityControl[hidden] { display:none; }
+  #qualityStatus { color:#f0bc72; font-size:12px; }
+
+  /* Compact playback bar; extra tools float above it on small/touch screens. */
+  #controls { position:relative; flex-shrink:0; }
+  #controlOptions, .jumpControls, .dateControl { display:contents; }
+  #optionsHeader, #moreControls, .extendedSteps, .dateControl>span { display:none; }
+  #controls .transport { order:0; }
+  #controlOptions .speedControl, #controlOptions .qualityControl { order:1; }
+  #controls #blockLabel { order:2; }
+  #controls #seekBar { order:3; }
+  #controlOptions .jumpControls>*, #controlOptions .dateControl>input,
+  #controlOptions #shareView, #controlOptions .tog, #controls #fsBtn,
+  #controlOptions .guideLink, #controlOptions #helpBtn { order:4; }
+  #controls #hint, #controls #qualityStatus, #controls #streamStatus { order:5; }
   @media (max-width:760px), (pointer:coarse), (max-height:500px) and (orientation:landscape) {
-    #controls { gap:8px; }
-    #blockLabel { order:0; flex:1; min-width:100px; }
-    #shareView, .guideLink { order:0; min-height:44px; padding:8px; font-size:13px; }
-    #shareView .share-long { display:none; }
-    .transport { order:1; flex:1 0 100%; justify-content:center; gap:14px; }
-    #blockSteps { order:0; flex:0 0 auto; }
-    #blockSteps button { flex:none; min-width:34px; }
-    #blockSteps #playBtn { min-width:52px; }
-    #playbackSpeed, #quality { min-height:44px; font-size:16px; }
-    .speedControl { gap:4px; }
-    #seekBar { order:2; }
-    #blockInput, #goBtn, #dateInput, .tog, #fsBtn, #helpBtn { order:3; }
+    #controls, body.fs #controls {
+      display:grid; grid-template-columns:auto minmax(0,1fr) 44px 48px;
+      grid-template-areas:"transport block fullscreen more" "seek seek seek seek";
+      gap:0 6px; padding:4px max(8px,env(safe-area-inset-right)) max(4px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left));
+    }
+    body.fs #videoWrap { height:auto; }
+    #controls .transport { grid-area:transport; flex:none; gap:0; }
+    #blockSteps { gap:2px; }
+    #blockSteps button { width:44px; height:44px; min-width:44px; padding:0; font-size:26px; touch-action:manipulation; }
+    #blockSteps [data-block-step="-20"], #blockSteps [data-block-step="20"] { display:none; }
+    #blockSteps #playBtn { width:44px; height:44px; min-width:44px; margin:0; }
+    #playBtn svg { width:25px; height:25px; }
+    #controls #blockLabel { grid-area:block; min-width:0; font-size:12px; line-height:1.3; }
+    #controls #seekBar { grid-area:seek; width:100%; min-width:0; height:28px; margin:0; accent-color:#a8d6b3; touch-action:manipulation; }
+    #controls #fsBtn { grid-area:fullscreen; width:44px; height:44px; padding:0; font-size:21px; }
+    #controls #moreControls { grid-area:more; display:block; height:44px; padding:0 5px; font-size:12px; }
+    #moreControls[aria-expanded="true"] { color:#c4e5cc; border-color:#a8d6b3; background:#20352b; }
+    #hint { display:none; }
+    #controls #qualityStatus, #controls #streamStatus { grid-column:1/-1; font-size:12px; }
+    #qualityStatus:empty, #streamStatus:empty { display:none; }
+    #controls #controlOptions { display:none; }
+    #controls #controlOptions.open {
+      display:grid; grid-template-columns:1fr 1fr; gap:12px;
+      position:absolute; z-index:10; bottom:calc(100% + 6px); right:max(8px,env(safe-area-inset-right));
+      width:min(390px,calc(100vw - 16px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+      max-height:calc(100dvh - 100px - env(safe-area-inset-top)); overflow:auto; overscroll-behavior:contain;
+      padding:12px; background:#11151ff5; border:1px solid #354452; border-radius:12px;
+      box-shadow:0 -8px 35px #0008; -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px);
+    }
+    #controlOptions>* { min-width:0; }
+    #controlOptions #optionsHeader { display:flex; grid-column:1/-1; align-items:center; justify-content:space-between; gap:12px; color:#c4e5cc; }
+    #optionsHeader strong { font-size:14px; font-weight:600; }
+    #controls #optionsClose { width:44px; height:44px; padding:0; border:0; background:transparent; font-size:24px; }
+    #controlOptions .speedControl, #controlOptions .qualityControl { display:flex; flex-direction:column; align-items:stretch; gap:5px; font-size:12px; }
+    #controlOptions .qualityControl[hidden] { display:none; }
+    #controlOptions :is(button,input,select,.guideLink) { min-height:44px; font-size:16px; touch-action:manipulation; }
+    #controlOptions .jumpControls { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px; align-self:end; }
+    #controls #blockInput { width:100%; min-width:0; }
+    #controlOptions .dateControl { display:flex; flex-direction:column; gap:5px; color:#9aa5b8; font-size:12px; }
+    #controlOptions .dateControl>span { display:block; }
+    #controls #dateInput { width:100%; min-width:0; font-size:16px; }
+    #controlOptions #shareView, #controlOptions .guideLink, #controlOptions #helpBtn { display:flex; align-items:center; justify-content:center; gap:3px; font-size:13px; padding:6px; }
+    #controlOptions #shareView .share-long { display:inline; }
+    #controlOptions .tog { display:flex; min-height:44px; font-size:13px; }
+    #controlOptions .tog input { width:20px; min-height:20px; margin:0 4px 0 0; }
+    #controlOptions .extendedSteps { display:flex; grid-column:1/-1; gap:8px; }
+    #controlOptions .extendedSteps button { flex:1; font-size:13px; }
+    #controlOptions *, #controlOptions .jumpControls>* { order:0!important; }
     #shareDialog { padding:18px; }
     #shareDialog button, #shareDialog a { min-height:44px; }
   }
-  .qualityControl[hidden] { display:none; }
-  #qualityStatus { color:#f0bc72; font-size:12px; }
-  @media (max-width:760px), (pointer:coarse) { .transport { flex-wrap:wrap; } .qualityControl { font-size:0; } }
-  @media (max-width:430px) { .transport { gap:8px; }.speedControl { font-size:0; }#playbackSpeed { font-size:16px; } }
   @media (max-height:500px) and (orientation:landscape) {
-    .transport { order:0; flex:0 0 auto; }
-    #blockSteps { display:inline-flex; }
-    #shareView, .guideLink { display:inline-flex; }
-    #controls .tog { display:none; }
-    #fsBtn { order:0; }
+    #controls, body.fs #controls {
+      grid-template-columns:auto 92px minmax(80px,1fr) 44px 48px;
+      grid-template-areas:"transport block seek fullscreen more";
+    }
+    #controls #controlOptions.open { width:min(560px,calc(100vw - 24px)); max-height:calc(100dvh - 68px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
   }
 </style>
 </head>
@@ -256,6 +289,13 @@
         <button type="button" data-block-step="1" title="Next block (])" aria-label="Next block">›</button>
         <button type="button" data-block-step="20" title="Forward 20 blocks" aria-label="Forward 20 blocks">››</button>
       </span>
+    </div>
+    <span id="blockLabel">block 0</span>
+    <input id="seekBar" aria-label="Block timeline" type="range" min="0" max="1" step="1" value="0" style="flex:1 1 200px">
+    <button id="fsBtn" type="button" title="Fullscreen (F)" aria-label="Fullscreen">⤢</button>
+    <button id="moreControls" type="button" aria-expanded="false" aria-controls="controlOptions">More</button>
+    <div id="controlOptions" role="region" aria-label="Playback options">
+      <div id="optionsHeader"><strong>Playback options</strong><button id="optionsClose" type="button" aria-label="Close playback options">×</button></div>
       <label class="speedControl" for="playbackSpeed">Speed
         <select id="playbackSpeed" aria-label="Playback speed">
           <option value="0.1">0.1×</option><option value="0.2">0.2×</option>
@@ -268,17 +308,14 @@
         </select>
       </label>
       <label class="qualityControl" for="quality" hidden>Quality <select id="quality" aria-label="Video quality"><option value="compat">1440p</option><option value="full">4K</option></select></label>
+      <div class="jumpControls"><input id="blockInput" type="number" min="0" step="1" placeholder="block #" aria-label="Jump to block"><button id="goBtn">Go</button></div>
+      <label class="dateControl" for="dateInput"><span>Jump to date (UTC)</span><input id="dateInput" type="date" title="Jump to the first block on this date (UTC)"></label>
+      <button id="shareView" type="button" aria-haspopup="dialog" aria-label="Share this view">Share<span class="share-long"> this view</span></button>
+      <label class="tog"><input id="loupeTog" type="checkbox" checked> magnifier</label>
+      <a class="guideLink" href="https://bitcointimelapse.com/guide/" target="_blank" rel="noopener">Guide ↗</a>
+      <button id="helpBtn" type="button" title="What is this? (?)" aria-label="About this explorer">?</button>
+      <div class="extendedSteps" role="group" aria-label="Skip blocks"><button type="button" data-block-step="-20" aria-label="Back 20 blocks">‹‹ Back 20 blocks</button><button type="button" data-block-step="20" aria-label="Forward 20 blocks">Forward 20 blocks ››</button></div>
     </div>
-    <span id="blockLabel">block 0</span>
-    <input id="seekBar" type="range" min="0" max="1" step="1" value="0" style="flex:1 1 200px">
-    <input id="blockInput" type="number" min="0" step="1" placeholder="block #">
-    <button id="goBtn">Go</button>
-    <input id="dateInput" type="date" title="Jump to the first block on this date (UTC)">
-    <button id="shareView" type="button" aria-haspopup="dialog" aria-label="Share this view">Share<span class="share-long"> this view</span></button>
-    <label class="tog"><input id="loupeTog" type="checkbox" checked> magnifier</label>
-    <button id="fsBtn" type="button" title="Fullscreen (F)" aria-label="Fullscreen">⤢</button>
-    <a class="guideLink" href="https://bitcointimelapse.com/guide/" target="_blank" rel="noopener">Guide ↗</a>
-    <button id="helpBtn" type="button" title="What is this? (?)" aria-label="About this explorer">?</button>
     <span id="hint">pause &amp; click a pixel</span>
     <span id="qualityStatus" role="status"></span><span id="streamStatus" aria-live="polite"></span>
   </div>
@@ -640,6 +677,46 @@ function onFullscreenChange() {
 document.addEventListener("fullscreenchange", onFullscreenChange);
 document.addEventListener("webkitfullscreenchange", onFullscreenChange);
 
+// ---- mobile playback options: one shared set of controls, no player remount ----
+const compactControls = matchMedia("(max-width:760px), (pointer:coarse), (max-height:500px) and (orientation:landscape)");
+const moreControls = document.getElementById("moreControls");
+const controlOptions = document.getElementById("controlOptions");
+function closeControlOptions(restoreFocus = false) {
+  controlOptions.classList.remove("open");
+  moreControls.setAttribute("aria-expanded", "false");
+  if (restoreFocus) moreControls.focus();
+}
+moreControls.addEventListener("click", () => {
+  if (controlOptions.classList.contains("open")) { closeControlOptions(); return; }
+  controlOptions.classList.add("open");
+  moreControls.setAttribute("aria-expanded", "true");
+  document.getElementById("optionsClose").focus();
+});
+document.getElementById("optionsClose").addEventListener("click", () => closeControlOptions(true));
+document.addEventListener("click", e => {
+  if (!controlOptions.classList.contains("open") || controlOptions.contains(e.target) || moreControls.contains(e.target)) return;
+  closeControlOptions();
+  // A dismissal tap on the picture should not also select a pixel.
+  if (document.getElementById("videoWrap").contains(e.target)) { e.preventDefault(); e.stopImmediatePropagation(); }
+}, true);
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && controlOptions.classList.contains("open")) {
+    e.preventDefault(); e.stopImmediatePropagation(); closeControlOptions(true);
+  }
+}, true);
+// Safari does not focus buttons on a tap. Close on keyboard tab-out only,
+// so stepping or changing another option never dismisses the touch panel.
+document.addEventListener("keydown", e => {
+  if (e.key !== "Tab" || !controlOptions.classList.contains("open")) return;
+  requestAnimationFrame(() => {
+    if (!controlOptions.contains(document.activeElement) && document.activeElement !== moreControls) closeControlOptions();
+  });
+});
+controlOptions.addEventListener("click", e => {
+  if (e.target.closest("#shareView, #helpBtn, .guideLink")) closeControlOptions();
+});
+compactControls.addEventListener("change", () => closeControlOptions());
+
 // ---- global keys: ? help · F fullscreen · Space play/pause ----
 document.addEventListener("keydown", e => {
   if (shareDialog.open) return;
@@ -650,7 +727,7 @@ document.addEventListener("keydown", e => {
   else if (e.key === "Escape" && about.classList.contains("visible")) { e.preventDefault(); e.stopImmediatePropagation(); hideAbout(); }
   else if (about.classList.contains("visible")) { return; } // modal open: other shortcuts stay quiet
   else if (e.key === "f" || e.key === "F") { e.preventDefault(); toggleFullscreen(); }
-  else if (e.key === " ") { e.preventDefault(); playBtn.click(); }
+  else if (e.key === " " && !t?.closest("button, a")) { e.preventDefault(); playBtn.click(); }
 }, true);
 
 
