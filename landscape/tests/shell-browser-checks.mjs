@@ -252,6 +252,103 @@ const CHECKS = [
     ],
   },
   {
+    name: 'touch',
+    mobile: { width: 390, height: 844, dpr: 3 },
+    shot: 'touch-phone.png',
+    timeout: 120000,
+    script: `const { Vector3 } = await import('three');
+      const proj = (p) => { const v = new Vector3(p.x, p.y, p.z).project(L.view.camera); const r = canvas.getBoundingClientRect(); return [r.left + (v.x + 1) / 2 * r.width, r.top + (1 - v.y) / 2 * r.height]; };
+      const off = (p, x, y) => { const s = proj(p); return Math.hypot(s[0] - x, s[1] - y); };
+      const touch = (steps) => new Promise((resolve) => { const id = String(Math.random()); window.__cdpTouchDone = (i, err) => { if (i === id) resolve(err); }; window.__cdpTouch(JSON.stringify({ id, steps })); });
+      const pts = (list) => list.map(([x, y], i) => ({ x, y, id: i + 1 }));
+      // Fingers from 'from' to 'to' ([[x, y], ...]) in n moves, one frame apart.
+      const path = (from, to, n = 14) => { const s = []; for (let i = 1; i <= n; i++) s.push({ type: 'touchMove', points: pts(from.map(([x, y], k) => [x + (to[k][0] - x) * i / n, y + (to[k][1] - y) * i / n])), wait: 16 }); return s; };
+      const gesture = async (from, to, n) => touch([{ type: 'touchStart', points: pts(from), wait: 30 }, ...path(from, to, n), { type: 'touchEnd', points: [], wait: 60 }]);
+      const tapAt = (x, y) => [{ type: 'touchStart', points: pts([[x, y]]), wait: 40 }, { type: 'touchEnd', points: [], wait: 0 }];
+      const pose = () => L.controls.getPose();
+      const camPos = () => L.view.camera.position.clone();
+      const home = async () => { await L.flyTo(inData(314000)); await idle(); await sleep(800); };
+      const out = { errors: [] };
+      const run = async (f) => { const e = await f(); if (e) out.errors.push(e); };
+      await home();
+      { const p = L.view.pick(195, 500); await run(() => gesture([[195, 500]], [[235, 560]])); await sleep(100); out.panPx = p ? off(p, 235, 560) : null; }
+      await home();
+      { const p = L.view.pick(195, 480); const d0 = camPos().distanceTo(p); await run(() => gesture([[155, 480], [235, 480]], [[115, 480], [275, 480]])); await sleep(100);
+        out.pinch = { px: off(p, 195, 480), ratio: d0 / camPos().distanceTo(p) }; }
+      await home();
+      { const p = L.view.pick(195, 480); const pa = L.view.pick(135, 480); const y0 = pose().yaw; const r = 60, t = 30 * Math.PI / 180;
+        await run(() => gesture([[195 - r, 480], [195 + r, 480]], [[195 - r * Math.cos(t), 480 - r * Math.sin(t)], [195 + r * Math.cos(t), 480 + r * Math.sin(t)]], 18)); await sleep(100);
+        // The ground under the left finger turns the same way as the finger (clockwise on screen).
+        const s = proj(pa); const turn = Math.atan2(s[1] - 480, s[0] - 195) - Math.atan2(0, -60);
+        const wrapped = Math.atan2(Math.sin(turn), Math.cos(turn));
+        out.twist = { px: off(p, 195, 480), dYaw: pose().yaw - y0, contentTurn: wrapped * 180 / Math.PI }; }
+      await home();
+      { const p = L.view.pick(195, 520); const q0 = pose(); const d0 = p && camPos().distanceTo(p);
+        await run(() => gesture([[135, 520], [255, 520]], [[135, 460], [255, 460]])); await sleep(100);
+        const q1 = pose(); out.tilt = { dPitch: q1.pitch - q0.pitch, dYaw: q1.yaw - q0.yaw, distRatio: p ? camPos().distanceTo(p) / d0 : null }; }
+      await home();
+      { // Pinch, lift one finger, keep panning with the other: the ground under it must not jump.
+        const a0 = [[155, 480], [235, 480]], a1 = [[145, 480], [245, 480]];
+        await run(() => touch([{ type: 'touchStart', points: pts(a0), wait: 30 }, ...path(a0, a1, 8), { type: 'touchEnd', points: [{ x: 245, y: 480, id: 2 }], wait: 60 }]));
+        const g = L.view.pick(145, 480);
+        await run(() => touch([...[1, 2, 3, 4, 5, 6, 7, 8].map((i) => ({ type: 'touchMove', points: [{ x: 145 + i * 5, y: 480 + i * 6, id: 1 }], wait: 16 })), { type: 'touchEnd', points: [], wait: 60 }]));
+        out.liftPx = g ? off(g, 185, 528) : null; }
+      await home();
+      { const p = L.view.pick(195, 470); const d0 = camPos().distanceTo(p); await run(() => touch([...tapAt(195, 470).map((s, i) => (i === 1 ? { ...s, wait: 90 } : s)), ...tapAt(195, 470)])); await sleep(2200);
+        const r = canvas.getBoundingClientRect(); out.doubleTap = { centrePx: off(p, r.left + r.width / 2, r.top + r.height / 2), ratio: camPos().distanceTo(p) / d0 }; }
+      await home();
+      { const p = L.view.pick(195, 470); const d0 = camPos().distanceTo(p); await run(() => touch([{ type: 'touchStart', points: pts([[155, 470], [235, 470]]), wait: 70 }, { type: 'touchEnd', points: [], wait: 0 }])); await sleep(900);
+        out.twoTap = { ratio: camPos().distanceTo(p) / d0 }; }
+      await home();
+      { const p = L.view.pick(195, 470); const d0 = camPos().distanceTo(p);
+        await run(() => touch([...tapAt(195, 470).map((s, i) => (i === 1 ? { ...s, wait: 90 } : s)), { type: 'touchStart', points: pts([[195, 470]]), wait: 30 }, ...path([[195, 470]], [[195, 550]], 10), { type: 'touchEnd', points: [], wait: 60 }])); await sleep(500);
+        out.tapDrag = { ratio: camPos().distanceTo(p) / d0, inspectorOpen: !document.getElementById('inspector').hidden }; }
+      await home();
+      { L.ui.inspector.close && L.ui.inspector.close(); const p = L.view.pick(195, 470); await run(() => touch(tapAt(195, 470))); await sleep(150); const early = !!(L.ui.inspector.current); await sleep(900);
+        const c = L.ui.inspector.current; out.tap = { early, opened: !!c && !document.getElementById('inspector').hidden, hasCell: !!(c && Number.isInteger(c.col)) }; }
+      { // The tapped cell stays visible beside the inspector sheet.
+        const mk = document.getElementById('marker'); const sh = document.getElementById('inspector').getBoundingClientRect(); const m = mk.getBoundingClientRect();
+        out.tap.marker = { hidden: mk.hidden, x: m.left, y: m.top, sheet: [sh.left, sh.top, sh.width] }; }
+      L.ui.inspector.close(); await sleep(300);
+      { // Pinch over the empty ground beyond the landscape, just below the horizon: the camera
+        // must not be flung toward the far ground point (the old behaviour moved ~6x farther).
+        L.controls.setPose({ x: 1150, y: 40, z: 100, yaw: -90, pitch: -2 }); await sleep(300);
+        const onCanvas = (y) => document.elementFromPoint(155, y) === canvas && document.elementFromPoint(235, y) === canvas;
+        const r = canvas.getBoundingClientRect(); let y = Math.round(r.top + r.height / 2) + 30;
+        while (y < r.bottom - 120 && (L.view.pick(195, y) || !onCanvas(y))) y += 10;
+        const sky = !L.view.pick(195, y) && onCanvas(y); const c0 = camPos();
+        const edge = new Vector3((L.manifest.tip + 1) / 1000, 0, c0.z);
+        await run(() => gesture([[155, y], [235, y]], [[115, y], [275, y]])); await sleep(100);
+        out.background = { sky, y, moved: camPos().distanceTo(c0), edgeDist: c0.distanceTo(edge) }; }
+      // Pinch with both fingers on the HUD card, then on the timeline: the page must not zoom.
+      for (const id of ['hud', 'timeline']) {
+        const h = document.getElementById(id).getBoundingClientRect(); const hy = h.top + Math.min(24, h.height / 2);
+        const at = (f) => h.left + f * h.width;
+        await run(() => gesture([[at(0.3), hy], [at(0.7), hy]], [[at(0.03), hy], [at(0.97), hy]])); await sleep(300);
+      }
+      out.pageScale = window.visualViewport ? visualViewport.scale : 1;
+      out.frameError = L.frameError || null;
+      return out;`,
+    expect: (v) => [
+      ['touch input delivered', v.errors.length === 0],
+      ['one finger: the ground stays under the finger (' + (v.panPx ?? NaN).toFixed(2) + ' px)', v.panPx !== null && v.panPx < 1],
+      ['pinch: the point between the fingers stays put (' + v.pinch.px.toFixed(2) + ' px) and zooms 2x (' + v.pinch.ratio.toFixed(2) + ')', v.pinch.px < 1.5 && Math.abs(v.pinch.ratio - 2) < 0.15],
+      ['twist: clockwise 30 degrees turns the view 30 degrees (' + v.twist.dYaw.toFixed(1) + ') about the point between the fingers (' + v.twist.px.toFixed(2) + ' px)', Math.abs(v.twist.dYaw - 30) < 1.5 && v.twist.px < 1.5],
+      ['twist: the ground turns with the fingers (' + v.twist.contentTurn.toFixed(1) + ' degrees clockwise)', v.twist.contentTurn > 10],
+      ['two fingers up: tilts toward the horizon (' + v.tilt.dPitch.toFixed(1) + ' degrees) without turning or zooming', v.tilt.dPitch > 10 && Math.abs(v.tilt.dYaw) < 0.5 && v.tilt.distRatio !== null && Math.abs(v.tilt.distRatio - 1) < 0.02],
+      ['lifting one finger keeps panning without a jump (' + (v.liftPx ?? NaN).toFixed(2) + ' px)', v.liftPx !== null && v.liftPx < 1.5],
+      ['double tap: flies closer (' + v.doubleTap.ratio.toFixed(2) + ' of the distance) and centres the point (' + v.doubleTap.centrePx.toFixed(1) + ' px)', Math.abs(v.doubleTap.ratio - 0.35) < 0.05 && v.doubleTap.centrePx < 3],
+      ['two-finger tap: zooms out 2x (' + v.twoTap.ratio.toFixed(2) + ')', Math.abs(v.twoTap.ratio - 2) < 0.15],
+      ['double tap and drag down: zooms in (' + v.tapDrag.ratio.toFixed(2) + ') without inspecting', v.tapDrag.ratio < 0.65 && v.tapDrag.ratio > 0.4 && !v.tapDrag.inspectorOpen],
+      ['tap: inspects after the double-tap window', !v.tap.early && v.tap.opened && v.tap.hasCell],
+      ['tap: the inspected cell stays visible above the sheet (marker at ' + Math.round(v.tap.marker.y) + ' px, sheet from ' + Math.round(v.tap.marker.sheet[1]) + ' px)',
+        !v.tap.marker.hidden && v.tap.marker.y > 0 && (v.tap.marker.y < v.tap.marker.sheet[1] - 8 || v.tap.marker.x < v.tap.marker.sheet[0] - 8)],
+      ['pinch over empty ground: no fling (' + v.background.moved.toFixed(0) + ' units, landscape edge ' + v.background.edgeDist.toFixed(0) + ' away)', v.background.sky && v.background.moved > 1 && v.background.moved < 0.6 * v.background.edgeDist],
+      ['the page itself never zooms', v.pageScale === 1],
+      ['no frame errors', v.frameError === null],
+    ],
+  },
+  {
     name: 'webgl2-fallback',
     query: '?webgl=1',
     shot: 'webgl2.png',
@@ -275,8 +372,11 @@ for (const check of CHECKS) {
   if (check.hash) url += check.hash.replace('BLOCK', String(hashBlock));
   const file = join(tmp, check.name + '.js');
   writeFileSync(file, PRELUDE + '\n' + check.script);
+  const m = check.mobile;
   const cli = [checker, '--url', url, '--wait-for', 'window.__landscape && window.__landscape.ready', '--timeout', String(check.timeout || 60000),
-    '--settle', '300', '--script', file, '--width', width, '--height', height, '--dpr', dpr, '--browser', browser];
+    '--settle', '300', '--script', file, '--width', String(m ? m.width : width), '--height', String(m ? m.height : height),
+    '--dpr', String(m ? m.dpr : dpr), '--browser', browser];
+  if (m) cli.push('--mobile');
   if (shots && check.shot) cli.push('--screenshot', join(shots, check.shot));
   const run = spawnSync(process.execPath, cli, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: (check.timeout || 60000) + 60000 });
   let report;

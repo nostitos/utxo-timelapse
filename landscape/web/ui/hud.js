@@ -1,5 +1,7 @@
 // Left HUD (landscape/SPEC.md §8): block, UTC date, playback speed and achieved
 // blocks/s, totals of the exact state, the current block's activity and busy state.
+// On phones (app.css) the HUD collapses to block, date and play state; the details button
+// (hidden on larger screens) or a tap on the card shows the totals and the renderer line.
 
 import { fmtInt, fmtBtcTotal, isoUtc, fmtRate, fmtCompact } from './format.js';
 
@@ -22,7 +24,9 @@ export function createHud(container) {
     '<div><dt>This block</dt><dd data-k="activity">\u2014</dd></div>' +
     '</dl>' +
     '<div class="hud-status" data-k="status" hidden><span class="pulse" aria-hidden="true"></span><span data-k="statusText"></span></div>' +
-    '<div class="hud-foot" data-k="foot"></div>';
+    '<div class="hud-foot" data-k="foot"></div>' +
+    '<button type="button" class="hud-more" aria-expanded="false" aria-label="Show details" title="Details">' +
+    '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>';
   const el = {};
   container.querySelectorAll('[data-k]').forEach((n) => {
     el[n.dataset.k] = n;
@@ -30,9 +34,28 @@ export function createHud(container) {
   const set = (k, v) => {
     if (el[k].textContent !== v) el[k].textContent = v;
   };
+  const more = container.querySelector('.hud-more');
+  const setExpanded = (open) => {
+    container.classList.toggle('expanded', open);
+    more.setAttribute('aria-expanded', String(open));
+    more.setAttribute('aria-label', open ? 'Hide details' : 'Show details');
+  };
+  more.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setExpanded(!container.classList.contains('expanded'));
+  });
+  // The whole compact card is a large touch target; with the button hidden (desktop) a click does nothing.
+  container.addEventListener('click', (e) => {
+    if (more.offsetParent === null || e.target.closest('a, button')) return;
+    setExpanded(!container.classList.contains('expanded'));
+  });
 
   return {
     element: container,
+    get expanded() {
+      return container.classList.contains('expanded');
+    },
+    setExpanded,
     update({ block, meta, playback, status, backend, preset, scale }) {
       set('block', block == null ? '\u2014' : fmtInt(block));
       set('date', meta && meta.block === block && Number.isFinite(meta.time) ? isoUtc(meta.time, { withSeconds: true }) : '\u2014');

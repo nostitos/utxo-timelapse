@@ -7,7 +7,7 @@
 //     [--eval 'expr']... [--script file.js] [--screenshot /tmp/x.png] \
 //     [--width 1920 --height 1080 --dpr 1] [--browser chrome|canary|brave] [--headed] \
 //     [--flag --some-chrome-flag]... [--fail-on-error] [--console-limit 200]
-//     [--fullscreen] [--no-emulation] [--net]
+//     [--fullscreen] [--no-emulation] [--net] [--mobile]
 //
 // --fullscreen switches the (headed) window to native fullscreen on the display it opened on
 // (place it with --flag --window-position=X,Y); --no-emulation keeps the real viewport and
@@ -15,6 +15,13 @@
 // --net also attaches to the page's workers: their console messages, exceptions and failed
 // requests join the summary, and summary.net counts the encoded bytes and requests of the page
 // and its workers until --wait-for succeeded (atReady) and in total.
+// --mobile emulates a phone: a mobile viewport (use --width 390 --height 844 --dpr 3), touch
+// input with five touch points and an Android Chrome user agent. Page scripts can then send
+// real multi-touch input through Chrome: window.__cdpTouch(JSON.stringify({id, steps})), where
+// each step is {type: 'touchStart'|'touchMove'|'touchEnd', points: [{x, y, id}], wait: ms}
+// (CSS pixels). touchStart and touchMove list the fingers that are down; touchEnd lists the
+// fingers that lift (an empty list lifts all of them). When the steps are done the checker
+// calls window.__cdpTouchDone(id, error).
 //
 // Prints a JSON summary: console messages, page exceptions, failed requests, eval
 // results, timings and the screenshot path. --script evaluates the file body as an
@@ -60,6 +67,7 @@ function parseArgs(argv) {
       case '--fullscreen': o.fullscreen = true; break;
       case '--no-emulation': o.noEmulation = true; break;
       case '--net': o.net = true; break;
+      case '--mobile': o.mobile = true; break;
       default: throw new Error('unknown argument ' + a);
     }
   }
@@ -205,7 +213,36 @@ if (opts.fullscreen) {
   await sleep(2000);
 }
 if (!opts.noEmulation) {
-  await send('Emulation.setDeviceMetricsOverride', { width: opts.width, height: opts.height, deviceScaleFactor: opts.dpr, mobile: false }, sessionId);
+  await send('Emulation.setDeviceMetricsOverride', { width: opts.width, height: opts.height, deviceScaleFactor: opts.dpr, mobile: !!opts.mobile }, sessionId);
+}
+if (opts.mobile) {
+  const MOBILE_UA = 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Mobile Safari/537.36';
+  await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 }, sessionId);
+  await send('Emulation.setUserAgentOverride', { userAgent: MOBILE_UA, platform: 'Linux armv8l' }, sessionId);
+  await send('Runtime.addBinding', { name: '__cdpTouch' }, sessionId);
+  const runTouch = async ({ id, steps }) => {
+    let error = null;
+    try {
+      for (const s of steps || []) {
+        const touchPoints = (s.points || []).map((p) => ({ x: p.x, y: p.y, id: p.id || 0, radiusX: 6, radiusY: 6, force: 1 }));
+        await send('Input.dispatchTouchEvent', { type: s.type, touchPoints }, sessionId);
+        if (s.wait) await sleep(s.wait);
+      }
+    } catch (err) {
+      error = String((err && err.message) || err);
+    }
+    await send('Runtime.evaluate', { expression: 'window.__cdpTouchDone && window.__cdpTouchDone(' + JSON.stringify(id) + ', ' + JSON.stringify(error) + ')' }, sessionId);
+  };
+  listeners.push((m) => {
+    if (m.sessionId !== sessionId || m.method !== 'Runtime.bindingCalled' || m.params.name !== '__cdpTouch') return;
+    let payload = null;
+    try {
+      payload = JSON.parse(m.params.payload);
+    } catch {
+      return;
+    }
+    runTouch(payload).catch(() => {});
+  });
 }
 async function evaluate(expression) {
   const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true, userGesture: true }, sessionId);

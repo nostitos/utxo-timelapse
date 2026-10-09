@@ -99,6 +99,8 @@ export function createMinimap({ container, grid, rows, settings, onNavigate }) {
   }
 
   function draw({ block, pose, footprint }) {
+    // Hidden by the layout (phones, short windows): nothing to draw until it shows again.
+    if (!canvas.clientWidth) return;
     const now = performance.now();
     const key = block + '|' + (pose ? [pose.x, pose.z, pose.yaw].map((n) => n.toFixed(2)).join(',') : '');
     // Rebuild the colour image at most 4 times a second; the overlay redraws on change.

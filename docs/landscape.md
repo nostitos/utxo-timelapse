@@ -77,12 +77,28 @@ Storing the dataset costs about 1.1 USD a month in R2 (75 GB); R2 charges nothin
 | 1, 2, 3, 4 | Speed 1×, 10×, 100×, Max |
 | Drag | Pan; the grabbed point stays under the cursor |
 | Right-drag or Shift-drag | Orbit around the point under the cursor |
-| Wheel or pinch | Zoom toward the cursor |
+| Wheel or trackpad pinch | Zoom toward the cursor |
 | Double-click | Fly to that point |
 | Click or I | Inspect the cell under the cursor (crosshair in flight mode) |
 | Arrows, Q/E, PgUp/PgDn | Pan, rotate, tilt |
 | F | Flight mode: mouse look, WASD, E/Q up and down, Shift 4×, wheel sets speed; Esc returns to map mode |
 | G, P, H or ? | Graphics settings, places, help |
+
+On a touch screen, map mode follows the conventions of map apps. Every gesture keeps the ground under your fingers where it is:
+
+| Gesture | Action |
+|---|---|
+| One finger | Pan; the ground stays under your finger |
+| Pinch | Zoom around the point between your fingers |
+| Twist | Rotate around the point between your fingers |
+| Two fingers up or down | Tilt toward the horizon or toward a top view |
+| Tap | Inspect the cell |
+| Double-tap | Fly closer to that point; keep the second tap down and drag down or up to zoom in or out |
+| Two-finger tap | Zoom out |
+
+Pinch, twist and a two-finger drag combine in one movement, as in a map app. Moving both fingers up or down together, side by side, tilts instead. Over empty ground or the sky, gestures stay at the landscape's scale, so a pinch near the horizon cannot throw the camera thousands of units away. The page itself never zooms. Flight mode needs a keyboard to enter; on a touchscreen laptop, one finger then looks around and two fingers fly (spread to go forward, drag to slide or climb). The help panel lists the touch gestures first on touch-only devices, and the first visit shows a one-line hint.
+
+Phones get their own layout below 700 px of width, or below 500 px of height in landscape. The HUD shrinks to the block, date and play state (tap it for the totals). The minimap, legend and block and date fields are hidden, and the timeline keeps the scrubber, transport, one speed button that cycles through 1×, 10×, 100× and Max, and Places, Settings and Help, with 40 px touch targets. In portrait the inspector and the settings open as sheets from the bottom; in landscape they open at the right. When the inspector's sheet would cover the tapped cell, the view slides so the cell stays visible beside it. In portrait the first view looks along the block axis from beyond the tip, so the landscape fills the screen. Safe areas such as the iPhone home indicator are respected.
 
 Places jumps to the eras at blocks 50,000, 210,000, 314,000, 420,000, 500,000, 630,000, 700,000, 840,000, 900,000 and the tip, or flies to the amount bands: the 50 BTC coinbase row, 10 BTC and up, 1 BTC, 10,000 sat, 546 sat and 1–100 sat. The timeline accepts a block height or a UTC date.
 
@@ -384,7 +400,7 @@ In the app, 1× playback from block 314,000 advanced 602 blocks in 10.03 s witho
 - Heat starts empty after a seek, and tiles that load during playback start without heat history.
 - Instanced columns, SSGI and automatic exposure need WebGPU. On WebGL2, at most 24 tiles upload per frame, so distant tiles can lag during playback.
 - God rays work in screen space and appear only when the sun is near the view; the volumetric option gives shadowed light shafts from any angle. Fewer bloom mips narrow the glow without saving GPU time. PCSS estimates blocker distance approximately.
-- Flight-mode pointer lock was checked only through its drag-to-look fallback. Firefox and touch input were not tested; Brave passed the browser checks online.
+- Flight-mode pointer lock was checked only through its drag-to-look fallback. Firefox was not tested; Brave passed the browser checks online. Touch gestures were checked with real multi-touch input in Chrome's phone emulation (390 × 844), not yet on a physical phone or in iOS Safari.
 - Locally, the inspector's history section needs the explorer on port 12989, and its cell API shares `/api/pixel`'s rate limit (15 requests/s, burst 40). Online, the Worker answers it with 8 requests/s and a burst of 20 per visitor and Worker instance.
 - Online, a seek takes about 1–2 s and 10× or Max playback follows the connection's download speed (see Online). The dataset ends at block 966,827; a newer tip needs a new dataset of about 75 GB, which took 45 minutes to upload from here.
 - Unchanged and worth a follow-up: `/api/pixel` and `/api/ranges` share one mutable inverter across request threads, so simultaneous requests for blocks in different epochs could compute wrong column ranges. The new cell endpoint does not use it.
@@ -405,7 +421,7 @@ In the app, 1× playback from block 314,000 advanced 602 blocks in 10.03 s witho
 | `landscape/web/ui/online.js` | Online versus local: dataset index, cell API and 2D link, first-visit quality |
 | [`cloudflare/utxo-landscape-worker/`](../cloudflare/utxo-landscape-worker/README.md) | The online Worker: static app, dataset from R2, cell API, deploy and publish procedure |
 | `scripts/landscape_r2_verify.py`, `scripts/check_landscape_worker.mjs`, `landscape/tools/csp-hash.mjs` | Uploaded-dataset verification, Worker checks, CSP hash of the import map |
-| `landscape/tests/` | `node --test landscape/tests/` (133 tests) and the browser checks |
-| `landscape/tools/browser-check.mjs`, `gpu-util.mjs`, `landscape/web/dev/` | Headless Chrome checker, GPU utilisation sampler and development harnesses |
+| `landscape/tests/` | `node --test landscape/tests/` (138 tests) and the browser checks, including the `touch` check that drives every gesture with real multi-touch input on an emulated phone |
+| `landscape/tools/browser-check.mjs`, `gpu-util.mjs`, `landscape/web/dev/` | Headless Chrome checker (`--mobile` emulates a phone with touch input), GPU utilisation sampler and development harnesses |
 
 The vendored three.js 0.186.0 and lil-gui 0.17 are MIT licensed ([`vendor/three/README.md`](../landscape/web/vendor/three/README.md)); the fonts keep their OFL licences. The original concept and code are by Martinus ([BitcoinUtxoVisualizer](https://github.com/martinus/BitcoinUtxoVisualizer), MIT).
