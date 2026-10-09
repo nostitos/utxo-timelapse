@@ -1,6 +1,6 @@
 #include <buv/Density.h>
 
-#include <doctest/doctest.h>
+#include <doctest.h>
 
 TEST_CASE("whale flash weight uses actual value without a per-UTXO floor") {
     constexpr auto satoshiPerBtc = int64_t{100'000'000};
