@@ -7,6 +7,9 @@ target_sources_local(${PROJECT_NAME}
         util/HttpClient.cpp # put first because it is soooo slow
 
         app/BlockEncoder.cpp
+        app/block_index.cpp
+        app/RendererCheckpoint.cpp
+        app/renderer_checkpoint.cpp
         app/Cfg.cpp
         app/check_blocks.cpp
         app/Chunk.cpp

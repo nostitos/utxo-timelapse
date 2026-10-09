@@ -1,4 +1,5 @@
 #include "Hud.h"
+#include <app/BlockIndex.h>
 #include "util/hex.h"
 
 #include <buv/SatoshiBlockheightToPixel.h>
@@ -188,26 +189,16 @@ public:
             throw std::runtime_error("file not open");
         }
 
-        auto const* ptr = mmappedFile.begin();
+        auto index = BlockIndex::loadOrBuild(cfg.blkFile, mmappedFile.view());
+        if (numBlocks > index.size()) throw std::runtime_error("HUD block count exceeds BLK index");
+        for (size_t height = 0; height < numBlocks;) {
+            auto cib = index.read(mmappedFile.view(), height);
+            mHeightToTimestring[cib.blockData().blockHeight] =
+                date::format("%F", UnixClockSeconds(std::chrono::seconds(cib.blockData().time)));
+            if (height == numBlocks - 1) break;
+            height = std::min(height + 100000, size_t(numBlocks - 1));
+        }
 
-        auto blockHeight = uint32_t();
-        auto nextTargetBlockHeight = uint32_t();
-        while (blockHeight < numBlocks) {
-            if (blockHeight == nextTargetBlockHeight) {
-                auto [cib, newPtr] = buv::ChangesInBlock::decode(ptr);
-                nextTargetBlockHeight += 100000;
-                if (nextTargetBlockHeight > numBlocks - 1) {
-                    nextTargetBlockHeight = numBlocks - 1;
-                }
-                ptr = newPtr;
-                auto formattedTime = date::format("%F", UnixClockSeconds(std::chrono::seconds(cib.blockData().time)));
-                mHeightToTimestring[cib.blockData().blockHeight] = formattedTime;
-            } else {
-                auto tmp = uint32_t();
-                std::tie(tmp, ptr) = buv::ChangesInBlock::skip(ptr);
-            }
-            ++blockHeight;
-        };
     }
 
     void writeAmount(size_t x,

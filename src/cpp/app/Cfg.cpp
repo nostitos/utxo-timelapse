@@ -74,6 +74,25 @@ auto parseCfg(std::filesystem::path const& cfgFile) -> Cfg {
 
     cfg.skipBlocks = load<uint64_t>(data, "skipBlocks");
     cfg.repeatLastBlockTimes = load<uint64_t>(data, "repeatLastBlockTimes");
+    simdjson::dom::element optional;
+    if (!data["dumpFramesAtBlocks"].get(optional)) {
+        for (auto value : optional.get_array()) {
+            auto h = value.get_uint64().value();
+            if (h > UINT32_MAX) throw std::runtime_error("dumpFramesAtBlocks height exceeds uint32");
+            cfg.dumpFramesAtBlocks.push_back(static_cast<uint32_t>(h));
+        }
+    }
+    if (!data["rendererCheckpointSave"].get(optional)) {
+        cfg.rendererCheckpointSave = std::string(optional.get_string().value());
+    }
+    if (!data["rendererCheckpointLoad"].get(optional)) {
+        cfg.rendererCheckpointLoad = std::string(optional.get_string().value());
+    }
+    if (!data["rendererCheckpointSaveAtBlock"].get(optional)) {
+        auto h = optional.get_uint64().value();
+        if (h > UINT32_MAX) throw std::runtime_error("rendererCheckpointSaveAtBlock exceeds uint32");
+        cfg.rendererCheckpointSaveAtBlock = static_cast<uint32_t>(h);
+    }
     cfg.connectionIpAddr = std::string(load<std::string_view>(data, "connectionIpAddr"));
     cfg.connectionSocket = load<uint64_t>(data, "connectionSocket");
     cfg.colorUpperValueLimit = load<uint64_t>(data, "colorUpperValueLimit");
@@ -253,6 +272,11 @@ auto parseCfg(std::filesystem::path const& cfgFile) -> Cfg {
     }
 
     // Optional UTXO explorer settings
+    try {
+        cfg.historyDeltaFile = std::string(load<std::string_view>(data, "historyDeltaFile"));
+    } catch (...) {
+        cfg.historyDeltaFile = "";
+    }
     try {
         cfg.historyFile = std::string(load<std::string_view>(data, "historyFile"));
     } catch (...) {

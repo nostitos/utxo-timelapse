@@ -44,11 +44,12 @@ A bare `buv` invocation can run zero cases on macOS because the broad legacy uni
 - Preserve unrelated dirty work and local artifacts.
 - Do not modify/delete chain data, checkpoints or full renders unless that operation is requested. Keep `allowBlkFileTruncate=false` for routine updates.
 - v3 checkpoints preserve original creation heights and zero-satoshi outputs; resume requires the matching BLK size, tail and chain hash. Legacy caveats are historical, not current behavior.
-- A node checkpoint does not save renderer state. A later start frame still requires replay.
+- A node checkpoint does not save renderer state. Optional `rendererCheckpointLoad` resumes the separate exact ledger; without it, a later start frame requires replay. See `docs/append-optimization.md` for input binding and warm-up rules.
 - Epoch-mode remapping rebuilds exact surviving contributions from the alive ledger. Do not replace this with raster averaging. Renderer, HUD, cloud inverse mapping and the guide demonstration must agree at integer pixels.
 - Persistent weighted density uses `max(1, amount/5 BTC)`; flashes use actual BTC moved without a per-output minimum. Keep these distinct.
 - The HUD stays at the left. Do not claim pixel identity based on a lossy encode or claim a full outpoint from the compact lifecycle index.
 - Read section offsets from BUVHIST1; incremental updates can move arrays after records.
+- Routine history publication should use a fresh `historyDeltaFile` and the validated `history_publication_current.json` catalog, not rediscover spends with the full-scan publisher. See `docs/history-delta-publication.md`; promote the next catalog only after its release verifies.
 - Verify process exits, final FFmpeg summary, frame counts, decoded boundary samples, and live playback. File growth alone is not success.
 
 ## Presentation and releases

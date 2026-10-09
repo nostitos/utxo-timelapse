@@ -16,7 +16,7 @@
   "skipBlocks": 0,
   "repeatLastBlockTimes": 300,
   "startShowAtBlockHeight": 0,
-  "endShowAtBlockHeight": 966827,
+  "endShowAtBlockHeight": 0,
   "connectionIpAddr": "127.0.0.1",
   "connectionSocket": 12987,
   "colorMap": "turbo",
@@ -40,10 +40,13 @@
   "resampleEveryNBlocks": 100,
   "compressLowSatoshi": true,
   "compressTopSatoshi": true,
-  "historyFile": "/Volumes/4T Data/buv_render/utxo_history.bin",
-  "epochTransitionBlocks": 120,
+  "amountColorFloor": false,
+  "amountWeightedDensity": true,
   "whiteHotTail": true,
   "whiteHotTailMinSatoshi": 1000000000,
-  "explorerVideoFile": "/Volumes/4T Data/buv_render/utxo_4k_epoch105k_60fps_transition_crf21_to_966827.mp4",
-  "explorerPort": 12988
+  "epochTransitionBlocks": 120,
+  "historyFile": "/Volumes/4T Data/buv_render/utxo_history.bin",
+  "allowBlkFileTruncate": false,
+  "audioEnabled": false,
+  "audioOutputFile": ""
 }

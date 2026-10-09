@@ -1,5 +1,7 @@
 #include "app/fetchAllBlockHeaders.h"
 #include <app/Cfg.h>
+#include <app/BlockIndex.h>
+#include <app/RendererCheckpoint.h>
 #include <app/Hud.h>
 #include <app/forEachChange.h>
 #include <buv/AudioSynthesizer.h>
@@ -26,6 +28,7 @@ void saveImagePPM(size_t width, size_t height, uint8_t const* data, std::string 
     std::ofstream fout(filename, std::ios::binary);
     fout << "P6\n" << width << " " << height << "\n" << 255 << "\n";
     fout.write(reinterpret_cast<char const*>(data), width * height * 3U);
+    if (!fout) throw std::runtime_error("Could not write RGB frame: " + filename);
 }
 
 // clang-format off
@@ -44,10 +47,45 @@ TEST_CASE("visualizer" * doctest::skip()) {
 
     LOG("mmapping '{}', this could take a while...", cfg.blkFile);
     auto file = util::Mmap(cfg.blkFile);
-    auto numBlocks = buv::numBlocks(file);
+    auto index = buv::BlockIndex::loadOrBuild(cfg.blkFile, file.view());
+    auto numBlocks = index.size();
+    if (!numBlocks) throw std::runtime_error("No blocks in render input");
+    auto const endHeightExclusive = cfg.endShowAtBlockHeight
+        ? std::min<uint64_t>(uint64_t(cfg.endShowAtBlockHeight) + 1, numBlocks)
+        : uint64_t(numBlocks);
+    if (cfg.startShowAtBlockHeight >= endHeightExclusive)
+        throw std::runtime_error("Visible render range is empty or outside input");
+    auto const endOffset = index.offset(static_cast<size_t>(endHeightExclusive));
     LOG("{} blocks, overwritting cfg with that setting", numBlocks);
 
     auto density = buv::Density(cfg, numBlocks);
+    uint64_t startOffset = 0;
+    auto bindingAt = [&](uint32_t height) {
+        if (height == 0 || height >= numBlocks) throw std::runtime_error("Renderer checkpoint boundary outside input");
+        auto record = index.recordSpan(file.view(), height - 1);
+        return buv::RendererCheckpointBinding{height, index.offset(height),
+            buv::rendererCheckpointHash(record.data(), record.size())};
+    };
+    if (!cfg.rendererCheckpointLoad.empty()) {
+        auto saved = buv::readRendererCheckpointBinding(cfg.rendererCheckpointLoad);
+        auto expected = bindingAt(saved.nextHeight);
+        if (saved.nextBlkOffset != expected.nextBlkOffset || saved.previousRecordHash != expected.previousRecordHash)
+            throw std::runtime_error("Renderer checkpoint does not match BLK prefix boundary");
+        LOG("Loading renderer checkpoint before block {}", saved.nextHeight);
+        buv::loadRendererCheckpoint(cfg.rendererCheckpointLoad, density, expected);
+        startOffset = expected.nextBlkOffset;
+        LOG("Renderer checkpoint loaded: {} ledger entries; replay starts at block {}",
+            density.checkpointLedgerSize(), saved.nextHeight);
+    }
+    if (startOffset >= endOffset) throw std::runtime_error("Replay range is empty or outside input");
+    auto const checkpointSaveHeight = cfg.rendererCheckpointSaveAtBlock ? cfg.rendererCheckpointSaveAtBlock : cfg.startShowAtBlockHeight;
+    if (!cfg.rendererCheckpointSave.empty()) {
+        if (std::filesystem::exists(cfg.rendererCheckpointSave)) throw std::runtime_error("Refusing to overwrite renderer checkpoint");
+        bindingAt(checkpointSaveHeight);
+        if (index.offset(checkpointSaveHeight) < startOffset ||
+            (cfg.endShowAtBlockHeight && checkpointSaveHeight > cfg.endShowAtBlockHeight))
+            throw std::runtime_error("Renderer checkpoint save boundary outside replay range");
+    }
     auto throttler = util::ThrottlePeriodic(1000ms);
 
     auto hud = buv::Hud::create(cfg, numBlocks, file);
@@ -64,14 +102,13 @@ TEST_CASE("visualizer" * doctest::skip()) {
     auto lastCib = buv::forEachChange(file, [&](buv::ChangesInBlock const& cib) {
         auto blockHeight = cib.blockData().blockHeight;
 
-        // Stop if we've reached the end block
-        if (cfg.endShowAtBlockHeight > 0 && blockHeight > cfg.endShowAtBlockHeight) {
-            LOG("Reached end block {}, stopping", cfg.endShowAtBlockHeight);
-            return false;
-        }
-
         LOGIF(throttler(), "block {}, {} changes", blockHeight, cib.changeAtBlockheights().size());
 
+        if (!cfg.rendererCheckpointSave.empty() && blockHeight == checkpointSaveHeight) {
+            LOG("Saving renderer checkpoint before block {}", blockHeight);
+            buv::saveRendererCheckpoint(cfg.rendererCheckpointSave, density, bindingAt(blockHeight));
+            LOG("Renderer checkpoint saved: {} ledger entries", density.checkpointLedgerSize());
+        }
         density.begin_block(blockHeight);
 
         // Only collect audio events once we're in the visible range
@@ -108,6 +145,11 @@ TEST_CASE("visualizer" * doctest::skip()) {
             hud->syncAxis(density.axisMapper());
             hud->setTotalBlocks(density.getTotalBlocks());
             hud->draw(data, cib);
+            if (std::find(cfg.dumpFramesAtBlocks.begin(), cfg.dumpFramesAtBlocks.end(), blockHeight) != cfg.dumpFramesAtBlocks.end()) {
+                auto const filename = fmt::format("frame_{:07}.ppm", blockHeight);
+                saveImagePPM(cfg.imageWidth, cfg.imageHeight, hud->data(), filename);
+                LOG("Dumped exact RGB frame at block {} to {}", blockHeight, filename);
+            }
             socketStream->write(hud->data(), hud->size());
         });
 
@@ -126,7 +168,7 @@ TEST_CASE("visualizer" * doctest::skip()) {
         }
 
         return true;
-    });
+    }, startOffset, endOffset);
 
     // fade out & keep last image for 1 minute
     for (uint32_t i = 0; i < cfg.repeatLastBlockTimes; ++i) {

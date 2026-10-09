@@ -1,0 +1,36 @@
+{
+  "sshHost": "umbrel@192.168.8.234",
+  "nodeBlk": "/home/umbrel/buv_data/changes.blk1.v3",
+  "nodeCheckpoint": "/home/umbrel/buv_data/checkpoint_v3.utxo",
+  "nodeChunkManifest": "/home/umbrel/buv_data/changes.blk1.v3.chunks.json",
+  "nodeLock": "/home/umbrel/buv_data/.daily-blk-update.lock",
+  "localBlk": "/Volumes/4T Data/buv_render/changes.blk1.full964k",
+  "localChunkManifest": "/Volumes/4T Data/buv_render/changes.blk1.full964k.chunks.json",
+  "localLock": "/Volumes/4T Data/buv_render/.blk-append.lock",
+  "runDir": "/Volumes/4T Data/buv_render/append_review_20260912_next001/sync",
+  "nodeContainer": "buv_blk_v3",
+  "sshArgv": [
+    "sshpass",
+    "-e",
+    "ssh",
+    "-o",
+    "ConnectTimeout=30",
+    "-o",
+    "StrictHostKeyChecking=yes"
+  ],
+  "remotePythonArgv": [
+    "sudo",
+    "-S",
+    "-p",
+    "",
+    "python3",
+    "-"
+  ],
+  "remoteSudoPasswordEnv": "BUV_NODE_SUDO_PASSWORD",
+  "nodeInspectArgv": [
+    "docker",
+    "inspect"
+  ],
+  "localImmutable": false,
+  "nodeImmutable": false
+}

@@ -1,4 +1,6 @@
+#include <app/BlockIndex.h>
 #include <app/Cfg.h>
+#include <app/HistoryDelta.h>
 #include <app/UtxoHistory.h>
 #include <app/forEachChange.h>
 #include <util/Mmap.h>
@@ -16,6 +18,8 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <random>
+#include <sys/file.h>
 
 #include <unistd.h>
 
@@ -52,6 +56,10 @@ public:
         if (mFd < 0) {
             throw std::runtime_error(fmt::format("could not open '{}' read-write", p.string()));
         }
+        if (::flock(mFd, LOCK_EX | LOCK_NB) != 0) {
+            ::close(mFd);
+            throw std::runtime_error("history updater already running");
+        }
     }
     ~HistoryFd() {
         if (mFd >= 0) {
@@ -65,6 +73,7 @@ public:
         auto const* p = static_cast<char const*>(data);
         while (len > 0) {
             auto n = ::pwrite(mFd, p, len, static_cast<off_t>(offset));
+            if (n < 0 && errno == EINTR) continue;
             if (n <= 0) {
                 throw std::runtime_error("pwrite failed on history file");
             }
@@ -77,6 +86,7 @@ public:
         auto* p = static_cast<char*>(data);
         while (len > 0) {
             auto n = ::pread(mFd, p, len, static_cast<off_t>(offset));
+            if (n < 0 && errno == EINTR) continue;
             if (n <= 0) {
                 throw std::runtime_error("pread failed on history file");
             }
@@ -91,6 +101,56 @@ public:
         }
     }
 };
+
+void applyHistoryDelta(HistoryFd const& fd, std::string const& bytes) {
+    auto h = buv::historyDeltaHeader(bytes);
+    auto current = buv::UtxoHistoryHeader{};
+    fd.preadAll(&current, sizeof(current), 0);
+    buv::deltaRequire(std::memcmp(&current, &h.before, sizeof(current)) == 0 ||
+                      std::memcmp(&current, &h.after, sizeof(current)) == 0,
+                      "history does not match journal source or target");
+    auto off = sizeof(h);
+    auto entries = std::vector<buv::HistoryDeltaSpend>(static_cast<size_t>(h.spends));
+    if (!entries.empty()) std::memcpy(entries.data(), bytes.data()+off, entries.size()*sizeof(entries[0]));
+    off += entries.size()*sizeof(buv::HistoryDeltaSpend);
+    std::sort(entries.begin(), entries.end(), [](auto const& a, auto const& b) { return a.recordIndex < b.recordIndex; });
+    for (size_t i=0; i<entries.size(); ++i) {
+        buv::deltaRequire(i == 0 || entries[i-1].recordIndex != entries[i].recordIndex, "duplicate spend record index");
+    }
+    // Coalesce writes into <=64 KiB spans. One pwrite per coin would replace
+    // the old sort bottleneck with millions of syscalls.
+    for (size_t i=0; i<entries.size();) {
+        auto end = i+1;
+        while (end<entries.size() && entries[end].recordIndex-entries[i].recordIndex < 4096) ++end;
+        auto first = entries[i].recordIndex;
+        auto count = entries[end-1].recordIndex-first+1;
+        buv::deltaRequire(entries[end-1].recordIndex < h.before.numRecords, "spend outside history");
+        std::vector<buv::UtxoHistoryRecord> group(static_cast<size_t>(count));
+        auto pos = h.before.recordsOff + first*sizeof(group[0]);
+        fd.preadAll(group.data(), group.size()*sizeof(group[0]), pos);
+        for (auto at=i; at<end; ++at) {
+        auto const& spend = entries[at];
+        buv::deltaRequire(spend.recordIndex < h.before.numRecords &&
+                          spend.record.spendHeight >= h.before.numBlocks &&
+                          spend.record.spendHeight < h.after.numBlocks, "invalid journal spend");
+        auto& old = group[static_cast<size_t>(spend.recordIndex-first)];
+        buv::deltaRequire(old.creationHeight == spend.record.creationHeight && old.satoshi == spend.record.satoshi &&
+                          (old.spendHeight == buv::kUnspent || old.spendHeight == spend.record.spendHeight),
+                          "spend target differs from journal");
+        old.spendHeight = spend.record.spendHeight;
+        }
+        fd.pwriteAll(group.data(), group.size()*sizeof(group[0]), pos);
+        i = end;
+    }
+    auto recordBytes = (h.after.numRecords-h.before.numRecords)*sizeof(buv::UtxoHistoryRecord);
+    fd.pwriteAll(bytes.data()+off, recordBytes, h.after.recordsOff+h.before.numRecords*16); off += recordBytes;
+    auto timeBytes = h.after.numBlocks*4;
+    fd.pwriteAll(bytes.data()+off, timeBytes, h.after.blockTimesOff); off += timeBytes;
+    fd.pwriteAll(bytes.data()+off, (h.after.numBlocks+1)*8, h.after.heightIndexOff);
+    fd.sync();
+    fd.pwriteAll(&h.after, sizeof(h.after), 0);
+    fd.sync();
+}
 
 } // namespace
 
@@ -226,21 +286,37 @@ TEST_CASE("utxo_history" * doctest::skip()) {
 // Usage: ./buv -ns -tc=utxo_history_update -cfg=path/to/config.json
 //   reads cfg.blkFile (full changes file), updates cfg.historyFile in place
 //
-// Crash safety: new records are appended past the advertised numRecords, spend
-// stamps written to old records are semantically true (they only describe
-// spends at heights beyond the advertised numBlocks), and the header is
-// updated last with a single 64-byte write after fsync. A crash at any point
-// leaves a file that is still consistent for the old block range; rerunning
-// the updater afterwards is safe because it restarts from the advertised
-// header state and re-stamps idempotently.
-TEST_CASE("utxo_history_update" * doctest::skip()) {
-    auto cfg = buv::parseCfg(util::args::get("-cfg").value());
+// With historyDeltaFile, a durable write-ahead journal records the exact target
+// before mutation and makes replay idempotent, including trailing-array repair.
+// The legacy empty-path mode does NOT offer that guarantee: appending records
+// can overwrite the old trailing arrays before its final header write.
+static void updateUtxoHistory(buv::Cfg const& cfg) {
     if (cfg.historyFile.empty()) {
         throw std::runtime_error("config needs 'historyFile' for utxo_history_update");
     }
 
     // --- read existing header ---
     auto fd = HistoryFd(cfg.historyFile);
+    if (!cfg.historyDeltaFile.empty()) {
+        auto journal = std::filesystem::weakly_canonical(cfg.historyDeltaFile);
+        buv::deltaRequire(journal != std::filesystem::weakly_canonical(cfg.historyFile) &&
+                          journal != std::filesystem::weakly_canonical(cfg.blkFile), "journal collides with input");
+        if (std::filesystem::exists(journal)) {
+            auto bytes = buv::readHistoryDelta(journal);
+            auto delta = buv::historyDeltaHeader(bytes);
+            auto input = util::Mmap(cfg.blkFile);
+            auto index = buv::BlockIndex::loadOrBuild(cfg.blkFile, input.view());
+            buv::deltaRequire(index.size() >= delta.after.numBlocks &&
+                              index.offset(delta.after.numBlocks) == delta.blkPrefixBytes, "BLK journal boundary mismatch");
+            auto start = index.offset(delta.after.numBlocks-1);
+            buv::deltaRequire(buv::rendererCheckpointHash(input.view().data()+start, delta.blkPrefixBytes-start) == delta.blkTailHash,
+                              "BLK journal tail mismatch");
+            applyHistoryDelta(fd, bytes);
+            LOG("recovered/verified immutable history journal through {}; use a new journal path for another update", delta.after.numBlocks-1);
+            return;
+        }
+        buv::deltaRequire(!std::filesystem::exists(cfg.historyDeltaFile+".pending"), "incomplete pending journal; inspect before retry");
+    }
     auto hdr = buv::UtxoHistoryHeader{};
     fd.preadAll(&hdr, sizeof(hdr), 0);
     if (0 != std::memcmp(hdr.magic, buv::kUtxoHistoryMagic, sizeof(hdr.magic))) {
@@ -248,6 +324,8 @@ TEST_CASE("utxo_history_update" * doctest::skip()) {
     }
     auto oldNumBlocks = hdr.numBlocks;
     auto oldNumRecords = hdr.numRecords;
+    auto originalHeader = hdr;
+    auto deltaSpends = std::vector<buv::HistoryDeltaSpend>();
     LOG("existing history: {} blocks, {} records", oldNumBlocks, oldNumRecords);
 
     // --- read existing height index (small; ~8 bytes per block) ---
@@ -282,17 +360,11 @@ TEST_CASE("utxo_history_update" * doctest::skip()) {
 
     // Fast-skip everything the file already covers, decode only the delta.
     {
-        auto const* ptr = file.begin();
-        auto const* end = file.end();
-        auto cib = buv::ChangesInBlock();
-        while (ptr != end) {
-            auto peek = buv::ChangesInBlock::skip(ptr);
-            maxSeenHeight = std::max(maxSeenHeight, peek.first);
-            if (peek.first < oldNumBlocks) {
-                ptr = peek.second;
-                continue;
-            }
-            std::tie(cib, ptr) = buv::ChangesInBlock::decode(std::move(cib), ptr);
+        auto index = buv::BlockIndex::loadOrBuild(cfg.blkFile, file.view());
+        if (oldNumBlocks > index.size()) throw std::runtime_error("history exceeds BLK index");
+        if (index.size()) maxSeenHeight = static_cast<uint32_t>(index.size() - 1);
+        for (size_t height = static_cast<size_t>(oldNumBlocks); height < index.size(); ++height) {
+            auto cib = index.read(file.view(), height);
             auto blockHeight = cib.blockData().blockHeight;
             ++numDeltaBlocks;
 
@@ -382,18 +454,20 @@ TEST_CASE("utxo_history_update" * doctest::skip()) {
                     ++numUnmatchedSpends;
                     continue;
                 }
-                group[it->second.back()].spendHeight = spendHeight;
+                auto localIndex = it->second.back();
+                group[localIndex].spendHeight = spendHeight;
+                if (!cfg.historyDeltaFile.empty()) deltaSpends.push_back({begin+localIndex, group[localIndex]});
                 it->second.pop_back();
                 ++stamped;
             }
-            fd.pwriteAll(group.data(), group.size() * sizeof(buv::UtxoHistoryRecord), hdr.recordsOff + begin * sizeof(buv::UtxoHistoryRecord));
+            if (cfg.historyDeltaFile.empty()) fd.pwriteAll(group.data(), group.size() * sizeof(buv::UtxoHistoryRecord), hdr.recordsOff + begin * sizeof(buv::UtxoHistoryRecord));
         }
         LOG("stamped {} spends across {} old height groups ({} unmatched total)", stamped, heights.size(), numUnmatchedSpends);
     }
 
     // --- append new records after the existing record array ---
     auto recordsEnd = hdr.recordsOff + oldNumRecords * sizeof(buv::UtxoHistoryRecord);
-    fd.pwriteAll(newRecords.data(), newRecords.size() * sizeof(buv::UtxoHistoryRecord), recordsEnd);
+    if (cfg.historyDeltaFile.empty()) fd.pwriteAll(newRecords.data(), newRecords.size() * sizeof(buv::UtxoHistoryRecord), recordsEnd);
 
     // --- write the grown blockTimes + heightIndex arrays behind the records ---
     // The old copies before the record array are too small to grow in place;
@@ -406,6 +480,29 @@ TEST_CASE("utxo_history_update" * doctest::skip()) {
 
     auto newBlockTimesOff = recordsEnd + newRecords.size() * sizeof(buv::UtxoHistoryRecord);
     auto newHeightIndexOff = newBlockTimesOff + blockTimes.size() * sizeof(uint32_t);
+    if (!cfg.historyDeltaFile.empty()) {
+        buv::deltaRequire(numUnmatchedSpends == 0, "unmatched spends; history was not changed");
+        hdr.numBlocks = numBlocks; hdr.numRecords = numRecords;
+        hdr.blockTimesOff = newBlockTimesOff; hdr.heightIndexOff = newHeightIndexOff;
+        auto random = std::random_device{};
+        for (auto& byte : hdr.reserved) byte = static_cast<uint8_t>(random());
+        auto index = buv::BlockIndex::loadOrBuild(cfg.blkFile, file.view());
+        buv::HistoryDeltaHeader journal;
+        journal.before = originalHeader; journal.after = hdr; journal.spends = deltaSpends.size();
+        journal.blkPrefixBytes = index.offset(numBlocks);
+        auto last = index.offset(numBlocks-1);
+        journal.blkTailHash = buv::rendererCheckpointHash(file.view().data()+last, journal.blkPrefixBytes-last);
+        auto bytes = std::string{};
+        buv::deltaAppend(bytes, &journal, 1);
+        buv::deltaAppend(bytes, deltaSpends.data(), deltaSpends.size());
+        buv::deltaAppend(bytes, newRecords.data(), newRecords.size());
+        buv::deltaAppend(bytes, blockTimes.data(), blockTimes.size());
+        buv::deltaAppend(bytes, heightIndex.data(), heightIndex.size());
+        buv::writeHistoryDelta(cfg.historyDeltaFile, std::move(bytes));
+        applyHistoryDelta(fd, buv::readHistoryDelta(cfg.historyDeltaFile));
+        LOG("history delta journal: {} old spend records, {} new records; committed '{}'", deltaSpends.size(), newRecords.size(), cfg.historyDeltaFile);
+        return;
+    }
     fd.pwriteAll(blockTimes.data(), blockTimes.size() * sizeof(uint32_t), newBlockTimesOff);
     fd.pwriteAll(heightIndex.data(), heightIndex.size() * sizeof(uint64_t), newHeightIndexOff);
     fd.sync();
@@ -423,4 +520,62 @@ TEST_CASE("utxo_history_update" * doctest::skip()) {
         numBlocks,
         numRecords,
         std::filesystem::file_size(cfg.historyFile));
+}
+
+TEST_CASE("utxo_history_update" * doctest::skip()) {
+    updateUtxoHistory(buv::parseCfg(util::args::get("-cfg").value()));
+}
+
+TEST_CASE("history_delta_journal" * doctest::skip()) {
+    auto name = (std::filesystem::temp_directory_path()/"buv-history-delta-XXXXXX").string();
+    std::vector<char> temp(name.begin(),name.end()); temp.push_back('\0');
+    auto dirName = ::mkdtemp(temp.data()); REQUIRE(dirName != nullptr);
+    auto dir = std::filesystem::path(dirName);
+    struct Cleanup { std::filesystem::path dir; ~Cleanup(){ std::filesystem::remove_all(dir); } } cleanup{dir};
+    buv::Cfg cfg;
+    cfg.historyFile = (dir/"history.bin").string(); cfg.blkFile = (dir/"changes.blk").string();
+    cfg.historyDeltaFile = (dir/"delta.bin").string();
+    std::ofstream blk(cfg.blkFile, std::ios::binary);
+    for (uint32_t h=0; h<4; ++h) {
+        buv::ChangesInBlock b; b.beginBlock(h).time = 100+h;
+        if (h==0) { b.addChange(10,0); b.addChange(10,0); }
+        if (h==1) b.addChange(20,1);
+        if (h==2) { b.addChange(30,2); b.addChange(-30,2); b.addChange(-10,0); }
+        if (h==3) { b.addChange(40,3); b.addChange(-10,0); }
+        b.finalizeBlock(); blk << b.encode();
+    }
+    blk.close();
+    buv::UtxoHistoryHeader before{};
+    std::memcpy(before.magic,buv::kUtxoHistoryMagic,8);
+    before.numBlocks=2; before.numRecords=3; before.recordsOff=64;
+    before.blockTimesOff=112; before.heightIndexOff=120;
+    std::vector<buv::UtxoHistoryRecord> records{{0,buv::kUnspent,10},{0,buv::kUnspent,10},{1,buv::kUnspent,20}};
+    std::vector<uint32_t> times{100,101}; std::vector<uint64_t> index{0,2,3};
+    std::string original; buv::deltaAppend(original,&before,1); buv::deltaAppend(original,records.data(),records.size());
+    buv::deltaAppend(original,times.data(),times.size()); buv::deltaAppend(original,index.data(),index.size());
+    { std::ofstream f(cfg.historyFile,std::ios::binary); f << original; }
+    updateUtxoHistory(cfg);
+    auto bytes = buv::readHistoryDelta(cfg.historyDeltaFile);
+    auto header = buv::historyDeltaHeader(bytes);
+    CHECK(header.spends == 2); CHECK(header.after.numBlocks == 4); CHECK(header.after.numRecords == 5);
+    auto read = [&] { std::ifstream f(cfg.historyFile,std::ios::binary); return std::string(std::istreambuf_iterator<char>(f),{}); };
+    auto complete = read();
+    std::vector<buv::UtxoHistoryRecord> actual(5); std::memcpy(actual.data(),complete.data()+64,80);
+    CHECK(actual[0].spendHeight == 3); CHECK(actual[1].spendHeight == 2); // duplicate amounts keep LIFO identity
+    CHECK(actual[2].spendHeight == buv::kUnspent); CHECK(actual[3].spendHeight == 2); // same-block creation/spend
+    CHECK(actual[4].satoshi == 40); CHECK(actual[4].spendHeight == buv::kUnspent);
+    updateUtxoHistory(cfg); CHECK(read() == complete); // idempotent journal retry
+    // Simulate interruption after new records overwrote the old trailing arrays
+    // but before the target header was published. Recovery needs NO old arrays.
+    { std::fstream f(cfg.historyFile,std::ios::binary|std::ios::in|std::ios::out);
+      f.write(reinterpret_cast<char*>(&before),sizeof(before)); f.seekp(112); f << "damaged index"; }
+    updateUtxoHistory(cfg); CHECK(read() == complete);
+    // A wrong source lineage must fail without changing history.
+    auto wrong=complete; wrong[48]^=1;
+    { std::ofstream f(cfg.historyFile,std::ios::binary); f << wrong; }
+    CHECK_THROWS(updateUtxoHistory(cfg)); CHECK(read() == wrong);
+    { std::ofstream f(cfg.historyFile,std::ios::binary); f << complete; }
+    auto damaged=bytes; damaged.back()^=1;
+    { std::ofstream f(cfg.historyDeltaFile,std::ios::binary); f << damaged; }
+    CHECK_THROWS(updateUtxoHistory(cfg)); CHECK(read() == complete);
 }

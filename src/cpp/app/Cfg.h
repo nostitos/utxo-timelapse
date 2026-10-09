@@ -1,8 +1,11 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace buv {
 template <typename T>
@@ -30,6 +33,13 @@ struct Cfg {
     uint32_t endShowAtBlockHeight{0};  // 0 = no limit, otherwise stop at this block
     uint32_t skipBlocks{1};
     uint32_t repeatLastBlockTimes{0};
+    // Optional exact RGB diagnostics; emitted in the renderer working directory.
+    std::vector<uint32_t> dumpFramesAtBlocks{};
+    std::string rendererCheckpointSave{};
+    std::string rendererCheckpointLoad{};
+    // 0 saves at startShowAtBlockHeight; a later stable boundary rolls the
+    // checkpoint forward for the following append without another replay.
+    uint32_t rendererCheckpointSaveAtBlock{0};
     std::string connectionIpAddr = "127.0.0.1";
     uint16_t connectionSocket = 12987;
     std::string colorMap = "viridis";
@@ -100,6 +110,7 @@ struct Cfg {
 
     // UTXO explorer settings (utxo_history builder + utxo_explorer server)
     std::string historyFile{};       // utxo_history.bin path (built by utxo_history, read by utxo_explorer)
+    std::string historyDeltaFile{};  // optional immutable incremental publication/recovery journal
     std::string explorerVideoFile{}; // rendered MP4 served as the explorer timeline
     uint16_t explorerPort{12988};    // local port for the explorer web server
 };
