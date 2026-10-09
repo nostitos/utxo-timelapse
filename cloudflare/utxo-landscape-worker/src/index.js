@@ -24,10 +24,12 @@ export function datasetIds() {
 export function contentSecurityPolicy() {
   return [
     "default-src 'self'",
-    "script-src 'self' '" + RELEASE.importMapHash + "'",
+    // Cloudflare Web Analytics: the edge injects its beacon script, which reports to
+    // cloudflareinsights.com. It loads with CORS, as cross-origin isolation requires.
+    "script-src 'self' '" + RELEASE.importMapHash + "' https://static.cloudflareinsights.com",
     "style-src 'self' 'unsafe-inline'",
     "worker-src 'self'",
-    "connect-src 'self'",
+    "connect-src 'self' https://cloudflareinsights.com",
     "img-src 'self' data: blob:",
     // lil-gui (the settings panel) embeds its icon font as a data: URL.
     "font-src 'self' data:",

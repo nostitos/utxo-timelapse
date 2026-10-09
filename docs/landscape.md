@@ -65,7 +65,7 @@ Measured on 2026-10-08 from this Mac over a home connection in Toronto (served f
 
 Playback streams the change log. After block 420,000, 1× needs about 1.2–2.2 MiB/s and 10× about 12–22 MiB/s, so 1× suits most broadband connections while 10× and Max follow the connection's speed. Each seek replays up to 16 MiB of changes from the nearest snapshot, which accounts for most of an online seek.
 
-Storing the dataset costs about 1.1 USD a month in R2 (75 GB); R2 charges nothing for egress.
+Storing the dataset costs about 1.1 USD a month in R2 (75 GB); R2 charges nothing for egress. Cloudflare Web Analytics counts visits: the zone injects its beacon into every page, and both this site's and the 2D explorer's Content Security Policy allow it.
 
 ## Controls
 
@@ -387,7 +387,6 @@ In the app, 1× playback from block 314,000 advanced 602 blocks in 10.03 s witho
 - Flight-mode pointer lock was checked only through its drag-to-look fallback. Firefox and touch input were not tested; Brave passed the browser checks online.
 - Locally, the inspector's history section needs the explorer on port 12989, and its cell API shares `/api/pixel`'s rate limit (15 requests/s, burst 40). Online, the Worker answers it with 8 requests/s and a burst of 20 per visitor and Worker instance.
 - Online, a seek takes about 1–2 s and 10× or Max playback follows the connection's download speed (see Online). The dataset ends at block 966,827; a newer tip needs a new dataset of about 75 GB, which took 45 minutes to upload from here.
-- Cloudflare Web Analytics is on for the `bitcointimelapse.com` zone, so Cloudflare injects its beacon script into every page. This site's Content Security Policy blocks it, as the 2D explorer's does, so each page load logs one console error and the analytics collect nothing.
 - Unchanged and worth a follow-up: `/api/pixel` and `/api/ranges` share one mutable inverter across request threads, so simultaneous requests for blocks in different epochs could compute wrong column ranges. The new cell endpoint does not use it.
 
 ## Files
