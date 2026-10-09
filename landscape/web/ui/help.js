@@ -1,6 +1,16 @@
-// Keyboard and mouse reference plus the about/credit line, shown in <dialog id="help">.
+// Touch, keyboard and mouse reference plus the about/credit line, shown in <dialog id="help">.
 
 // Each entry: [keys or gestures, description]. Strings starting with '~' are gestures.
+const TOUCH = ['Touch', [
+  [['~One finger'], 'Pan; the ground stays under your finger'],
+  [['~Pinch'], 'Zoom around your fingers'],
+  [['~Twist'], 'Rotate'],
+  [['~Two fingers up or down'], 'Tilt'],
+  [['~Tap'], 'Inspect the cell'],
+  [['~Double-tap'], 'Fly closer; keep the second tap down and drag to zoom'],
+  [['~Two-finger tap'], 'Zoom out'],
+]];
+
 const SECTIONS = [
   ['Time', [
     [['Space'], 'Play or pause'],
@@ -11,7 +21,7 @@ const SECTIONS = [
   ['Map mode', [
     [['~Drag'], 'Pan; the grabbed point stays under the cursor'],
     [['~Right-drag', 'Shift'], 'Orbit around the point under the cursor'],
-    [['~Wheel', '~Pinch'], 'Zoom toward the cursor'],
+    [['~Wheel', '~Trackpad pinch'], 'Zoom toward the cursor'],
     [['~Double-click'], 'Fly to that point'],
     [['~Click', 'I'], 'Inspect the cell under the cursor'],
     [['\u2190', '\u2191', '\u2192', '\u2193'], 'Pan (Shift for 4\u00d7)'],
@@ -39,8 +49,10 @@ function keyHtml(k) {
   return k.startsWith('~') ? '<span class="gesture">' + k.slice(1) + '</span>' : '<kbd>' + k + '</kbd>';
 }
 
-export function createHelp(dialog) {
-  const sections = SECTIONS.map(([title, rows]) =>
+/** touchFirst puts the touch gestures first (phones and tablets without a mouse). */
+export function createHelp(dialog, { touchFirst = false } = {}) {
+  const list = touchFirst ? [TOUCH, ...SECTIONS] : [...SECTIONS, TOUCH];
+  const sections = list.map(([title, rows]) =>
     '<section><h3>' + title + '</h3><dl>' +
     rows.map(([keys, v]) => '<div><dt>' + keys.map(keyHtml).join('') + '</dt><dd>' + v + '</dd></div>').join('') +
     '</dl></section>').join('');

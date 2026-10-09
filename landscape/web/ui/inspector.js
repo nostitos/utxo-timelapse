@@ -4,6 +4,10 @@
 //
 // The explorer's count/liveSat are the outputs alive at the block (created <= B < spent)
 // and must equal the worker's countSmall+countLarge and satsSmall+satsLarge.
+//
+// On phones (app.css) the drawer is a sheet in the same place as the settings panel: at the
+// bottom in portrait, at the right in landscape. body.inspector-front marks the inspector as
+// the sheet opened last, so it covers the panel until the panel is opened again.
 
 import { fmtInt, fmtBtc, fmtAge, isoUtc, escapeHtml } from './format.js';
 import { rowAmountRange, blockToX, rowToImageY } from '../data/axis.js';
@@ -56,6 +60,17 @@ export function createInspector({
   container.addEventListener('click', (e) => {
     if (e.target.closest('[data-close]')) api.close();
   });
+
+  const body = typeof document !== 'undefined' ? document.body : null;
+  if (body && typeof MutationObserver === 'function') {
+    // main.js sets body.panel-open when the settings panel opens; the panel then comes to the front.
+    let panelWasOpen = body.classList.contains('panel-open');
+    new MutationObserver(() => {
+      const panelOpen = body.classList.contains('panel-open');
+      if (panelOpen && !panelWasOpen) body.classList.remove('inspector-front');
+      panelWasOpen = panelOpen;
+    }).observe(body, { attributes: true, attributeFilter: ['class'] });
+  }
 
   function head(col, row, hit) {
     const [first, last] = columnBlocks(grid, col);
@@ -258,6 +273,7 @@ export function createInspector({
       apiAt = null;
       container.hidden = false;
       document.body.classList.add('inspector-open');
+      document.body.classList.add('inspector-front');
       render();
       const apiLater = new Promise((resolve) => {
         clearTimeout(apiTimer);
@@ -275,6 +291,7 @@ export function createInspector({
       clearTimeout(apiTimer);
       container.hidden = true;
       document.body.classList.remove('inspector-open');
+      document.body.classList.remove('inspector-front');
       if (marker) marker.hidden = true;
       if (onClose) onClose();
     },

@@ -4,14 +4,19 @@
 // pitch < 0 looks down. Map mode expresses every gesture as a rigid move of that pose:
 //   left-drag      pan; the grabbed terrain point stays under the cursor
 //   right/Shift    orbit around the terrain point under the cursor
-//   wheel / pinch  zoom toward the point under the cursor
+//   wheel          zoom toward the point under the cursor
 //   double-click   fly to the clicked point
 //   arrows pan, Q/E rotate and PageUp/PageDown tilt around the screen centre
+// Touch (gesture maths in ui/touch.js): one finger pans; two fingers pinch, twist and pan
+// together about the point between them, or tilt when both move up or down; a tap
+// inspects, a double tap flies closer (double tap and drag zooms), a two-finger tap zooms out.
 // Flight mode (F): pointer lock and mouse look (drag to look when the lock is refused),
 // WASD, E/Q up/down, Shift 4x, wheel sets speed, speed scales with height above the
-// terrain, and collision keeps the camera above the surface.
+// terrain, and collision keeps the camera above the surface. On touch, one finger looks
+// and two fingers fly (spread to go forward, drag to slide or climb).
 
 import { Vector3, Quaternion, Euler } from 'three';
+import { TAP_SLOP_PX, TAP_MAX_MS, DOUBLE_TAP_MS, pairOf, pairDelta, classifyTwoFinger, createTapTracker } from './touch.js';
 
 const DEG = Math.PI / 180;
 const UP = new Vector3(0, 1, 0);
@@ -56,7 +61,12 @@ export function forwardOf(yaw, pitch, out = new Vector3()) {
   return out.set(-Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp);
 }
 
-export function createControls({ view, canvas, settings, onInspect, onModeChange, onNotice, bounds } = {}) {
+/**
+ * extent ({minX, maxX, minZ, maxZ}, world units) is the landscape's ground rectangle. Points
+ * that miss the terrain are kept within it, so gestures over empty background or the sky
+ * move the camera at the landscape's scale.
+ */
+export function createControls({ view, canvas, settings, onInspect, onModeChange, onNotice, bounds, extent } = {}) {
   const camera = view.camera;
   const lim = Object.assign({ minX: -400, maxX: 1400, minZ: -400, maxZ: 650, maxY: 4000 }, bounds || {});
   const pos = new Vector3(483, 260, 560);
@@ -65,8 +75,14 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
   let mode = 'map';
   let anim = null;
   let drag = null;
-  const touches = new Map();
-  let pinch = null;
+  // Touch: fingers on the canvas, the gesture they form and the touch sequence (first finger
+  // down to last finger up) that decides taps.
+  const fingers = new Map();
+  let tg = null;
+  let session = null;
+  let tapTimer = 0;
+  let lastTouchAt = -Infinity;
+  const taps = createTapTracker();
   const held = new Set();
   const vel = new Vector3();
   const keyOrbit = { pivot: null };
@@ -148,6 +164,52 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
     }
     const { origin, dir } = ray(cx, cy);
     return planeHit(origin, dir, 0);
+  }
+
+  /**
+   * Gesture anchor under a client position (never null): the terrain point; else the ground
+   * plane inside the landscape; else, over empty ground, a point along the ray no farther
+   * than the landscape; else, above the horizon, a ground point straight ahead at the
+   * landscape's distance, marked sky = true (zoom and rotate use it, panning does not).
+   */
+  function anchorAt(cx, cy) {
+    sync();
+    let hit = null;
+    try {
+      hit = view.pick(cx, cy);
+    } catch {
+      hit = null;
+    }
+    if (hit && Number.isFinite(hit.x) && Number.isFinite(hit.y) && Number.isFinite(hit.z)) {
+      return new Vector3(hit.x, hit.y, hit.z);
+    }
+    const { origin, dir } = ray(cx, cy);
+    const p = planeHit(origin, dir, 0, new Vector3());
+    const height = Math.max(1, origin.y - ground(origin.x, origin.z));
+    if (p) {
+      const inside = extent && p.x >= extent.minX && p.x <= extent.maxX && p.z >= extent.minZ && p.z <= extent.maxZ;
+      if (inside) return p;
+      // Empty ground: no farther than the landscape's nearest point (or a few heights away).
+      const q = extent ? new Vector3(clamp(p.x, extent.minX, extent.maxX), 0, clamp(p.z, extent.minZ, extent.maxZ)) : null;
+      const reach = Math.max(20, q ? origin.distanceTo(q) : 6 * height);
+      const d = p.distanceTo(origin);
+      return d <= reach ? p : origin.clone().addScaledVector(dir, reach);
+    }
+    const flat = new Vector3(dir.x, 0, dir.z);
+    if (flat.lengthSq() < 1e-8) flat.copy(forwardOf(yaw, 0));
+    flat.normalize();
+    const centre = extent ? new Vector3((extent.minX + extent.maxX) / 2, 0, (extent.minZ + extent.maxZ) / 2) : null;
+    const reach = Math.max(20, centre ? origin.distanceTo(centre) : 6 * height);
+    const s = new Vector3(origin.x + flat.x * reach, 0, origin.z + flat.z * reach);
+    s.y = ground(s.x, s.z);
+    s.sky = true;
+    return s;
+  }
+
+  /** Pan anchor: like anchorAt, but null above the horizon (panning starts once a finger reaches the ground). */
+  function grabAt(cx, cy) {
+    const p = anchorAt(cx, cy);
+    return p.sky ? null : p;
   }
 
   function centerClient() {
@@ -267,14 +329,8 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
     canvas.focus({ preventScroll: true });
     lastPointer = { x: e.clientX, y: e.clientY };
     if (e.pointerType === 'touch') {
-      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (touches.size === 2) {
-        drag = null;
-        const [a, b] = [...touches.values()];
-        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-        pinch = { dist: Math.hypot(a.x - b.x, a.y - b.y), point: pointAt(mid.x, mid.y) };
-        return;
-      }
+      touchDown(e);
+      return;
     }
     if (mode === 'flight') {
       if (document.pointerLockElement !== canvas) {
@@ -286,7 +342,7 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
     const orbitGesture = e.button === 2 || e.button === 1 || (e.button === 0 && e.shiftKey);
     if (e.button !== 0 && !orbitGesture) return;
     touched();
-    const p = pointAt(e.clientX, e.clientY);
+    const p = anchorAt(e.clientX, e.clientY);
     drag = {
       kind: orbitGesture ? 'orbit' : 'pan',
       id: e.pointerId,
@@ -296,8 +352,8 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
       ly: e.clientY,
       moved: false,
       t0: performance.now(),
-      grab: p,
-      pivot: p || centerPoint(),
+      grab: p.sky ? null : p,
+      pivot: p.sky ? centerPoint() : p,
     };
     capture(canvas, e.pointerId);
     canvas.classList.add('dragging');
@@ -305,16 +361,9 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
 
   function onPointerMove(e) {
     lastPointer = { x: e.clientX, y: e.clientY };
-    if (e.pointerType === 'touch' && touches.has(e.pointerId)) {
-      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (pinch && touches.size === 2) {
-        const [a, b] = [...touches.values()];
-        const dist = Math.hypot(a.x - b.x, a.y - b.y);
-        if (pinch.point && dist > 0) zoomAt(pinch.point, pinch.dist / dist);
-        pinch.dist = dist;
-        touched();
-        return;
-      }
+    if (e.pointerType === 'touch') {
+      touchMove(e);
+      return;
     }
     if (!drag || drag.id !== e.pointerId) return;
     const dx = e.clientX - drag.lx;
@@ -328,7 +377,7 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
       look(dx, dy);
     } else if (drag.kind === 'pan') {
       if (drag.grab) panTo(drag.grab, drag.grab.y, e.clientX, e.clientY);
-      else drag.grab = pointAt(e.clientX, e.clientY);
+      else drag.grab = grabAt(e.clientX, e.clientY);
     } else {
       const k = 0.005 * setting('camera.sensitivity', 1);
       orbit(drag.pivot, -dx * k, -dy * k);
@@ -337,8 +386,8 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
 
   function onPointerUp(e) {
     if (e.pointerType === 'touch') {
-      touches.delete(e.pointerId);
-      if (touches.size < 2) pinch = null;
+      touchUp(e);
+      return;
     }
     if (!drag || drag.id !== e.pointerId) return;
     const d = drag;
@@ -355,12 +404,197 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
   }
 
   function onDblClick(e) {
-    if (mode !== 'map') return;
-    const p = pointAt(e.clientX, e.clientY);
+    // Touch double taps are handled in touchUp; ignore the dblclick some browsers add.
+    if (mode !== 'map' || performance.now() - lastTouchAt < 1000) return;
+    flyCloser(anchorAt(e.clientX, e.clientY));
+  }
+
+  /** Fly so that p is at the centre of the view, 35% of its current distance away. */
+  function flyCloser(p) {
     if (!p) return;
-    const dist = pos.distanceTo(p);
-    const next = Math.max(0.4, dist * 0.35);
+    const next = Math.max(0.4, pos.distanceTo(p) * 0.35);
     api.flyTo({ position: p.clone().addScaledVector(forwardOf(yaw, pitch), -next) });
+  }
+
+  /** Fly back to twice the distance from the point under (cx, cy), keeping the view direction. */
+  function zoomOutAt(cx, cy) {
+    const p = anchorAt(cx, cy);
+    api.flyTo({ position: p.clone().add(pos.clone().sub(p).multiplyScalar(2)), duration: 0.4 });
+  }
+
+  // ---- touch -------------------------------------------------------------------------
+  function startPan(id, x, y) {
+    tg = { kind: 'pan', id, grab: grabAt(x, y) };
+  }
+
+  function startLook(id, x, y) {
+    tg = { kind: 'look', id, lx: x, ly: y };
+  }
+
+  /** Two-finger gesture on the first two fingers down; classified once they move. */
+  function startTwo() {
+    const ids = [...fingers.keys()].slice(0, 2);
+    const a = fingers.get(ids[0]);
+    const b = fingers.get(ids[1]);
+    const pair = pairOf(a, b);
+    tg = {
+      kind: mode === 'flight' ? 'fly' : 'two',
+      ids,
+      start: [{ x: a.x, y: a.y }, { x: b.x, y: b.y }],
+      prev: pair,
+      grab: mode === 'flight' ? null : anchorAt(pair.x, pair.y),
+    };
+    return pair;
+  }
+
+  function touchDown(e) {
+    lastTouchAt = performance.now();
+    if (e.isPrimary && fingers.size) {
+      // A new touch sequence while old fingers are still listed (a lost pointerup): start clean.
+      fingers.clear();
+      tg = null;
+      session = null;
+    }
+    capture(canvas, e.pointerId);
+    fingers.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY });
+    if (!session) session = { t0: lastTouchAt, maxFingers: 0, moved: false, pair: null };
+    session.maxFingers = Math.max(session.maxFingers, fingers.size);
+    touched();
+    canvas.classList.add('dragging');
+    if (fingers.size === 1) {
+      // A touch near a tap that just ended is the second tap of a double tap: the first tap
+      // no longer inspects, and dragging this finger up or down zooms.
+      const second = mode === 'map' && taps.pending(e.clientX, e.clientY);
+      if (second || mode === 'flight') {
+        clearTimeout(tapTimer);
+        tapTimer = 0;
+      }
+      if (mode === 'flight') startLook(e.pointerId, e.clientX, e.clientY);
+      else if (second) tg = { kind: 'tapzoom', id: e.pointerId, ly: e.clientY, anchor: anchorAt(e.clientX, e.clientY) };
+      else startPan(e.pointerId, e.clientX, e.clientY);
+    } else if (fingers.size === 2) {
+      clearTimeout(tapTimer);
+      tapTimer = 0;
+      session.pair = startTwo();
+    }
+  }
+
+  function touchMove(e) {
+    const f = fingers.get(e.pointerId);
+    if (!f) return;
+    f.x = e.clientX;
+    f.y = e.clientY;
+    if (!session || !tg) return;
+    if (Math.hypot(f.x - f.x0, f.y - f.y0) > TAP_SLOP_PX) session.moved = true;
+    if (tg.kind === 'pan' || tg.kind === 'look' || tg.kind === 'tapzoom') {
+      if (e.pointerId !== tg.id || !session.moved) return;
+      touched();
+      if (tg.kind === 'pan') {
+        if (tg.grab) panTo(tg.grab, tg.grab.y, f.x, f.y);
+        else tg.grab = grabAt(f.x, f.y);
+      } else if (tg.kind === 'look') {
+        // Drag the scene: moving the finger right turns the view left, down looks up.
+        const k = 0.004 * setting('camera.sensitivity', 1);
+        const inv = setting('camera.invertY', false) ? -1 : 1;
+        yaw = wrap(yaw + (f.x - tg.lx) * k);
+        pitch = clamp(pitch + (f.y - tg.ly) * k * inv, -89 * DEG, 89 * DEG);
+        tg.lx = f.x;
+        tg.ly = f.y;
+      } else {
+        // Double tap and drag: down zooms in, up zooms out, about the tapped point.
+        zoomAt(tg.anchor, Math.exp(-(f.y - tg.ly) * 0.008));
+        tg.ly = f.y;
+      }
+      return;
+    }
+    if (!tg.ids.includes(e.pointerId)) return;
+    const a = fingers.get(tg.ids[0]);
+    const b = fingers.get(tg.ids[1]);
+    if (!a || !b) return;
+    if (tg.kind === 'two') {
+      const kind = classifyTwoFinger(tg.start, [a, b]);
+      if (!kind) return;
+      tg.kind = kind;
+    }
+    const pair = pairOf(a, b);
+    const d = pairDelta(tg.prev, pair);
+    tg.prev = pair;
+    touched();
+    if (tg.kind === 'transform') {
+      // Zoom and twist about the point between the fingers, then keep it between them.
+      if (Math.abs(d.scale - 1) > 1e-6) zoomAt(tg.grab, 1 / d.scale);
+      if (Math.abs(d.rotate) > 1e-6) orbit(tg.grab, d.rotate, 0);
+      if (!tg.grab.sky) panTo(tg.grab, tg.grab.y, pair.x, pair.y);
+    } else if (tg.kind === 'tilt') {
+      // Both fingers up tilts toward the horizon, down toward a top view.
+      orbit(tg.grab, 0, -d.dy * 0.006 * setting('camera.sensitivity', 1));
+    } else if (tg.kind === 'fly') {
+      const h = Math.max(0.05, pos.y - ground(pos.x, pos.z));
+      const s = 2 * setting('camera.flySpeed', 1) * clamp(h, 0.25, 400);
+      const span = Math.max(1, rect().height);
+      pos.addScaledVector(forwardOf(yaw, pitch), Math.log(d.scale) * s);
+      pos.addScaledVector(new Vector3(Math.cos(yaw), 0, -Math.sin(yaw)), (-d.dx / span) * s);
+      pos.addScaledVector(UP, (d.dy / span) * s);
+      flightLimits();
+    }
+  }
+
+  function touchUp(e) {
+    if (!fingers.has(e.pointerId)) return;
+    fingers.delete(e.pointerId);
+    try {
+      canvas.releasePointerCapture(e.pointerId);
+    } catch {
+      /* already released */
+    }
+    if (fingers.size) {
+      if (fingers.size === 1) {
+        // Carry on with the remaining finger, grabbing the ground under it afresh.
+        const [id, r] = [...fingers.entries()][0];
+        if (mode === 'flight') startLook(id, r.x, r.y);
+        else startPan(id, r.x, r.y);
+      } else if (tg && tg.ids && tg.ids.includes(e.pointerId)) {
+        startTwo();
+      }
+      return;
+    }
+    const s = session;
+    const g = tg;
+    session = null;
+    tg = null;
+    canvas.classList.remove('dragging');
+    const tap = e.type === 'pointerup' && s && !s.moved && performance.now() - s.t0 <= TAP_MAX_MS;
+    if (!tap) {
+      if (g && g.kind === 'tapzoom') taps.reset();
+      return;
+    }
+    if (s.maxFingers === 2) {
+      taps.reset();
+      if (mode === 'map') zoomOutAt(s.pair.x, s.pair.y);
+      return;
+    }
+    if (s.maxFingers !== 1) return;
+    const x = e.clientX;
+    const y = e.clientY;
+    if (mode === 'flight') {
+      if (onInspect) onInspect(x, y);
+      return;
+    }
+    if (taps.tap(x, y) === 'double') {
+      flyCloser(anchorAt(x, y));
+      return;
+    }
+    clearTimeout(tapTimer);
+    tapTimer = setTimeout(() => {
+      tapTimer = 0;
+      if (onInspect) onInspect(x, y);
+    }, DOUBLE_TAP_MS);
+  }
+
+  // Safari's own pinch events would zoom the page, also over the panels; touch-action in
+  // app.css covers other browsers.
+  function onGesture(e) {
+    e.preventDefault();
   }
 
   function onWheel(e) {
@@ -384,7 +618,7 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
     if (lastPick && now - lastPick.t < 250 && Math.hypot(lastPick.x - e.clientX, lastPick.y - e.clientY) < 3) {
       p = lastPick.p;
     } else {
-      p = pointAt(e.clientX, e.clientY);
+      p = anchorAt(e.clientX, e.clientY);
       lastPick = p ? { t: now, x: e.clientX, y: e.clientY, p } : null;
     }
     if (!p) return;
@@ -437,6 +671,8 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
   canvas.addEventListener('dblclick', onDblClick);
   canvas.addEventListener('wheel', onWheel, { passive: false });
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  document.addEventListener('gesturestart', onGesture, { passive: false });
+  document.addEventListener('gesturechange', onGesture, { passive: false });
   document.addEventListener('mousemove', onMouseMove);
   document.addEventListener('pointerlockchange', onLockChange);
   window.addEventListener('keydown', onKeyDown);
@@ -489,6 +725,11 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
     want.multiplyScalar(speed);
     vel.lerp(want, blend(dt));
     pos.addScaledVector(vel, dt);
+    flightLimits();
+  }
+
+  /** Flight collision and bounds, shared by keyboard flight and the two-finger fly gesture. */
+  function flightLimits() {
     if (setting('camera.collision', true)) {
       const minY = ground(pos.x, pos.z) + FLIGHT_CLEARANCE;
       if (pos.y < minY) {
@@ -522,7 +763,7 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
       return mode;
     },
     get moving() {
-      return !!anim || !!drag || held.size > 0 || vel.lengthSq() > 1e-8 || performance.now() - moving < 250;
+      return !!anim || !!drag || !!tg || held.size > 0 || vel.lengthSq() > 1e-8 || performance.now() - moving < 250;
     },
     get pointer() {
       return lastPointer;
@@ -598,6 +839,21 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
         if (dur <= 0) updateAnim(1);
       });
     },
+    /**
+     * Slide the camera sideways (same height and direction) so the world point p appears at
+     * client position (cx, cy); used to keep an inspected cell clear of the phone's sheet.
+     */
+    panPointTo(p, cx, cy, { duration = 0.45 } = {}) {
+      if (!p || mode !== 'map') return Promise.resolve({ cancelled: true });
+      const g = new Vector3(p.x, p.y, p.z);
+      const save = pos.clone();
+      panTo(g, g.y, cx, cy);
+      const to = pos.clone();
+      pos.copy(save);
+      sync();
+      if (to.distanceToSquared(save) < 1e-10) return Promise.resolve({ cancelled: false });
+      return api.flyTo({ position: to, duration });
+    },
     /** Ground footprint of the view as [x, z] corners (for the minimap). */
     footprint(maxDistance = 2500) {
       const r = rect();
@@ -623,6 +879,9 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
       canvas.removeEventListener('pointercancel', onPointerUp);
       canvas.removeEventListener('dblclick', onDblClick);
       canvas.removeEventListener('wheel', onWheel);
+      document.removeEventListener('gesturestart', onGesture);
+      document.removeEventListener('gesturechange', onGesture);
+      clearTimeout(tapTimer);
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('pointerlockchange', onLockChange);
       window.removeEventListener('keydown', onKeyDown);

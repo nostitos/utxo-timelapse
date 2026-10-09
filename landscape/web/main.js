@@ -146,6 +146,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
 
     const controls = createControls({
       view, canvas, settings: store,
+      extent: { minX: 0, maxX: worldX(tip + 1), minZ: 0, maxZ: worldZ(grid.rows) },
       onInspect: (x, y) => inspectAt(x, y),
       onNotice: notice,
       onModeChange: (mode) => {
@@ -156,7 +157,8 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       },
     });
     const hud = createHud($('hud'));
-    const help = createHelp($('help'));
+    const touchOnly = deviceTraits().coarseOnly;
+    const help = createHelp($('help'), { touchFirst: touchOnly });
     const legend = createLegend({ container: $('legend'), settings: store });
     const minimap = createMinimap({
       container: $('minimap'), grid, rows: replay.rows, settings: store,
@@ -260,10 +262,45 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       // the lower right, so the relief reads in 3D. Distance scales with the dataset length and
       // is widened for narrow windows and narrow fields of view.
       const w = worldX(tip + 1);
-      const target = { x: w * 0.58, y: 0, z: worldZ(grid.rows) * 0.5 };
       const cam = view.camera;
       const vfov = ((cam.fov || 50) * Math.PI) / 180;
       const aspect = cam.aspect || canvas.clientWidth / Math.max(1, canvas.clientHeight);
+      if (aspect < 1) {
+        // Portrait (phones): look down the block axis from beyond the tip, recent eras in front and
+        // genesis toward the top. The tip edge spans the width just above the timeline (leaving room
+        // for the amount labels), and the pitch is solved so block 0 lands near the top. In camera
+        // terms a ground point at horizontal distance d sits at depth d*cos + h*sin and height
+        // d*sin - h*cos on the view axis (camera height h, downward pitch).
+        const across = worldZ(grid.rows);
+        const t = Math.tan(vfov / 2);
+        const r = canvas.getBoundingClientRect();
+        const tl = $('timeline');
+        const tlTop = tl && !tl.hidden ? tl.getBoundingClientRect().top : r.bottom;
+        const yNear = r.height > 0 ? clamp(1 - (2 * (tlTop - 44 - r.top)) / r.height, -0.9, -0.4) : -0.66;
+        const yFar = 0.7;
+        const nearDepth = across / (2 * aspect * t);
+        const nearUp = yNear * nearDepth * t;
+        const solve = (p) => {
+          const c = Math.cos(p);
+          const s = Math.sin(p);
+          const back = nearDepth * c + nearUp * s;
+          const h = nearDepth * s - nearUp * c;
+          const far = back + w;
+          return { back, h, y: (far * s - h * c) / ((far * c + h * s) * t) };
+        };
+        let lo = 0.05;
+        let hi = 1.3;
+        for (let i = 0; i < 40; i++) {
+          const mid = (lo + hi) / 2;
+          if (solve(mid).y < yFar) lo = mid;
+          else hi = mid;
+        }
+        const pitch = (lo + hi) / 2;
+        const { back, h } = solve(pitch);
+        const ahead = h / Math.tan(pitch);
+        return controls.poseLookingAt({ x: w + back - ahead, y: 0, z: across / 2 }, { distance: h / Math.sin(pitch), yaw: 90, pitch: (-pitch * 180) / Math.PI });
+      }
+      const target = { x: w * 0.58, y: 0, z: worldZ(grid.rows) * 0.5 };
       const fit = Math.max(1, 16 / 9 / Math.max(0.2, aspect)) * (Math.tan((25 * Math.PI) / 180) / Math.tan(vfov / 2));
       const distance = Math.max(40, w * 0.66 * fit);
       return controls.poseLookingAt(target, { distance, yaw: 36, pitch: -31 });
@@ -314,7 +351,26 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         notice('No terrain under the cursor', 'info', 'inspect');
         return null;
       }
-      return inspector.open(hit);
+      const opened = inspector.open(hit);
+      if (touchOnly) keepClearOfSheet(hit, x, y);
+      return opened;
+    }
+
+    // On phones the inspector is a sheet over the bottom (portrait) or the right (landscape) of
+    // the view. When it covers the tapped cell, slide the view so the cell shows beside it.
+    function keepClearOfSheet(hit, x, y) {
+      const sheet = $('inspector');
+      if (!sheet || sheet.hidden) return;
+      const s = sheet.getBoundingClientRect();
+      const c = canvas.getBoundingClientRect();
+      const m = 24;
+      if (x < s.left - m || x > s.right + m || y < s.top - m || y > s.bottom + m) return;
+      if (s.width >= 0.9 * c.width) {
+        const top = Math.max(c.top, $('hud').getBoundingClientRect().bottom);
+        controls.panPointTo(hit, x, (top + s.top) / 2);
+      } else {
+        controls.panPointTo(hit, (c.left + s.left) / 2, y);
+      }
     }
 
     // ---- URL hash ---------------------------------------------------------------------
@@ -425,7 +481,8 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       const o = overviewPose();
       controls.setPose({ x: o.position.x, y: o.position.y, z: o.position.z, yaw: o.yaw, pitch: o.pitch });
     }
-    if (initial.mode === 'flight') controls.setMode('flight');
+    // Flight mode needs a keyboard to steer and to leave; touch-only devices open the link in map mode.
+    if (initial.mode === 'flight' && !deviceTraits().coarseOnly) controls.setMode('flight');
     controls.update(0);
     const first = view.update(0);
     if (first && first.desiredTiles) replay.setTiles(first.desiredTiles);
@@ -479,6 +536,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
           hook.ready = true;
           loading.done();
           if (startup && startup.notice) notice(startup.notice, 'info', 'startup');
+          if (touchOnly) toast.show('Drag to pan \u00b7 pinch to zoom \u00b7 twist to turn \u00b7 two fingers up or down to tilt \u00b7 tap to inspect', 'info', 'touch-hint', 6500);
         }
         const block = replay.block;
         const pstate = playback.state;
