@@ -36,7 +36,7 @@ The inspector's history section reads the native explorer's cell API. Run a seco
 
 ## Online
 
-The landscape runs publicly at **https://3d.bitcointimelapse.com/**, also reachable at https://utxo-landscape.nostisos.workers.dev/. A separate Cloudflare Worker, `utxo-landscape`, serves the app from Workers Static Assets and the dataset from the 2D explorer's private R2 bucket under `landscape/d966827-20261008/`, and it answers the inspector's cell lookups from the explorer's history shards. [`cloudflare/utxo-landscape-worker/README.md`](../cloudflare/utxo-landscape-worker/README.md) covers deploying, publishing a dataset for a new tip and rolling back. The guide and the 2D explorer do not link to the landscape yet.
+The landscape runs publicly at **https://3d.bitcointimelapse.com/**, also reachable at https://utxo-landscape.nostisos.workers.dev/. A separate Cloudflare Worker, `utxo-landscape`, serves the app from Workers Static Assets and the dataset from the 2D explorer's private R2 bucket under `landscape/d970658-20261009/` (blocks 0–970,658), and it answers the inspector's cell lookups from the explorer's history shards. [`cloudflare/utxo-landscape-worker/README.md`](../cloudflare/utxo-landscape-worker/README.md) covers deploying, publishing a dataset for a new tip and rolling back. The guide and the 2D explorer do not link to the landscape yet.
 
 Three things change online, all decided in `landscape/web/ui/online.js`:
 
@@ -106,16 +106,16 @@ Places jumps to the eras at blocks 50,000, 210,000, 314,000, 420,000, 500,000, 6
 
 ### Grid and measures
 
-Level 0 cells cover 64 creation blocks and one film amount row, 15,107 × 2,072 cells for blocks 0–966,827. Each coarser level doubles the block width and doubles the rows per cell up to 16. Every level is cut into 256 × 256 tiles, 758 tiles in all:
+Level 0 cells cover 64 creation blocks and one film amount row, 15,167 × 2,072 cells for blocks 0–970,658. Each coarser level doubles the block width and doubles the rows per cell up to 16. Every level is cut into 256 × 256 tiles, 758 tiles in all:
 
 | Level | Columns × rows | Tiles |
 |---|---|---|
-| 0 | 15,107 × 2,072 | 60 × 9 |
-| 1 | 7,554 × 1,036 | 30 × 5 |
-| 2 | 3,777 × 518 | 15 × 3 |
-| 3 | 1,889 × 259 | 8 × 2 |
-| 4 | 945 × 130 | 4 × 1 |
-| 5 | 473 × 130 | 2 × 1 |
+| 0 | 15,167 × 2,072 | 60 × 9 |
+| 1 | 7,584 × 1,036 | 30 × 5 |
+| 2 | 3,792 × 518 | 15 × 3 |
+| 3 | 1,896 × 259 | 8 × 2 |
+| 4 | 948 × 130 | 4 × 1 |
+| 5 | 474 × 130 | 2 × 1 |
 | 6 | 237 × 130 | 1 × 1 |
 
 A cell stores four exact integers: the count and satoshi sum of outputs up to 5 BTC and of outputs above 5 BTC. Weighted density is `countSmall + satsLarge / 5 BTC`, the film's persistent density; count is both counts; value is the satoshi sum in BTC. Coarser levels show the mean per level-0 cell. Zero-value outputs are skipped, as the renderer does. The amount row of an output comes from the compiled C++ mapper through `rows.bin`, because the project's `-ffast-math` build moves one row boundary by 1 sat compared with strict IEEE arithmetic (779,521,282,186 sat sits in row 49).
@@ -402,7 +402,7 @@ In the app, 1× playback from block 314,000 advanced 602 blocks in 10.03 s witho
 - God rays work in screen space and appear only when the sun is near the view; the volumetric option gives shadowed light shafts from any angle. Fewer bloom mips narrow the glow without saving GPU time. PCSS estimates blocker distance approximately.
 - Flight-mode pointer lock was checked only through its drag-to-look fallback. Firefox was not tested; Brave passed the browser checks online. Touch gestures were checked with real multi-touch input in Chrome's phone emulation (390 × 844), not yet on a physical phone or in iOS Safari.
 - Locally, the inspector's history section needs the explorer on port 12989, and its cell API shares `/api/pixel`'s rate limit (15 requests/s, burst 40). Online, the Worker answers it with 8 requests/s and a burst of 20 per visitor and Worker instance.
-- Online, a seek takes about 1–2 s and 10× or Max playback follows the connection's download speed (see Online). The dataset ends at block 966,827; a newer tip needs a new dataset of about 75 GB, which took 45 minutes to upload from here.
+- Online, a seek takes about 1–2 s and 10× or Max playback follows the connection's download speed (see Online). The dataset ends at block 970,658; a newer tip needs a new dataset. `scripts/landscape_r2_publish.py` copies unchanged chunks inside R2, but every snapshot is uploaded again (58 GB, about 36 minutes from here) because its header records the grid's block and column counts, which grow with the tip. The tile data of an existing snapshot does not change, so a format without those header fields would let a new tip reuse every earlier snapshot.
 - Unchanged and worth a follow-up: `/api/pixel` and `/api/ranges` share one mutable inverter across request threads, so simultaneous requests for blocks in different epochs could compute wrong column ranges. The new cell endpoint does not use it.
 
 ## Files

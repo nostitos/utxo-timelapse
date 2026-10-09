@@ -175,6 +175,13 @@ history matching, network transfer, encoding or publication verification.
 
 ## Installed node schedule
 
+**Removed.** The October 9, 2026 umbrelOS update replaced the node's system
+partition and deleted the timer, the service and `/usr/local/lib/utxo-timelapse`;
+the updater had already been failing since an out-of-memory kill on October 4.
+The description below is the September configuration, kept for reference. A
+reinstalled schedule must keep its files under `/home` or be reinstalled after
+every umbrelOS update. See the [October 9 report](history/site-update-2026-10-09.md).
+
 `utxo-timelapse-blk-update.timer` is enabled for 03:15 UTC daily. Its oneshot
 service runs `/usr/local/lib/utxo-timelapse/umbrel_daily_blk_update.py --run` as
 root, validates the retained container/config and uses

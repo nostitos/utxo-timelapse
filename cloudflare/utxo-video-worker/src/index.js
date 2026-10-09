@@ -278,7 +278,7 @@ async function handle(request, env, ctx) {
 
   // Historical fixed names and content-addressed rendition objects are both
   // private bucket keys: allow only release prefixes and exact media filenames.
-  const hls = /^\/hls\/(v1|v2|v3|v4|v5|mobile966360|compat1)\/(media[.]m3u8|init[.]mp4|segment_\d{5}[.]m4s|[a-f0-9]{64}[.](?:mp4|m4s))$/.exec(url.pathname);
+  const hls = /^\/hls\/(v1|v2|v3|v4|v5|v6|mobile966360|compat1|compat2)\/(media[.]m3u8|init[.]mp4|segment_\d{5}[.]m4s|[a-f0-9]{64}[.](?:mp4|m4s))$/.exec(url.pathname);
   if (hls) {
     return serveR2(request, env, ctx, `hls/${hls[1]}/${hls[2]}`, {
       edgeCache: true,
