@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ui_shell stub harness</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="../fonts/fonts.css">
+<link rel="stylesheet" href="../app.css">
+<script type="importmap">
+{ "imports": { "three": "../vendor/three/three.webgpu.js", "three/webgpu": "../vendor/three/three.webgpu.js", "three/tsl": "../vendor/three/three.tsl.js", "three/addons/": "../vendor/three/addons/" } }
+</script>
+</head>
+<body>
+<canvas id="view" tabindex="0"></canvas>
+<div id="labels" aria-hidden="true"></div>
+<div id="marker" hidden aria-hidden="true"><i></i></div>
+<div id="crosshair" hidden aria-hidden="true"></div>
+<div id="overlay"></div>
+<header id="hud"></header>
+<aside id="minimap"></aside>
+<aside id="legend"></aside>
+<aside id="panel"></aside>
+<aside id="inspector" hidden></aside>
+<div id="places" class="popover" hidden></div>
+<footer id="timeline"></footer>
+<div id="toast" role="status" aria-live="polite"></div>
+<dialog id="help"></dialog>
+<div id="loading" role="status">
+  <div class="loading-card">
+    <div class="brand"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span>UTXO Timelapse <em>Landscape</em></span></div>
+    <h1>Rebuilding the UTXO set, <em>block by block.</em></h1>
+    <p class="loading-status">Starting</p>
+    <div class="loading-bar"><span></span></div>
+    <p class="loading-detail"></p>
+  </div>
+</div>
+<script type="module">
+globalThis.__LANDSCAPE_NO_AUTOSTART__ = true;
+const { startApp } = await import('../main.js');
+const stubs = await import('./ui_shell-stubs.js');
+const schema = await import('../settings.schema.js');
+const settings = await import('../settings.js');
+let createPanel = stubs.createStubPanel;
+try {
+  createPanel = (await import('../ui/panel.js')).createPanel;
+} catch (err) {
+  console.info('panel.js not available yet; using the stub panel');
+}
+const params = new URLSearchParams(location.search);
+// ?client=real uses the real replay client and worker on /dataset/; ?view=real the real view.
+const realClient = params.get('client') === 'real';
+const realView = params.get('view') === 'real';
+const clientMod = realClient ? await import('../client/replay-client.js') : null;
+const renderMod = realView ? await import('../render/index.js') : null;
+await startApp({
+  createReplayClient: realClient ? clientMod.createReplayClient : () => stubs.createStubClient({ tip: Number(params.get('tip')) || 966827 }),
+  createLandscapeView: realView ? renderMod.createLandscapeView : (opts) => stubs.createStubView(opts),
+  probeCapabilities: realView ? renderMod.probeCapabilities : async () => ({ webgpu: true, backend: 'webgpu', compute: true }),
+  SCHEMA: schema.SCHEMA,
+  PRESETS: schema.PRESETS,
+  createSettingsStore: settings.createSettingsStore,
+  createPanel,
+});
+window.__ready = true;
+window.__dev = window.__landscape;
+</script>
+</body>
+</html>

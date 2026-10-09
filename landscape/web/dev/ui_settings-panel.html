@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ui_settings: settings panel harness</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #070910; color: #cfd6e4; font: 13px/1.45 -apple-system, system-ui, sans-serif; }
+  main { position: absolute; inset: 0 392px 0 0; padding: 18px 22px; overflow: auto; }
+  #panel { position: absolute; top: 0; right: 0; bottom: 0; width: 380px; display: flex; flex-direction: column; }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  h2 { font-size: 12px; margin: 16px 0 6px; color: #8d96a8; text-transform: uppercase; letter-spacing: .06em; }
+  p { margin: 0 0 8px; color: #8d96a8; }
+  pre { margin: 0; white-space: pre-wrap; word-break: break-all; font: 11px/1.45 Menlo, monospace; background: #0d111b; padding: 8px 10px; border-radius: 4px; max-height: 36vh; overflow: auto; }
+  code { font: 11px Menlo, monospace; color: #7cc7ff; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Settings panel harness</h1>
+  <p>Owner: ui_settings. Mounts <code>ui/panel.js</code> on a store from <code>settings.js</code>. Query flags:
+    <code>?webgl=1</code> (WebGL2 capabilities), <code>?fresh=1</code> (ignore saved settings), <code>?storage=0</code> (no persistence).</p>
+  <h2>Preset state (store.onPresetChange)</h2>
+  <pre id="state"></pre>
+  <h2>Change batches (store.subscribe('*'), newest first)</h2>
+  <pre id="batches"></pre>
+  <h2>URL hash (store.mergeIntoHash)</h2>
+  <pre id="hash"></pre>
+</main>
+<div id="panel"></div>
+<script type="module">
+  import { SCHEMA, PRESETS } from '../settings.schema.js';
+  import { createSettingsStore } from '../settings.js';
+  import { createPanel } from '../ui/panel.js';
+
+  const params = new URLSearchParams(location.search);
+  const webgl = params.get('webgl') === '1';
+  const capabilities = webgl
+    ? { backend: 'webgl2', compute: false, timestamp: false }
+    : { backend: 'webgpu', compute: true, timestamp: true };
+  const storage = params.get('storage') === '0' ? null : window.localStorage;
+  const store = createSettingsStore(SCHEMA, PRESETS, { capabilities, storage, storageKey: 'utxo-landscape-settings-dev' });
+  if (params.get('fresh') !== '1') store.load();
+  const fromHash = store.fromURL(location.hash);
+
+  const fmt = (value) => Array.isArray(value) ? value.length + ' stops'
+    : value && typeof value === 'object' ? value.name : JSON.stringify(value);
+  const batches = [];
+  const states = [];
+  const render = () => {
+    document.getElementById('state').textContent = JSON.stringify({ preset: store.preset, basePreset: store.basePreset,
+      overrides: Object.keys(store.overrides()), webgpu: store.webgpu, fromHash }, null, 1);
+    document.getElementById('batches').textContent = batches.slice(0, 14)
+      .map((batch, i) => '#' + (batches.length - i) + '\n' + batch.map((c) => '  ' + c.id + ': ' + fmt(c.previous) + ' -> ' + fmt(c.value)).join('\n'))
+      .join('\n');
+    document.getElementById('hash').textContent = location.hash;
+  };
+  store.subscribe('*', (changes) => {
+    batches.unshift(changes);
+    history.replaceState(null, '', '#' + store.mergeIntoHash(location.hash || '#b=314000&mode=map'));
+    render();
+  });
+  store.onPresetChange((state) => { states.push(state); render(); });
+
+  const exported = [];
+  const imported = [];
+  const panel = createPanel({
+    container: document.getElementById('panel'),
+    store,
+    capabilities,
+    onExport: (json) => {
+      const augmented = { ...json, view: { b: 314000, cam: '480,120,260,0,-0.6', mode: 'map' } };
+      exported.push(augmented);
+      return augmented;
+    },
+    onImport: (json, report) => { imported.push({ view: json.view ?? null, report }); },
+  });
+  render();
+  window.__dev = { store, panel, batches, states, exported, imported, SCHEMA, PRESETS };
+  window.__ready = true;
+</script>
+</body>
+</html>

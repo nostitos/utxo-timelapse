@@ -220,6 +220,17 @@ export async function pixelResponse(url, env) {
   if (!heights || !sats) {
     return json({ blockRange: null, satRange: null, count: 0, utxos: [] });
   }
+  return lifecycleJson(env, { block, heights, sats, row: y - CONFIG.graphRect.y });
+}
+
+/**
+ * Lifecycle summary of the outputs created at heights [h1, h2] whose amounts lie in
+ * [s1, s2] on graph row 'row' (image y minus graphRect.y), seen at 'block': the scan
+ * stops at 'block'. Shared by /api/pixel and the landscape cell API
+ * (cloudflare/utxo-landscape-worker). 'lead' fields come first; /api/pixel passes none,
+ * so its body is unchanged.
+ */
+export async function lifecycleJson(env, { block, heights, sats, row, lead = null }) {
   const [h1, h2] = heights;
   const [s1, s2] = sats;
   const firstShard = Math.floor(h1 / SHARD_BLOCKS);
@@ -241,7 +252,7 @@ export async function pixelResponse(url, env) {
     env.VIDEO_BUCKET,
     firstShard,
     finalShard,
-    y - CONFIG.graphRect.y,
+    row,
     [h1, h2, s1, s2, block],
     aggregate,
   );
@@ -262,6 +273,7 @@ export async function pixelResponse(url, env) {
     population.push(running);
   }
   return json({
+    ...lead,
     blockRange: heights,
     blockDates: [dateOf(times, h1), dateOf(times, Math.min(h2, CONFIG.numBlocks - 1))],
     satRange: sats,

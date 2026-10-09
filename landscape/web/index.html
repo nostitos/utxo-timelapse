@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="UTXO Timelapse Landscape: the Bitcoin UTXO set as a navigable 3D landscape, replayed exactly block by block.">
+<title>UTXO Timelapse · Landscape</title>
+<meta property="og:title" content="UTXO Timelapse · Landscape">
+<meta property="og:description" content="Every unspent Bitcoin output as a 3D landscape you can fly through, replayed exactly block by block in your browser.">
+<meta property="og:image" content="https://3d.bitcointimelapse.com/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:url" content="https://3d.bitcointimelapse.com/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./fonts/fonts.css">
+<link rel="stylesheet" href="./app.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/three.webgpu.js",
+    "three/webgpu": "./vendor/three/three.webgpu.js",
+    "three/tsl": "./vendor/three/three.tsl.js",
+    "three/addons/": "./vendor/three/addons/"
+  }
+}
+</script>
+<script type="module" src="./main.js"></script>
+</head>
+<body>
+<canvas id="view" tabindex="0" aria-label="3D landscape of unspent Bitcoin outputs: creation block left to right, amount front to back"></canvas>
+<div id="labels" aria-hidden="true"></div>
+<div id="marker" hidden aria-hidden="true"><i></i></div>
+<div id="crosshair" hidden aria-hidden="true"></div>
+<div id="overlay"></div>
+<header id="hud" aria-label="Current block"></header>
+<aside id="minimap" aria-label="Overview map"></aside>
+<aside id="legend" aria-label="Legend"></aside>
+<aside id="panel" aria-label="Graphics settings"></aside>
+<aside id="inspector" aria-label="Cell inspector" hidden></aside>
+<div id="places" class="popover" role="dialog" aria-label="Places" hidden></div>
+<footer id="timeline" aria-label="Timeline"></footer>
+<div id="toast" role="status" aria-live="polite"></div>
+<dialog id="help" aria-label="Keyboard and mouse"></dialog>
+<div id="loading" role="status" aria-live="polite">
+  <div class="loading-card">
+    <div class="brand"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span>UTXO Timelapse <em>Landscape</em></span></div>
+    <h1>Rebuilding the UTXO set, <em>block by block.</em></h1>
+    <p class="loading-status">Starting</p>
+    <div class="loading-bar"><span></span></div>
+    <p class="loading-detail"></p>
+    <p class="loading-credit">Original concept and code by Martinus (BitcoinUtxoVisualizer, MIT).</p>
+  </div>
+</div>
+<noscript><p class="noscript">UTXO Timelapse Landscape needs JavaScript and WebGPU or WebGL2.</p></noscript>
+</body>
+</html>

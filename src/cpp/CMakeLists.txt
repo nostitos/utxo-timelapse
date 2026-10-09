@@ -19,6 +19,8 @@ target_sources_local(${PROJECT_NAME}
         app/fetchAllBlockHeaders.cpp
         app/find_distant_color.cpp
         app/Hud.cpp
+        app/Landscape.cpp
+        app/landscape_tasks.cpp
         app/load_all_block_headers.cpp
         app/parse_block.cpp
         app/show_block_changes.cpp

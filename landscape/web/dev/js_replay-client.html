@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>js_replay — replay client harness</title>
+<style>
+  body { font: 12px/1.45 ui-monospace, Menlo, monospace; background: #0d0f12; color: #d7dbe0; margin: 14px; }
+  h1 { font-size: 14px; margin: 0 0 8px; }
+  canvas { image-rendering: pixelated; border: 1px solid #333; display: block; margin: 6px 0 10px; background: #000; }
+  #info { white-space: pre; }
+  .row { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
+  .cap { color: #8a939e; }
+</style>
+</head>
+<body>
+<h1>Replay client harness (js_replay)</h1>
+<div id="info">loading…</div>
+<div class="row">
+  <div><div class="cap">L6 tile (whole chain, density, log colour)</div><canvas id="top"></canvas></div>
+  <div><div class="cap">focus L0 tiles (density)</div><canvas id="l0"></canvas></div>
+</div>
+<script type="module">
+import { createReplayClient } from '../client/replay-client.js';
+import { SLOT, SLOT_CELLS, tileInfo, tileId, columnOfBlock } from '../data/grid.js';
+
+const params = new URLSearchParams(location.search);
+const dataUrl = params.get('data') || '/dataset/';
+const startBlock = params.has('block') ? Number(params.get('block')) : null;
+const radius = Number(params.get('radius') ?? 1);
+const replay = await createReplayClient({
+  dataUrl,
+  maxResidentTiles: Number(params.get('tiles') || 225),
+  chunkCacheMB: Number(params.get('cache') || 512),
+});
+const grid = replay.grid;
+const TOP = grid.tiles - 1;
+const mirror = new Map();
+const frames = [];
+let mainMs = 0;
+let lastFrame = null;
+const errors = [];
+replay.onError((e) => errors.push(String(e.message || e)));
+replay.onFrame((f) => {
+  const t0 = performance.now();
+  for (const id of f.evicted) mirror.delete(id);
+  for (const t of f.full) mirror.set(t.id, t.empty ? null : t.data);
+  const d = f.deltas;
+  for (let k = 0; k < d.ids.length; k++) {
+    let m = mirror.get(d.ids[k]);
+    if (m === null) { m = new Float32Array(SLOT_CELLS * 4); mirror.set(d.ids[k], m); }
+    for (let i = d.offsets[k]; i < d.offsets[k + 1]; i++) m.set(d.data.subarray(i * 4, i * 4 + 4), d.index[i] * 4);
+  }
+  const ms = performance.now() - t0;
+  mainMs += ms;
+  lastFrame = f;
+  frames.push({ seq: f.seq, block: f.block, reason: f.reason, partial: f.partial, full: f.full.length,
+    evicted: f.evicted.length, deltaCells: f.deltas.index.length, mainMs: ms, stats: f.stats, t: performance.now() });
+  if (frames.length > 5000) frames.splice(0, 1000);
+});
+
+/** Desired tiles around a block, like a terrain view: every coarse tile plus bands of finer tiles. */
+function viewTiles(block, r = radius) {
+  const ids = [TOP];
+  const c0 = columnOfBlock(grid, block);
+  for (let l = grid.levels.length - 1; l >= 0; l--) {
+    const L = grid.levels[l];
+    const tx0 = Math.floor((c0 >> l) / 256);
+    const span = l >= 3 ? L.tilesX : r;
+    for (let ty = 0; ty < L.tilesY; ty++) {
+      for (let tx = Math.max(0, tx0 - span); tx <= Math.min(L.tilesX - 1, tx0 + span); tx++) ids.push(tileId(grid, l, tx, ty));
+    }
+  }
+  return [...new Set(ids)];
+}
+
+function setView(block, r = radius) {
+  const ids = viewTiles(block, r);
+  replay.setTiles(ids);
+  return ids.length;
+}
+
+function colour(t) {
+  // Simple dark-to-bright ramp for the harness (not the film palette).
+  const x = Math.max(0, Math.min(1, t));
+  return [Math.round(255 * Math.min(1, x * 2.2)), Math.round(255 * Math.max(0, Math.min(1, x * 1.6 - 0.3))), Math.round(255 * Math.max(0, x * 2 - 1))];
+}
+
+function drawTile(canvas, ids, scale) {
+  const infos = ids.map((id) => tileInfo(grid, id));
+  const minTx = Math.min(...infos.map((t) => t.tx));
+  const maxTx = Math.max(...infos.map((t) => t.tx));
+  const minTy = Math.min(...infos.map((t) => t.ty));
+  const maxTy = Math.max(...infos.map((t) => t.ty));
+  const w = (maxTx - minTx + 1) * 256;
+  const h = (maxTy - minTy + 1) * 256;
+  canvas.width = w;
+  canvas.height = h;
+  canvas.style.width = w * scale + 'px';
+  canvas.style.height = h * scale + 'px';
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(w, h);
+  let painted = 0;
+  for (const t of infos) {
+    const data = mirror.get(t.id);
+    if (!data) continue;
+    for (let ly = 0; ly < t.rows; ly++) {
+      for (let lx = 0; lx < t.cols; lx++) {
+        const v = data[((ly + 1) * SLOT + lx + 1) * 4];
+        if (!(v > 0)) continue;
+        const c = colour(Math.log(1 + v) / Math.log(1 + 500));
+        const x = (t.tx - minTx) * 256 + lx;
+        const y = (t.ty - minTy) * 256 + ly;
+        const o = (y * w + x) * 4;
+        img.data[o] = c[0]; img.data[o + 1] = c[1]; img.data[o + 2] = c[2]; img.data[o + 3] = 255;
+        painted++;
+      }
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return painted;
+}
+
+function draw() {
+  const top = drawTile(document.getElementById('top'), [TOP], 3);
+  const c0 = columnOfBlock(grid, replay.block ?? 0);
+  const tx = Math.floor(c0 / 256);
+  const l0 = [];
+  for (let ty = 0; ty < grid.levels[0].tilesY; ty++) { const id = tileId(grid, 0, tx, ty); if (mirror.has(id)) l0.push(id); }
+  const fine = l0.length ? drawTile(document.getElementById('l0'), l0, 1) : 0;
+  const m = replay.meta;
+  document.getElementById('info').textContent =
+    'data ' + dataUrl + '  blocks ' + grid.numBlocks + '  snapshots ' + replay.snapshotBlocks.length + '\n' +
+    'block ' + replay.block + (m ? '  ' + new Date(m.time * 1000).toISOString() + '  txs ' + m.nTx + '  created ' + m.created + '  spent ' + m.spent : '') + '\n' +
+    (m ? 'UTXOs ' + (m.totals.countSmall + m.totals.countLarge).toLocaleString('en') + '  BTC ' + ((m.totals.satsSmall + m.totals.satsLarge) / 1e8).toLocaleString('en', { maximumFractionDigits: 2 }) + '\n' : '') +
+    'main-thread tiles ' + mirror.size + '  painted L6 cells ' + top + '  L0 cells ' + fine + '  errors ' + errors.length;
+  return { top, fine };
+}
+
+const pct = (arr, p) => { const s = [...arr].sort((a, b) => a - b); return s.length ? s[Math.min(s.length - 1, Math.floor(p * (s.length - 1) + 0.5))] : null; };
+function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+const nextFrame = () => new Promise((r) => requestAnimationFrame(r));
+const idle = async () => { while (replay.busy || (lastFrame && lastFrame.stats.pendingTiles > 0)) await new Promise((r) => setTimeout(r, 10)); };
+
+/** Random exact seeks. follow=true moves the view with the target (like a place jump). */
+async function seekBench({ n = 20, seed = 1, follow = true, lo = 0, hi = grid.tip } = {}) {
+  const r = rng(seed);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const T = lo + Math.floor(r() * (hi - lo + 1));
+    const tiles = follow ? setView(T) : null;
+    const nFrames = frames.length;
+    const t0 = performance.now();
+    const res = await replay.seek(T);
+    const t1 = performance.now();
+    const firstFrame = frames.slice(nFrames).find((f) => f.block === T);
+    await idle();
+    out.push({ target: T, ms: +(t1 - t0).toFixed(1), firstFrameMs: firstFrame ? +(firstFrame.t - t0).toFixed(1) : null,
+      plan: res.plan && res.plan.kind, tiles, resident: lastFrame && lastFrame.stats.residentTiles });
+  }
+  const ms = out.map((o) => o.ms);
+  return { n, p50: pct(ms, 0.5), p95: pct(ms, 0.95), max: Math.max(...ms), firstFrameP50: pct(out.map((o) => o.firstFrameMs ?? o.ms), 0.5), runs: out };
+}
+
+/**
+ * Playback like the shell: speed in blocks/s (60 = 1x) or 'max' (whole frame budget).
+ * chain=true issues the next advance as soon as the previous resolves (no rAF wait).
+ */
+async function playBench({ start, seconds = 10, speed = 60, budgetMs = speed === 'max' ? 14 : 10, chain = false, radius: r } = {}) {
+  setView(start, r ?? radius);
+  await replay.seek(start);
+  await idle();
+  const t0 = performance.now();
+  let target = start;
+  let rafs = 0;
+  let behind = 0;
+  const workerRates = [];
+  const statsFrom = frames.length;
+  const mainBefore = mainMs;
+  let inflight = null;
+  if (chain) {
+    while (performance.now() - t0 < seconds * 1000) {
+      const el = (performance.now() - t0) / 1000;
+      target = speed === 'max' ? grid.tip : Math.min(grid.tip, start + Math.floor(el * speed));
+      const a = await replay.advance(target, { budgetMs });
+      rafs++;
+      if (!a.cancelled && !a.reached) behind++;
+    }
+  }
+  while (performance.now() - t0 < seconds * 1000) {
+    await nextFrame();
+    rafs++;
+    const el = (performance.now() - t0) / 1000;
+    target = speed === 'max' ? grid.tip : Math.min(grid.tip, start + Math.floor(el * speed));
+    if (!inflight) {
+      inflight = replay.advance(target, { budgetMs }).then((a) => { inflight = null; if (!a.cancelled && !a.reached) behind++; });
+    }
+  }
+  if (inflight) await inflight;
+  const el = (performance.now() - t0) / 1000;
+  for (const f of frames.slice(statsFrom)) if (f.reason === 'advance' && f.stats.blocksApplied > 0) workerRates.push(f.stats.blocksPerSecond);
+  const blocks = replay.block - start;
+  return { start, end: replay.block, seconds: +el.toFixed(2), speed, blocks, blocksPerSecond: +(blocks / el).toFixed(1),
+    expected: speed === 'max' ? null : Math.round(el * speed), rafs, behindCalls: behind,
+    workerApplyBlocksPerSecondP50: pct(workerRates, 0.5), mainThreadMsPerSecond: +((mainMs - mainBefore) / el).toFixed(1),
+    resident: lastFrame && lastFrame.stats.residentTiles, memoryBytes: lastFrame && lastFrame.stats.memoryBytes };
+}
+
+async function memory() {
+  const out = { workerEstimate: lastFrame ? lastFrame.stats.memoryBytes : null, chunkCacheBytes: lastFrame ? lastFrame.stats.chunkCacheBytes : null, crossOriginIsolated: self.crossOriginIsolated };
+  if (self.crossOriginIsolated && performance.measureUserAgentSpecificMemory) {
+    try {
+      const m = await performance.measureUserAgentSpecificMemory();
+      out.measured = m.bytes;
+      out.breakdown = m.breakdown.filter((b) => b.bytes > 1e6).map((b) => ({ bytes: b.bytes, types: b.types, scope: b.attribution.map((a) => a.scope + (a.url ? ' ' + a.url.split('/').pop() : '')).join(',') }));
+    } catch (e) { out.error = String(e); }
+  }
+  return out;
+}
+
+window.__dev = { replay, grid, mirror, frames, errors, setView, viewTiles, draw, seekBench, playBench, memory, idle };
+const first = startBlock ?? grid.tip;
+setView(first);
+const t0 = performance.now();
+const res = await replay.seek(first);
+await idle();
+window.__dev.firstSeek = { block: first, ms: +(performance.now() - t0).toFixed(1), plan: res.plan };
+draw();
+window.__ready = true;
+</script>
+</body>
+</html>

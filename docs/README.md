@@ -43,6 +43,7 @@ Build Docker from the repository root: `docker build -t buv .`. The entry point 
 | Publish the explorer | [Video Worker README](../cloudflare/utxo-video-worker/README.md) |
 | Build/publish mobile-compatible playback | [1440p H.264 rendition](compat-rendition.md), `compat_rendition.py` |
 | Publish the guide | [`site/README.md`](../site/README.md) |
+| Explore the UTXO set in 3D | [`landscape.md`](landscape.md): `landscape_build` / `landscape_verify`, `node landscape/tools/serve.mjs`; online at [3d.bitcointimelapse.com](https://3d.bitcointimelapse.com/), [Worker and publishing](../cloudflare/utxo-landscape-worker/README.md) |
 
 The September 10 append/publish scripts are **run-specific operational records**. They contain paths, release names and ranges for that installation. In particular, `update_video_append.py` expects local private configuration and the maintainer's node/runtime. They are not portable one-command installers. Read each script, prepare a new manifest, and adapt source/range/credential locations before a future run. Never commit private configuration.
 

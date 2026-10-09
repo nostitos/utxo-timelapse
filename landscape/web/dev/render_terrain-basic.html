@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>render_terrain dev: heightfield</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  canvas#view { display: block; width: 100vw; height: 100vh; }
+  #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  #hud { position: absolute; left: 8px; top: 8px; color: #cfe0ff; font: 12px/1.35 monospace; white-space: pre;
+         background: rgba(0,0,0,.45); padding: 6px 8px; border-radius: 4px; pointer-events: none; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "../vendor/three/three.webgpu.js",
+  "three/webgpu": "../vendor/three/three.webgpu.js",
+  "three/tsl": "../vendor/three/three.tsl.js",
+  "three/addons/": "../vendor/three/addons/"
+} }
+</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="labels"></div>
+<div id="hud"></div>
+<script type="module">
+import * as THREE from 'three/webgpu';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { createTerrain } from '../render/terrain/index.js';
+import { SCHEMA, PRESETS } from '../settings.schema.js';
+import { createSettingsStore } from '../settings.js';
+import { gridFromManifest } from '../data/grid.js';
+import { buildMinAmtTable } from '../data/axis.js';
+import { createSynthSource } from './render_terrain-synth.js';
+
+const q = new URLSearchParams(location.search);
+const forceWebGL = q.get('webgl') === '1';
+const canvas = document.getElementById('view');
+const hud = document.getElementById('hud');
+const errors = [];
+window.__errors = errors;
+window.addEventListener('error', (e) => errors.push(String(e.message)));
+
+// Ask for the adapter's buffer limits (render_post does this in the app).
+let requiredLimits;
+let requiredFeatures;
+if (!forceWebGL && navigator.gpu) {
+  const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+  if (adapter) {
+    const L = adapter.limits;
+    requiredLimits = {
+      maxBufferSize: L.maxBufferSize, maxStorageBufferBindingSize: L.maxStorageBufferBindingSize,
+      maxStorageBuffersPerShaderStage: L.maxStorageBuffersPerShaderStage,
+    };
+    requiredFeatures = adapter.features.has('timestamp-query') ? ['timestamp-query'] : [];
+  }
+}
+const renderer = new THREE.WebGPURenderer({ canvas, antialias: false, forceWebGL, trackTimestamp: q.get('ts') === '1',
+  requiredLimits, requiredFeatures });
+await renderer.init();
+renderer.setPixelRatio(Number(q.get('dpr') || devicePixelRatio));
+renderer.setSize(innerWidth, innerHeight, false);
+renderer.toneMapping = THREE.NoToneMapping;
+const backend = renderer.backend.isWebGPUBackend ? 'webgpu' : 'webgl2';
+const limits = backend === 'webgpu' ? renderer.backend.device.limits : {};
+
+const capabilities = { backend, webgpu: backend === 'webgpu', compute: backend === 'webgpu',
+  limits: backend === 'webgpu' ? { maxBufferSize: limits.maxBufferSize, maxStorageBufferBindingSize: limits.maxStorageBufferBindingSize } : { maxArrayTextureLayers: 256 } };
+const settings = createSettingsStore(SCHEMA, PRESETS, { capabilities, storage: null });
+settings.applyPreset(q.get('preset') || 'High');
+for (const kv of (q.get('set') || '').split(';').filter(Boolean)) {
+  const i = kv.indexOf(':');
+  const id = kv.slice(0, i);
+  let v = kv.slice(i + 1);
+  if (v === 'true') v = true; else if (v === 'false') v = false; else if (v !== '' && !isNaN(Number(v))) v = Number(v);
+  settings.set(id, v);
+}
+
+const block = Number(q.get('block') || 966827);
+const manifest = { numBlocks: 966828, tip: 966827 };
+const grid = gridFromManifest(manifest);
+const rows = buildMinAmtTable();
+const blocktimes = null;
+
+const scene = new THREE.Scene();
+const bg = q.get('bg') || '#05070c';
+scene.background = new THREE.Color(bg);
+const camera = new THREE.PerspectiveCamera(Number(q.get('fov') || 50), innerWidth / innerHeight, 0.05, 5000);
+const cam = (q.get('cam') || '820,70,300,800,0,120').split(',').map(Number);
+camera.position.set(cam[0], cam[1], cam[2]);
+const controls = new OrbitControls(camera, canvas);
+controls.target.set(cam[3], cam[4], cam[5]);
+controls.update();
+
+const isFilm = settings.preset === 'Film';
+if (!isFilm && q.get('lights') !== '0') {
+  const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+  sun.position.set(-300, 400, 500);
+  sun.target.position.set(500, 0, 100);
+  scene.add(sun, sun.target);
+  scene.add(new THREE.HemisphereLight(0x9fb7ff, 0x202018, 0.8));
+}
+
+const terrain = createTerrain({ renderer, scene, camera, settings, manifest, rows, blocktimes, capabilities,
+  labelsElement: document.getElementById('labels') });
+scene.add(terrain.object3d);
+const synth = createSynthSource({ grid, block, budget: settings.get('geo.tileBudget') });
+terrain.setBlock(block);
+
+let frames = 0;
+let playing = q.get('play') === '1';
+let lastT = performance.now();
+const fpsHist = [];
+window.__dev = { THREE, renderer, scene, camera, controls, terrain, settings, synth, grid, backend };
+window.__ready = false;
+
+function frame() {
+  const now = performance.now();
+  fpsHist.push(now - lastT);
+  if (fpsHist.length > 60) fpsHist.shift();
+  lastT = now;
+  controls.update();
+  camera.updateMatrixWorld();
+  const desired = terrain.update(camera, canvas.clientHeight * renderer.getPixelRatio());
+  if (desired) synth.setTiles(desired);
+  const f = synth.poll(8, 14);
+  if (f) terrain.applyFrame(f);
+  if (playing) terrain.applyFrame(synth.advance(1));
+  renderer.render(scene, camera);
+  frames++;
+  const s = terrain.stats;
+  const ms = fpsHist.reduce((a, b) => a + b, 0) / fpsHist.length;
+  hud.textContent = backend + '  ' + (1000 / ms).toFixed(1) + ' fps  preset ' + settings.preset +
+    '\ninstances ' + s.instances + '  tiles ' + s.tiles + '  resident ' + s.resident + '  desired ' + s.desired +
+    '\ntriangles ' + (s.triangles / 1e6).toFixed(2) + 'M  pending ' + synth.pending + '  lod ' + s.lodMs.toFixed(2) + ' ms' +
+    '\nblock ' + synth.block + '  mode ' + JSON.stringify(terrain.mode);
+  if (!window.__ready && frames > 3 && s.instances > 0 && synth.pending === 0) window.__ready = true;
+  requestAnimationFrame(frame);
+}
+addEventListener('resize', () => {
+  renderer.setSize(innerWidth, innerHeight, false);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+});
+addEventListener('keydown', (e) => { if (e.key === ' ') playing = !playing; });
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

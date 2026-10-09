@@ -27,6 +27,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -378,16 +379,284 @@ public:
     }
 };
 
+// Lifecycle summary of the outputs created at heights [h1, h2] whose amounts
+// lie in [s1, s2], seen at 'block' (the scan stops at 'block'). Shared by
+// /api/pixel and /api/landscape/cell. 'leadFields' is inserted verbatim after
+// the opening brace: empty for /api/pixel, whose body must stay unchanged, and
+// `"col":C,"row":R,` for a landscape cell.
+[[nodiscard]] auto lifecycleJson(HistoryView const& hist,
+                                 uint32_t block,
+                                 uint32_t h1,
+                                 uint32_t h2,
+                                 int64_t s1,
+                                 int64_t s2,
+                                 std::string_view leadFields) -> std::string {
+    auto const numBlocks = static_cast<uint32_t>(hist.numBlocks());
+
+    // gather matching records: created in [h1,h2], amount in [s1,s2].
+    // "live" = alive at 'block' (created <= block < spent).
+    // "past" = spent by 'block' - these explain residual color in the video
+    // (fractional density ghosts) where no coin is currently alive.
+    auto count = uint64_t(0);
+    auto liveStillUnspent = uint64_t(0);
+    struct Hit {
+        int64_t satoshi;
+        uint32_t created;
+        uint32_t spent;
+    };
+    auto hits = std::vector<Hit>();
+    auto const maxHits = size_t(500);
+    auto truncated = false;
+    auto pastCount = uint64_t(0);
+    auto pastHits = std::vector<Hit>();
+    auto const maxPastHits = size_t(100);
+    auto pastTruncated = false;
+
+    // aggregates for the panel
+    auto liveSat = int64_t(0);          // sum alive at view
+    auto liveUnspentSat = int64_t(0);   // subset still unspent at tip
+    auto pastSat = int64_t(0);          // sum of already-departed coins
+    auto stays = std::vector<uint32_t>(); // lifespans of departed coins (past + spent-later)
+
+    // population-over-time curve: kBins samples from h1 to tip
+    constexpr size_t kBins = 48;
+    auto tip = numBlocks - 1;
+    auto binDelta = std::array<int64_t, kBins + 1>{};
+    auto binOf = [&](uint32_t h) -> size_t {
+        if (h <= h1) {
+            return 0;
+        }
+        if (h >= tip) {
+            return kBins - 1;
+        }
+        auto span = static_cast<double>(tip - h1 + 1);
+        return std::min(kBins - 1, static_cast<size_t>(static_cast<double>(h - h1) / span * kBins));
+    };
+
+    auto scanLast = std::min(h2, block);
+    for (auto h = h1; h <= scanLast; ++h) {
+        auto [rb, re] = hist.recordRange(h);
+        for (auto i = rb; i < re; ++i) {
+            auto const& rec = hist.record(i);
+            if (rec.satoshi < s1 || rec.satoshi > s2) {
+                continue;
+            }
+            // population curve counts every coin that ever lived here
+            binDelta[binOf(rec.creationHeight)] += 1;
+            if (rec.spendHeight != buv::kUnspent) {
+                binDelta[binOf(rec.spendHeight)] -= 1;
+                stays.push_back(rec.spendHeight - rec.creationHeight);
+            }
+            if (rec.spendHeight != buv::kUnspent && rec.spendHeight <= block) {
+                // already spent at this time -> past occupant
+                ++pastCount;
+                pastSat += rec.satoshi;
+                pastHits.push_back(Hit{rec.satoshi, rec.creationHeight, rec.spendHeight});
+                continue;
+            }
+            ++count;
+            liveSat += rec.satoshi;
+            if (rec.spendHeight == buv::kUnspent) {
+                ++liveStillUnspent;
+                liveUnspentSat += rec.satoshi;
+            }
+            hits.push_back(Hit{rec.satoshi, rec.creationHeight, rec.spendHeight});
+        }
+    }
+
+    // Fate-ordered: still-unspent first (by born), then leavers by leaving date.
+    // Amounts within a pixel row are nearly identical by construction, so
+    // amount ordering carries no information here.
+    std::sort(hits.begin(), hits.end(), [](Hit const& a, Hit const& b) {
+        auto aUn = a.spent == buv::kUnspent;
+        auto bUn = b.spent == buv::kUnspent;
+        if (aUn != bUn) {
+            return aUn;
+        }
+        if (!aUn && a.spent != b.spent) {
+            return a.spent < b.spent;
+        }
+        if (a.created != b.created) {
+            return a.created < b.created;
+        }
+        return a.satoshi > b.satoshi;
+    });
+    if (hits.size() > maxHits) {
+        hits.resize(maxHits);
+        truncated = true;
+    }
+    std::sort(pastHits.begin(), pastHits.end(), [](Hit const& a, Hit const& b) {
+        if (a.spent != b.spent) {
+            return a.spent < b.spent; // earliest leavers first
+        }
+        return a.created < b.created;
+    });
+    if (pastHits.size() > maxPastHits) {
+        pastHits.resize(maxPastHits);
+        pastTruncated = true;
+    }
+
+    // median stay of departed coins
+    auto medianStay = int64_t(-1);
+    if (!stays.empty()) {
+        auto mid = stays.begin() + static_cast<std::ptrdiff_t>(stays.size() / 2);
+        std::nth_element(stays.begin(), mid, stays.end());
+        medianStay = static_cast<int64_t>(*mid);
+    }
+
+    // prefix-sum the curve
+    auto pop = std::array<int64_t, kBins>{};
+    {
+        auto running = int64_t(0);
+        for (size_t b = 0; b < kBins; ++b) {
+            running += binDelta[b];
+            pop[b] = running;
+        }
+    }
+    auto viewBin = binOf(block);
+
+    auto json = std::string();
+    json.reserve(hits.size() * 96 + leadFields.size() + 256);
+    json += '{';
+    if (!leadFields.empty()) {
+        json.append(leadFields);
+    }
+    json += fmt::format(
+        R"("blockRange":[{},{}],"blockDates":["{}","{}"],"satRange":[{},{}],"count":{},"stillUnspent":{},"liveSat":{},"liveUnspentSat":{},"pastSat":{},"medianStay":{},"viewBin":{},"pop":[)",
+        h1,
+        h2,
+        isoDate(hist.blockTime(h1)),
+        isoDate(hist.blockTime(std::min(h2, numBlocks - 1))),
+        s1,
+        s2,
+        count,
+        liveStillUnspent,
+        liveSat,
+        liveUnspentSat,
+        pastSat,
+        medianStay,
+        viewBin);
+    for (size_t b = 0; b < kBins; ++b) {
+        if (b != 0) {
+            json += ',';
+        }
+        json += fmt::format("{}", pop[b]);
+    }
+    json += fmt::format(
+        R"j(],"truncated":{},"utxos":[)j",
+        truncated ? "true" : "false");
+    auto firstItem = true;
+    for (auto const& hit : hits) {
+        if (!firstItem) {
+            json += ',';
+        }
+        firstItem = false;
+        auto age = block - hit.created;
+        if (hit.spent == buv::kUnspent) {
+            json += fmt::format(
+                R"({{"sat":{},"created":{},"createdDate":"{}","age":{},"spent":null}})",
+                hit.satoshi,
+                hit.created,
+                isoDate(hist.blockTime(hit.created)),
+                age);
+        } else {
+            json += fmt::format(
+                R"({{"sat":{},"created":{},"createdDate":"{}","age":{},"spent":{},"spentDate":"{}"}})",
+                hit.satoshi,
+                hit.created,
+                isoDate(hist.blockTime(hit.created)),
+                age,
+                hit.spent,
+                isoDate(hist.blockTime(hit.spent)));
+        }
+    }
+    json += "],";
+    json += fmt::format(R"("pastCount":{},"pastTruncated":{},"pastUtxos":[)",
+                        pastCount,
+                        pastTruncated ? "true" : "false");
+    firstItem = true;
+    for (auto const& hit : pastHits) {
+        if (!firstItem) {
+            json += ',';
+        }
+        firstItem = false;
+        json += fmt::format(
+            R"({{"sat":{},"created":{},"createdDate":"{}","spent":{},"spentDate":"{}"}})",
+            hit.satoshi,
+            hit.created,
+            isoDate(hist.blockTime(hit.created)),
+            hit.spent,
+            isoDate(hist.blockTime(hit.spent)));
+    }
+    json += "]}";
+    return json;
+}
+
+// --- UTXO Timelapse Landscape cell API (landscape/SPEC.md section 5) ---
+// A level-0 landscape cell is 64 creation blocks wide and one graph row high.
+constexpr uint32_t kLandscapeBlocksPerCol = 64;
+constexpr char const* kLandscapeCellPath = "/api/landscape/cell";
+
+// The local landscape app (landscape/tools/serve.mjs on 12990) and the agent
+// and root dev servers (12991-12998, see landscape/SPEC.md) fetch cells
+// cross-origin. Returns the request's Origin when it is exactly
+// http://127.0.0.1:P or http://localhost:P for one of those ports, otherwise
+// an empty string.
+constexpr int kLandscapeFirstPort = 12990;
+constexpr int kLandscapeLastPort = 12998;
+
+[[nodiscard]] auto landscapeCorsOrigin(httplib::Request const& req) -> std::string {
+    static auto const allowed = [] {
+        auto origins = std::vector<std::string>();
+        for (auto port = kLandscapeFirstPort; port <= kLandscapeLastPort; ++port) {
+            origins.push_back(fmt::format("http://127.0.0.1:{}", port));
+            origins.push_back(fmt::format("http://localhost:{}", port));
+        }
+        return origins;
+    }();
+    if (!req.has_header("Origin")) {
+        return {};
+    }
+    auto origin = req.get_header_value("Origin");
+    if (std::find(allowed.begin(), allowed.end(), origin) != allowed.end()) {
+        return origin;
+    }
+    return {};
+}
+
+// True for a short comma-separated list of header names, which a preflight
+// response may echo in Access-Control-Allow-Headers.
+[[nodiscard]] auto isHeaderNameList(std::string const& s) -> bool {
+    if (s.empty() || s.size() > 256) {
+        return false;
+    }
+    return std::all_of(s.begin(), s.end(), [](char c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' ||
+               c == ',' || c == ' ';
+    });
+}
+
 } // namespace
 
 // Explorer web server. Serves the UI, the MP4 (with Range support), and the
-// per-pixel UTXO lookup API backed by utxo_history.bin.
+// per-pixel UTXO lookup API backed by utxo_history.bin, plus the landscape
+// cell API (/api/landscape/cell) used by the local 3D landscape app.
 //
-// Usage: ./buv -ns -tc=utxo_explorer -cfg=path/to/config.json
+// Usage: ./buv -ns -tc=utxo_explorer -cfg=path/to/config.json [-port=N] [-ui=DIR]
+// -port overrides the config's explorerPort (e.g. a second instance on 12989).
 TEST_CASE("utxo_explorer" * doctest::skip()) {
     auto cfg = buv::parseCfg(util::args::get("-cfg").value());
     if (cfg.historyFile.empty()) {
         throw std::runtime_error("config needs 'historyFile'");
+    }
+    if (auto portArg = util::args::get("-port")) {
+        auto const& s = *portArg;
+        auto port = uint32_t(0);
+        auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), port);
+        if (s.empty() || ec != std::errc() || ptr != s.data() + s.size() || port == 0 || port > 65535) {
+            throw std::runtime_error(fmt::format("-port must be an integer 1-65535, got '{}'", s));
+        }
+        cfg.explorerPort = static_cast<uint16_t>(port);
     }
 
     LOG("loading history '{}'...", cfg.historyFile);
@@ -396,6 +665,35 @@ TEST_CASE("utxo_explorer" * doctest::skip()) {
 
     auto numBlocks = static_cast<uint32_t>(hist.numBlocks());
     auto inverter = PixelInverter(cfg, numBlocks);
+
+    // Landscape rows are the film's graph-local rows. satoshiToPixelHeight does
+    // not depend on the epoch context, so every row's amount range is fixed:
+    // compute them once here, which also keeps the landscape handler away from
+    // the shared, context-mutating inverter. The landscape grid assumes the
+    // published film axis; under any other axis its rows would mean different
+    // amounts, so the cell API refuses to answer.
+    auto const landscapeAxis = cfg.graphRect.h == 2072 && cfg.minSatoshi == 1 &&
+                               cfg.maxSatoshi == 10'000'000'000'000LL && cfg.compressLowSatoshi &&
+                               cfg.compressTopSatoshi;
+    struct LandscapeRow {
+        int64_t minSat;
+        int64_t maxSat;
+        bool occupied; // false when no integer amount maps to this row
+    };
+    auto landscapeRows = std::vector<LandscapeRow>(cfg.graphRect.h, LandscapeRow{0, 0, false});
+    for (size_t row = 0; row < landscapeRows.size(); ++row) {
+        auto& r = landscapeRows[row];
+        r.occupied = inverter.rowSatoshiRange(row, r.minSat, r.maxSat);
+    }
+    auto const landscapeCols = (numBlocks + kLandscapeBlocksPerCol - 1) / kLandscapeBlocksPerCol;
+    if (landscapeAxis) {
+        LOG("landscape cell API: {} columns x {} rows ({} rows hold no integer amount)",
+            landscapeCols,
+            landscapeRows.size(),
+            std::count_if(landscapeRows.begin(), landscapeRows.end(), [](auto const& r) { return !r.occupied; }));
+    } else {
+        LOG("landscape cell API disabled: config axis differs from the published film axis");
+    }
 
     auto server = httplib::Server();
 
@@ -434,6 +732,10 @@ TEST_CASE("utxo_explorer" * doctest::skip()) {
         RateLimiter* limiter = nullptr;
         if (req.path == "/api/pixel") {
             limiter = &pixelLimiter;
+        } else if (req.path == kLandscapeCellPath) {
+            // Same record scan as /api/pixel, so the same per-client budget;
+            // CORS preflights are cheap and count as page requests.
+            limiter = req.method == "OPTIONS" ? &pageLimiter : &pixelLimiter;
         } else if (req.path == "/api/ranges") {
             limiter = &rangesLimiter;
         } else if (req.path == "/api/txid") {
@@ -469,6 +771,16 @@ TEST_CASE("utxo_explorer" * doctest::skip()) {
                     : "no-cache");
         } else if (req.path.rfind("/api/", 0) == 0) {
             res.set_header("Cache-Control", "no-store");
+        }
+        if (req.path == kLandscapeCellPath) {
+            // Every response on this path, errors and 429s included, carries
+            // CORS so the landscape app can read it. CORP lets a page served
+            // with COEP require-corp load it as well.
+            res.set_header("Vary", "Origin");
+            res.set_header("Cross-Origin-Resource-Policy", "cross-origin");
+            if (auto origin = landscapeCorsOrigin(req); !origin.empty()) {
+                res.set_header("Access-Control-Allow-Origin", origin);
+            }
         }
     });
 
@@ -653,199 +965,71 @@ TEST_CASE("utxo_explorer" * doctest::skip()) {
             return;
         }
 
-        // gather matching records: created in [h1,h2], amount in [s1,s2].
-        // "live" = alive at 'block' (created <= block < spent).
-        // "past" = spent by 'block' - these explain residual color in the video
-        // (fractional density ghosts) where no coin is currently alive.
-        auto count = uint64_t(0);
-        auto liveStillUnspent = uint64_t(0);
-        struct Hit {
-            int64_t satoshi;
-            uint32_t created;
-            uint32_t spent;
-        };
-        auto hits = std::vector<Hit>();
-        auto const maxHits = size_t(500);
-        auto truncated = false;
-        auto pastCount = uint64_t(0);
-        auto pastHits = std::vector<Hit>();
-        auto const maxPastHits = size_t(100);
-        auto pastTruncated = false;
+        res.set_content(lifecycleJson(hist, block, h1, h2, s1, s2, {}), "application/json");
+    });
 
-        // aggregates for the panel
-        auto liveSat = int64_t(0);          // sum alive at view
-        auto liveUnspentSat = int64_t(0);   // subset still unspent at tip
-        auto pastSat = int64_t(0);          // sum of already-departed coins
-        auto stays = std::vector<uint32_t>(); // lifespans of departed coins (past + spent-later)
+    // --- landscape cell lookup (landscape/SPEC.md section 5) ---
+    // L0 cell (col, row): creation heights [col*64, min(col*64+63, tip)] and
+    // the amount range of graph-local row 'row' (absolute film y = row +
+    // graphRect.y). Same lifecycle fields as /api/pixel plus "col" and "row";
+    // the scan stops at 'block' (clamped to the tip, as in /api/pixel).
+    server.Get(kLandscapeCellPath, [&](httplib::Request const& req, httplib::Response& res) {
+        // (rate-limited via the pre-routing handler; CORS in post-routing)
+        auto blockOpt = parseParam<uint32_t>(req, "block");
+        auto colOpt = parseParam<uint32_t>(req, "col");
+        auto rowOpt = parseParam<uint32_t>(req, "row");
+        if (!blockOpt || !colOpt || !rowOpt) {
+            sendBadRequest(res, "block, col, row must be non-negative integers");
+            return;
+        }
+        if (!landscapeAxis) {
+            res.status = 503;
+            res.set_content(R"({"error":"landscape cell API needs the published film axis"})", "application/json");
+            return;
+        }
+        auto const col = *colOpt;
+        auto const row = *rowOpt;
+        if (col >= landscapeCols) {
+            sendBadRequest(res, "col outside the landscape");
+            return;
+        }
+        if (row >= landscapeRows.size()) {
+            sendBadRequest(res, "row outside the landscape");
+            return;
+        }
+        auto const block = std::min(*blockOpt, numBlocks - 1);
+        auto const h1 = col * kLandscapeBlocksPerCol;
+        auto const h2 = std::min(h1 + (kLandscapeBlocksPerCol - 1), numBlocks - 1);
+        auto const lead = fmt::format(R"("col":{},"row":{},)", col, row);
+        auto const& range = landscapeRows[row];
+        if (!range.occupied) {
+            // No amount maps to this row (gaps in the compressed 1-100 sat band).
+            res.set_content(fmt::format(R"({{{}"blockRange":null,"satRange":null,"count":0,"utxos":[]}})", lead),
+                            "application/json");
+            return;
+        }
+        res.set_content(lifecycleJson(hist, block, h1, h2, range.minSat, range.maxSat, lead), "application/json");
+    });
 
-        // population-over-time curve: kBins samples from h1 to tip
-        constexpr size_t kBins = 48;
-        auto tip = numBlocks - 1;
-        auto binDelta = std::array<int64_t, kBins + 1>{};
-        auto binOf = [&](uint32_t h) -> size_t {
-            if (h <= h1) {
-                return 0;
-            }
-            if (h >= tip) {
-                return kBins - 1;
-            }
-            auto span = static_cast<double>(tip - h1 + 1);
-            return std::min(kBins - 1, static_cast<size_t>(static_cast<double>(h - h1) / span * kBins));
-        };
-
-        auto scanLast = std::min(h2, block);
-        for (auto h = h1; h <= scanLast; ++h) {
-            auto [rb, re] = hist.recordRange(h);
-            for (auto i = rb; i < re; ++i) {
-                auto const& rec = hist.record(i);
-                if (rec.satoshi < s1 || rec.satoshi > s2) {
-                    continue;
-                }
-                // population curve counts every coin that ever lived here
-                binDelta[binOf(rec.creationHeight)] += 1;
-                if (rec.spendHeight != buv::kUnspent) {
-                    binDelta[binOf(rec.spendHeight)] -= 1;
-                    stays.push_back(rec.spendHeight - rec.creationHeight);
-                }
-                if (rec.spendHeight != buv::kUnspent && rec.spendHeight <= block) {
-                    // already spent at this time -> past occupant
-                    ++pastCount;
-                    pastSat += rec.satoshi;
-                    pastHits.push_back(Hit{rec.satoshi, rec.creationHeight, rec.spendHeight});
-                    continue;
-                }
-                ++count;
-                liveSat += rec.satoshi;
-                if (rec.spendHeight == buv::kUnspent) {
-                    ++liveStillUnspent;
-                    liveUnspentSat += rec.satoshi;
-                }
-                hits.push_back(Hit{rec.satoshi, rec.creationHeight, rec.spendHeight});
-            }
+    // CORS preflight for the cell API. Plain GETs need none, but answer it for
+    // clients that add request headers.
+    server.Options(kLandscapeCellPath, [](httplib::Request const& req, httplib::Response& res) {
+        res.set_header("Allow", "GET, HEAD, OPTIONS");
+        if (req.has_header("Origin") && landscapeCorsOrigin(req).empty()) {
+            res.status = 403;
+            res.set_content(R"({"error":"origin not allowed"})", "application/json");
+            return;
         }
-
-        // Fate-ordered: still-unspent first (by born), then leavers by leaving date.
-        // Amounts within a pixel row are nearly identical by construction, so
-        // amount ordering carries no information here.
-        std::sort(hits.begin(), hits.end(), [](Hit const& a, Hit const& b) {
-            auto aUn = a.spent == buv::kUnspent;
-            auto bUn = b.spent == buv::kUnspent;
-            if (aUn != bUn) {
-                return aUn;
-            }
-            if (!aUn && a.spent != b.spent) {
-                return a.spent < b.spent;
-            }
-            if (a.created != b.created) {
-                return a.created < b.created;
-            }
-            return a.satoshi > b.satoshi;
-        });
-        if (hits.size() > maxHits) {
-            hits.resize(maxHits);
-            truncated = true;
+        res.status = 204;
+        res.set_header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+        auto const requested = req.get_header_value("Access-Control-Request-Headers");
+        if (isHeaderNameList(requested)) {
+            res.set_header("Access-Control-Allow-Headers", requested);
         }
-        std::sort(pastHits.begin(), pastHits.end(), [](Hit const& a, Hit const& b) {
-            if (a.spent != b.spent) {
-                return a.spent < b.spent; // earliest leavers first
-            }
-            return a.created < b.created;
-        });
-        if (pastHits.size() > maxPastHits) {
-            pastHits.resize(maxPastHits);
-            pastTruncated = true;
+        if (req.get_header_value("Access-Control-Request-Private-Network") == "true") {
+            res.set_header("Access-Control-Allow-Private-Network", "true");
         }
-
-        // median stay of departed coins
-        auto medianStay = int64_t(-1);
-        if (!stays.empty()) {
-            auto mid = stays.begin() + static_cast<std::ptrdiff_t>(stays.size() / 2);
-            std::nth_element(stays.begin(), mid, stays.end());
-            medianStay = static_cast<int64_t>(*mid);
-        }
-
-        // prefix-sum the curve
-        auto pop = std::array<int64_t, kBins>{};
-        {
-            auto running = int64_t(0);
-            for (size_t b = 0; b < kBins; ++b) {
-                running += binDelta[b];
-                pop[b] = running;
-            }
-        }
-        auto viewBin = binOf(block);
-
-        auto json = std::string();
-        json.reserve(hits.size() * 96 + 256);
-        json += fmt::format(
-            R"({{"blockRange":[{},{}],"blockDates":["{}","{}"],"satRange":[{},{}],"count":{},"stillUnspent":{},"liveSat":{},"liveUnspentSat":{},"pastSat":{},"medianStay":{},"viewBin":{},"pop":[)",
-            h1,
-            h2,
-            isoDate(hist.blockTime(h1)),
-            isoDate(hist.blockTime(std::min(h2, numBlocks - 1))),
-            s1,
-            s2,
-            count,
-            liveStillUnspent,
-            liveSat,
-            liveUnspentSat,
-            pastSat,
-            medianStay,
-            viewBin);
-        for (size_t b = 0; b < kBins; ++b) {
-            if (b != 0) {
-                json += ',';
-            }
-            json += fmt::format("{}", pop[b]);
-        }
-        json += fmt::format(
-            R"j(],"truncated":{},"utxos":[)j",
-            truncated ? "true" : "false");
-        auto firstItem = true;
-        for (auto const& hit : hits) {
-            if (!firstItem) {
-                json += ',';
-            }
-            firstItem = false;
-            auto age = block - hit.created;
-            if (hit.spent == buv::kUnspent) {
-                json += fmt::format(
-                    R"({{"sat":{},"created":{},"createdDate":"{}","age":{},"spent":null}})",
-                    hit.satoshi,
-                    hit.created,
-                    isoDate(hist.blockTime(hit.created)),
-                    age);
-            } else {
-                json += fmt::format(
-                    R"({{"sat":{},"created":{},"createdDate":"{}","age":{},"spent":{},"spentDate":"{}"}})",
-                    hit.satoshi,
-                    hit.created,
-                    isoDate(hist.blockTime(hit.created)),
-                    age,
-                    hit.spent,
-                    isoDate(hist.blockTime(hit.spent)));
-            }
-        }
-        json += "],";
-        json += fmt::format(R"("pastCount":{},"pastTruncated":{},"pastUtxos":[)",
-                            pastCount,
-                            pastTruncated ? "true" : "false");
-        firstItem = true;
-        for (auto const& hit : pastHits) {
-            if (!firstItem) {
-                json += ',';
-            }
-            firstItem = false;
-            json += fmt::format(
-                R"({{"sat":{},"created":{},"createdDate":"{}","spent":{},"spentDate":"{}"}})",
-                hit.satoshi,
-                hit.created,
-                isoDate(hist.blockTime(hit.created)),
-                hit.spent,
-                isoDate(hist.blockTime(hit.spent)));
-        }
-        json += "]}";
-        res.set_content(json, "application/json");
+        res.set_header("Access-Control-Max-Age", "600");
     });
 
     // --- hover readout: pixel -> block/amount ranges only (no record scan) ---
@@ -1047,5 +1231,7 @@ TEST_CASE("utxo_explorer" * doctest::skip()) {
     });
 
     LOG("UTXO explorer listening on http://127.0.0.1:{}", cfg.explorerPort);
-    server.listen("127.0.0.1", cfg.explorerPort);
+    if (!server.listen("127.0.0.1", cfg.explorerPort)) {
+        throw std::runtime_error(fmt::format("could not listen on 127.0.0.1:{} (port in use?)", cfg.explorerPort));
+    }
 }
