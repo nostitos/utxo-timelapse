@@ -1,0 +1,189 @@
+{
+  "master": "/Volumes/4T Data/buv_render/utxo_4k_epoch105k_60fps_transition_crf21_to_966360.mp4",
+  "oldEndBlock": 966360,
+  "newEndBlock": "REPLACE_WITH_VERIFIED_NODE_CHECKPOINT_TIP",
+  "blk": "/Volumes/4T Data/buv_render/changes.blk1.full964k",
+  "history": "/Volumes/4T Data/buv_render/utxo_history.bin",
+  "config": "/Users/t/Documents/Kode/Workspaces/Clone UTXO visualizer/scripts/examples/append-current-20260912/config.json",
+  "runPath": "/Volumes/4T Data/buv_render/append_review_20260912_next001",
+  "buv": "/Users/t/Documents/Kode/Workspaces/Clone UTXO visualizer/build_local/buv",
+  "repeatLastBlockTimes": 300,
+  "port": 12989,
+  "timeoutSeconds": 86400,
+  "renderDependsOn": [
+    "index"
+  ],
+  "commands": [
+    {
+      "name": "preflight",
+      "argv": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "-c",
+        "import json,struct,hashlib,os; from pathlib import Path; s=json.loads(Path('/Users/t/Documents/Kode/Workspaces/Clone UTXO visualizer/scripts/examples/append-current-20260912/source.json').read_text()); p=json.loads(Path('/Users/t/Documents/Kode/Workspaces/Clone UTXO visualizer/scripts/examples/append-current-20260912/package.json').read_text()); sy=json.loads(Path('/Users/t/Documents/Kode/Workspaces/Clone UTXO visualizer/scripts/examples/append-current-20260912/sync.json').read_text()); assert not s['unresolvedPlaceholders']; assert type(s['newEndBlock']) is int and s['newEndBlock']>s['oldEndBlock']; assert Path('/Users/t/Documents/Kode/Workspaces/Clone UTXO visualizer/scripts/package_append.py').is_file(); assert Path(p['oldInit']).is_file(); assert hashlib.sha256(Path(p['previousManifest']).read_bytes()).hexdigest()==p['previousSHA256']; assert Path(sy['localLock']).is_file(); assert os.environ.get('SSHPASS') and os.environ.get('BUV_NODE_SUDO_PASSWORD'); print('review preflight passed')"
+      ],
+      "dependsOn": [],
+      "outputs": [
+        "/Volumes/4T Data/buv_render/append_review_20260912_next001/preflight.attempt-1/process.log"
+      ],
+      "retrySafe": false,
+      "successContains": [
+        "review preflight passed"
+      ]
+    },
+    {
+      "name": "sync_prepare",
+      "argv": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "/Users/t/Documents/Kode/Workspaces/Clone UTXO visualizer/scripts/sync_blk_append.py",
+        "prepare",
+        "--manifest",
+        "/Users/t/Documents/Kode/Workspaces/Clone UTXO visualizer/scripts/examples/append-current-20260912/sync.json"
+      ],
+      "dependsOn": [
+        "preflight"
+      ],
+      "outputs": [
+        "/Volumes/4T Data/buv_render/append_review_20260912_next001/sync/plan.json",
+        "/Volumes/4T Data/buv_render/append_review_20260912_next001/sync/input.json"
+      ],
+      "retrySafe": false,
+      "validateArgv": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "-c",
+        "import json,struct,hashlib,os; from pathlib import Path; s=json.loads(Path('/Users/t/Documents/Kode/Workspaces/Clone UTXO visualizer/scripts/examples/append-current-20260912/source.json').read_text()); p=json.loads(Path('/Volumes/4T Data/buv_render/append_review_20260912_next001/sync/plan.json').read_text()); assert p['oldTip']==s['oldEndBlock']; assert p['node']['snapshot']['tip']==s['newEndBlock']"
+      ]
+    },
+    {
+      "name": "sync_apply",
+      "argv": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "/Users/t/Documents/Kode/Workspaces/Clone UTXO visualizer/scripts/sync_blk_append.py",
+        "apply",
+        "--run",
+        "/Volumes/4T Data/buv_render/append_review_20260912_next001/sync"
+      ],
+      "dependsOn": [
+        "sync_prepare"
+      ],
+      "outputs": [
+        "/Volumes/4T Data/buv_render/append_review_20260912_next001/sync/result.json"
+      ],
+      "retrySafe": false,
+      "validateArgv": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "-c",
+        "import json,struct,hashlib,os; from pathlib import Path; s=json.loads(Path('/Users/t/Documents/Kode/Workspaces/Clone UTXO visualizer/scripts/examples/append-current-20260912/source.json').read_text()); p=json.loads(Path('/Volumes/4T Data/buv_render/append_review_20260912_next001/sync/result.json').read_text()); assert p['oldTip']==s['oldEndBlock'] and p['nextTip']==s['newEndBlock']; assert Path(s['blk']).stat().st_size==p['nextBytes']"
+      ]
+    },
+    {
+      "name": "index",
+      "argv": [
+        "/Users/t/Documents/Kode/Workspaces/Clone UTXO visualizer/build_local/buv",
+        "-ns",
+        "-tc=block_index_build",
+        "-cfg=/Users/t/Documents/Kode/Workspaces/Clone UTXO visualizer/scripts/examples/append-current-20260912/config.json"
+      ],
+      "dependsOn": [
+        "sync_apply"
+      ],
+      "outputs": [
+        "/Volumes/4T Data/buv_render/append_review_20260912_next001/index.attempt-1/process.log"
+      ],
+      "retrySafe": false,
+      "successContains": [
+        "BLK offset index:",
+        "Status: SUCCESS!"
+      ],
+      "validateArgv": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "-c",
+        "import json,struct,hashlib,os; from pathlib import Path; s=json.loads(Path('/Users/t/Documents/Kode/Workspaces/Clone UTXO visualizer/scripts/examples/append-current-20260912/source.json').read_text()); p=Path(s['blk']+'.idx'); f=p.open('rb'); h=f.read(24); f.close(); assert h[:8]==b'BUVBIDX1'; size,count=struct.unpack('<QQ',h[8:]); assert size==Path(s['blk']).stat().st_size and count==s['newEndBlock']+1"
+      ]
+    },
+    {
+      "name": "history",
+      "argv": [
+        "/Users/t/Documents/Kode/Workspaces/Clone UTXO visualizer/build_local/buv",
+        "-ns",
+        "-tc=utxo_history_update",
+        "-cfg=/Users/t/Documents/Kode/Workspaces/Clone UTXO visualizer/scripts/examples/append-current-20260912/config.json"
+      ],
+      "dependsOn": [
+        "index"
+      ],
+      "outputs": [
+        "/Volumes/4T Data/buv_render/append_review_20260912_next001/history.attempt-1/process.log"
+      ],
+      "retrySafe": false,
+      "successContains": [
+        "Status: SUCCESS!",
+        "(0 unmatched total)"
+      ],
+      "validateArgv": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "-c",
+        "import json,struct,hashlib,os; from pathlib import Path; s=json.loads(Path('/Users/t/Documents/Kode/Workspaces/Clone UTXO visualizer/scripts/examples/append-current-20260912/source.json').read_text()); p=Path(s['history']); f=p.open('rb'); h=f.read(64); f.close(); assert h[:8]==b'BUVHIST1'; n,r,t,i,o=struct.unpack('<QQQQQ',h[8:48]); assert n==s['newEndBlock']+1; size=p.stat().st_size; assert t+n*4<=size and i+(n+1)*8<=size and o+r*16<=size"
+      ]
+    },
+    {
+      "name": "package",
+      "argv": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "/Users/t/Documents/Kode/Workspaces/Clone UTXO visualizer/scripts/package_append.py",
+        "/Users/t/Documents/Kode/Workspaces/Clone UTXO visualizer/scripts/examples/append-current-20260912/package.json"
+      ],
+      "dependsOn": [
+        "render",
+        "history"
+      ],
+      "outputs": [
+        "/Volumes/4T Data/buv_render/append_review_20260912_next001/package/package_verified.json",
+        "/Volumes/4T Data/buv_render/append_review_20260912_next001/package/ledger/segments.json"
+      ],
+      "retrySafe": false
+    },
+    {
+      "name": "publication_prepare",
+      "argv": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "/Users/t/Documents/Kode/Workspaces/Clone UTXO visualizer/scripts/publish_append.py",
+        "prepare",
+        "/Volumes/4T Data/buv_render/append_review_20260912_next001/package/ledger",
+        "/Volumes/4T Data/buv_render/append_review_20260912_next001/publication",
+        "--object-prefix",
+        "hls/REPLACE_WITH_FRESH_IMMUTABLE_RELEASE",
+        "--previous",
+        "/REPLACE_WITH_VERIFIED_PREVIOUS_LEDGER/segments.json",
+        "--previous-sha256",
+        "REPLACE_WITH_SHA256_OF_RAW_PREVIOUS_MANIFEST_BYTES"
+      ],
+      "dependsOn": [
+        "package"
+      ],
+      "outputs": [
+        "/Volumes/4T Data/buv_render/append_review_20260912_next001/publication/publication.json",
+        "/Volumes/4T Data/buv_render/append_review_20260912_next001/publication/segments.json",
+        "/Volumes/4T Data/buv_render/append_review_20260912_next001/publication/media.m3u8"
+      ],
+      "retrySafe": false
+    }
+  ],
+  "inputManifests": [
+    "/Users/t/Documents/Kode/Workspaces/Clone UTXO visualizer/scripts/examples/append-current-20260912/source.json",
+    "/Users/t/Documents/Kode/Workspaces/Clone UTXO visualizer/scripts/examples/append-current-20260912/config.json",
+    "/Users/t/Documents/Kode/Workspaces/Clone UTXO visualizer/scripts/examples/append-current-20260912/sync.json",
+    "/Users/t/Documents/Kode/Workspaces/Clone UTXO visualizer/scripts/examples/append-current-20260912/package.json",
+    "/Volumes/4T Data/buv_render/renderer_checkpoint_current.json"
+  ],
+  "unresolvedPlaceholders": [
+    "Choose integer newEndBlock from freshly verified node checkpoint; do not infer it from video frames.",
+    "Bootstrap/verify previous fragment ledger and replace its absolute path and raw-byte SHA256 in package.json and publication argv.",
+    "Verify oldInit matches that previous ledger; existing hls_continuous init is only a local candidate.",
+    "Choose a fresh immutable publication object prefix and fresh runPath; update every derived path together.",
+    "Supply SSHPASS and BUV_NODE_SUDO_PASSWORD through caller environment only."
+  ],
+  "rendererCheckpoint": {
+    "path": "/Volumes/4T Data/buv_render/renderer_before_964980.bin",
+    "nextHeight": 964980
+  }
+}

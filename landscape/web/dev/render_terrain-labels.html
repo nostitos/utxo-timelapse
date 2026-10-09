@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>render_terrain: axis labels</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="../fonts/fonts.css">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #05070d; }
+  #view { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }
+  #labels { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: hidden; pointer-events: none; }
+  #info {
+    position: absolute; right: 10px; top: 10px; margin: 0; padding: 6px 9px;
+    font: 11px/1.45 'IBM Plex Mono', monospace; color: #b8c4dc; white-space: pre; pointer-events: none;
+    background: rgba(5, 8, 16, 0.72); border: 1px solid rgba(120, 140, 180, 0.25);
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "../vendor/three/three.webgpu.js",
+    "three/webgpu": "../vendor/three/three.webgpu.js",
+    "three/tsl": "../vendor/three/three.tsl.js",
+    "three/addons/": "../vendor/three/addons/"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="labels"></div>
+<pre id="info">starting</pre>
+<script type="module">
+// Dev harness (owner: render_terrain) for render/terrain/labels.js. A flat slab stands in
+// for the landscape extent. Grid lines are drawn at the blockStep and amountRows that the
+// labels report and run out to the label anchor lines, so every label should sit at the
+// end of a line. Query: ?cam=x,y,z,tx,ty,tz  ?fov=50  ?blocks=966828  ?webgl=1
+// ?orbit=1 (circle the target slowly so labels change every frame).
+// Hooks: window.__ready after the first frame; window.__dev.{summary, projectionCheck,
+// domCheck, bench, frameTimes, setCamera}.
+import * as THREE from 'three/webgpu';
+import { gridFromManifest, worldX, worldZ } from '../data/grid.js';
+import { buildMinAmtTable } from '../data/axis.js';
+import { createAxisLabels, projectToScreen, viewProjection, BLOCK_EDGE_OFFSET, AMOUNT_EDGE_OFFSET } from '../render/terrain/labels.js';
+
+const params = new URLSearchParams(location.search);
+const numBlocks = Math.max(1, Math.floor(Number(params.get('blocks')) || 966828));
+const grid = gridFromManifest({ numBlocks });
+const W = worldX(numBlocks);
+const D = worldZ(grid.rows);
+const rows = buildMinAmtTable();
+const blocktimes = new Uint32Array(numBlocks);
+for (let i = 0; i < numBlocks; i++) blocktimes[i] = 1231006505 + 600 * i;
+
+const canvas = document.getElementById('view');
+const info = document.getElementById('info');
+const renderer = new THREE.WebGPURenderer({ canvas, antialias: true, forceWebGL: params.get('webgl') === '1' });
+await renderer.init();
+renderer.setPixelRatio(window.devicePixelRatio);
+const backend = renderer.backend && renderer.backend.isWebGPUBackend ? 'webgpu' : 'webgl2';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x05070d);
+const slab = new THREE.Mesh(new THREE.BoxGeometry(W, 1, D), new THREE.MeshBasicNodeMaterial({ color: 0x14203a }));
+slab.position.set(W / 2, -0.5, D / 2);
+scene.add(slab);
+const outline = new THREE.LineSegments(new THREE.EdgesGeometry(slab.geometry), new THREE.LineBasicNodeMaterial({ color: 0x7088bb }));
+outline.position.copy(slab.position);
+scene.add(outline);
+const gridLines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicNodeMaterial({ color: 0x3f5f95 }));
+scene.add(gridLines);
+
+const cam = (params.get('cam') || '').split(',').map(Number);
+const start = cam.length === 6 && cam.every(Number.isFinite) ? cam : [W / 2, 0.35 * W, D + 0.55 * W, W / 2, 0, D / 2];
+const camera = new THREE.PerspectiveCamera(Number(params.get('fov')) || 50, 1, 0.5, 20000);
+function setCamera(x, y, z, tx, ty, tz) {
+  camera.position.set(x, y, z);
+  camera.lookAt(tx, ty, tz);
+  camera.updateMatrixWorld();
+}
+setCamera(...start);
+const orbit = params.get('orbit') === '1';
+const orbitRadius = Math.hypot(start[0] - start[3], start[2] - start[5]);
+const orbitAngle0 = Math.atan2(start[0] - start[3], start[2] - start[5]);
+
+const labels = createAxisLabels({ element: document.getElementById('labels'), grid, rows, blocktimes });
+
+let gridKey = '';
+function rebuildGrid(r) {
+  const key = r.blockStep + '|' + r.amountRows.join(',');
+  if (key === gridKey) return;
+  gridKey = key;
+  const pos = [];
+  const y = 0.05;
+  for (let b = 0; b < numBlocks; b += r.blockStep) {
+    const x = worldX(b);
+    pos.push(x, y, -BLOCK_EDGE_OFFSET, x, y, D + BLOCK_EDGE_OFFSET);
+  }
+  for (const row of r.amountRows) {
+    const z = worldZ(row + 0.5);
+    pos.push(-AMOUNT_EDGE_OFFSET, y, z, W + AMOUNT_EDGE_OFFSET, y, z);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  gridLines.geometry.dispose();
+  gridLines.geometry = g;
+}
+
+let width = 0;
+let height = 0;
+function fit() {
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  if (w === width && h === height) return;
+  width = w;
+  height = h;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+
+let frames = 0;
+let lastResult = null;
+const recentMs = [];
+function showInfo() {
+  const s = labels.stats;
+  const sorted = [...recentMs].sort((a, b) => a - b);
+  const median = sorted.length ? sorted[sorted.length >> 1] : 0;
+  const p = camera.position;
+  info.textContent = [
+    'backend     ' + backend,
+    'camera      ' + [p.x, p.y, p.z].map((v) => v.toFixed(1)).join(', '),
+    'blockStep   ' + lastResult.blockStep.toLocaleString('en-US'),
+    'amountRows  ' + lastResult.amountRows.length + ' [' + lastResult.amountRows.join(', ') + ']',
+    'labels      ' + s.labels + ' (' + s.blockLabels + ' block, ' + s.amountLabels + ' amount), ' + s.nodes + ' nodes',
+    'update      ' + (median * 1000).toFixed(1) + ' us median, ' + ((sorted[sorted.length - 1] || 0) * 1000).toFixed(1) + ' us max (last ' + sorted.length + ' frames)',
+  ].join('\n');
+}
+
+function frame() {
+  fit();
+  if (orbit) {
+    const a = orbitAngle0 + frames * 0.004;
+    setCamera(start[3] + orbitRadius * Math.sin(a), start[1], start[5] + orbitRadius * Math.cos(a), start[3], start[4], start[5]);
+  }
+  camera.updateMatrixWorld();
+  lastResult = labels.update(camera, width, height);
+  recentMs.push(labels.stats.ms);
+  if (recentMs.length > 120) recentMs.shift();
+  rebuildGrid(lastResult);
+  renderer.render(scene, camera);
+  frames++;
+  if (frames % 20 === 1) showInfo();
+  if (frames === 1) window.__ready = true;
+}
+
+// Compares projectToScreen with three.js Vector3.project for points over the slab and
+// along the label anchor lines.
+function projectionCheck() {
+  camera.updateMatrixWorld();
+  const vp = viewProjection(camera.projectionMatrix.elements, camera.matrixWorldInverse.elements);
+  const v = new THREE.Vector3();
+  let maxErrPx = 0;
+  let points = 0;
+  for (let i = 0; i <= 40; i++) {
+    for (let j = 0; j <= 20; j++) {
+      const x = -AMOUNT_EDGE_OFFSET + (i / 40) * (W + 2 * AMOUNT_EDGE_OFFSET);
+      const z = -BLOCK_EDGE_OFFSET + (j / 20) * (D + 2 * BLOCK_EDGE_OFFSET);
+      const p = projectToScreen(vp, x, 0, z, width, height);
+      if (!p.visible) continue;
+      v.set(x, 0, z).project(camera);
+      maxErrPx = Math.max(maxErrPx, Math.hypot((v.x + 1) / 2 * width - p.x, (1 - v.y) / 2 * height - p.y));
+      points++;
+    }
+  }
+  return { maxErrPx, points };
+}
+
+// Measured boxes of the label nodes on screen: overlaps between rendered text boxes and
+// how far each node's centre sits from its layout box centre.
+function domCheck() {
+  const last = labels.last;
+  const nodes = [...document.querySelectorAll('#labels .lbl:not(.lbl-probe)')].filter((el) => el.style.display !== 'none');
+  const boxes = nodes.map((el) => {
+    const r = el.getBoundingClientRect();
+    return { text: el.textContent, kind: el.classList.contains('lbl-block') ? 'block' : 'amount', left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+  });
+  const pairs = [];
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i];
+      const b = boxes[j];
+      if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) pairs.push([a.text, b.text]);
+    }
+  }
+  let maxBoxErrPx = 0;
+  for (const l of last ? last.labels : []) {
+    const b = boxes.find((x) => x.text === l.text);
+    if (!b) continue;
+    maxBoxErrPx = Math.max(maxBoxErrPx, Math.abs((b.left + b.right) / 2 - (l.left + l.w / 2)), Math.abs((b.top + b.bottom) / 2 - (l.top + l.h / 2)));
+  }
+  const font = boxes.length ? getComputedStyle(nodes[0]).fontFamily : null;
+  return { shown: boxes.length, overlaps: pairs.length, pairs: pairs.slice(0, 8), maxBoxErrPx, fontsReady: document.fonts.status, font, texts: boxes.map((b) => b.text) };
+}
+
+// Times update() (layout plus DOM writes) on a second, hidden instance with a moving
+// camera, so the visible labels and their edge hysteresis are left untouched.
+function bench(n = 2000) {
+  const host = document.createElement('div');
+  host.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;visibility:hidden;pointer-events:none';
+  document.body.appendChild(host);
+  const probe = createAxisLabels({ element: host, grid, rows, blocktimes });
+  const cam2 = camera.clone();
+  const p0 = camera.position.clone();
+  const times = [];
+  let shown = 0;
+  for (let i = 0; i < n; i++) {
+    cam2.position.set(p0.x + 40 * Math.sin(i * 0.013), p0.y + 10 * Math.sin(i * 0.007), p0.z + 30 * Math.cos(i * 0.011));
+    cam2.updateMatrixWorld();
+    const t0 = performance.now();
+    probe.update(cam2, width, height);
+    times.push(performance.now() - t0);
+    shown += probe.stats.labels;
+  }
+  const nodes = probe.stats.nodes;
+  probe.dispose();
+  host.remove();
+  times.sort((a, b) => a - b);
+  return { n, avgMs: times.reduce((a, b) => a + b, 0) / n, p50Ms: times[n >> 1], p99Ms: times[Math.floor(n * 0.99)], maxMs: times[n - 1], avgLabels: shown / n, nodes };
+}
+
+function summary() {
+  const last = labels.last;
+  return {
+    backend, frames, viewport: [width, height, window.devicePixelRatio],
+    camera: camera.position.toArray().map((v) => +v.toFixed(2)),
+    blockStep: lastResult.blockStep, amountRows: lastResult.amountRows,
+    blockEdgeZ: last.blockEdgeZ, amountEdgeX: last.amountEdgeX,
+    blockRange: last.blockRange && last.blockRange.map(Math.round),
+    stats: { ...labels.stats },
+    labels: last.labels.map((l) => l.text),
+  };
+}
+
+// Per-frame update() cost (layout plus DOM writes) over the last 120 frames.
+function frameTimes() {
+  const t = [...recentMs].sort((a, b) => a - b);
+  const at = (q) => t[Math.min(t.length - 1, Math.floor(q * t.length))];
+  return { frames: t.length, p50Ms: at(0.5), p95Ms: at(0.95), maxMs: t[t.length - 1], crossOriginIsolated: self.crossOriginIsolated };
+}
+
+window.__dev = { THREE, renderer, scene, camera, labels, grid, rows, blocktimes, backend, setCamera, summary, projectionCheck, domCheck, bench, frameTimes };
+renderer.setAnimationLoop(frame);
+</script>
+</body>
+</html>

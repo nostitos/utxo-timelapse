@@ -1577,7 +1577,7 @@ export const RELEASE = Object.freeze({
   ],
   "numBlocks": 966828,
   "sitePrefix": "explorer/player-overlays-20260918/site",
-  "version": "player-overlays-20260918",
+  "version": "web-analytics-20261008",
   "historyBlockTimesKey": "explorer/append966827-20260913-journal/history/block_times.bin",
   "historyShardSources": {
     "0": {

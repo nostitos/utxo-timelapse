@@ -12,6 +12,7 @@ First-time visits to `/` show the guide. Entering `/explorer` sets the `btl_expl
 - Base history plus immutable later-spend patches and five full replacement/new shards for the September 10 append.
 - One [release descriptor](src/release.js) selects the UI namespace and matching history routing. The current video playlist is `/hls/v3/media.m3u8`; old segment objects are reused.
 - The renderer, HUD and [cloud mapper](src/mapping.js) agree on integer pixel coordinates, including 120-block smooth transitions.
+- Cloudflare Web Analytics is on for the `bitcointimelapse.com` zone. The edge injects its beacon into HTML pages, and the Content Security Policy in `src/index.js` allows the beacon script (`static.cloudflareinsights.com`) and its reports (`cloudflareinsights.com`). A release that changes only Worker code or headers keeps `sitePrefix` and takes a new `version`.
 
 The original 84 GB multipart MP4 had slow measured ranged reads. Individually uploaded HLS segments made playback and seeking practical. The legacy `/video.mp4` and `/latest-v2/video.mp4` routes remain compatibility paths.
 

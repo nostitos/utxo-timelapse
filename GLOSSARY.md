@@ -63,6 +63,17 @@ X coordinates are clamped then truncated to integer pixels. Positions stay stabl
 - **CoinJoin denomination filter:** an optional amount-pattern heuristic; neither output amounts nor visual patterns prove transaction intent.
 - **Audio synthesis:** optional float32 mono spending impulses. Disabled in the published film.
 
+## 3D landscape
+
+| Term / identifier | Meaning |
+|---|---|
+| Landscape | Browser explorer, run locally or online at [3d.bitcointimelapse.com](https://3d.bitcointimelapse.com/), that shows the UTXO set as terrain: creation block left to right (linear, 64 blocks per column), film amount rows front to back, a switchable measure as height and colour. See [landscape guide](docs/landscape.md). |
+| Landscape cell | 64 consecutive creation blocks × one film amount row at level 0. It holds four exact integers: count and satoshi sum of outputs up to 5 BTC and above 5 BTC. Coarser levels (1–6) sum blocks two by two and rows up to 16 at a time. |
+| Landscape tile | 256 × 256 cells of one level; the unit of snapshot storage, browser residency and GPU atlas slots. 758 tiles cover the seven levels. |
+| `BUVLSN1` | Landscape snapshot: exact cell state after one block at every level, with a per-tile directory (offset, length, CRC-32) so the browser range-reads only the tiles it needs, and a SHA-256 of the body. See [`Landscape.h`](src/cpp/app/Landscape.h). |
+| Landscape dataset | `landscape_build` output: manifest, row table, block times, exact BLK2 chunks and `BUVLSN1` snapshots after block 0, every 16 MiB of change data and at the tip. `landscape_verify` checks it against fresh replay, backward replay, the history index and a renderer checkpoint. |
+| Exact browser replay | The landscape worker rebuilds the cell state from the nearest snapshot plus the change log, forward or backward, so the displayed block is exact at 1× and single-step. 100× and scrubbing may land on snapshot blocks first. |
+
 ## Correctness vocabulary
 
 **Ledger consistency** means contributions and decrements match in the renderer. **History accuracy** means counts/amounts match the indexed source. **Pixel equality** means exact decoded image values. **Transaction identity** means a full outpoint. These are different claims and need different evidence.

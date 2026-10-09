@@ -31,9 +31,9 @@ function securityHeaders(headers = new Headers()) {
   headers.set(
     "Content-Security-Policy",
     "default-src 'self'; style-src 'self' 'unsafe-inline'; " +
-      "script-src 'self' 'unsafe-inline'; worker-src 'self' blob:; " +
+      "script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com; worker-src 'self' blob:; " +
       "media-src 'self' blob: https://utxo-cdn.hat39.com; " +
-      "connect-src 'self'; img-src 'self' data:",
+      "connect-src 'self' https://cloudflareinsights.com; img-src 'self' data:",
   );
   headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   headers.set("X-Worker-Version", WORKER_VERSION);

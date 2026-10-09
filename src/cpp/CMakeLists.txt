@@ -7,6 +7,9 @@ target_sources_local(${PROJECT_NAME}
         util/HttpClient.cpp # put first because it is soooo slow
 
         app/BlockEncoder.cpp
+        app/block_index.cpp
+        app/RendererCheckpoint.cpp
+        app/renderer_checkpoint.cpp
         app/Cfg.cpp
         app/check_blocks.cpp
         app/Chunk.cpp
@@ -16,6 +19,8 @@ target_sources_local(${PROJECT_NAME}
         app/fetchAllBlockHeaders.cpp
         app/find_distant_color.cpp
         app/Hud.cpp
+        app/Landscape.cpp
+        app/landscape_tasks.cpp
         app/load_all_block_headers.cpp
         app/parse_block.cpp
         app/show_block_changes.cpp

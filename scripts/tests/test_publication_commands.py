@@ -289,6 +289,16 @@ class CommandTest(unittest.TestCase):
             pc.check_public(bad, opener=opener)
 
 
+    def test_history_default_and_override_without_import_side_effects(self):
+        tree = ast.parse((Path(__file__).resolve().parents[1]/'r2_publish_history_delta.py').read_text())
+        main = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'main')
+        self.assertEqual(main.args.defaults[0].value, 16)
+        positive = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'positive_workers')
+        namespace = {'argparse': argparse}
+        exec(compile(ast.Module(body=[positive], type_ignores=[]), '<test>', 'exec'), namespace)
+        self.assertEqual(namespace['positive_workers']('7'), 7)
+        with self.assertRaises(argparse.ArgumentTypeError): namespace['positive_workers']('0')
+
 
 if __name__ == '__main__':
     unittest.main()

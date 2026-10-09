@@ -36,7 +36,13 @@ def make_patch(payload,old_tip,base_etag):
     body=SHARD_HEADER.pack(PATCH_MAGIC,1,rows,h1,h2,len(indices))+patch_offsets.tobytes()+pairs.tobytes()
     return body
 
-def main(run):
+def positive_workers(value):
+    value=int(value)
+    if value<1:raise argparse.ArgumentTypeError("workers must be positive")
+    return value
+
+def main(run,workers=16):
+    workers=positive_workers(workers)
     assert (run/'history_updated.json').exists(),'history update not verified'
     hfile=Path('/Volumes/4T Data/buv_render/utxo_history.bin')
     old=json.loads((run/'history-baseline.json').read_text())
@@ -54,7 +60,7 @@ def main(run):
     state=json.loads(state_path.read_text()) if state_path.exists() else {'sourceSize':hfile.stat().st_size,'sourceMtimeNs':hfile.stat().st_mtime_ns,'completed':{},'patchShards':[],'unchangedShards':[],'fullShards':[]}
     assert (state['sourceSize'],state['sourceMtimeNs'])==(hfile.stat().st_size,hfile.stat().st_mtime_ns)
     access,secret=load_credentials(Path.home()/'.config/utxo-r2/credentials')
-    s3=boto3.client('s3',endpoint_url=ENDPOINT,aws_access_key_id=access,aws_secret_access_key=secret,region_name='auto',config=Config(retries={'max_attempts':8,'mode':'adaptive'},max_pool_connections=12,connect_timeout=20,read_timeout=300))
+    s3=boto3.client('s3',endpoint_url=ENDPOINT,aws_access_key_id=access,aws_secret_access_key=secret,region_name='auto',config=Config(retries={'max_attempts':8,'mode':'adaptive'},max_pool_connections=max(12,workers),connect_timeout=20,read_timeout=300))
     lock=threading.Lock()
     def upload(key,body,content_type='application/octet-stream'):
         md5=hashlib.md5(body).hexdigest()
@@ -89,7 +95,7 @@ def main(run):
             state['completed'][key]=upload(key,times.tobytes());save_json(state_path,state)
         done=set(state['patchShards']+state['unchangedShards']+state['fullShards'])
         count_shards=(blocks+511)//512
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
             futures={pool.submit(shard,n):n for n in range(count_shards) if n not in done}
             for future in concurrent.futures.as_completed(futures):
                 n,kind,key,meta=future.result()
@@ -106,4 +112,4 @@ def main(run):
         state['finished']=True;save_json(state_path,state);save_json(run/'cloud-history-delta-verified.json',manifest)
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('run',type=Path);a=p.parse_args();main(a.run)
+    p=argparse.ArgumentParser();p.add_argument('run',type=Path);p.add_argument('--workers',type=positive_workers,default=16);a=p.parse_args();main(a.run,a.workers)

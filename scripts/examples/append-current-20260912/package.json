@@ -1,0 +1,8 @@
+{
+  "preparedManifest": "/Volumes/4T Data/buv_render/append_review_20260912_next001/plan.json",
+  "previousManifest": "/REPLACE_WITH_VERIFIED_PREVIOUS_LEDGER/segments.json",
+  "previousSHA256": "REPLACE_WITH_SHA256_OF_RAW_PREVIOUS_MANIFEST_BYTES",
+  "oldInit": "/Volumes/4T Data/buv_render/update_20260910/hls_continuous/init.mp4",
+  "destination": "/Volumes/4T Data/buv_render/append_review_20260912_next001/package",
+  "segmentFrames": 600
+}

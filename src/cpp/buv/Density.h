@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <deque>
 #include <fstream>
 #include <iostream>
@@ -133,8 +134,16 @@ public:
             auto const slideBlocks = mCfg.epochTransitionBlocks;
             auto const offsetInEpoch = block_height % epochBlocks;
             auto const sliding = slideBlocks > 0 && newEpoch > 0 && offsetInEpoch < slideBlocks;
+            // No frame in this window will be emitted. Settle the layout once;
+            // the ledger still receives every creation and spend in order.
+            auto const hiddenSlide = sliding &&
+                static_cast<uint64_t>(newEpoch) * epochBlocks + slideBlocks <= mCfg.startShowAtBlockHeight;
 
-            if (sliding && (newEpoch > currentEpoch || mSatoshiBlockheightToPixel.transitionActive())) {
+            if (hiddenSlide && newEpoch > currentEpoch) {
+                resampleForNewEpoch(newEpoch);
+                ++m_hidden_epoch_slides;
+                LOG("Skipped hidden epoch slide at block {} ({} rebuilds avoided)", block_height, slideBlocks - 1);
+            } else if (!hiddenSlide && sliding && (newEpoch > currentEpoch || mSatoshiBlockheightToPixel.transitionActive())) {
                 // Smooth slide: on each frame of the window, re-blend the
                 // layout and rebuild density exactly from the ledger. The last
                 // frame (t == 1) settles into the plain new-epoch layout, which
@@ -164,13 +173,94 @@ public:
         // and discard warm-up-only transient state. Otherwise every pixel touched
         // since genesis flashes white together on the first sample frame.
         if (mCfg.startShowAtBlockHeight > 0 && block_height == mCfg.startShowAtBlockHeight) {
-            regenerateImageFromDensity();
+            if (mSatoshiBlockheightToPixel.useEpochCompression()) {
+                rebuildDensityFromLedger();
+            } else {
+                regenerateImageFromDensity();
+            }
             m_current_block_pixels.clear();
+            m_current_block_anchor.clear();
             m_current_block_flash_weight.clear();
             m_current_block_utxo_counts.clear();
             m_utxo_flow_per_y.clear();
             m_pixel_set_with_history.clear();
         }
+    }
+
+    // Checkpoint APIs require a stable block boundary. Transients are rebuilt
+    // during warm-up; normal renderer accumulation order is unchanged.
+    [[nodiscard]] auto checkpointConfig() const -> Cfg const& { return mCfg; }
+    [[nodiscard]] auto checkpointLedgerSize() const -> size_t { return m_alive.size(); }
+
+    template <typename Visitor>
+    void checkpointVisitLedger(Visitor visitor) const {
+        for (auto const& entry : m_alive) visitor(entry.first, entry.second);
+    }
+
+    [[nodiscard]] auto checkpointLedgerWeight(uint64_t key) const -> double {
+        return m_alive.at(key);
+    }
+
+    void checkpointValidateBoundary(uint32_t nextHeight, bool importing) const {
+        if (nextHeight == 0 || mCfg.epochBlocks == 0 ||
+            (importing && nextHeight > mCfg.startShowAtBlockHeight) ||
+            (mCfg.epochTransitionBlocks && nextHeight >= mCfg.epochBlocks &&
+             nextHeight % mCfg.epochBlocks > 0 &&
+             nextHeight % mCfg.epochBlocks < mCfg.epochTransitionBlocks) ||
+            !mSatoshiBlockheightToPixel.useEpochCompression() ||
+            mSatoshiBlockheightToPixel.transitionActive()) {
+            throw std::runtime_error("renderer checkpoint: unsupported boundary or active slide");
+        }
+        if (importing) {
+            if (!m_alive.empty() || m_current_block_height != 0 || m_last_data != nullptr) {
+                throw std::runtime_error("renderer checkpoint: load requires fresh Density");
+            }
+        } else if (m_ledger_misses || m_dropped_decrements) {
+            throw std::runtime_error("renderer checkpoint: refusing to save incomplete replay state");
+        } else if (m_current_block_height != nextHeight - 1 ||
+                   getCurrentEpoch() != (nextHeight - 1) / mCfg.epochBlocks) {
+            throw std::runtime_error("renderer checkpoint: ledger is not through C-1");
+        }
+    }
+
+    // Reader returns sorted (key, exact weight) pairs; finish validates the
+    // trailer/integrity before any live state is changed. Staging avoids a
+    // second full payload buffer and gives failed loads a strong guarantee.
+    template <typename Reader, typename Finish>
+    void checkpointImportLedger(size_t count, uint32_t nextHeight, uint32_t epoch,
+                                Reader reader, Finish finish) {
+        checkpointValidateBoundary(nextHeight, true);
+        if (mCfg.epochBlocks == 0 || epoch != (nextHeight - 1) / mCfg.epochBlocks) {
+            throw std::runtime_error("renderer checkpoint: invalid epoch");
+        }
+        decltype(m_alive) staged;
+        staged.reserve(count);
+        uint64_t previous = 0;
+        for (size_t i = 0; i < count; ++i) {
+            auto const entry = reader();
+            auto const key = entry.first;
+            auto const y = key & LEDGER_Y_MASK;
+            uint64_t weightBits{};
+            std::memcpy(&weightBits, &entry.second, sizeof(weightBits));
+            if ((i && key <= previous) || (key >> 16U) >= nextHeight ||
+                y < mCfg.graphRect.y || y - mCfg.graphRect.y >= mCfg.graphRect.h ||
+                weightBits == 0 || weightBits >= 0x7ff0000000000000ULL) {
+                throw std::runtime_error("renderer checkpoint: invalid ledger entry");
+            }
+            staged.emplace(key, entry.second);
+            previous = key;
+        }
+        finish();
+        m_alive.swap(staged);
+        mSatoshiBlockheightToPixel.setCurrentEpoch(epoch);
+        m_current_block_height = nextHeight - 1;
+        m_last_data = nullptr;
+        m_prev_block_height = static_cast<uint32_t>(-1);
+        m_prev_amount = -1;
+        // Warm-up may continue before a later visible start. Its deltas need
+        // the restored raster too; transients intentionally start empty.
+        rebuildDensityFromLedger();
+        // The required next operation is begin_block(nextHeight).
     }
 
     // Get the current epoch (for syncing with HUD)
@@ -488,11 +578,12 @@ public:
         // print 100 values
         LOG("100 density values, starting from 0 (min) to max", m_data.size());
         auto numValues = size_t(100);
-        for (size_t i = 0; i < numValues; ++i) {
+        for (size_t i = 0; i < numValues && !m_data.empty(); ++i) {
             fmt::print("{}, ", m_data[(m_data.size() - 1) * i / (numValues - 1)]);
         }
         LOG("Density diagnostics: ledger misses={}, dropped decrements={}, slide rebuilds={}",
             m_ledger_misses, m_dropped_decrements, m_epoch_rebuilds);
+        LOG("Hidden epoch slides skipped={}", m_hidden_epoch_slides);
     }
 
 private:
@@ -951,6 +1042,7 @@ private:
     size_t m_flash_anchor_x{};
     bool m_flash_anchored{false};
     size_t m_epoch_rebuilds{};
+    size_t m_hidden_epoch_slides{};
     DensityToImage m_density_to_image;
     uint32_t m_current_block_height;
 

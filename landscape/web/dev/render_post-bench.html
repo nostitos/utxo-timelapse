@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>render_post · preset benchmark</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script type="importmap">
+{ "imports": {
+  "three": "../vendor/three/three.webgpu.js",
+  "three/webgpu": "../vendor/three/three.webgpu.js",
+  "three/tsl": "../vendor/three/three.tsl.js",
+  "three/addons/": "../vendor/three/addons/"
+} }
+</script>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; color: #dde; font: 12px/1.4 ui-monospace, Menlo, monospace; }
+  #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #overlay { position: fixed; left: 8px; top: 8px; z-index: 2; }
+  #labels { position: fixed; inset: 0; pointer-events: none; }
+  #result { position: fixed; right: 8px; top: 8px; z-index: 3; background: rgba(0,0,0,.75); padding: 8px 10px; white-space: pre; border-radius: 4px; }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="labels"></div>
+<div id="overlay"></div>
+<div id="result">benchmark starting…</div>
+<script type="module">
+// Usage: render_post-bench.html?terrain=real&presets=High,Ultra,Extreme&warm=2500&measure=4000&cam=overview
+// Run headed on the 4K display with the window at 3840×2160 (or headless with --width 3840
+// --height 2160 --dpr 1). Results: window.__benchResult and the table at the top right.
+import { startHarness } from './render_post-harness.js';
+const params = new URLSearchParams(location.search);
+if (!params.has('terrain')) params.set('terrain', 'real');
+if (!params.has('overlay')) params.set('overlay', '1');
+const out = document.getElementById('result');
+const canvas = document.getElementById('view');
+try {
+  const dev = await startHarness({ canvas, overlayElement: document.getElementById('overlay'), labelsElement: document.getElementById('labels'), params });
+  const pad = (s, n) => String(s).padStart(n);
+  const warmMs = Number(params.get('warm') || 2500);
+  const measureMs = Number(params.get('measure') || 4000);
+  const cam = params.get('cam') || 'overview';
+  if (params.get('mode') === 'sweep') {
+    // Each delta is measured on its own on top of the base preset (default High).
+    const DELTAS = [
+      { name: 'cascades 4×4096', set: { 'light.cascades': 4, 'light.shadowMapSize': 4096 } },
+      { name: 'pcss', set: { 'light.shadowFilter': 'pcss', 'light.shadowSoftness': 2 } },
+      { name: 'gtao 32', set: { 'fx.aoSamples': 32 } },
+      { name: 'ssr 32', set: { 'fx.ssr': true, 'fx.ssrSteps': 32 } },
+      { name: 'ssr 64', set: { 'fx.ssr': true, 'fx.ssrSteps': 64 } },
+      { name: 'ssgi 8', set: { 'fx.ssgi': true, 'fx.ssgiSamples': 8 } },
+      { name: 'ssgi 24', set: { 'fx.ssgi': true, 'fx.ssgiSamples': 24 } },
+      { name: 'volumetric 32', set: { 'light.volumetric': true, 'light.volumetricSteps': 32 } },
+      { name: 'volumetric 128', set: { 'light.volumetric': true, 'light.volumetricSteps': 128 } },
+      { name: 'god rays', set: { 'light.godRays': true } },
+      { name: 'dof', set: { 'fx.dof': true } },
+      { name: 'motion blur', set: { 'fx.motionBlur': true } },
+      { name: 'ssaa 2', set: { 'display.ssaa': 2 } },
+      { name: 'ssaa 4', set: { 'display.ssaa': 4 } },
+      { name: 'scale 1.5', set: { 'display.scale': 1.5 } },
+      { name: 'scale 2', set: { 'display.scale': 2 } },
+      { name: 'subdivision 2', set: { 'geo.subdivision': 2 } },
+      { name: 'subdivision 4', set: { 'geo.subdivision': 4 } },
+      { name: 'bicubic', set: { 'geo.smoothing': 'bicubic' } },
+      { name: 'pixelsPerCell 1', set: { 'geo.pixelsPerCell': 1, 'geo.tileBudget': 400 } },
+      { name: 'columns 2M', set: { 'geo.columns': true, 'geo.columnRadius': 1024, 'geo.instanceBudget': 2000000 } },
+      { name: 'columns 8M', set: { 'geo.columns': true, 'geo.columnRadius': 4096, 'geo.instanceBudget': 8000000 } },
+    ];
+    let deltas = DELTAS;
+    if (params.get('deltas')) deltas = JSON.parse(params.get('deltas'));
+    if (params.get('only')) { const keep = params.get('only').split('|'); deltas = deltas.filter((d) => keep.includes(d.name)); }
+    const baseSet = params.get('baseSet') ? JSON.parse(params.get('baseSet')) : {};
+    const rows = await dev.runSweep({ base: params.get('base') || 'High', baseSet, deltas, warmMs, measureMs, cam });
+    const lines = ['config               size          gpu ms   Δ ms    fps'];
+    for (const r of rows) lines.push(r.name.padEnd(20) + pad(r.width + '×' + r.height, 11) + pad(r.gpuMs, 9) + pad(r.deltaGpuMs ?? '', 7) + pad(r.fps, 7));
+    out.textContent = lines.join('\n');
+    window.__benchResult = { mode: 'sweep', userAgent: navigator.userAgent, adapter: dev.view.capabilities.adapter, backend: dev.view.backend, rows };
+  } else {
+    const presets = (params.get('presets') || 'Film,Performance,Balanced,High,Ultra,Extreme').split(',');
+    const extra = params.get('extra') ? JSON.parse(params.get('extra')) : {};
+    const rows = await dev.runBench({ presets, warmMs, measureMs, cam, extra });
+    const lines = ['preset        size        fps  frame ms  cpu ms  gpu ms'];
+    for (const r of rows) lines.push(r.preset.padEnd(12) + pad(r.width + '×' + r.height, 11) + pad(r.fps, 7) + pad(r.frameMs, 10) + pad(r.cpuMs, 8) + pad(r.gpuMs, 8));
+    out.textContent = lines.join('\n');
+    window.__benchResult = { mode: 'presets', userAgent: navigator.userAgent, adapter: dev.view.capabilities.adapter, backend: dev.view.backend, rows };
+  }
+} catch (e) {
+  out.textContent = String(e && e.stack || e);
+  window.__benchResult = { error: String(e && e.stack || e) };
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,50 @@
+{
+  "observedAt": "2026-09-12T14:27:26.373260+00:00",
+  "mode": "read-only local ffprobe/stat/header reads; no SSH, render, decode or chain writes",
+  "master": "/Volumes/4T Data/buv_render/utxo_4k_epoch105k_60fps_transition_crf21_to_966360.mp4",
+  "masterBytes": 84150399131,
+  "oldEndBlock": 966360,
+  "oldEndProvenance": "/Volumes/4T Data/buv_render/update_20260910/prepared.json newEndBlock (explicit verified metadata; NOT nb_frames minus hold)",
+  "masterVerifiedRecord": "/Volumes/4T Data/buv_render/update_20260910/master_verified.json",
+  "stream": {
+    "width": 3840,
+    "height": 2160,
+    "codec_name": "hevc",
+    "pix_fmt": "yuv444p",
+    "nb_frames": "966661",
+    "r_frame_rate": "60/1",
+    "start_time": "0.000000"
+  },
+  "measuredKeyframes": [
+    966360
+  ],
+  "joinDts": "16105.967000",
+  "closedGopIDR": true,
+  "warmupStart": 964980,
+  "localBlkBytes": 18295049417,
+  "localIndexMagic": "BUVBIDX1",
+  "localIndexSourceBytes": 18295049417,
+  "localIndexBlocks": 966361,
+  "localHistoryBlocks": 966361,
+  "newTargetVerified": false,
+  "previousLedgerVerified": false,
+  "rendererCheckpointConfigured": true,
+  "checkpointUpdatedAt": "2026-09-12T14:37:04.532223+00:00",
+  "rendererCheckpointReference": "/Volumes/4T Data/buv_render/renderer_checkpoint_current.json",
+  "rendererCheckpointPath": "/Volumes/4T Data/buv_render/renderer_before_964980.bin",
+  "rendererCheckpointNextHeight": 964980,
+  "rendererCheckpointBytes": 980502328,
+  "rendererCheckpointAcceptance": {
+    "bootstrapSeconds": 730.227281874977,
+    "frames": 1681,
+    "previousFinalFrameIdentical": true,
+    "checkpointBytes": 980502328,
+    "resumeSeconds": 36.736812707968056,
+    "differingFrames": [],
+    "allResumedFramesIdentical": true,
+    "totalSeconds": 767.0246006249217
+  },
+  "rendererCheckpointValidation": "/Volumes/4T Data/buv_render/append_optimization_20260912/bootstrap_result.json",
+  "syncPathsEvidence": "/Volumes/4T Data/buv_render/append_optimization_20260912/sync_source.json",
+  "syncNoopEvidence": "/Volumes/4T Data/buv_render/append_optimization_20260912/sync_noop/result.json"
+}

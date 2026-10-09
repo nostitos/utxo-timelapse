@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>cpp_explorer: landscape cell API cross-origin check</title>
+<pre id="out">running…</pre>
+<script type="module">
+// Dev harness (owner: cpp_explorer). Fetches the native explorer's landscape cell API
+// cross-origin from this page, which serve.mjs serves cross-origin isolated
+// (COOP same-origin + COEP require-corp), like the landscape app itself.
+// Explorer: ./build_local/buv -ns -tc=utxo_explorer -cfg=configs/buv_explorer.json -port=12989
+// Optional ?api=http://127.0.0.1:12989 selects another explorer base URL.
+const api = new URLSearchParams(location.search).get('api') || 'http://127.0.0.1:12989';
+const cell = (q) => api + '/api/landscape/cell?' + q;
+
+async function attempt(name, url, init) {
+  const t0 = performance.now();
+  try {
+    const res = await fetch(url, init);
+    const out = { name, ok: true, status: res.status, type: res.type, ms: Math.round(performance.now() - t0) };
+    if (res.type !== 'opaque') {
+      const b = await res.json();
+      out.summary = b.error ? { error: b.error } : {
+        col: b.col, row: b.row, blockRange: b.blockRange, satRange: b.satRange,
+        count: b.count, liveSat: b.liveSat, utxos: (b.utxos || []).length,
+      };
+    }
+    return out;
+  } catch (err) {
+    return { name, ok: false, error: String(err), ms: Math.round(performance.now() - t0) };
+  }
+}
+
+const results = { origin: location.origin, crossOriginIsolated: self.crossOriginIsolated, checks: [] };
+results.checks.push(await attempt('cell', cell('block=314000&col=4286&row=1515')));
+results.checks.push(await attempt('cellDenseTip', cell('block=966827&col=15100&row=1822')));
+results.checks.push(await attempt('badParams400', cell('block=abc&col=1&row=1')));
+results.checks.push(await attempt('preflightCustomHeader', cell('block=314000&col=4287&row=1515'), { headers: { 'X-Probe': '1' } }));
+results.checks.push(await attempt('noCorsNeedsCorp', cell('block=314000&col=4287&row=1515'), { mode: 'no-cors' }));
+results.checks.push(await attempt('pixelNotShared', api + '/api/pixel?block=314000&x=3000&y=1525'));
+document.getElementById('out').textContent = JSON.stringify(results, null, 2);
+window.__dev = results;
+window.__ready = true;
+</script>
