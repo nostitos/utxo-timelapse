@@ -37,7 +37,14 @@ A deploy uploads the working tree's `landscape/web` and bundles `../utxo-video-w
 Datasets are immutable: each one gets a new prefix `landscape/d<tip>-<yyyymmdd>`. The upload scripts need boto3 (`python3 -m venv /tmp/landscape_r2_venv && /tmp/landscape_r2_venv/bin/pip install boto3`). The checksum variables keep every upload a plain single PUT whose ETag is the file's MD5.
 
 1. Build and verify the dataset locally (`landscape_build`, `landscape_verify`; see `docs/landscape.md`).
-2. Upload everything except the manifest:
+2. Upload everything except the manifest. When the previous dataset is still on disk, `scripts/landscape_r2_publish.py` copies every file whose SHA-256 is unchanged (the chunks before the old tip) inside R2 and uploads only the rest:
+   ```sh
+   export AWS_REQUEST_CHECKSUM_CALCULATION=when_required AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
+   /tmp/landscape_r2_venv/bin/python scripts/landscape_r2_publish.py "/Volumes/4T Data/buv_render/landscape_<tip>" \
+     "/Volumes/4T Data/buv_render/landscape_<old-tip>" --prefix landscape/<id> --old-prefix landscape/<old-id> \
+     --state ~/.config/utxo-r2/landscape-<id>-publish.json --no-manifest
+   ```
+   On October 9, 2026 it copied 4,382 chunks (18.3 GB) in about 3 minutes; the 1,101 snapshots still had to be uploaded (57.8 GB, 36 minutes at 27 MB/s), because each snapshot header records the grid size of its dataset. Without a previous local dataset, upload everything:
    ```sh
    export AWS_REQUEST_CHECKSUM_CALCULATION=when_required AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
    /tmp/landscape_r2_venv/bin/python scripts/r2_upload_tree_singlepart.py "/Volumes/4T Data/buv_render/landscape_<tip>" \
@@ -46,7 +53,7 @@ Datasets are immutable: each one gets a new prefix `landscape/d<tip>-<yyyymmdd>`
      --workers 8 --include .bin chunks.json
    ```
 3. `/tmp/landscape_r2_venv/bin/python scripts/landscape_r2_verify.py "/Volumes/4T Data/buv_render/landscape_<tip>" --prefix landscape/<id> --no-manifest` checks every object's size and MD5 and that nothing else exists under the prefix.
-4. Upload `manifest.json` (step 2 with `--include manifest.json`), then run step 3 without `--no-manifest`.
+4. Upload `manifest.json` (`landscape_r2_publish.py` without `--no-manifest`, or `r2_upload_tree_singlepart.py` with `--include manifest.json`), then run step 3 without `--no-manifest`.
 5. In `src/release.js`, set `dataset` to the new id and tip, move the previous id to `retainedDatasetIds`, bump `version`, then deploy and verify.
 6. After open tabs have moved on (a few days), delete the old prefix, remove its id from `retainedDatasetIds` and deploy:
    ```sh
@@ -65,4 +72,4 @@ curl -fsS 'https://3d.bitcointimelapse.com/api/landscape/cell?block=314000&col=4
 
 The example cell returns 1 live output of 21,236 sat and 3 spent before block 314,000, the same as the native explorer. Check real playback in a browser; HTTP 200 alone does not prove the replay works.
 
-Storage is about 75 GB per dataset (1,092 snapshots, 4,383 chunks), roughly 1.1 USD a month in R2. Egress is free; browsers read with ranges, and the edge cache absorbs repeated ranges.
+Storage is about 76 GB per dataset (1,101 snapshots and 4,417 chunks at block 970,658), roughly 1.1 USD a month in R2. Egress is free; browsers read with ranges, and the edge cache absorbs repeated ranges.
