@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import worker, { parseRange, rowRange, contentSecurityPolicy, ROWS } from '../cloudflare/utxo-landscape-worker/src/index.js';
 import { RELEASE } from '../cloudflare/utxo-landscape-worker/src/release.js';
+import { RELEASE as VIDEO_RELEASE } from '../cloudflare/utxo-video-worker/src/release.js';
 import { rowSatoshiRange } from '../cloudflare/utxo-video-worker/src/mapping.js';
 
 const ID = RELEASE.dataset.id;
@@ -243,7 +244,8 @@ await check('cell API: validation, empty rows, rate limit', async () => {
     assert.equal(res.status, 400, q);
     assert.match((await res.json()).error, /non-negative integers/);
   }
-  const col = await req('/api/landscape/cell?block=1&col=15107&row=1');
+  // The landscape is as wide as the bundled 2D release: one column per 64 blocks.
+  const col = await req('/api/landscape/cell?block=1&col=' + Math.ceil(VIDEO_RELEASE.numBlocks / 64) + '&row=1');
   assert.equal(col.status, 400);
   assert.equal((await col.json()).error, 'col outside the landscape');
   const row = await req('/api/landscape/cell?block=1&col=1&row=2072');
