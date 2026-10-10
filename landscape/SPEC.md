@@ -223,13 +223,13 @@ varuint = unsigned LEB128; zigzag: `(z >>> 1) ^ -(z & 1)` done arithmetically
 8    u32      version = 1
 12   u32      headerBytes = 128
 16   u32      block           state after blocks 0..block
-20   u32      numBlocks
+20   u32      numBlocks       of the snapshot's own grid: block + 1 (see below)
 24   u32      levels = 7
 28   u32      tileSize = 256
 32   u32      rows = 2072
-36   u32      l0Columns = 15107
+36   u32      l0Columns       ceil(numBlocks / 64)
 40   u32      blocksPerColumn = 64
-44   u32      tiles = 758
+44   u32      tiles           of gridFromManifest({numBlocks})
 48   u64      blkEnd
 56   i64      totalCountSmall
 64   i64      totalCountLarge
@@ -237,10 +237,18 @@ varuint = unsigned LEB128; zigzag: `(z >>> 1) ^ -(z & 1)` done arithmetically
 80   i64      totalSatsLarge
 88   u8[32]   SHA-256 of bytes [128, EOF)
 120  u8[8]    zero
-128  directory: 758 × {u64 offset (absolute), u32 bytes, u32 crc32 (IEEE) of the blob}
+128  directory: tiles × {u64 offset (absolute), u32 bytes, u32 crc32 (IEEE) of the blob}
      empty tile: offset 0, bytes 0, crc 0
 …    tile blobs
 ```
+A snapshot describes its own grid, the grid of blocks 0..block, so the same block encodes to
+the same bytes in every dataset that contains it and a new dataset copies earlier snapshots
+unchanged. Its tile ids follow that grid: a tile keeps its level and position (tx, ty) in
+any larger grid, where the tiles beyond the snapshot are empty, so readers map tiles by
+(level, tx, ty). Readers accept any numBlocks in [block + 1, dataset numBlocks] whose
+l0Columns and tiles match: snapshots written before October 9, 2026 record their dataset's
+numBlocks (966,828 or 970,659) and stay valid. A reader that fetches the directory first
+needs at most the dataset's prefix (128 + 16 × dataset tiles bytes), capped at the file size.
 Tile blob: occupied cells (count > 0) in ascending local index, each encoded as
 `varuint gap` (local index − (previous index + 1); first cell: its index),
 `varuint (countSmall * 2 + (countLarge > 0 ? 1 : 0))`, then `varuint satsSmall` if

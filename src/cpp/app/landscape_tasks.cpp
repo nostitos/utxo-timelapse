@@ -545,11 +545,20 @@ TEST_CASE("landscape_state") {
         bad.back() ^= 1U;
         CHECK_THROWS(lsc::openSnapshot(grid, bad.data(), bad.size()));
         bad = file;
-        bad[20] ^= 1U; // numBlocks
+        bad[20] ^= 1U; // numBlocks 301: beyond this dataset
+        CHECK_THROWS(lsc::openSnapshot(grid, bad.data(), bad.size()));
+        bad = file;
+        bad[20] = static_cast<uint8_t>(numBlocks - 1); // numBlocks == block
+        CHECK_THROWS(lsc::openSnapshot(grid, bad.data(), bad.size()));
+        bad = file;
+        bad[36] ^= 1U; // l0Columns no longer derived from numBlocks
         CHECK_THROWS(lsc::openSnapshot(grid, bad.data(), bad.size()));
         bad = file;
         bad.push_back(0);
         CHECK_THROWS(lsc::openSnapshot(grid, bad.data(), bad.size()));
+        // The tip state has cells in columns an earlier block cannot reach.
+        auto earlier = std::vector<uint8_t>();
+        CHECK_THROWS(lsc::encodeSnapshot(grid, levels.cells, 150, 0, earlier));
         // A negative count can never be encoded.
         auto broken = std::vector<lsc::Cell>(state.l0(), state.l0() + l0Cells);
         broken[0].countSmall -= 1;
@@ -558,6 +567,69 @@ TEST_CASE("landscape_state") {
         lsc::aggregate(grid, broken.data(), grid.l0Columns, brokenLevels);
         auto scratch = std::vector<uint8_t>();
         CHECK_THROWS(lsc::encodeSnapshot(grid, brokenLevels.cells, 0, 0, scratch));
+    }
+
+    // Self-describing snapshots: a block encodes to the same bytes whatever the
+    // dataset's tip, also when the tip adds an L0 tile column, and every dataset
+    // grid at least as large reads it.
+    {
+        constexpr uint32_t block = 16'000; // L0 column 250, inside the first tile column
+        auto const tight = lsc::Grid::make(block + 1);
+        auto const exact = lsc::Grid::make(256 * lsc::kBlocksPerColumn);
+        auto const wide = lsc::Grid::make(256 * lsc::kBlocksPerColumn + 3 * lsc::kBlocksPerColumn);
+        REQUIRE(exact.levels[0].tilesX == 1);
+        REQUIRE(wide.levels[0].tilesX == 2);
+        REQUIRE(wide.tiles > exact.tiles);
+        struct Placed {
+            uint32_t col;
+            uint32_t row;
+            lsc::Cell cell;
+        };
+        auto placed = std::vector<Placed>();
+        placed.push_back({0, 0, {1, 0, 1000, 0}});
+        placed.push_back({17, 2071, {3, 0, 3 * 500'000'000LL, 0}});
+        placed.push_back({128, 900, {0, 1, 0, 600'000'000}});
+        placed.push_back({250, 1500, {2, 4, 7, 4'000'000'000LL}});
+        for (auto& p : placed) {
+            REQUIRE(p.cell.occupied());
+        }
+        auto encodeIn = [&](lsc::Grid const& g, lsc::Levels& lv) {
+            auto& l0 = lv.owned[0]; // aggregate() leaves owned[0] alone and points cells[0] at it
+            l0.assign(g.levels[0].cells(), lsc::Cell{});
+            for (auto const& p : placed) {
+                l0[size_t(p.col) * lsc::kRows + p.row] = p.cell;
+            }
+            lsc::aggregate(g, l0.data(), block / lsc::kBlocksPerColumn + 1, lv);
+            auto bytes = std::vector<uint8_t>();
+            auto const h = lsc::encodeSnapshot(g, lv.cells, block, 4242, bytes);
+            CHECK(h.numBlocks == block + 1);
+            return bytes;
+        };
+        auto tightLevels = lsc::Levels();
+        auto exactLevels = lsc::Levels();
+        auto wideLevels = lsc::Levels();
+        auto const a = encodeIn(tight, tightLevels);
+        auto const b = encodeIn(exact, exactLevels);
+        auto const c = encodeIn(wide, wideLevels);
+        CHECK(a == b);
+        CHECK(a == c);
+        auto const view = lsc::openSnapshot(wide, c.data(), c.size());
+        CHECK(view.header.numBlocks == block + 1);
+        CHECK(view.grid.tiles == tight.tiles);
+        CHECK(view.grid.tiles < wide.tiles);
+        auto decoded = lsc::Levels();
+        auto const back = lsc::decodeSnapshot(wide, c.data(), c.size(), decoded);
+        CHECK(back.block == block);
+        CHECK(back.blkEnd == 4242);
+        for (uint32_t l = 0; l < lsc::kLevels; ++l) {
+            CHECK(std::equal(decoded.cells[l], decoded.cells[l] + wide.levels[l].cells(), wideLevels.cells[l]));
+        }
+        auto reports = std::vector<std::string>();
+        CHECK(lsc::compareSnapshot(wide, view, wideLevels.cells, 5, reports) == 0);
+        CHECK(lsc::compareSnapshot(exact, lsc::openSnapshot(exact, a.data(), a.size()), exactLevels.cells, 5, reports) == 0);
+        // A grid smaller than the snapshot's own cannot hold it.
+        auto const shorter = lsc::Grid::make(block);
+        CHECK_THROWS(lsc::openSnapshot(shorter, a.data(), a.size()));
     }
 
     // End to end on synthetic sources: build, verify, refuse reuse, detect a

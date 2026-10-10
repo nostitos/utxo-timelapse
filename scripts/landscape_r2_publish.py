@@ -5,6 +5,8 @@ Objects whose SHA-256 (manifest.json snapshots / chunks.json chunks) equals the 
 currently published dataset are copied server-side inside R2; all other files are uploaded from
 the local build. manifest.json is uploaded last, after every other object exists. Resumable through
 --state. Verify afterwards with scripts/landscape_r2_verify.py (size + MD5 of every object).
+Snapshots describe their own grid, so every snapshot before the old tip is copied; OLD_DIR needs only
+the previous dataset's manifest.json and chunks.json (for example fetched from /dataset/<old-id>/).
 
   landscape_r2_publish.py NEW_DIR OLD_DIR --prefix landscape/<new-id> --old-prefix landscape/<old-id> --state FILE [--no-manifest]
 """
@@ -21,8 +23,8 @@ BUCKET = 'utxo-video'
 
 def table(d):
     m = json.loads((d/'manifest.json').read_text()); c = json.loads((d/'chunks.json').read_text())
-    t = {s['file']: s['sha256'] for s in m['snapshots']}
-    t.update({x['file']: x['sha256'] for x in c['chunks']})
+    t = {s['file']: (s['sha256'], s['bytes']) for s in m['snapshots']}
+    t.update({x['file']: (x['sha256'], x['bytes']) for x in c['chunks']})
     return t
 
 
@@ -58,7 +60,9 @@ def main():
 
     def send(rel):
         key = a.prefix+'/'+rel; path = a.new/rel; size = path.stat().st_size
-        if rel in new and old.get(rel) == new[rel] and (a.old/rel).stat().st_size == size:
+        if rel in new and new[rel][1] != size:
+            raise SystemExit(f'{rel}: {size} bytes on disk, {new[rel][1]} in the new manifest')
+        if rel in new and old.get(rel) == new[rel]:
             r = s3.copy_object(Bucket=BUCKET, Key=key, CopySource={'Bucket': BUCKET, 'Key': a.old_prefix+'/'+rel}, MetadataDirective='COPY')
             assert r['CopyObjectResult']['ETag'], rel
             done(rel, 'copy', size); return 'copy', size
@@ -86,4 +90,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

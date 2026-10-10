@@ -4,8 +4,7 @@
 import { gridFromManifest, tileOfCell, levelOfTile } from '../data/grid.js';
 import { parseRowsBin } from '../data/axis.js';
 import {
-  parseSnapshotHeader, checkSnapshotHeader, parseSnapshotDirectory, snapshotPrefixBytes,
-  decodeTileBlob, crc32,
+  readSnapshotDirectory, snapshotPrefixBytes, decodeTileBlob, crc32,
 } from '../data/snapshot.js';
 import { DecodedBlock, decodeBlock } from './blk2.js';
 import { LandscapeState } from './state.js';
@@ -353,11 +352,12 @@ export class ReplayEngine {
       this.dirCache.set(snap.block, hit);
       return hit;
     }
-    const prefix = await this.source.bytes(snap.file, 0, snapshotPrefixBytes(this.grid.tiles));
-    const header = parseSnapshotHeader(prefix);
-    checkSnapshotHeader(header, this.grid, snap.block);
+    // A snapshot's own directory is never larger than the dataset's (its grid ends at
+    // its block), but a small file can be shorter than the dataset's directory.
+    const want = snapshotPrefixBytes(this.grid.tiles);
+    const prefix = await this.source.bytes(snap.file, 0, snap.bytes ? Math.min(want, snap.bytes) : want);
+    const { header, dir } = readSnapshotDirectory(prefix, this.grid, snap.block, snap.bytes || null);
     if (snap.blkEnd !== undefined && header.blkEnd !== snap.blkEnd) throw new Error(snap.file + ': blkEnd ' + header.blkEnd + ' != manifest ' + snap.blkEnd);
-    const dir = parseSnapshotDirectory(prefix, this.grid.tiles, snap.bytes || null);
     const entry = { header, dir };
     this.dirCache.set(snap.block, entry);
     if (this.dirCache.size > DIR_CACHE) this.dirCache.delete(this.dirCache.keys().next().value);

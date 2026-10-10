@@ -9,7 +9,7 @@ import { rowOfAmount, parseRowsBin } from '../web/data/axis.js';
 import { DecodedBlock, decodeBlock, encodeBlock, indexRecords } from '../web/replay/blk2.js';
 import {
   crc32, encodeTileBlob, decodeTileBlob, buildSnapshotFile, parseSnapshotHeader, parseSnapshotDirectory,
-  snapshotPrefixBytes, checkSnapshotHeader,
+  snapshotPrefixBytes, checkSnapshotHeader, readSnapshotDirectory,
 } from '../web/data/snapshot.js';
 import { LandscapeState, TileSlot, makeApplier, makeGenericApplier } from '../web/replay/state.js';
 import { FrameBuilder, packFull, measureCode } from '../web/replay/pack.js';
@@ -220,13 +220,17 @@ test('BUVLSN1 file round trip: header, directory, blobs, SHA-256', async () => {
   const r = rng(21);
   for (const id of [0, 5, 539, 540, 757]) {
     const c = new Float64Array(65536 * 4);
-    for (let i = 0; i < 500; i++) { const o = Math.floor(r() * 65536) * 4; c[o] = 3; c[o + 1] = 300; }
+    const t = tileInfo(grid, id); // edge tiles are partial: stay inside the grid
+    for (let i = 0; i < 500; i++) {
+      const o = (Math.floor(r() * t.rows) * 256 + Math.floor(r() * t.cols)) * 4;
+      c[o] = 3; c[o + 1] = 300;
+    }
     tiles.set(id, c);
   }
   const totals = { countSmall: 12, countLarge: 3, satsSmall: 2 ** 52, satsLarge: 2100000000000000 };
-  const file = await buildSnapshotFile(grid, 314000, 123456789012, tiles, totals);
+  const file = await buildSnapshotFile(grid, grid.tip, 123456789012, tiles, totals);
   const h = parseSnapshotHeader(file);
-  checkSnapshotHeader(h, grid, 314000);
+  assert.equal(checkSnapshotHeader(h, grid, grid.tip).tiles, grid.tiles);
   assert.equal(h.blkEnd, 123456789012);
   assert.deepEqual(h.totals, totals);
   const digest = Buffer.from(await crypto.subtle.digest('SHA-256', file.subarray(128))).toString('hex');
@@ -241,6 +245,72 @@ test('BUVLSN1 file round trip: header, directory, blobs, SHA-256', async () => {
   }
   assert.throws(() => checkSnapshotHeader(h, grid, 1), /block/);
   assert.equal(snapshotPrefixBytes(758), 128 + 758 * 16);
+  // Tiles beyond the block's columns cannot be stored.
+  await assert.rejects(buildSnapshotFile(grid, 314000, 1, tiles, totals), /beyond its columns/);
+});
+
+test('BUVLSN1 snapshots describe their own grid and read in any larger dataset', async () => {
+  const block = 16000; // L0 column 250, inside the first tile column
+  const tight = gridFromManifest({ numBlocks: block + 1 });
+  const exact = gridFromManifest({ numBlocks: 256 * 64 });
+  const wide = gridFromManifest({ numBlocks: 256 * 64 + 3 * 64 });
+  assert.equal(exact.levels[0].tilesX, 1);
+  assert.equal(wide.levels[0].tilesX, 2);
+  assert.ok(wide.tiles > exact.tiles);
+  // Same occupied cells, keyed by each grid's own tile ids.
+  const placed = [[0, 0, 1, 1000, 0, 0], [17, 2071, 3, 1.5e9, 0, 0], [128, 900, 0, 0, 1, 6e8], [250, 1500, 2, 7, 4, 4e9]];
+  const cellsFor = (g) => {
+    const tiles = new Map();
+    for (let l = 0; l < g.levels.length; l++) {
+      const L = g.levels[l];
+      for (const [c0, r0, cs, ss, cl, sl] of placed) {
+        const col = Math.floor(c0 / 2 ** L.columnShift);
+        const row = Math.floor(r0 / 2 ** L.rowShift);
+        const id = L.firstTile + Math.floor(row / 256) * L.tilesX + Math.floor(col / 256);
+        if (!tiles.has(id)) tiles.set(id, new Float64Array(65536 * 4));
+        const o = ((row % 256) * 256 + (col % 256)) * 4;
+        const t = tiles.get(id);
+        t[o] += cs; t[o + 1] += ss; t[o + 2] += cl; t[o + 3] += sl;
+      }
+    }
+    return tiles;
+  };
+  const totals = { countSmall: 6, countLarge: 5, satsSmall: 1.5e9 + 1007, satsLarge: 4.6e9 };
+  const a = await buildSnapshotFile(tight, block, 4242, cellsFor(tight), totals);
+  const b = await buildSnapshotFile(exact, block, 4242, cellsFor(exact), totals);
+  const c = await buildSnapshotFile(wide, block, 4242, cellsFor(wide), totals);
+  assert.deepEqual(b, a);
+  assert.deepEqual(c, a);
+  const readIn = (file, g) => {
+    const { header, own, dir } = readSnapshotDirectory(file, g, block, file.length);
+    const tiles = new Map();
+    for (let id = 0; id < g.tiles; id++) {
+      if (!dir.bytes[id]) continue;
+      const cells = new Float64Array(65536 * 4);
+      assert.equal(crc32(file, dir.offset[id], dir.offset[id] + dir.bytes[id]), dir.crc[id]);
+      decodeTileBlob(file, dir.offset[id], dir.offset[id] + dir.bytes[id], cells);
+      tiles.set(id, cells);
+    }
+    return { header, own, tiles };
+  };
+  const got = readIn(c, wide);
+  assert.equal(got.header.numBlocks, block + 1);
+  assert.equal(got.own.tiles, tight.tiles);
+  assert.deepEqual([...got.tiles.keys()].sort((x, y) => x - y), [...cellsFor(wide).keys()].sort((x, y) => x - y));
+  for (const [id, cells] of cellsFor(wide)) assert.deepEqual(got.tiles.get(id), cells);
+  // A dataset shorter than the snapshot's own grid cannot hold it.
+  assert.throws(() => readSnapshotDirectory(a, gridFromManifest({ numBlocks: block }), block, a.length), /outside the dataset/);
+  // Files written before this format record their dataset's numBlocks: the tip
+  // file of 'exact', relabelled as an earlier block, is such a file.
+  const legacy = (await buildSnapshotFile(exact, exact.tip, 4242, cellsFor(exact), totals)).slice();
+  new DataView(legacy.buffer).setUint32(16, block, true);
+  const old = readIn(legacy, wide);
+  assert.equal(old.header.numBlocks, exact.numBlocks);
+  assert.equal(old.own.tiles, exact.tiles);
+  for (const [id, cells] of cellsFor(wide)) assert.deepEqual(old.tiles.get(id), cells);
+  const bad = a.slice();
+  new DataView(bad.buffer).setUint32(36, tight.l0Columns + 1, true);
+  assert.throws(() => readSnapshotDirectory(bad, wide, block, bad.length), /l0Columns/);
 });
 
 // ----------------------------------------------------------------- state
@@ -614,16 +684,14 @@ test('seek planner picks the cheapest of current, snapshot below and snapshot ab
 
 // -------------------------------------------- independent check of a C++ build
 // LANDSCAPE_DATA=dir limits the check to one dataset; otherwise every built dataset found.
-const DATASETS = (process.env.LANDSCAPE_DATA ? [process.env.LANDSCAPE_DATA] : ['/tmp/landscape_dev_small', '/tmp/landscape_dev', '/Volumes/4T Data/buv_render/landscape_966827'])
+const DATASETS = (process.env.LANDSCAPE_DATA ? [process.env.LANDSCAPE_DATA] : ['/tmp/landscape_dev_small', '/tmp/landscape_dev', '/Volumes/4T Data/buv_render/landscape_966827', '/Volumes/4T Data/buv_render/landscape_970658'])
   .filter((d) => existsSync(d + '/manifest.json'));
 // Default: first, last and a few evenly spaced pairs per dataset; LANDSCAPE_CHECK_PAIRS=all for every pair.
 const PAIR_LIMIT = process.env.LANDSCAPE_CHECK_PAIRS === 'all' ? Infinity : Number(process.env.LANDSCAPE_CHECK_PAIRS || 4);
 
 async function readTiles(src, snap, ids, grid) {
-  const prefix = await src.bytes(snap.file, 0, snapshotPrefixBytes(grid.tiles));
-  const header = parseSnapshotHeader(prefix);
-  checkSnapshotHeader(header, grid, snap.block);
-  const dir = parseSnapshotDirectory(prefix, grid.tiles, snap.bytes);
+  const prefix = await src.bytes(snap.file, 0, Math.min(snapshotPrefixBytes(grid.tiles), snap.bytes));
+  const { header, dir } = readSnapshotDirectory(prefix, grid, snap.block, snap.bytes);
   const out = new Map();
   for (const id of ids) {
     const slot = new TileSlot(grid, id);
@@ -662,12 +730,10 @@ for (const dir of DATASETS) {
     for (const k of chosen) {
       const A = snaps[k];
       const B = snaps[k + 1];
-      const pa = await src.bytes(A.file, 0, snapshotPrefixBytes(grid.tiles));
-      const pb = await src.bytes(B.file, 0, snapshotPrefixBytes(grid.tiles));
-      const da = parseSnapshotDirectory(pa, grid.tiles, A.bytes);
-      const db = parseSnapshotDirectory(pb, grid.tiles, B.bytes);
-      const ha = parseSnapshotHeader(pa);
-      const hb = parseSnapshotHeader(pb);
+      const pa = await src.bytes(A.file, 0, Math.min(snapshotPrefixBytes(grid.tiles), A.bytes));
+      const pb = await src.bytes(B.file, 0, Math.min(snapshotPrefixBytes(grid.tiles), B.bytes));
+      const { header: ha, dir: da } = readSnapshotDirectory(pa, grid, A.block, A.bytes);
+      const { header: hb, dir: db } = readSnapshotDirectory(pb, grid, B.block, B.bytes);
       assert.equal(ha.blkEnd, A.blkEnd);
       assert.equal(hb.blkEnd, B.blkEnd);
       const ids = [];
