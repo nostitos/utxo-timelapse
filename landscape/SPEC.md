@@ -467,7 +467,9 @@ ui_settings with the consumers):
   `amp.floor`, `amp.whale`, `amp.heatHalfLife` (blocks), `amp.heatFloor`, `amp.heatReference` (BTC), `amp.heatEdge`, `amp.heatEdgeBlocks`, `amp.flashSize`,
   `amp.flashThreshold` (BTC), `amp.edgeGlow`, `amp.edgeBlocks`, `amp.nowPlane`.
 - Geometry: `geo.smoothing` (none, bilinear, bicubic), `geo.stepped`,
-  `geo.subdivision` (1, 2, 4), `geo.columns`, `geo.columnRadius` (L0 cells),
+  `geo.subdivision` (1, 2, 4), `geo.columns`, `geo.columnShape` (cylinder, oval, box),
+  `geo.cylinderSides` (6–32), `geo.coinEdges`, `geo.coinThickness`,
+  `geo.columnRadius` (L0 cells), `geo.columnPixels` (px),
   `geo.instanceBudget` (≤ 8,000,000), `geo.columnGap`, `geo.lodBias`,
   `geo.pixelsPerCell`, `geo.tileBudget` (32–400), `geo.skirts`, `geo.wireframe`.
 - Lighting: `light.sunAzimuth`, `light.sunElevation`, `light.sunIntensity`,
@@ -498,9 +500,13 @@ palette with whale rows ≥ 10 BTC, offset 30, upper 500, gamma 1, unlit: albedo
 emissive 1, no sun/ambient/rim/shadows/sky/stars/fog, every post effect off, tone mapping
 none, exposure 1, neutral grade, AA none, black background and ground).
 **Performance → Balanced → High → Ultra → Extreme** scale quality up: Ultra targets
-≥ 60 fps at 3840×2160 on the M4 Max; Extreme deliberately exceeds it (≈30 fps, GPU-bound:
-2× scale or SSAA, 4 shadow cascades at 4096, high AO/SSGI/SSR/volumetric samples,
-columns with large budgets, subdivision 4).
+≥ 60 fps at 3840×2160 on the M4 Max with the heightfield alone; with coin stacks (the
+default since 2026-10-09) it measures about 35–40 fps in close and middle views and
+60 fps in the overview. Extreme deliberately exceeds the GPU (GPU-bound: 2× scale or SSAA,
+4 shadow cascades at 4096, high AO/SSGI/SSR/volumetric samples, columns with large
+budgets, subdivision 2). Coin-stack detail falls toward Performance: Column detail 4 px on
+High and above, 6 px on Balanced, 12 px with 8 sides and at most 250,000 stacks on
+Performance; Film draws stepped cells without stacks.
 
 Consumers: worker ← `amp.measure`, `color.measure`, `amp.heatHalfLife`,
 `geo.tileBudget` (via the client in main.js); terrain ← color.* transfer/palette/heat,
