@@ -19,7 +19,7 @@ import {
 import {
   selectTiles, cellSize, patchBounds, boxVisible, boxDistance, PATCH_CELLS, PATCHES_PER_SIDE,
 } from './lod.js';
-import { createColumns } from './columns.js';
+import { createColumns, NEAR_PX } from './columns.js';
 import { createAxisLabels } from './labels.js';
 import { createFlashes } from './flashes.js';
 
@@ -30,11 +30,13 @@ export const TERRAIN_DEFAULTS = Object.freeze({
   'color.ground': '#000000', 'color.heat': '#ffe9c4', 'color.heatGain': 2.5,
   'amp.curve': 'log', 'amp.exponent': 0.5, 'amp.exposure': 1, 'amp.reference': 500,
   'amp.exaggeration': 10, 'amp.floor': 0.05, 'amp.whale': 1, 'amp.heatHalfLife': 30,
-  'amp.heatFloor': 0.35, 'amp.heatReference': 100, 'amp.heatEdge': 0.3, 'amp.heatEdgeBlocks': 4032,
-  'amp.flashSize': 1, 'amp.flashThreshold': 0.0001, 'amp.edgeGlow': 1, 'amp.edgeBlocks': 1008,
+  'amp.heatFloor': 0.35, 'amp.heatReference': 100, 'amp.heatEdge': 0.15, 'amp.heatEdgeBlocks': 4032,
+  'amp.flashSize': 1, 'amp.flashThreshold': 0.0001, 'amp.edgeGlow': 0.25, 'amp.edgeBlocks': 1008,
   'amp.nowPlane': 0.15,
-  'geo.smoothing': 'bilinear', 'geo.stepped': false, 'geo.subdivision': 1, 'geo.columns': false,
+  'geo.smoothing': 'bilinear', 'geo.stepped': false, 'geo.subdivision': 1, 'geo.columns': true,
   'geo.columnRadius': 512, 'geo.instanceBudget': 1000000, 'geo.columnGap': 0.12, 'geo.lodBias': 0,
+  'geo.columnShape': 'cylinder', 'geo.cylinderSides': 12, 'geo.coinEdges': 0.4, 'geo.coinThickness': 0.15,
+  'geo.columnPixels': 4,
   'geo.pixelsPerCell': 3, 'geo.tileBudget': 225, 'geo.skirts': true, 'geo.wireframe': false,
   'light.emissive': 0.4, 'light.albedo': 0.85, 'light.rim': 0.35, 'light.rimColor': '#99bbff',
   'light.roughness': 0.65, 'light.metalness': 0.05, 'light.floorReflection': 0,
@@ -178,21 +180,22 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     }
     return columns;
   }
-  const _dir = new Vector3();
-  function columnFocus(cam) {
-    cam.getWorldDirection(_dir);
+  /**
+   * Where columns stand: every cell at most dMax from the camera, where a cell (64 blocks
+   * wide) still covers geo.columnPixels on screen; farther cells are too small for their
+   * shape to show, and the stepped heightfield draws them. Measured from the ground under
+   * the camera, that is a disc of radius sqrt(dMax^2 - h^2) around it (h = height above the
+   * terrain there), capped by geo.columnRadius. Cells at least NEAR_PX wide get the full
+   * cylinder (nearCells). Returns {focus: [x, z], radiusCells, nearCells}.
+   */
+  function columnRegion(cam, projScale) {
     const o = cam.position;
-    const R = get('geo.columnRadius') * 0.064;
-    let fx = o.x;
-    let fz = o.z;
-    if (_dir.y < -1e-3) {
-      let t = -o.y / _dir.y;
-      const maxT = Math.max(3 * R, 4 * Math.max(1, o.y));
-      if (t > maxT) t = maxT;
-      fx = o.x + _dir.x * t;
-      fz = o.z + _dir.z * t;
-    }
-    return [Math.min(worldW, Math.max(0, fx)), Math.min(worldD, Math.max(0, fz))];
+    const h = Math.max(0, o.y - Math.max(0, heightAt(o.x, o.z)));
+    const reach = (px) => {
+      const d = (0.064 * projScale) / Math.max(0.5, px);
+      return d > h ? Math.sqrt(d * d - h * h) / 0.064 : 0;
+    };
+    return { focus: [o.x, o.z], radiusCells: Math.min(get('geo.columnRadius'), reach(get('geo.columnPixels'))), nearCells: reach(NEAR_PX) };
   }
   const needs = { rebuild: false, capacity: false };
   function applySetting(id, value) {
@@ -294,6 +297,33 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     const list = [];
     drawn = new Map();
     const maxSub = mode.stepped ? 1 : mode.sub;
+    // Columns stand in a disc around the camera, where the heightfield hides itself; patches
+    // entirely inside it (on resident L0 tiles) are skipped instead of drawn and discarded.
+    const region = mode.columns ? columnRegion(cam, projScale) : null;
+    const colR = region ? Math.min(region.radiusCells, columns ? columns.state.budgetCells : Infinity) * 0.064 : 0;
+    const L0 = grid.levels[0];
+    const insideColumns = (t, px, py) => {
+      if (!(colR > 0)) return false;
+      const { cw, ch } = cellSize(grid, t.level);
+      const x0 = (t.col0 + px * PATCH_CELLS) * cw;
+      const z0 = (t.row0 + py * PATCH_CELLS) * ch;
+      const x1 = (t.col0 + Math.min(t.cols, (px + 1) * PATCH_CELLS)) * cw;
+      const z1 = (t.row0 + Math.min(t.rows, (py + 1) * PATCH_CELLS)) * ch;
+      const fx = Math.max(Math.abs(x0 - region.focus[0]), Math.abs(x1 - region.focus[0]));
+      const fz = Math.max(Math.abs(z0 - region.focus[1]), Math.abs(z1 - region.focus[1]));
+      if (fx * fx + fz * fz >= colR * colR) return false;
+      if (t.level === 0) return true;
+      // A coarser patch hides only where every L0 tile under it is resident (the mask's test).
+      const tx0 = Math.floor(x0 / 0.064 / 256);
+      const tx1 = Math.min(L0.tilesX - 1, Math.floor((x1 / 0.064 - 1e-6) / 256));
+      const tz0 = Math.floor(z0 / 0.1 / 256);
+      const tz1 = Math.min(L0.tilesY - 1, Math.floor((z1 / 0.1 - 1e-6) / 256));
+      for (let ty = tz0; ty <= tz1; ty++) {
+        for (let tx = tx0; tx <= tx1; tx++) if (!atlas.isResident(L0.firstTile + ty * L0.tilesX + tx)) return false;
+      }
+      return true;
+    };
+    let hiddenPatches = 0;
     for (const { id, mask } of sel.draw) {
       const slot = atlas.slotOf(id);
       if (slot < 0) continue;
@@ -311,6 +341,10 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
         const py = (b / PATCHES_PER_SIDE) | 0;
         const bb = patchBounds(grid, id, px, py, heightBound(maxV));
         if (!boxVisible(planes, bb)) continue;
+        if (insideColumns(t, px, py)) {
+          hiddenPatches++;
+          continue;
+        }
         const d = boxDistance(pos.x, pos.y, pos.z, bb);
         let sub = 1;
         if (maxSub > 1) {
@@ -371,8 +405,10 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     atlas.flush();
     if (mode.columns) {
       ensureColumns().update({
-        enabled: true, focus: columnFocus(cam), radiusCells: get('geo.columnRadius'),
+        enabled: true, focus: region.focus, radiusCells: region.radiusCells, nearCells: region.nearCells,
         budget: Math.round(get('geo.instanceBudget')), gap: get('geo.columnGap'), dataVersion: atlas.version,
+        shape: get('geo.columnShape'), sides: Number(get('geo.cylinderSides')), edges: get('geo.coinEdges'),
+        thickness: get('geo.coinThickness'),
       });
     } else if (columns) {
       columns.update({ enabled: false, gap: get('geo.columnGap') });
@@ -394,11 +430,14 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     stats.columnRadius = columns && mode.columns ? columns.state.effectiveCells : 0;
     stats.instances = n + stats.columns;
     stats.patches = n;
+    stats.patchesUnderColumns = hiddenPatches;
     stats.tiles = drawn.size;
     stats.resident = resident;
     stats.selected = sel.selected;
     stats.desired = sel.desired.length;
-    stats.triangles = triangles;
+    stats.columnShape = columns && mode.columns ? columns.state.shape : null;
+    const cs = columns && mode.columns && columns.state.tiles > 0 ? columns.state : null;
+    stats.triangles = triangles + (cs ? cs.near * cs.trianglesPerColumn + cs.far * cs.trianglesFar : 0);
     stats.patchesBySub = { 1: counts.get(1) || 0, 2: counts.get(2) || 0, 4: counts.get(4) || 0 };
     stats.lodMs = performance.now() - t0;
 

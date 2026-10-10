@@ -32,7 +32,7 @@ The inspector's history section reads the native explorer's cell API. Run a seco
 ./build_local/buv -ns -tc=utxo_explorer -cfg=configs/buv_explorer.json -port=12989
 ```
 
-`?webgl=1` forces the WebGL2 fallback. Presets are then capped at High, and the features that need compute shaders (instanced columns, SSGI, automatic exposure) are off. The URL hash keeps the block, camera, navigation mode, preset and setting overrides, so a copied link reproduces the view.
+`?webgl=1` forces the WebGL2 fallback. Presets are then capped at High, and the features that need compute shaders (coin-stack columns, SSGI, automatic exposure) are off, so the whole landscape is the heightfield. The URL hash keeps the block, camera, navigation mode, preset and setting overrides, so a copied link reproduces the view.
 
 ## Online
 
@@ -147,7 +147,9 @@ Activity heat adds the BTC each spend moves to its cell and decays with a half-l
 
 ### Rendering
 
-Rendering uses three.js 0.186.0 `WebGPURenderer` with TSL node materials, vendored unmodified in `landscape/web/vendor/three/`. The terrain draws from a GPU tile atlas and always uses the deepest fully resident level, so there are no holes or overlaps. Heightfield patches are displaced in the vertex stage, with normals from neighbouring cells and bicubic derivatives when bicubic smoothing is on. Stepped cells, subdivision up to 4 and skirts are options. Column mode draws one instanced box per occupied level-0 cell near the camera focus; a compute pass builds the instances and an indirect draw renders them. The Film palette path compares against a 255-entry boundary table generated from the compiled `DensityToImage`, because AppleClang fuses its `mK*x + mD` and about 400 boundary densities would otherwise land one index off.
+Rendering uses three.js 0.186.0 `WebGPURenderer` with TSL node materials, vendored unmodified in `landscape/web/vendor/three/`. The terrain draws from a GPU tile atlas and always uses the deepest fully resident level, so there are no holes or overlaps. Heightfield patches are displaced in the vertex stage, with normals from neighbouring cells and bicubic derivatives when bicubic smoothing is on. Stepped cells, subdivision up to 4 and skirts are options. The Film palette path compares against a 255-entry boundary table generated from the compiled `DensityToImage`, because AppleClang fuses its `mK*x + mD` and about 400 boundary densities would otherwise land one index off.
+
+Near the camera, every occupied level-0 cell is drawn as its own coin stack (Geometry → Column cells, on by default with WebGPU). Each frame a compute pass scans the resident level-0 tiles inside a disc around the camera and appends the occupied cells to an instance list, and two indirect draws render it, so playback needs no CPU work. The disc reaches as far as cells stay at least Column detail pixels wide on screen (4 px on High); beyond it the heightfield takes over, and heightfield patches entirely under the disc are skipped. Stacks wider than 20 px use Cylinder sides (12 on High); smaller ones use a 4-sided prism with the circle's area that is still shaded round, because its outline cannot be seen at that size. A cylinder is as wide as its cell's 64 blocks, so rows keep a gap between them; Oval fills the cell and Box draws square prisms. Thin lines divide the sides into coins up close and fade out where a coin would be thinner than about two pixels. They are decorative: stack height follows the height curve, not a count of outputs. Each stack has one palette colour, the exact colour of its cell. Spend flashes light the cap and the top quarter of the side at full strength, dropping to 30% further down, so a busy area reads as lit stack tops instead of glowing walls.
 
 The frame pipeline adds cascaded sun shadows (PCF or PCSS), hemisphere light, sky, stars, height fog, a sun-shadowed volumetric fog at half resolution, screen-space god rays, GTAO or SSAO, SSGI, SSR at half resolution, bloom, depth of field with autofocus, motion blur, six tone mappers, manual or automatic exposure (luminance histogram in a compute pass), a colour grade, a `.cube` 3D LUT, grain, chromatic aberration, vignette, and FXAA, SMAA, TRAA or 2×/4× supersampling. Only enabled passes are built. Numeric and colour settings update uniforms, and structural switches rebuild only the affected pass. The overlay reports GPU time from timestamp queries; Apple GPUs overlap pass intervals, so it shows their union.
 
@@ -155,14 +157,14 @@ The frame pipeline adds cascaded sun shadows (PCF or PCSS), hemisphere light, sk
 
 | Preset | What it turns on |
 |---|---|
-| Film | Unlit film colours: weighted density through the film palette (white-hot rows at 10 BTC and above), stepped cells, black background and ground; no grid, lighting, shadows, fog, sky, tone mapping or post effects. Heat glow and flashes still appear during playback, like the film's activity flashes, and are zero right after a seek. |
-| Performance | 75% resolution, FXAA, no shadows or ambient occlusion, light bloom, 96 resident tiles, coarser detail |
-| Balanced | Native resolution, SMAA, two 2048 shadow cascades, SSAO, bloom, 160 resident tiles |
-| High | Startup preset: TRAA, three 2048 shadow cascades, GTAO, bloom, fog, sky, stars, 225 resident tiles |
-| Ultra | High plus three 4096 shadow cascades, volumetric light, god rays and bicubic smoothing; targets 60 fps at 4K |
-| Extreme | Ultra plus a fourth cascade, 2× supersampling, softer shadows, GTAO with 32 samples, SSR, 64 volumetric steps, motion blur, subdivision 2, finer detail and up to 2 million instanced columns; deliberately GPU-bound |
+| Film | Unlit film colours: weighted density through the film palette (white-hot rows at 10 BTC and above), stepped cells instead of coin stacks, black background and ground; no grid, lighting, shadows, fog, sky, tone mapping or post effects. Heat glow and flashes still appear during playback, like the film's activity flashes, and are zero right after a seek. |
+| Performance | 75% resolution, FXAA, no shadows or ambient occlusion, light bloom, 96 resident tiles, coarser detail; 8-sided coin stacks only where cells are 12 px wide or more, at most 250,000 |
+| Balanced | Native resolution, SMAA, two 2048 shadow cascades, SSAO, bloom, 160 resident tiles; coin stacks where cells are 6 px wide or more |
+| High | Startup preset: TRAA, three 2048 shadow cascades, GTAO, bloom, fog, sky, stars, 225 resident tiles; 12-sided coin stacks where cells are 4 px wide or more |
+| Ultra | High plus three 4096 shadow cascades, volumetric light, god rays and bicubic smoothing |
+| Extreme | Ultra plus a fourth cascade, 2× supersampling, softer shadows, GTAO with 32 samples, SSR, 64 volumetric steps, motion blur, subdivision 2, finer detail and coin stacks out to 1,024 cells (up to 2 million); deliberately GPU-bound |
 
-Measured in Chrome 154 on the 120 Hz LG 3840 × 2160 display (headed window, exact 3840 × 2160 viewport), full dataset at the tip, M4 Max with 40 GPU cores. Figures are fps (GPU ms) and GPU busy time from `landscape/tools/gpu-util.mjs`, the counter Activity Monitor's GPU history shows. The display caps frame rate at 120.
+The table below predates coin stacks: it was measured on 2026-10-07 with the heightfield alone, which is what Column cells off gives today (Extreme already drew its columns). The coin-stack measurements follow it. Measured in Chrome 154 on the 120 Hz LG 3840 × 2160 display (headed window, exact 3840 × 2160 viewport), full dataset at the tip, M4 Max with 40 GPU cores. Figures are fps (GPU ms) and GPU busy time from `landscape/tools/gpu-util.mjs`, the counter Activity Monitor's GPU history shows. The display caps frame rate at 120.
 
 | Preset | Overview | Close view | GPU busy |
 |---|---|---|---|
@@ -179,11 +181,25 @@ Ultra originally used four cascades and measured 59.2–65 fps in the close view
 
 Safari 27.0.1 in a 3840 × 2078 window on the same display (overview at the tip): High 60.1 fps (7.8 ms GPU), Ultra 60 fps (10.5 ms), Extreme 30.7 fps (32.5 ms). Safari limits animation frames to 60 Hz; Ultra's GPU time leaves room under that cap. GPU busy time reached 100% during Extreme.
 
+### Coin stacks
+
+Measured on 2026-10-09 in headless Chrome 154 with WebGPU at 3840 × 2160 on the same M4 Max, at block 840,000, with two interleaved runs per cell (median of 40 samples each). Headless Chrome caps at 60 fps, so the table gives GPU ms; before this change, headless and headed runs agreed within 0.5 ms for Ultra's close view. Camera targets (x, z, distance, yaw, pitch) were overview 600, 104, 700, 36, −31; middle 820, 110, 30, 28, −30; close 835, 120, 8, 30, −32.
+
+| Preset | Overview | Middle view | Close view | Stacks in the close view |
+|---|---|---|---|---|
+| Performance | 3.6–3.9 | 6.0–7.2 | 5.8–6.1 | 41,000 |
+| Balanced | 5.6–6.2 | 12.7–15.8 | 13.1–16.2 | 154,000 |
+| High | 5.9–6.2 | 20.9–23.0 | 20.7–22.3 | 235,000 |
+| Ultra | 7.2 | 24.5–28.7 | 24.6–26.6 | 235,000 |
+| Extreme | 17.6–18.4 | 74.9–79.5 | 65.6–73.9 | 273,000 |
+
+With Column cells off, High measured 9.6–9.7 ms close and 10.0–13.8 ms in the middle view, and Ultra 13.0 and 16.4 ms. Coin stacks therefore take High from the display's frame rate to about 45 fps and Ultra to about 35–40 fps in close and middle views. The overview does not change, because its cells are narrower than Column detail and stay heightfield. Balanced, the online first-visit preset, stays within 60 fps at 4K. The cost follows the number of stacks more than their shape: in the same runs boxes took 17.4–24.1 ms against 20.8–26.9 ms for 12-sided cylinders, and Column detail 8 px (79,000–92,000 stacks) took 18.8–21.4 ms. Shadows account for 3–5 ms. Extreme's overview no longer draws sub-pixel columns, so it runs at about 55 fps there; close up it stays deliberately GPU-bound at 13–15 fps, mostly SSR.
+
 To repeat the measurement, open `/dev/render_post-bench.html?terrain=real&block=966827&cam=overview&warm=4000&measure=6000` (or `cam=close`, or `presets=High,Ultra`) and run `node landscape/tools/gpu-util.mjs --interval 500 --duration 120` alongside. Results appear at the top right and in `window.__benchResult`.
 
 ## Settings reference
 
-The settings panel (G) is generated from `landscape/web/settings.schema.js`: 137 settings in seven groups, presets with a Custom state and override list, per-group and global reset, search, JSON export and import, a share link, a gradient editor and `.cube` LUT loading. Personal preferences such as camera feel and overlays are never changed by presets. The table below is generated from the schema.
+The settings panel (G) is generated from `landscape/web/settings.schema.js`: 142 settings in seven groups, presets with a Custom state and override list, per-group and global reset, search, JSON export and import, a share link, a gradient editor and `.cube` LUT loading. Personal preferences such as camera feel and overlays are never changed by presets. The table below is generated from the schema.
 
 ### Colour
 
@@ -238,11 +254,11 @@ The settings panel (G) is generated from `landscape/web/settings.schema.js`: 137
 | Heat half-life (blocks) <br><code>amp.heatHalfLife</code> | 0.5–100,000 (log) blocks | 30 | — | rebuilds worker. A spend flash fades to half every this many blocks (30 blocks = 0.5 s at 1x, about 5 hours of chain time). |
 | Flash floor <br><code>amp.heatFloor</code> | 0–1 | 0.35 | — | Brightness every spend reaches at its block, whatever its amount (as every spent output flashes in the film); 0 makes brightness depend only on the BTC moved. |
 | Full flash at (BTC) <br><code>amp.heatReference</code> | 0.001–100,000 (log) BTC | 100 | — | BTC moved from one cell (summed with its recent spends) that reaches full flash brightness; smaller spends scale down logarithmically to the floor. |
-| Edge flash strength <br><code>amp.heatEdge</code> | 0–1 | 0.3 | — | Brightness of flashes for coins created within the edge flash window of the current block, ramping to full beyond it. Young coins are spent constantly; the film also keeps those flashes small. 1 treats them like old coins. |
+| Edge flash strength <br><code>amp.heatEdge</code> | 0–1 | 0.15 | — | Brightness of flashes for coins created within the edge flash window of the current block, ramping to full beyond it. Young coins are spent constantly; the film also keeps those flashes small. 1 treats them like old coins. |
 | Edge flash window (blocks) <br><code>amp.heatEdgeBlocks</code> | 1–100,000 (log) blocks | 4,032 | — | Coins created within this many blocks of the current block count as creation-edge spends for Edge flash strength (4,032 blocks = about four weeks, close to the film's creation-edge flash zone). |
 | Flash size <br><code>amp.flashSize</code> | 0–10 | 1 | — | Size of the flash sprites over spent cells: at least 3 px on screen, growing to 16 px at the full-flash amount, smaller for coins spent near the creation edge. 0 hides them. |
 | Flash threshold (BTC) <br><code>amp.flashThreshold</code> | 1e-8–100,000 (log) BTC | 0.0001 | — | Smallest BTC moved from one cell within one block that spawns a flash sprite; the default skips dust. Up to 400 new sprites per frame, old coins and larger amounts first. |
-| Creation-edge glow <br><code>amp.edgeGlow</code> | 0–10 | 1 | Film 0 | Emissive boost on outputs created in the most recent blocks; 0 = off. |
+| Creation-edge glow <br><code>amp.edgeGlow</code> | 0–10 | 0.25 | Film 0 | Emissive boost on outputs created in the most recent blocks, fading over Edge width; 0 = off. At 1 the newest cells glow at twice their colour and bloom spreads a bright haze around the creation edge. |
 | Edge width (blocks) <br><code>amp.edgeBlocks</code> | 1–100,000 (log) blocks | 1,008 | — | Width of the creation-edge glow, counted back from the current block (1,008 blocks = about one week). |
 | Now plane <br><code>amp.nowPlane</code> | 0–1 | 0.15 | Film 0 | Opacity of the translucent vertical plane at the current block; 0 = off. |
 
@@ -251,13 +267,18 @@ The settings panel (G) is generated from `landscape/web/settings.schema.js`: 137
 | Setting | Range / options | Default (High) | Preset changes | Notes |
 |---|---|---|---|---|
 | Smoothing <br><code>geo.smoothing</code> | none, bilinear, bicubic | bilinear | Film none; Ultra bicubic; Extreme bicubic | rebuilds material. Height interpolation between cell centres. Changes the surface only when Subdivision is 2 or 4 (at 1x every vertex sits on a cell centre); Stepped cells ignore it. |
-| Stepped cells <br><code>geo.stepped</code> | bool | off | Film on | rebuilds material. Flat-topped cells with vertical walls; each cell shows exactly one palette colour. Ignores Smoothing and Subdivision. |
+| Stepped cells <br><code>geo.stepped</code> | bool | off | Film on | rebuilds material. Flat-topped cells with vertical walls; each cell shows exactly one palette colour. Ignores Smoothing and Subdivision. Applies to the heightfield, which draws the landscape beyond the coin stacks of Column cells (and everywhere on WebGL2). About four times the triangles of the smooth surface. |
 | Subdivision <br><code>geo.subdivision</code> | 1, 2, 4 | 1 | Extreme 2 | rebuilds terrain. Heightfield vertices per cell edge (more = smoother bicubic surfaces, more triangles). |
 | Skirts <br><code>geo.skirts</code> | bool | on | — | rebuilds terrain. Vertical skirts hide cracks between tiles of different levels. |
 | Wireframe <br><code>geo.wireframe</code> | bool | off | — | personal preference, rebuilds material. Draw the terrain as wireframe (diagnostic). |
-| Column mode <br><code>geo.columns</code> | bool | off | Extreme on | WebGPU only, rebuilds terrain. One instanced box per occupied L0 cell near the view focus; the heightfield continues beyond the radius. Needs WebGPU compute. |
-| Column radius <br><code>geo.columnRadius</code> | 16–8,192 (log) L0 cells | 512 | Extreme 1,024 | WebGPU only. Columns are drawn within this many L0 cells of the view focus. |
-| Instance budget <br><code>geo.instanceBudget</code> | 10,000–8,000,000 (log) | 1,000,000 | Extreme 2,000,000 | WebGPU only, rebuilds terrain. Maximum instanced columns per frame (up to 8,000,000). |
+| Column cells <br><code>geo.columns</code> | bool | on | Film off | WebGPU only, rebuilds terrain. Near the view, every occupied level-0 cell (64 blocks x 1 amount row) is its own column, a coin stack by default (Cell shape); the heightfield continues beyond Column radius. Needs WebGPU compute; WebGL2 draws the heightfield only. |
+| Cell shape <br><code>geo.columnShape</code> | cylinder, oval, box | cylinder | — | WebGPU only, rebuilds material. Shape of each column. Cylinder: a round stack as wide as the cell (64 blocks), leaving room between amount rows. Oval: a cylinder stretched to fill the cell. Box: a square prism like Stepped cells. |
+| Cylinder sides <br><code>geo.cylinderSides</code> | 6, 8, 12, 16, 24, 32 | 12 | Performance 8 | WebGPU only, rebuilds material. Sides of each cylinder: rounder outlines up close, at 3 triangles per side per column. |
+| Coin edges <br><code>geo.coinEdges</code> | 0–1 | 0.4 | — | WebGPU only. Strength of the thin lines that divide each cylinder into coins when you are close. Decorative: heights follow the height curve, not a count of outputs. The lines fade out where a coin is thinner than about two pixels; 0 = smooth sides. |
+| Coin thickness <br><code>geo.coinThickness</code> | 0.05–1 | 0.15 | — | WebGPU only. Thickness of one coin as a fraction of its diameter (a real coin is about 0.08 to 0.15). |
+| Column radius <br><code>geo.columnRadius</code> | 16–8,192 (log) L0 cells | 512 | Extreme 1,024 | WebGPU only. Upper limit on how far columns reach from the camera, in level-0 cell widths (64 blocks each). Column detail usually sets the reach first. |
+| Column detail <br><code>geo.columnPixels</code> | 1–32 (log) px | 4 | Performance 12; Balanced 6 | WebGPU only. Columns are drawn where a cell is at least this many pixels wide on screen, so they follow the camera; smaller cells are drawn by the heightfield, where their shape would not show. Lower = columns reach farther and cost more. |
+| Instance budget <br><code>geo.instanceBudget</code> | 10,000–8,000,000 (log) | 1,000,000 | Performance 250,000; Extreme 2,000,000 | WebGPU only, rebuilds terrain. Maximum instanced columns per frame (up to 8,000,000). |
 | Column gap <br><code>geo.columnGap</code> | 0–0.9 | 0.12 | — | WebGPU only. Fraction of each cell footprint left empty between columns. |
 | LOD bias <br><code>geo.lodBias</code> | -3–3 | 0 | — | +1 asks for one level finer detail, -1 one level coarser (refinement threshold = pixels per cell x 2^-bias). |
 | Pixels per cell <br><code>geo.pixelsPerCell</code> | 0.5–32 (log) px | 3 | Performance 6; Balanced 4; Extreme 2 | Refine a tile while its cells cover more than this many screen pixels; lower = finer, more tiles. |
@@ -396,7 +417,8 @@ In the app, 1× playback from block 314,000 advanced 602 blocks in 10.03 s witho
 ## Limitations
 
 - Every block has the same width, so early eras look sparse next to the film. Horizontal detail stops at 64-block cells, although the HUD, stepping and playback are exact per block.
-- Smooth surfaces blend colours between cells. Exact per-cell colours need stepped cells, which the Film preset uses.
+- Coin stacks show each cell's exact colour near the camera; beyond them, the smooth heightfield blends colours between cells. Exact per-cell colours everywhere need stepped cells, which the Film preset uses. Coin edges are decorative: stack height follows the height curve, not a count of outputs.
+- Coin stacks cost GPU time in close and middle views (see Coin stacks under Presets and measured performance). Column detail 8 px, or Column cells off, trades detail back for frame rate.
 - Heat starts empty after a seek, and tiles that load during playback start without heat history.
 - Instanced columns, SSGI and automatic exposure need WebGPU. On WebGL2, at most 24 tiles upload per frame, so distant tiles can lag during playback.
 - God rays work in screen space and appear only when the sun is near the view; the volumetric option gives shadowed light shafts from any angle. Fewer bloom mips narrow the glow without saving GPU time. PCSS estimates blocker distance approximately.
