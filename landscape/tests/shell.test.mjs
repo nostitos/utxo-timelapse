@@ -7,7 +7,8 @@ import { fmtBtc, fmtAge, fmtInt, fmtCompact, fmtAmount, isoUtc, escapeHtml } fro
 import { dateToBlock, parseUtc, toDateTimeInput, blockTime } from '../web/ui/time.js';
 import { encodeHash, decodeHash, encodeCam, decodeCam } from '../web/ui/hash.js';
 import {
-  createPlayback, planPlay, snapshotAtOrBelow, speedById, SPEEDS, STEP_LARGE,
+  createPlayback, planPlay, snapshotAtOrBelow, speedById, defaultStartBlock, SPEEDS, STEP_LARGE,
+  START_BEFORE_TIP,
 } from '../web/ui/playback.js';
 import { ERAS, BANDS, bandRows, resolvePlace, eraBlock } from '../web/ui/places.js';
 import { buildMinAmtTable, rowOfAmount } from '../web/data/axis.js';
@@ -375,6 +376,14 @@ test('planPlay and snapshot lookup', () => {
   assert.equal(snapshotAtOrBelow(snaps, 5000), 900);
   assert.equal(snapshotAtOrBelow(snaps, -1), null);
   assert.equal(snapshotAtOrBelow([], 5), null);
+  // Startup without a block in the link: the latest snapshot at least a week before the tip.
+  assert.equal(START_BEFORE_TIP, 1008);
+  const tipSnaps = [0, 964828, 965267, 965702, 966141, 966578, 966827];
+  assert.equal(defaultStartBlock(966827, tipSnaps), 965702);
+  assert.equal(defaultStartBlock(966710, tipSnaps), 965702);
+  assert.equal(defaultStartBlock(966709, tipSnaps), 965267);
+  assert.equal(defaultStartBlock(966827, []), 966827 - 1008);
+  assert.equal(defaultStartBlock(500, [0, 450, 500]), 0);
   assert.equal(planPlay({ speed: '1', block: 10, target: 10.9, tip: 100, snapshots: snaps }), null);
   assert.deepEqual(planPlay({ speed: '1', block: 10, target: 11.2, tip: 100, snapshots: snaps, frameMs: 16.7 }), { kind: 'advance', target: 11, budgetMs: 17 });
   assert.deepEqual(planPlay({ speed: '100', block: 0, target: 2000, tip: 5000, snapshots: snaps, exactRate: 300 }), { kind: 'seek', block: 900 });

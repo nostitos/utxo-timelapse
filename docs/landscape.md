@@ -102,6 +102,8 @@ Phones get their own layout below 700 px of width, or below 500 px of height in 
 
 Places jumps to the eras at blocks 50,000, 210,000, 314,000, 420,000, 500,000, 630,000, 700,000, 840,000, 900,000 and the tip, or flies to the amount bands: the 50 BTC coinbase row, 10 BTC and up, 1 BTC, 10,000 sat, 546 sat and 1–100 sat. The timeline accepts a block height or a UTC date.
 
+A link without a block opens at the latest snapshot at least 1,008 blocks (about a week) before the last block, so Play has something to play: with snapshots about 440 blocks apart near the tip, that is 1,008 to about 1,450 blocks back, 17 to 24 seconds at 1×. The view loads straight from that snapshot without replay. Places → Latest block goes to the tip.
+
 ## How it works
 
 ### Grid and measures
