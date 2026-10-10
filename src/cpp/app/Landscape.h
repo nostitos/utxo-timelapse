@@ -199,7 +199,7 @@ struct Totals {
 
 struct SnapshotHeader {
     uint32_t block{};
-    uint32_t numBlocks{};
+    uint32_t numBlocks{}; // of the snapshot's own grid (see SnapshotView::grid)
     uint64_t blkEnd{};
     Totals totals{};
     Hash sha256{}; // of bytes [128, EOF)
@@ -211,14 +211,23 @@ struct DirEntry {
     uint32_t crc{};
 };
 
-// Encodes all seven levels as BUVLSN1 into out (replacing its contents). Checks
-// state invariants (non-negative, class ranges, equal totals on every level).
+// Encodes all seven levels as BUVLSN1 into out (replacing its contents). The file
+// describes its own grid, Grid::make(block + 1), so the same block encodes to the
+// same bytes whatever the dataset's tip; 'levels' use the layout of 'grid' and must
+// be empty beyond the snapshot's columns. Checks state invariants (non-negative,
+// class ranges, equal totals on every level).
 auto encodeSnapshot(Grid const& grid, std::array<Cell const*, kLevels> const& levels, uint32_t block, uint64_t blkEnd,
                     std::vector<uint8_t>& out) -> SnapshotHeader;
 
 // Validates header, layout, SHA-256 and every CRC. Blobs are parsed separately.
+// The header's numBlocks may be anything in [block + 1, grid.numBlocks]: files
+// written before self-describing snapshots record their dataset's count. The
+// view's 'grid' is the snapshot's own grid and 'dir' is indexed by its tile ids. A
+// tile keeps its level, column and row origin in any larger grid, so cells decode
+// into the dataset layout directly; dataset tiles beyond the snapshot are empty.
 struct SnapshotView {
     SnapshotHeader header{};
+    Grid grid{};
     std::vector<DirEntry> dir{};
     uint8_t const* data{};
     size_t size{};

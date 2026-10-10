@@ -113,6 +113,8 @@ Three changes would shrink the node time most:
 1. Expose the host CPU to the VM (QEMU `host-passthrough`). The current model hides AVX2, which x265 and compiled code use.
 2. Make 3D snapshots independent of the tip. Only the block count and level-0 column count in the snapshot header change
    (3 bytes of a 52.6 MB snapshot); the tile data is identical. Reusing snapshots turns a 58 GB upload into about 60 MB a day.
+   Done the same day: snapshots now describe their own grid (`landscape/SPEC.md` §4). The first dataset built that way
+   uploads its snapshots once more; later datasets copy them inside R2.
 3. Read history inputs in parallel or sequentially first: the history write is one-at-a-time I/O (QD1), and the node does
    4.6× more random reads with eight in flight.
 

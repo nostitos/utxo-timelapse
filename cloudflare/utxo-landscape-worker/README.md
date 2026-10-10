@@ -37,14 +37,14 @@ A deploy uploads the working tree's `landscape/web` and bundles `../utxo-video-w
 Datasets are immutable: each one gets a new prefix `landscape/d<tip>-<yyyymmdd>`. The upload scripts need boto3 (`python3 -m venv /tmp/landscape_r2_venv && /tmp/landscape_r2_venv/bin/pip install boto3`). The checksum variables keep every upload a plain single PUT whose ETag is the file's MD5.
 
 1. Build and verify the dataset locally (`landscape_build`, `landscape_verify`; see `docs/landscape.md`).
-2. Upload everything except the manifest. When the previous dataset is still on disk, `scripts/landscape_r2_publish.py` copies every file whose SHA-256 is unchanged (the chunks before the old tip) inside R2 and uploads only the rest:
+2. Upload everything except the manifest. `scripts/landscape_r2_publish.py` copies every file whose SHA-256 and size match the previous dataset (the chunks and snapshots before the old tip) inside R2 and uploads only the rest. The previous dataset directory needs only its `manifest.json` and `chunks.json`, which can be downloaded from `/dataset/<old-id>/`:
    ```sh
    export AWS_REQUEST_CHECKSUM_CALCULATION=when_required AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
    /tmp/landscape_r2_venv/bin/python scripts/landscape_r2_publish.py "/Volumes/4T Data/buv_render/landscape_<tip>" \
      "/Volumes/4T Data/buv_render/landscape_<old-tip>" --prefix landscape/<id> --old-prefix landscape/<old-id> \
      --state ~/.config/utxo-r2/landscape-<id>-publish.json --no-manifest
    ```
-   On October 9, 2026 it copied 4,382 chunks (18.3 GB) in about 3 minutes; the 1,101 snapshots still had to be uploaded (57.8 GB, 36 minutes at 27 MB/s), because each snapshot header records the grid size of its dataset. Without a previous local dataset, upload everything:
+   On October 9, 2026 it copied 4,382 chunks (18.3 GB) in about 3 minutes; the 1,101 snapshots still had to be uploaded (57.8 GB, 36 minutes at 27 MB/s), because their headers recorded the grid size of the dataset. Snapshots now describe their own grid: the first dataset built with that format uploads its snapshots once more, and later datasets copy every snapshot before the old tip. For a first publication, upload everything:
    ```sh
    export AWS_REQUEST_CHECKSUM_CALCULATION=when_required AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
    /tmp/landscape_r2_venv/bin/python scripts/r2_upload_tree_singlepart.py "/Volumes/4T Data/buv_render/landscape_<tip>" \

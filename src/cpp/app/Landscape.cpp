@@ -933,16 +933,33 @@ auto encodeSnapshot(Grid const& grid, std::array<Cell const*, kLevels> const& le
     if (block >= grid.numBlocks) {
         fail("snapshot block outside the grid");
     }
-    auto const dirEnd = size_t(kHeaderBytes) + size_t(grid.tiles) * kDirectoryEntryBytes;
+    // The file's own grid. Its tiles keep their level, column and row origin in the
+    // dataset grid, and row counts do not depend on the block count, so tile cells
+    // are read straight from the dataset layout.
+    auto const own = Grid::make(block + 1);
+    // Nothing may lie beyond the snapshot's columns. The coarsest level covers every
+    // column; a stray cell sharing an encoded coarse column makes that level's total
+    // differ from L0's, which the totals check below reports.
+    {
+        auto const& top = grid.levels[kLevels - 1];
+        auto const* cells = levels[kLevels - 1];
+        for (auto i = size_t(own.levels[kLevels - 1].columns) * top.rows; i < top.cells(); ++i) {
+            if (cells[i] != Cell{}) {
+                fail(fmt::format("snapshot {}: occupied cell beyond the snapshot's columns at level {} index {}", block,
+                                 kLevels - 1, i));
+            }
+        }
+    }
+    auto const dirEnd = size_t(kHeaderBytes) + size_t(own.tiles) * kDirectoryEntryBytes;
     if (out.size() < dirEnd) {
         out.resize(dirEnd);
     }
     std::fill(out.begin(), out.begin() + static_cast<std::ptrdiff_t>(dirEnd), uint8_t(0));
     auto pos = dirEnd;
     auto totals = std::array<Totals, kLevels>();
-    auto dir = std::vector<DirEntry>(grid.tiles);
-    for (uint32_t id = 0; id < grid.tiles; ++id) {
-        auto const t = grid.tileInfo(id);
+    auto dir = std::vector<DirEntry>(own.tiles);
+    for (uint32_t id = 0; id < own.tiles; ++id) {
+        auto const t = own.tileInfo(id);
         auto const start = pos;
         encodeTile(levels[t.level], grid.levels[t.level].rows, t, out, pos, totals[t.level]);
         if (pos > start) {
@@ -960,19 +977,19 @@ auto encodeSnapshot(Grid const& grid, std::array<Cell const*, kLevels> const& le
     put32(h + 8, 1);
     put32(h + 12, kHeaderBytes);
     put32(h + 16, block);
-    put32(h + 20, grid.numBlocks);
+    put32(h + 20, own.numBlocks);
     put32(h + 24, kLevels);
     put32(h + 28, kTileSize);
     put32(h + 32, kRows);
-    put32(h + 36, grid.l0Columns);
+    put32(h + 36, own.l0Columns);
     put32(h + 40, kBlocksPerColumn);
-    put32(h + 44, grid.tiles);
+    put32(h + 44, own.tiles);
     put64(h + 48, blkEnd);
     put64(h + 56, uint64_t(totals[0].countSmall));
     put64(h + 64, uint64_t(totals[0].countLarge));
     put64(h + 72, uint64_t(totals[0].satsSmall));
     put64(h + 80, uint64_t(totals[0].satsLarge));
-    for (uint32_t id = 0; id < grid.tiles; ++id) {
+    for (uint32_t id = 0; id < own.tiles; ++id) {
         auto* e = h + kHeaderBytes + size_t(id) * kDirectoryEntryBytes;
         put64(e, dir[id].offset);
         put32(e + 8, dir[id].bytes);
@@ -980,7 +997,7 @@ auto encodeSnapshot(Grid const& grid, std::array<Cell const*, kLevels> const& le
     }
     auto header = SnapshotHeader();
     header.block = block;
-    header.numBlocks = grid.numBlocks;
+    header.numBlocks = own.numBlocks;
     header.blkEnd = blkEnd;
     header.totals = totals[0];
     header.sha256 = sha256(out.data() + kHeaderBytes, out.size() - kHeaderBytes);
@@ -992,17 +1009,31 @@ auto openSnapshot(Grid const& grid, uint8_t const* data, size_t size) -> Snapsho
     auto v = SnapshotView();
     v.data = data;
     v.size = size;
-    auto const dirEnd = size_t(kHeaderBytes) + size_t(grid.tiles) * kDirectoryEntryBytes;
-    if (size < dirEnd) {
-        fail("snapshot shorter than its directory");
+    if (size < kHeaderBytes) {
+        fail("snapshot shorter than its header");
     }
     if (std::memcmp(data, "BUVLSN1", 8) != 0) {
         fail("snapshot magic is not BUVLSN1");
     }
-    if (get32(data + 8) != 1 || get32(data + 12) != kHeaderBytes || get32(data + 20) != grid.numBlocks ||
-        get32(data + 24) != kLevels || get32(data + 28) != kTileSize || get32(data + 32) != kRows ||
-        get32(data + 36) != grid.l0Columns || get32(data + 40) != kBlocksPerColumn || get32(data + 44) != grid.tiles) {
+    if (get32(data + 8) != 1 || get32(data + 12) != kHeaderBytes || get32(data + 24) != kLevels ||
+        get32(data + 28) != kTileSize || get32(data + 32) != kRows || get32(data + 40) != kBlocksPerColumn) {
         fail("snapshot header does not match the grid");
+    }
+    // The snapshot's own grid: numBlocks is block + 1 in self-describing files and
+    // the dataset's count in older ones; either way no larger than this dataset.
+    auto const block = get32(data + 16);
+    auto const ownBlocks = get32(data + 20);
+    if (block >= ownBlocks || ownBlocks > grid.numBlocks) {
+        fail(fmt::format("snapshot block {} with grid of {} blocks is outside the dataset's {} blocks", block,
+                         ownBlocks, grid.numBlocks));
+    }
+    v.grid = Grid::make(ownBlocks);
+    if (get32(data + 36) != v.grid.l0Columns || get32(data + 44) != v.grid.tiles) {
+        fail("snapshot header columns or tiles do not match its block count");
+    }
+    auto const dirEnd = size_t(kHeaderBytes) + size_t(v.grid.tiles) * kDirectoryEntryBytes;
+    if (size < dirEnd) {
+        fail("snapshot shorter than its directory");
     }
     for (size_t i = 120; i < kHeaderBytes; ++i) {
         if (data[i] != 0) {
@@ -1010,23 +1041,20 @@ auto openSnapshot(Grid const& grid, uint8_t const* data, size_t size) -> Snapsho
         }
     }
     auto& h = v.header;
-    h.block = get32(data + 16);
-    h.numBlocks = get32(data + 20);
+    h.block = block;
+    h.numBlocks = ownBlocks;
     h.blkEnd = get64(data + 48);
     h.totals.countSmall = static_cast<int64_t>(get64(data + 56));
     h.totals.countLarge = static_cast<int64_t>(get64(data + 64));
     h.totals.satsSmall = static_cast<int64_t>(get64(data + 72));
     h.totals.satsLarge = static_cast<int64_t>(get64(data + 80));
     std::memcpy(h.sha256.data(), data + 88, 32);
-    if (h.block >= grid.numBlocks) {
-        fail("snapshot block outside the grid");
-    }
     if (sha256(data + kHeaderBytes, size - kHeaderBytes) != h.sha256) {
         fail("snapshot SHA-256 mismatch");
     }
-    v.dir.resize(grid.tiles);
+    v.dir.resize(v.grid.tiles);
     auto next = uint64_t(dirEnd);
-    for (uint32_t id = 0; id < grid.tiles; ++id) {
+    for (uint32_t id = 0; id < v.grid.tiles; ++id) {
         auto const* e = data + kHeaderBytes + size_t(id) * kDirectoryEntryBytes;
         auto& d = v.dir[id];
         d.offset = get64(e);
@@ -1060,12 +1088,12 @@ auto decodeSnapshot(Grid const& grid, uint8_t const* data, size_t size, Levels& 
         out.cells[l] = out.owned[l].data();
         out.extent[l] = grid.levels[l].columns;
     }
-    for (uint32_t id = 0; id < grid.tiles; ++id) {
+    for (uint32_t id = 0; id < v.grid.tiles; ++id) {
         auto const& e = v.dir[id];
         if (e.bytes == 0) {
             continue;
         }
-        auto const t = grid.tileInfo(id);
+        auto const t = v.grid.tileInfo(id);
         auto const rows = grid.levels[t.level].rows;
         auto* dst = out.owned[t.level].data();
         auto& sum = totals[t.level];
@@ -1092,12 +1120,12 @@ auto compareSnapshot(Grid const& grid, SnapshotView const& view, std::array<Cell
             reports.push_back(std::move(line));
         }
     };
-    for (uint32_t id = 0; id < grid.tiles; ++id) {
+    for (uint32_t id = 0; id < view.grid.tiles; ++id) {
         auto const& e = view.dir[id];
         if (e.bytes == 0) {
             continue;
         }
-        auto const t = grid.tileInfo(id);
+        auto const t = view.grid.tileInfo(id);
         auto const rows = grid.levels[t.level].rows;
         auto const* x = expected[t.level];
         decodeTileBlob(t, view.data + e.offset, e.bytes, [&](uint32_t, uint32_t lr, uint32_t lc, Cell const& c) {
@@ -1970,12 +1998,12 @@ auto verifyDataset(VerifyOptions const& o) -> bool {
                                 auto const view = openSnapshot(grid, data.data(), data.size());
                                 state.clear();
                                 auto* l0 = state.l0();
-                                for (uint32_t id = 0; id < grid.levels[1].firstTile; ++id) {
+                                for (uint32_t id = 0; id < view.grid.levels[1].firstTile; ++id) {
                                     auto const& e = view.dir[id];
                                     if (e.bytes == 0) {
                                         continue;
                                     }
-                                    auto const t = grid.tileInfo(id);
+                                    auto const t = view.grid.tileInfo(id);
                                     decodeTileBlob(t, data.data() + e.offset, e.bytes,
                                                    [&](uint32_t, uint32_t lr, uint32_t lc, Cell const& c) {
                                                        l0[size_t(t.col0 + lc) * kRows + t.row0 + lr] = c;

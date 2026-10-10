@@ -129,7 +129,7 @@ A cell stores four exact integers: the count and satoshi sum of outputs up to 5 
 | `chunks.json`, `chunks/` | 4,383 exact copies of the BLK2 records, block-aligned, up to 4 MiB each |
 | `snapshots/` | 1,092 `BUVLSN1` snapshots of the exact state, after block 0, then every 16 MiB of change data, and at the tip |
 
-A snapshot stores every level. A per-tile directory with CRC-32 checksums lets the browser fetch only the tiles it needs with HTTP range requests.
+A snapshot stores every level. A per-tile directory with CRC-32 checksums lets the browser fetch only the tiles it needs with HTTP range requests. Each snapshot describes the grid of blocks 0 through its own block, so a block's snapshot is byte-identical in every dataset that contains it; readers place its tiles by level and position in the larger dataset grid (`landscape/SPEC.md` §4). Snapshots written before October 9, 2026 record their dataset's block count and remain readable.
 
 ### Exact replay in the browser
 
@@ -402,7 +402,7 @@ In the app, 1× playback from block 314,000 advanced 602 blocks in 10.03 s witho
 - God rays work in screen space and appear only when the sun is near the view; the volumetric option gives shadowed light shafts from any angle. Fewer bloom mips narrow the glow without saving GPU time. PCSS estimates blocker distance approximately.
 - Flight-mode pointer lock was checked only through its drag-to-look fallback. Firefox was not tested; Brave passed the browser checks online. Touch gestures were checked with real multi-touch input in Chrome's phone emulation (390 × 844), not yet on a physical phone or in iOS Safari.
 - Locally, the inspector's history section needs the explorer on port 12989, and its cell API shares `/api/pixel`'s rate limit (15 requests/s, burst 40). Online, the Worker answers it with 8 requests/s and a burst of 20 per visitor and Worker instance.
-- Online, a seek takes about 1–2 s and 10× or Max playback follows the connection's download speed (see Online). The dataset ends at block 970,658; a newer tip needs a new dataset. `scripts/landscape_r2_publish.py` copies unchanged chunks inside R2, but every snapshot is uploaded again (58 GB, about 36 minutes from here) because its header records the grid's block and column counts, which grow with the tip. The tile data of an existing snapshot does not change, so a format without those header fields would let a new tip reuse every earlier snapshot.
+- Online, a seek takes about 1–2 s and 10× or Max playback follows the connection's download speed (see Online). The dataset ends at block 970,658; a newer tip needs a new dataset. `scripts/landscape_r2_publish.py` copies every chunk and snapshot before the old tip inside R2 and uploads only the new ones, about 60 MB of snapshots a day. The first dataset built after snapshots became self-describing still uploads its snapshots once (58 GB, about 36 minutes from here), because the published 970,658 files record that dataset's block count.
 - Unchanged and worth a follow-up: `/api/pixel` and `/api/ranges` share one mutable inverter across request threads, so simultaneous requests for blocks in different epochs could compute wrong column ranges. The new cell endpoint does not use it.
 
 ## Files
