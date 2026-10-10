@@ -79,12 +79,18 @@ const CHECKS = [
     name: 'startup',
     shot: 'first-view.png',
     script: `await idle(); await sleep(1500);
-      return { ready: L.ready, backend: L.view.backend, block: L.replay.block, tip, preset: L.settings.preset, frameError: L.frameError || null,
-        hud: document.querySelector('[data-k="block"]').textContent, fps: L.view.stats.fps };`,
+      const out = { ready: L.ready, backend: L.view.backend, block: L.replay.block, tip, preset: L.settings.preset, frameError: L.frameError || null,
+        hud: document.querySelector('[data-k="block"]').textContent, fps: L.view.stats.fps,
+        onSnapshot: (L.replay.snapshotBlocks || []).includes(L.replay.block) };
+      L.playback.play(); await sleep(2000); L.playback.pause(); await idle();
+      out.played = L.replay.block - out.block;
+      return out;`,
     expect: (v) => [
       ['ready after the first real frame', v.ready === true],
-      ['starts at the dataset tip', v.block === v.tip],
-      ['HUD shows the block', v.hud === v.tip.toLocaleString('en-US')],
+      ['starts at a snapshot at least a week before the tip (' + (v.tip - v.block) + ' blocks)',
+        v.onSnapshot && v.tip - v.block >= 1008 && v.tip - v.block < 3000],
+      ['HUD shows the block', v.hud === v.block.toLocaleString('en-US')],
+      ['Play advances at 1x (' + v.played + ' blocks in 2 s)', v.played >= 60 && v.played <= 180],
       ['no frame errors', v.frameError === null],
     ],
   },

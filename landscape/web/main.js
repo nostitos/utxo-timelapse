@@ -9,7 +9,7 @@
 // ?startup=adaptive|high the first-visit quality (ui/online.js). The URL hash keeps b, cam,
 // mode and the settings preset and overrides.
 
-import { createPlayback, SPEEDS, STEP_LARGE } from './ui/playback.js';
+import { createPlayback, defaultStartBlock, SPEEDS, STEP_LARGE } from './ui/playback.js';
 import { decodeHash, encodeHash } from './ui/hash.js';
 import { resolvePlace } from './ui/places.js';
 import { createControls, isTypingTarget } from './ui/controls.js';
@@ -486,7 +486,9 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     controls.update(0);
     const first = view.update(0);
     if (first && first.desiredTiles) replay.setTiles(first.desiredTiles);
-    const startBlock = clamp(initial.block ?? tip, 0, tip);
+    // A link with a block opens there; otherwise about a week before the tip, so Play plays.
+    const startBlock = initial.block != null ? clamp(initial.block, 0, tip)
+      : defaultStartBlock(tip, replay.snapshotBlocks || []);
     stage = 'seek';
     loading.set('Replaying to block ' + fmtInt(startBlock));
     playback.seek(startBlock).catch((err) => {

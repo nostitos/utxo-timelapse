@@ -524,6 +524,8 @@ wires frames → view, settings → consumers, and runs the rAF loop:
 controls → playback → `view.update` → (`replay.setTiles` when desired tiles change) →
 `view.render`. `?webgl=1` forces WebGL2. URL hash keeps
 `b` (block), `cam`, `mode`, `preset` and settings overrides.
+Without `b`, the app opens at the latest snapshot at least 1,008 blocks (about a week)
+before the tip, so Play has blocks to play (`defaultStartBlock` in `ui/playback.js`).
 
 Navigation: map mode (left-drag pans keeping the grabbed point under the cursor;
 right-drag or Shift-drag orbits the point under the cursor; wheel/pinch zooms toward the

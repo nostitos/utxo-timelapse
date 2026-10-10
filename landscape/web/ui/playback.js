@@ -13,6 +13,9 @@
 export const BASE_RATE = 60;
 export const STEP_SMALL = 1;
 export const STEP_LARGE = 1008;
+// A link without a block opens at least this many blocks (about a week) before the tip, so
+// Play has blocks to play.
+export const START_BEFORE_TIP = 1008;
 export const SPEEDS = Object.freeze([
   Object.freeze({ id: '1', label: '1\u00d7', rate: 60, policy: 'exact' }),
   Object.freeze({ id: '10', label: '10\u00d7', rate: 600, policy: 'exact' }),
@@ -40,6 +43,16 @@ export function snapshotAtOrBelow(blocks, b) {
     else hi = mid - 1;
   }
   return blocks[lo];
+}
+
+/**
+ * Startup block when the link names none: the latest snapshot at least START_BEFORE_TIP
+ * blocks before the tip, which loads without replay (1,008 to about 1,450 blocks back with
+ * the published snapshot spacing), or that block itself when there are no snapshots.
+ */
+export function defaultStartBlock(tip, snapshots) {
+  const goal = Math.max(0, tip - START_BEFORE_TIP);
+  return snapshotAtOrBelow(snapshots, goal) ?? goal;
 }
 
 function clamp(v, lo, hi) {
