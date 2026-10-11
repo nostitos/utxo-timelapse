@@ -70,12 +70,12 @@ export const STARTUP_PRESET = 'High';
 export const WEBGL2_MAX_PRESET = 'High';
 
 export const PRESET_INFO = Object.freeze({
-  Film: 'Unlit film colours: weighted density through the film palette (white-hot whale rows at 10 BTC and above), stepped cells instead of coin stacks, black background and ground; no grid, lighting, shadows, fog, sky, tone mapping or post effects. Matches the film colour at equal density. Heat glow and flashes still appear during playback, like the activity flashes in the film, and are zero right after a seek.',
-  Performance: '75% resolution, FXAA, no shadows or ambient occlusion, bloom with 4 mips, 96 resident tiles, coarser terrain detail (6 px per cell) and 8-sided coin stacks only close to the camera (cells 12 px wide or more, at most 250,000).',
-  Balanced: 'Native resolution, SMAA, two 2048 PCF shadow cascades, SSAO with 8 samples, bloom, 160 resident tiles and coin stacks where cells are 6 px wide or more.',
-  High: 'Startup preset (schema defaults): native resolution, TRAA, three 2048 PCF shadow cascades, GTAO with 16 samples, bloom, fog, sky, stars, 225 resident tiles and 12-sided coin stacks where cells are 4 px wide or more.',
-  Ultra: 'High plus three 4096 shadow cascades, volumetric light (32 steps), god rays, and bicubic smoothing (applies once Subdivision is raised). At 4K on an M4 Max: 60 fps in the overview, about 35 to 40 fps among coin stacks (about 60 with Column cells off).',
-  Extreme: 'Deliberately GPU-bound: Ultra plus a fourth shadow cascade, 2x supersampling, softer shadows (softness 1.5), GTAO with 32 samples, SSR, 64 volumetric steps, motion blur, subdivision 2, finer detail (2 px per cell, 320 resident tiles) and coin stacks out to 1,024 cells (up to 2M). At 4K on an M4 Max: about 55 fps in the overview, 13 to 15 fps among coin stacks.',
+  Film: 'Unlit film colours: weighted density through the film palette (white-hot whale rows at 10 BTC and above), stepped cells instead of cylinders, black background and ground; no grid, lighting, shadows, fog, sky, tone mapping or post effects. Matches the film colour at equal density. Heat glow and flashes still appear during playback, like the activity flashes in the film, and are zero right after a seek.',
+  Performance: '75% resolution, FXAA, no shadows or ambient occlusion, bloom with 4 mips, 96 resident tiles, coarser terrain detail (6 px per cell) and 8-sided cylinders only close to the camera (cells 12 px wide or more, at most 250,000).',
+  Balanced: 'Native resolution, SMAA, two 2048 PCF shadow cascades, SSAO with 8 samples, bloom, 160 resident tiles and cylinders where cells are 6 px wide or more.',
+  High: 'Startup preset (schema defaults): native resolution, TRAA, three 2048 PCF shadow cascades, GTAO with 16 samples, bloom, fog, sky, stars, 225 resident tiles and 12-sided cylinders where cells are 4 px wide or more.',
+  Ultra: 'High plus three 4096 shadow cascades, volumetric light (32 steps), god rays, and bicubic smoothing (applies once Subdivision is raised). At 4K on an M4 Max: 60 fps in the overview, about 35 to 40 fps among cylinders (about 60 with Column cells off).',
+  Extreme: 'Deliberately GPU-bound: Ultra plus a fourth shadow cascade, 2x supersampling, softer shadows (softness 1.5), GTAO with 32 samples, SSR, 64 volumetric steps, motion blur, subdivision 2, finer detail (2 px per cell, 320 resident tiles) and cylinders out to 1,024 cells (up to 2M). At 4K on an M4 Max: about 55 fps in the overview, 13 to 15 fps among cylinders.',
 });
 
 export const DEFAULT_GRADIENT = Object.freeze([
@@ -256,7 +256,7 @@ const ENTRIES = [
     default: 'bilinear', rebuild: 'material',
     help: 'Height interpolation between cell centres. Changes the surface only when Subdivision is 2 or 4 (at 1x every vertex sits on a cell centre); Stepped cells ignore it.' },
   { id: 'geo.stepped', section: 'Surface', label: 'Stepped cells', type: 'bool', default: false, rebuild: 'material',
-    help: 'Flat-topped cells with vertical walls; each cell shows exactly one palette colour. Ignores Smoothing and Subdivision. Applies to the heightfield, which draws the landscape beyond the coin stacks of Column cells (and everywhere on WebGL2). About four times the triangles of the smooth surface.' },
+    help: 'Flat-topped cells with vertical walls; each cell shows exactly one palette colour. Ignores Smoothing and Subdivision. Applies to the heightfield, which draws the landscape beyond the cylinders of Column cells (and everywhere on WebGL2). About four times the triangles of the smooth surface.' },
   { id: 'geo.subdivision', section: 'Surface', label: 'Subdivision', type: 'enum', options: [1, 2, 4],
     optionLabels: { 1: '1x', 2: '2x', 4: '4x' }, default: 1, rebuild: 'terrain',
     help: 'Heightfield vertices per cell edge (more = smoother bicubic surfaces, more triangles).' },
@@ -268,20 +268,14 @@ const ENTRIES = [
   // Geometry: columns (WebGPU compute)
   { id: 'geo.columns', section: 'Columns', label: 'Column cells', type: 'bool', default: true,
     webgpu: true, rebuild: 'terrain',
-    help: 'Near the view, every occupied level-0 cell (64 blocks x 1 amount row) is its own column, a coin stack by default (Cell shape); the heightfield continues beyond Column radius. Needs WebGPU compute; WebGL2 draws the heightfield only.' },
+    help: 'Near the view, every occupied level-0 cell (64 blocks x 1 amount row) is its own column, a cylinder by default (Cell shape); the heightfield continues beyond Column radius. Needs WebGPU compute; WebGL2 draws the heightfield only.' },
   { id: 'geo.columnShape', section: 'Columns', label: 'Cell shape', type: 'enum', options: ['cylinder', 'oval', 'box'],
-    optionLabels: { cylinder: 'Cylinder (coin stack)', oval: 'Oval (fills the cell)', box: 'Box' },
+    optionLabels: { cylinder: 'Cylinder', oval: 'Oval (fills the cell)', box: 'Box' },
     default: 'cylinder', webgpu: true, rebuild: 'material',
-    help: 'Shape of each column. Cylinder: a round stack as wide as the cell (64 blocks), leaving room between amount rows. Oval: a cylinder stretched to fill the cell. Box: a square prism like Stepped cells.' },
+    help: 'Shape of each column. Cylinder: a plain round column as wide as the cell (64 blocks), leaving room between amount rows. Oval: a cylinder stretched to fill the cell. Box: a square prism like Stepped cells.' },
   { id: 'geo.cylinderSides', section: 'Columns', label: 'Cylinder sides', type: 'enum', options: [6, 8, 12, 16, 24, 32],
     default: 12, webgpu: true, rebuild: 'material',
     help: 'Sides of each cylinder: rounder outlines up close, at 3 triangles per side per column.' },
-  { id: 'geo.coinEdges', section: 'Columns', label: 'Coin edges', type: 'number',
-    min: 0, max: 1, step: 0.01, default: 0.4, webgpu: true,
-    help: 'Strength of the thin lines that divide each cylinder into coins when you are close. Decorative: heights follow the height curve, not a count of outputs. The lines fade out where a coin is thinner than about two pixels; 0 = smooth sides.' },
-  { id: 'geo.coinThickness', section: 'Columns', label: 'Coin thickness', type: 'number',
-    min: 0.05, max: 1, step: 0.01, default: 0.15, webgpu: true,
-    help: 'Thickness of one coin as a fraction of its diameter (a real coin is about 0.08 to 0.15).' },
   { id: 'geo.columnRadius', section: 'Columns', label: 'Column radius', type: 'int',
     min: 16, max: 8192, step: 1, scale: 'log', default: 512, unit: 'L0 cells', webgpu: true,
     help: 'Upper limit on how far columns reach from the camera, in level-0 cell widths (64 blocks each). Column detail usually sets the reach first.' },

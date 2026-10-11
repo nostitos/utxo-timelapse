@@ -468,7 +468,7 @@ ui_settings with the consumers):
   `amp.flashThreshold` (BTC), `amp.edgeGlow`, `amp.edgeBlocks`, `amp.nowPlane`.
 - Geometry: `geo.smoothing` (none, bilinear, bicubic), `geo.stepped`,
   `geo.subdivision` (1, 2, 4), `geo.columns`, `geo.columnShape` (cylinder, oval, box),
-  `geo.cylinderSides` (6–32), `geo.coinEdges`, `geo.coinThickness`,
+  `geo.cylinderSides` (6–32),
   `geo.columnRadius` (L0 cells), `geo.columnPixels` (px),
   `geo.instanceBudget` (≤ 8,000,000), `geo.columnGap`, `geo.lodBias`,
   `geo.pixelsPerCell`, `geo.tileBudget` (32–400), `geo.skirts`, `geo.wireframe`.
@@ -500,13 +500,13 @@ palette with whale rows ≥ 10 BTC, offset 30, upper 500, gamma 1, unlit: albedo
 emissive 1, no sun/ambient/rim/shadows/sky/stars/fog, every post effect off, tone mapping
 none, exposure 1, neutral grade, AA none, black background and ground).
 **Performance → Balanced → High → Ultra → Extreme** scale quality up: Ultra targets
-≥ 60 fps at 3840×2160 on the M4 Max with the heightfield alone; with coin stacks (the
+≥ 60 fps at 3840×2160 on the M4 Max with the heightfield alone; with cylinder columns (the
 default since 2026-10-09) it measures about 35–40 fps in close and middle views and
 60 fps in the overview. Extreme deliberately exceeds the GPU (GPU-bound: 2× scale or SSAA,
 4 shadow cascades at 4096, high AO/SSGI/SSR/volumetric samples, columns with large
-budgets, subdivision 2). Coin-stack detail falls toward Performance: Column detail 4 px on
+budgets, subdivision 2). Cylinder detail falls toward Performance: Column detail 4 px on
 High and above, 6 px on Balanced, 12 px with 8 sides and at most 250,000 stacks on
-Performance; Film draws stepped cells without stacks.
+Performance; Film draws stepped cells without cylinders.
 
 Consumers: worker ← `amp.measure`, `color.measure`, `amp.heatHalfLife`,
 `geo.tileBudget` (via the client in main.js); terrain ← color.* transfer/palette/heat,
@@ -541,7 +541,7 @@ Pitch is pull back to climb (mouse or stick down, ↓); `camera.invertY` switche
 1–16 units/s (start 4), Shift 3×, wheel sets the chase distance (1.5–40, default 2.6), M
 toggles the synthesized engine sound (`ui/plane-sound.js`, remembered in localStorage). A
 controls card stays visible while flying. With `view.setDetailAhead(0.6, 1.6)` the terrain
-draws coin stacks down to `geo.columnPixels / 1.6` and moves their disc 0.6 radii ahead of
+draws cylinders down to `geo.columnPixels / 1.6` and moves their disc 0.6 radii ahead of
 the camera (near cylinders still measured from the camera; L0 tiles kept that far out).
 With `camera.collision` the plane keeps 0.15 above the
 surface, rides over rises up to 0.35 and bumps on taller columns (stops, half speed, aim

@@ -16,8 +16,8 @@ const REQUIRED = {
     'autoExposureMin', 'autoExposureMax', 'autoExposureSpeed', 'lut', 'lutIntensity', 'p3'],
   amp: ['measure', 'curve', 'exponent', 'exposure', 'reference', 'exaggeration', 'floor', 'whale',
     'heatHalfLife', 'heatFloor', 'heatReference', 'heatEdge', 'heatEdgeBlocks', 'flashSize', 'flashThreshold', 'edgeGlow', 'edgeBlocks', 'nowPlane'],
-  geo: ['smoothing', 'stepped', 'subdivision', 'columns', 'columnShape', 'cylinderSides', 'coinEdges',
-    'coinThickness', 'columnRadius', 'columnPixels', 'instanceBudget', 'columnGap',
+  geo: ['smoothing', 'stepped', 'subdivision', 'columns', 'columnShape', 'cylinderSides',
+    'columnRadius', 'columnPixels', 'instanceBudget', 'columnGap',
     'lodBias', 'pixelsPerCell', 'tileBudget', 'skirts', 'wireframe'],
   light: ['sunAzimuth', 'sunElevation', 'sunIntensity', 'sunColor', 'skyColor', 'groundColor', 'ambient',
     'emissive', 'albedo', 'rim', 'rimColor', 'roughness', 'metalness', 'shadows', 'cascades', 'shadowMapSize',
@@ -59,7 +59,7 @@ test('schema ids: exactly the SPEC section 7 required ids, unique, grouped by pr
     assert.ok(groupIds.includes(e.group), e.id + ' group');
     assert.equal(SCHEMA_BY_ID.get(e.id), e);
   }
-  assert.equal(SCHEMA.length, 142);
+  assert.equal(SCHEMA.length, 140);
 });
 
 test('schema entries: types, labels, help, flags and ranges are well formed', () => {
@@ -123,7 +123,7 @@ test('schema entries: types, labels, help, flags and ranges are well formed', ()
 test('schema flags: compute-dependent entries need WebGPU; preferences stay out of presets', () => {
   const webgpuIds = SCHEMA.filter((e) => e.webgpu).map((e) => e.id).sort();
   assert.deepEqual(webgpuIds, ['color.autoExposureMax', 'color.autoExposureMin', 'color.autoExposureSpeed',
-    'fx.ssgi', 'fx.ssgiIntensity', 'fx.ssgiSamples', 'geo.coinEdges', 'geo.coinThickness', 'geo.columnGap',
+    'fx.ssgi', 'fx.ssgiIntensity', 'fx.ssgiSamples', 'geo.columnGap',
     'geo.columnPixels', 'geo.columnRadius', 'geo.columnShape', 'geo.columns', 'geo.cylinderSides',
     'geo.instanceBudget']);
   assert.deepEqual(SCHEMA_BY_ID.get('color.exposureMode').webgpuOptions, ['auto']);

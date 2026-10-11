@@ -301,8 +301,8 @@ const CHECKS = [
       ['engine sound: built on takeoff, pitch rises with the throttle (' + (v.sound0.target ? v.sound0.target.freq.toFixed(0) : '?') + ' -> ' + (v.sound1.target ? v.sound1.target.freq.toFixed(0) : '?') + ' Hz, context ' + v.sound1.context + ')',
         v.sound0.created && v.sound0.active && v.sound1.target.freq > v.sound0.target.freq + 10],
       ['M mutes the engine and the card says so', v.muted.state.muted && v.muted.state.target.gain === 0 && v.muted.keys],
-      // Coin stacks are WebGPU-only; WebGL2 has no column disc to move.
-      ['coin-stack detail moves ahead of the camera while flying (' + (v.detailAhead || 0).toFixed(1) + ' units), back to centred after landing (' + (v.detailAfter || 0).toFixed(1) + ')',
+      // Cylinder columns are WebGPU-only; WebGL2 has no column disc to move.
+      ['cylinder detail moves ahead of the camera while flying (' + (v.detailAhead || 0).toFixed(1) + ' units), back to centred after landing (' + (v.detailAfter || 0).toFixed(1) + ')',
         (v.backend !== 'webgpu' || v.detailAhead > 1) && v.detailAfter === 0],
       ['the plane model and the readout are visible (' + v.readout + ')', v.model && /^Blocks [\d,]+\u2013[\d,]+/.test(v.readout || '')],
       ['crosshair shown as the aim', v.crosshair],

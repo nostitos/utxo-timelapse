@@ -1,5 +1,5 @@
-// Column cells (WebGPU): near the camera every occupied L0 cell is its own column, a coin
-// stack by default (geo.columnShape 'cylinder'), an oval cylinder that fills the cell, or a
+// Column cells (WebGPU): near the camera every occupied L0 cell is its own column, a plain
+// cylinder by default (geo.columnShape 'cylinder'), an oval cylinder that fills the cell, or a
 // box. index.js decides the disc that gets columns (cells at least geo.columnPixels wide on
 // screen, around the camera, or moved ahead of it in plane mode); the heightfield hides
 // itself inside the disc and draws the rest.
@@ -18,8 +18,8 @@ import {
 } from 'three/webgpu';
 import {
   Fn, uniform, int, uint, float, vec3, vec4, uvec2, storage, instanceIndex, atomicAdd, atomicLoad,
-  Loop, If, max, mix, abs, fract, smoothstep, select, normalize, length, round, positionGeometry, positionWorld,
-  varying, normalView, transformNormalToView, fwidth, dFdx, dFdy,
+  Loop, If, max, mix, abs, smoothstep, select, normalize, length, round, positionGeometry, positionWorld,
+  varying, normalView, transformNormalToView, dFdx, dFdy,
 } from 'three/tsl';
 import { tileInfo, SLOT, SLOT_CELLS } from '../../data/grid.js';
 import { TerrainNodeMaterial } from './heightfield.js';
@@ -27,14 +27,14 @@ import { TerrainNodeMaterial } from './heightfield.js';
 export const MAX_COLUMN_TILES = 512;
 export const COLUMN_SHAPES = Object.freeze(['cylinder', 'oval', 'box']);
 /**
- * Cells at least this many pixels wide get the full cylinder; smaller ones a 4-sided stack
+ * Cells at least this many pixels wide get the full cylinder; smaller ones a 4-sided prism
  * of the same footprint, still shaded round (radial normals), whose square outline does not
  * show at that size.
  */
 export const NEAR_PX = 20;
 export const FAR_SIDES = 4;
 /**
- * Spend flashes light the top of a stack: the cap and the top HEAT_TOP of the side at full
+ * Spend flashes light the top of a cylinder: the cap and the top HEAT_TOP of the side at full
  * strength, fading to HEAT_SIDE further down. Whole glowing columns made busy areas near the
  * creation edge look like a bright haze.
  */
@@ -127,8 +127,6 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
   const uNear2 = uniform(0);
   const uBudget = uniform(0, 'uint');
   const uGap = uniform(0.12);
-  const uEdges = uniform(0.4); // coin edge strength
-  const uThickness = uniform(0.15); // coin thickness, as a fraction of the coin diameter
 
   const tilesNode = storage(tilesAttr, 'vec4', MAX_COLUMN_TILES).toReadOnly();
   const counterAtomic = storage(counterAttr, 'uint', 3).toAtomic();
@@ -227,8 +225,8 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
     const slot = level === near ? instanceIndex : uint(budgetCap - 1).sub(instanceIndex);
     const ref = instRead.element(slot);
     const raw = atlas.readNode.element(int(ref.x));
-    // Footprint (world units): a round coin as wide as the cell (its narrower side, 64 blocks),
-    // or an oval or a box filling the cell; geo.columnGap leaves a margin either way.
+    // Footprint (world units): a round cylinder as wide as the cell (its narrower side, 64
+    // blocks), or an oval or a box filling the cell; geo.columnGap leaves a margin either way.
     const w = float(1).sub(uGap);
     const sx = w.mul(COL_W);
     const sz = shape === 'cylinder' ? sx : w.mul(ROW_D);
@@ -254,7 +252,7 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
     colV.setInterpolation('flat');
     const hV = varying(shading.heightOf(raw.x, float(ref.y.mod(uint(4096)))), 'vColHeight');
     hV.setInterpolation('flat');
-    let col = vec3(colV).toVar();
+    const col = vec3(colV);
     // Side or cap: the faces are exactly vertical or horizontal, so the screen-space facet
     // normal in world space tells them apart.
     const wp = positionWorld;
@@ -267,15 +265,6 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
       const cz = round(fRow).add(0.5).mul(ROW_D);
       const radial = normalize(vec3(wp.x.sub(cx).div(sx.mul(sx)), 0, wp.z.sub(cz).div(sz.mul(sz))));
       m.normalNode = select(side.greaterThan(0.5), transformNormalToView(radial), normalView);
-      // Coin edges: thin dark lines across the sides, one per coin thickness. Decorative only:
-      // heights follow the height curve, not a count of outputs. They fade out once a coin is
-      // thinner than about two pixels, so distant stacks do not shimmer.
-      const s = wp.y.div(max(sx.mul(uThickness), 1e-5));
-      const d = abs(fract(s).sub(0.5)).mul(2); // 1 at a coin boundary, 0 mid-coin
-      const fw = fwidth(s);
-      const line = smoothstep(float(0.8).sub(fw), float(0.8).add(fw), d);
-      const fade = float(1).sub(smoothstep(0.2, 0.5, fw));
-      col = col.mul(float(1).sub(uEdges.mul(line).mul(fade).mul(side)));
     }
     const below = max(hV.sub(wp.y), 0);
     const top = float(1).sub(smoothstep(0, max(hV.mul(HEAT_TOP), 1e-4), below));
@@ -331,13 +320,11 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
    * Rebuilds the instance list when needed. focus: [x, z] world (the disc centre, which may lie
    * outside the landscape); radiusCells: disc radius in L0 column widths (0 = no columns);
    * nearCells: radius of the full-detail cylinders around eye ([x, z], default focus); shape:
-   * 'cylinder' | 'oval' | 'box'; sides: cylinder sides; edges, thickness: coin edges.
+   * 'cylinder' | 'oval' | 'box'; sides: cylinder sides.
    */
   function update({ enabled, focus, eye = focus, radiusCells, nearCells = Infinity, budget, gap, dataVersion, shape = 'cylinder',
-    sides = 12, edges = 0.4, thickness = 0.15 }) {
+    sides = 12 }) {
     uGap.value = gap;
-    uEdges.value = Math.min(1, Math.max(0, edges));
-    uThickness.value = Math.max(0.01, thickness);
     state.enabled = !!enabled;
     if (!enabled) {
       group.visible = false;

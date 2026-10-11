@@ -153,7 +153,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       flight: 'Flight: mouse to look, WASD to fly, E/Q up and down, Esc for map mode',
       plane: 'Plane mode \u00b7 Esc to land',
     };
-    // Plane mode draws coin stacks 1.6x farther out and moves that disc 0.6 radii ahead of the
+    // Plane mode draws cylinders 1.6x farther out and moves that disc 0.6 radii ahead of the
     // camera, so the sharp area reaches about 2.5x as far in front of the plane.
     const PLANE_DETAIL = { shift: 0.6, reach: 1.6 };
     const planeSound = createPlaneSound();

@@ -35,7 +35,7 @@ export const TERRAIN_DEFAULTS = Object.freeze({
   'amp.nowPlane': 0.15,
   'geo.smoothing': 'bilinear', 'geo.stepped': false, 'geo.subdivision': 1, 'geo.columns': true,
   'geo.columnRadius': 512, 'geo.instanceBudget': 1000000, 'geo.columnGap': 0.12, 'geo.lodBias': 0,
-  'geo.columnShape': 'cylinder', 'geo.cylinderSides': 12, 'geo.coinEdges': 0.4, 'geo.coinThickness': 0.15,
+  'geo.columnShape': 'cylinder', 'geo.cylinderSides': 12,
   'geo.columnPixels': 4,
   'geo.pixelsPerCell': 3, 'geo.tileBudget': 225, 'geo.skirts': true, 'geo.wireframe': false,
   'light.emissive': 0.4, 'light.albedo': 0.85, 'light.rim': 0.35, 'light.rimColor': '#99bbff',
@@ -436,8 +436,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
       ensureColumns().update({
         enabled: true, focus: region.focus, eye: region.eye, radiusCells: region.radiusCells, nearCells: region.nearCells,
         budget: Math.round(get('geo.instanceBudget')), gap: get('geo.columnGap'), dataVersion: atlas.version,
-        shape: get('geo.columnShape'), sides: Number(get('geo.cylinderSides')), edges: get('geo.coinEdges'),
-        thickness: get('geo.coinThickness'),
+        shape: get('geo.columnShape'), sides: Number(get('geo.cylinderSides')),
       });
     } else if (columns) {
       columns.update({ enabled: false, gap: get('geo.columnGap') });
