@@ -79,10 +79,13 @@ Storing the dataset costs about 1.1 USD a month in R2 (75 GB); R2 charges nothin
 | Right-drag or Shift-drag | Orbit around the point under the cursor |
 | Wheel or trackpad pinch | Zoom toward the cursor |
 | Double-click | Fly to that point |
-| Click or I | Inspect the cell under the cursor (crosshair in flight mode) |
+| Click or I | Inspect the cell under the cursor (crosshair in flight and plane mode) |
 | Arrows, Q/E, PgUp/PgDn | Pan, rotate, tilt |
 | F | Flight mode: mouse look, WASD, E/Q up and down, Shift 4×, wheel sets speed; Esc returns to map mode |
+| T or the Fly button | Plane mode: point the mouse where to fly, A/D and arrows turn, climb and dive, W/S speed, Shift boost, wheel sets the camera distance; Esc or T returns to map mode |
 | G, P, H or ? | Graphics settings, places, help |
+
+Plane mode is a simple arcade flight sim for exploring the landscape. T or the Fly button puts a small plane in the air above the point at the centre of the view, already flying in the view's direction; there is nothing to start or set up. The mouse moves the aim (the crosshair) and the plane turns toward it, banking with the turn; W and S set the throttle (2 to 24 units a second, so about 40 seconds from genesis to the tip at full throttle) and Shift triples it. Hitting a column taller than a small step bumps the plane: it stops in front of the column, loses half its speed and pitches up, and flies on. With Terrain collision off it flies through the columns. A line at the top shows the 64-block column under the plane, its date and the amount of its row, with a throttle bar; the small circle shows where the nose points. Time runs independently: Space and the time keys still work, and flying never seeks. Links made while flying open in map mode at the camera. A standard gamepad also flies the plane: left stick to aim, RT and LT for the throttle, A to boost, Start to take off or land, B to land. Plane mode is for keyboard and mouse; touch-only devices do not show the Fly button.
 
 On a touch screen, map mode follows the conventions of map apps. Every gesture keeps the ground under your fingers where it is:
 
@@ -424,7 +427,7 @@ In the app, 1× playback from block 314,000 advanced 602 blocks in 10.03 s witho
 - Heat starts empty after a seek, and tiles that load during playback start without heat history.
 - Instanced columns, SSGI and automatic exposure need WebGPU. On WebGL2, at most 24 tiles upload per frame, so distant tiles can lag during playback.
 - God rays work in screen space and appear only when the sun is near the view; the volumetric option gives shadowed light shafts from any angle. Fewer bloom mips narrow the glow without saving GPU time. PCSS estimates blocker distance approximately.
-- Flight-mode pointer lock was checked only through its drag-to-look fallback. Firefox was not tested; Brave passed the browser checks online. Touch gestures were checked with real multi-touch input in Chrome's phone emulation (390 × 844), not yet on a physical phone or in iOS Safari.
+- Flight-mode and plane-mode pointer lock were checked only through the drag fallback (headless Chrome refuses the lock), and the gamepad mapping only with simulated gamepads. Firefox was not tested; Brave passed the browser checks online. Touch gestures were checked with real multi-touch input in Chrome's phone emulation (390 × 844), not yet on a physical phone or in iOS Safari.
 - Locally, the inspector's history section needs the explorer on port 12989, and its cell API shares `/api/pixel`'s rate limit (15 requests/s, burst 40). Online, the Worker answers it with 8 requests/s and a burst of 20 per visitor and Worker instance.
 - Online, a seek takes about 1–2 s and 10× or Max playback follows the connection's download speed (see Online). The dataset ends at block 970,658; a newer tip needs a new dataset. `scripts/landscape_r2_publish.py` copies every chunk and snapshot before the old tip inside R2 and uploads only the new ones, about 60 MB of snapshots a day. The first dataset built after snapshots became self-describing still uploads its snapshots once (58 GB, about 36 minutes from here), because the published 970,658 files record that dataset's block count.
 - Unchanged and worth a follow-up: `/api/pixel` and `/api/ranges` share one mutable inverter across request threads, so simultaneous requests for blocks in different epochs could compute wrong column ranges. The new cell endpoint does not use it.

@@ -13,6 +13,8 @@ import { createPlayback, defaultStartBlock, SPEEDS, STEP_LARGE } from './ui/play
 import { decodeHash, encodeHash } from './ui/hash.js';
 import { resolvePlace } from './ui/places.js';
 import { createControls, isTypingTarget } from './ui/controls.js';
+import { createPlaneHud } from './ui/plane-hud.js';
+import { createPlaneModel } from './render/plane-model.js';
 import { createHud } from './ui/hud.js';
 import { createTimeline } from './ui/timeline.js';
 import { createPlacesMenu } from './ui/places-menu.js';
@@ -143,21 +145,35 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     const playback = createPlayback({ replay, tip, snapshots: replay.snapshotBlocks || [] });
     const crosshair = $('crosshair');
     let hashDirty = true;
+    // Plane mode needs a keyboard or mouse to steer; touch-only devices keep the map controls.
+    const touchOnly = deviceTraits().coarseOnly;
+    const MODE_NOTICES = {
+      map: 'Map mode',
+      flight: 'Flight: mouse to look, WASD to fly, E/Q up and down, Esc for map mode',
+      plane: 'Plane: point the mouse to steer \u00b7 W/S speed \u00b7 Shift boost \u00b7 wheel for the camera \u00b7 Esc for map mode',
+    };
 
     const controls = createControls({
       view, canvas, settings: store,
       extent: { minX: 0, maxX: worldX(tip + 1), minZ: 0, maxZ: worldZ(grid.rows) },
+      canFly: !touchOnly,
       onInspect: (x, y) => inspectAt(x, y),
       onNotice: notice,
       onModeChange: (mode) => {
-        crosshair.hidden = mode !== 'flight';
+        crosshair.hidden = mode === 'map';
         document.body.classList.toggle('flight', mode === 'flight');
+        document.body.classList.toggle('plane', mode === 'plane');
         hashDirty = true;
-        notice(mode === 'flight' ? 'Flight: mouse to look, WASD to fly, E/Q up and down, Esc for map mode' : 'Map mode', 'info', 'mode');
+        notice(MODE_NOTICES[mode] || 'Map mode', 'info', 'mode');
       },
     });
+    // The plane model needs the real scene; dev pages with a stub view run without it.
+    const planeModel = view.scene ? createPlaneModel({ scene: view.scene }) : null;
+    const planeHud = createPlaneHud({
+      container: $('planehud'), nose: $('plane-nose'), camera: view.camera, canvas, grid,
+      rows: replay.rows, blocktimes: replay.blocktimes,
+    });
     const hud = createHud($('hud'));
-    const touchOnly = deviceTraits().coarseOnly;
     const help = createHelp($('help'), { touchFirst: touchOnly });
     const legend = createLegend({ container: $('legend'), settings: store });
     const minimap = createMinimap({
@@ -186,6 +202,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       onPlaces: () => placesMenu.toggle(),
       onSettings: () => togglePanel(),
       onHelp: () => help.toggle(),
+      onFly: touchOnly ? null : () => controls.togglePlane(),
     });
 
     const panelOpen = () => !!(panel && typeof panel.isOpen === 'function' && panel.isOpen());
@@ -317,7 +334,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     async function flyToPlace(place) {
       const p = resolvePlace(place, { tip, minAmt: replay.rows });
       if (!p) throw new Error('Unknown place: ' + place);
-      if (controls.mode === 'flight') controls.setMode('map');
+      if (controls.mode !== 'map') controls.setMode('map');
       if (p.kind === 'era') {
         const f = focus();
         const target = { x: worldX(p.block) - 9, y: 0, z: clamp(f.z, worldZ(300), worldZ(1900)) };
@@ -374,8 +391,10 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     }
 
     // ---- URL hash ---------------------------------------------------------------------
-    const currentHash = () => encodeHash({ block: replay.block, mode: controls.mode, cam: controls.getPose() }, store.toURL());
-    const viewState = () => ({ b: replay.block, cam: controls.getPose(), mode: controls.mode });
+    // Plane mode is not shared: a link made while flying opens in map mode at the camera.
+    const shareMode = () => (controls.mode === 'plane' ? 'map' : controls.mode);
+    const currentHash = () => encodeHash({ block: replay.block, mode: shareMode(), cam: controls.getPose() }, store.toURL());
+    const viewState = () => ({ b: replay.block, cam: controls.getPose(), mode: shareMode() });
     function restoreView(v) {
       if (!v) return;
       if (v.cam) controls.setPose(v.cam);
@@ -445,20 +464,30 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         case 'KeyF':
           controls.toggleFlight();
           break;
+        case 'KeyT':
+          if (!touchOnly) controls.togglePlane();
+          break;
         case 'KeyG':
+          // Panels need the cursor: leave plane mode (and its pointer lock) first.
+          if (controls.mode === 'plane') controls.setMode('map');
           togglePanel();
           break;
         case 'KeyP':
+          if (controls.mode === 'plane') controls.setMode('map');
           placesMenu.toggle();
           break;
         case 'KeyH':
+          if (controls.mode === 'plane') controls.setMode('map');
           help.toggle();
           break;
         case 'Slash':
-          if (e.shiftKey) help.toggle();
+          if (e.shiftKey) {
+            if (controls.mode === 'plane') controls.setMode('map');
+            help.toggle();
+          }
           break;
         case 'Escape':
-          if (controls.mode === 'flight') controls.setMode('map');
+          if (controls.mode !== 'map') controls.setMode('map');
           else if (help.open) help.close();
           else if (placesMenu.open) placesMenu.close();
           else if (inspector.isOpen) inspector.close();
@@ -503,6 +532,27 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       flyTo: (place) => flyToPlace(place),
       inspect: (x, y) => inspectAt(x, y),
       hash: () => currentHash(),
+      plane: {
+        get active() {
+          return controls.mode === 'plane';
+        },
+        get takingOff() {
+          return controls.takingOff;
+        },
+        /** Live flight state (ui/plane.js; angles in radians). Checks may move it. */
+        get state() {
+          return controls.plane;
+        },
+        get pose() {
+          const p = controls.plane;
+          return p ? { x: p.x, y: p.y, z: p.z, yaw: (p.yaw * 180) / Math.PI, pitch: (p.pitch * 180) / Math.PI, bank: (p.bank * 180) / Math.PI, speed: p.speed, throttle: p.throttle, bumps: p.bumps } : null;
+        },
+        get model() {
+          return planeModel ? planeModel.object3d : null;
+        },
+        takeoff: () => controls.setMode('plane'),
+        land: () => controls.setMode('map'),
+      },
       state: () => ({
         ready: hook.ready, block: replay.block, busy: replay.busy, playback: playback.state,
         mode: controls.mode, pose: controls.getPose(), backend: view.backend, preset: store.preset,
@@ -522,6 +572,8 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       last = now;
       try {
         controls.update(dt);
+        if (planeModel) planeModel.update(controls.plane, dt);
+        planeHud.update(controls.plane, replay.block);
         playback.tick(dt);
         const u = view.update(dt);
         const desired = u && u.desiredTiles;

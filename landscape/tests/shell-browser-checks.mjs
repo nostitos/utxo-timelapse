@@ -234,6 +234,70 @@ const CHECKS = [
     ],
   },
   {
+    name: 'plane',
+    shot: 'plane.png',
+    timeout: 90000,
+    script: `const up = (code) => window.dispatchEvent(new KeyboardEvent('keyup', { code, bubbles: true }));
+      const wrapDeg = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
+      const takeoffDone = async () => { const t = performance.now(); while (L.plane.takingOff && performance.now() - t < 4000) await sleep(30); };
+      await L.seek(inData(314000)); await idle();
+      L.controls.setPose({ x: Math.min(150, tip / 1000 - 40), y: 14, z: 120, yaw: -70, pitch: -14 }); await sleep(400); await idle();
+      const out = { flyButton: !!document.querySelector('#timeline [data-act="fly"]') };
+      key('KeyT', { key: 't' }); await sleep(50);
+      out.modeAfterT = L.controls.mode;
+      await takeoffDone();
+      out.tookOff = !L.plane.takingOff && !!L.plane.state;
+      const s0 = L.plane.pose;
+      key('KeyW', { key: 'w' }); key('KeyD', { key: 'd' }); await sleep(1500); up('KeyW'); up('KeyD');
+      const s1 = L.plane.pose;
+      out.moved = Math.hypot(s1.x - s0.x, s1.z - s0.z);
+      out.turned = wrapDeg(s1.yaw - s0.yaw);
+      out.throttle = [s0.throttle, s1.throttle];
+      const st = L.plane.state;
+      out.clearance = st.y - L.view.heightAt(st.x, st.z);
+      out.model = !!(L.plane.model && L.plane.model.visible);
+      out.readout = document.getElementById('planehud').hidden ? null : document.querySelector('#planehud .ph-ground').textContent;
+      out.crosshair = !document.getElementById('crosshair').hidden;
+      out.hashMode = new URLSearchParams(L.hash().slice(1)).get('mode');
+      await idle(); await sleep(600);
+      // Bump: put the plane low in front of a column at least 1 unit taller than the ground it starts over.
+      let spot = null;
+      for (let dz = 0; dz < 40 && !spot; dz += 0.5) for (let dx = -10; dx <= 10 && !spot; dx += 0.7) {
+        const x = st.x + dx, z = st.z - dz, g0 = L.view.heightAt(x, z);
+        for (let d = 0.2; d < 2.5; d += 0.02) if (L.view.heightAt(x, z - d) > g0 + 1) { spot = { x, z, g0, d }; break; }
+      }
+      out.spot = spot;
+      if (spot) {
+        Object.assign(st, { x: spot.x, z: spot.z, y: spot.g0 + 0.15, yaw: 0, aimYaw: 0, pitch: 0, aimPitch: 0, bank: 0, speed: 8.6, throttle: 0.3, cooldown: 0 });
+        const b0 = st.bumps; const t = performance.now();
+        while (st.bumps === b0 && performance.now() - t < 2000) await sleep(16);
+        out.bumped = st.bumps > b0;
+        out.stoppedBefore = st.z > spot.z - spot.d;
+      }
+      out.frameError = L.frameError || null;
+      out.backend = L.view.backend;
+      key('Escape', { key: 'Escape' }); await sleep(100);
+      out.afterEsc = { mode: L.controls.mode, model: !!(L.plane.model && L.plane.model.visible), readout: !document.getElementById('planehud').hidden, crosshair: !document.getElementById('crosshair').hidden };
+      L.plane.takeoff(); await takeoffDone(); out.again = L.controls.mode;
+      L.plane.land(); await sleep(100);
+      out.afterLand = { mode: L.controls.mode, model: !!(L.plane.model && L.plane.model.visible), state: L.plane.state };
+      return out;`,
+    expect: (v) => [
+      ['Fly button in the timeline', v.flyButton],
+      ['T takes off (' + v.modeAfterT + ')', v.modeAfterT === 'plane' && v.tookOff],
+      ['W and D for 1.5 s: moves (' + v.moved.toFixed(1) + ' units) and turns right (' + v.turned.toFixed(1) + ' degrees)', v.moved > 5 && v.turned < -20],
+      ['W raises the throttle (' + v.throttle.map((t) => t.toFixed(2)).join(' -> ') + ')', v.throttle[1] > v.throttle[0] + 0.5],
+      ['the plane model and the readout are visible (' + v.readout + ')', v.model && /^Blocks [\d,]+\u2013[\d,]+/.test(v.readout || '')],
+      ['crosshair shown as the aim', v.crosshair],
+      ['collision keeps the plane 0.15 above the surface (' + v.clearance.toFixed(3) + ')', v.clearance >= 0.149],
+      ['links made while flying open in map mode (mode=' + v.hashMode + ')', v.hashMode === 'map'],
+      ['flying into a tall column bumps and stops in front of it' + (v.spot ? '' : ' (no column found)'), !!v.spot && v.bumped && v.stoppedBefore],
+      ['Esc returns to map mode with the plane, readout and crosshair hidden', v.afterEsc.mode === 'map' && !v.afterEsc.model && !v.afterEsc.readout && !v.afterEsc.crosshair],
+      ['land() returns to map mode', v.again === 'plane' && v.afterLand.mode === 'map' && !v.afterLand.model && v.afterLand.state === null],
+      ['no frame errors (' + v.backend + ')', v.frameError === null],
+    ],
+  },
+  {
     name: 'hash-export-import',
     hash: '#b=BLOCK&mode=map&cam=290.000,30.000,180.000,20.00,-25.00&preset=Film',
     script: `await idle();
@@ -333,6 +397,8 @@ const CHECKS = [
         await run(() => gesture([[at(0.3), hy], [at(0.7), hy]], [[at(0.03), hy], [at(0.97), hy]])); await sleep(300);
       }
       out.pageScale = window.visualViewport ? visualViewport.scale : 1;
+      out.fly = { button: !!document.querySelector('#timeline [data-act="fly"]') };
+      key('KeyT', { key: 't' }); await sleep(100); out.fly.mode = L.controls.mode;
       out.frameError = L.frameError || null;
       return out;`,
     expect: (v) => [
@@ -351,6 +417,7 @@ const CHECKS = [
         !v.tap.marker.hidden && v.tap.marker.y > 0 && (v.tap.marker.y < v.tap.marker.sheet[1] - 8 || v.tap.marker.x < v.tap.marker.sheet[0] - 8)],
       ['pinch over empty ground: no fling (' + v.background.moved.toFixed(0) + ' units, landscape edge ' + v.background.edgeDist.toFixed(0) + ' away)', v.background.sky && v.background.moved > 1 && v.background.moved < 0.6 * v.background.edgeDist],
       ['the page itself never zooms', v.pageScale === 1],
+      ['touch-only: no Fly button and T does not take off', !v.fly.button && v.fly.mode === 'map'],
       ['no frame errors', v.frameError === null],
     ],
   },

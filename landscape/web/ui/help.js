@@ -37,6 +37,15 @@ const SECTIONS = [
     [['I'], 'Inspect the cell at the crosshair'],
     [['Esc'], 'Back to map mode'],
   ]],
+  ['Plane', [
+    [['T'], 'Take off from the centre of the view; T again lands in map mode'],
+    [['~Mouse'], 'Point where to fly; the plane turns to follow'],
+    [['A', 'D', '\u2190', '\u2192'], 'Turn'],
+    [['\u2191', '\u2193'], 'Climb or dive'],
+    [['W', 'S'], 'Faster or slower; hold Shift to boost'],
+    [['~Wheel'], 'Camera closer or farther'],
+    [['Esc'], 'Back to map mode'],
+  ], { flyOnly: true }],
   ['Panels', [
     [['G'], 'Graphics settings'],
     [['P'], 'Places'],
@@ -51,8 +60,10 @@ function keyHtml(k) {
 
 /** touchFirst puts the touch gestures first (phones and tablets without a mouse). */
 export function createHelp(dialog, { touchFirst = false } = {}) {
-  const list = touchFirst ? [TOUCH, ...SECTIONS] : [...SECTIONS, TOUCH];
-  const sections = list.map(([title, rows]) =>
+  // Touch-only devices have no plane mode, so its keys are left out there.
+  const sections = SECTIONS.filter((s) => !(touchFirst && s[2] && s[2].flyOnly));
+  const list = touchFirst ? [TOUCH, ...sections] : [...sections, TOUCH];
+  const html = list.map(([title, rows]) =>
     '<section><h3>' + title + '</h3><dl>' +
     rows.map(([keys, v]) => '<div><dt>' + keys.map(keyHtml).join('') + '</dt><dd>' + v + '</dd></div>').join('') +
     '</dl></section>').join('');
@@ -64,7 +75,7 @@ export function createHelp(dialog, { touchFirst = false } = {}) {
     'Front to back: its amount, on the film\u2019s 2,072 rows, with the largest amounts farthest away. ' +
     'Height and colour measure the outputs still unspent at the current block. ' +
     'Your browser replays that state exactly from the change log, block by block.</p>' +
-    '<div class="help-grid">' + sections + '</div>' +
+    '<div class="help-grid">' + html + '</div>' +
     '<p class="help-credit">Original concept and code by <a href="https://github.com/martinus/BitcoinUtxoVisualizer" target="_blank" rel="noopener">Martinus</a> ' +
     '(BitcoinUtxoVisualizer, MIT licence). The landscape, the exact browser replay and this interface are part of UTXO Timelapse.</p>';
   dialog.querySelector('[data-close]').addEventListener('click', () => dialog.close());

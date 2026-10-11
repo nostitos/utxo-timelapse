@@ -276,6 +276,48 @@ a { color: var(--mint); }
 #crosshair::before { left: 11px; top: 0; width: 2px; height: 24px; }
 #crosshair::after { left: 0; top: 11px; width: 24px; height: 2px; }
 
+/* ---- plane mode: nose circle and the readout at the top centre ----------------------------- */
+#plane-nose {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 18px;
+  height: 18px;
+  margin: -9px;
+  z-index: 4;
+  pointer-events: none;
+  border: 2px solid rgba(237, 191, 118, 0.95);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), 0 0 4px rgba(0, 0, 0, 0.8);
+}
+#planehud {
+  position: fixed;
+  top: calc(var(--gap) + var(--sat));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 2 * (var(--hud-w) + 2 * var(--gap)));
+  padding: 7px 14px;
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(16px) saturate(1.25);
+  backdrop-filter: blur(16px) saturate(1.25);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.38);
+  font: 11.5px/1.3 var(--mono);
+  color: var(--ink);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.ph-ground { overflow: hidden; text-overflow: ellipsis; }
+.ph-throttle { flex: none; width: 64px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.14); overflow: hidden; }
+.ph-throttle i { display: block; width: 30%; height: 100%; border-radius: 3px; background: var(--mint); transition: width 0.12s linear; }
+#planehud.boost .ph-throttle i { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+body.plane #legend { display: none; }
+
 /* ---- timeline (bottom) ---------------------------------------------------------------- */
 #timeline {
   position: fixed;

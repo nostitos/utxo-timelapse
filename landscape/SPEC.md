@@ -529,19 +529,30 @@ before the tip, so Play has blocks to play (`defaultStartBlock` in `ui/playback.
 
 Navigation: map mode (left-drag pans keeping the grabbed point under the cursor;
 right-drag or Shift-drag orbits the point under the cursor; wheel/pinch zooms toward the
-cursor; double-click flies there; arrows pan, Q/E rotate, PageUp/PageDown tilt) and flight
+cursor; double-click flies there; arrows pan, Q/E rotate, PageUp/PageDown tilt), flight
 mode (F toggles; pointer lock, mouse look, WASD, E/Q up/down, Shift 4×, wheel sets speed,
-speed scales with height above terrain; collision keeps the camera above the surface).
+speed scales with height above terrain; collision keeps the camera above the surface) and
+plane mode (T or the timeline's Fly button; not on touch-only devices). Plane mode flies a
+small plane (`render/plane-model.js`) with the arcade model in `ui/plane.js`: the mouse
+moves the aim at the crosshair and the plane turns toward it (at most 75°/s, banking up to
+65°), A/D/arrows turn, climb and dive, W/S throttle 2–24 units/s, Shift 3×, wheel sets the
+chase distance (1.5–40, default 2.6). With `camera.collision` the plane keeps 0.15 above the
+surface, rides over rises up to 0.35 and bumps on taller columns (stops, half speed, aim
+pitched up). The chase camera looks along the aim and never rolls. A top-centre line shows
+the column, date and row amount under the plane. Esc, T or a lost pointer lock returns to
+map mode at the camera; the URL hash records plane mode as `mode=map`. Standard gamepads:
+left stick aims, RT/LT throttle, A boost, Start takes off or lands, B lands.
 Keys everywhere (ignored while typing in inputs): Space play/pause, `[`/`]` ±1 block,
-Shift+`[`/`]` ±1,008, I inspect at cursor (crosshair in flight), Esc exits flight/closes
-the drawer. Places: eras at 50,000, 210,000, 314,000, 420,000, 500,000, 630,000,
+Shift+`[`/`]` ±1,008, I inspect at cursor (crosshair in flight and plane mode), Esc exits
+flight or plane mode/closes the drawer. Places: eras at 50,000, 210,000, 314,000, 420,000, 500,000, 630,000,
 700,000, 840,000, 900,000 and the tip (seek + fly to that creation column); amount bands:
 50 BTC coinbase row, ≥10 BTC, 1 BTC, 10,000 sat, 546 sat, 1–100 sat (fly to that row).
 Minimap from the always-resident L6 tile. Inspection drawer: exact worker state for the
 cell, the explorer cell API lifecycle data, and the 2D explorer link.
 
 Test hook: main.js sets `window.__landscape = { ready, settings, replay, view, controls,
-playback, seek(block), flyTo(place), inspect(x, y) }` and sets `ready = true` after the
+playback, seek(block), flyTo(place), inspect(x, y), plane: { active, takingOff, state, pose,
+model, takeoff(), land() } }` and sets `ready = true` after the
 first rendered frame that contains real data. Dev harness pages set `window.__ready` and
 expose their objects on `window.__dev`. browser-check scripts use these hooks.
 
