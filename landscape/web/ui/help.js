@@ -39,11 +39,12 @@ const SECTIONS = [
   ]],
   ['Plane', [
     [['T'], 'Take off from the centre of the view; T again lands in map mode'],
-    [['~Mouse'], 'Point where to fly; the plane turns to follow'],
+    [['~Mouse'], 'Steer; pull back to climb (Invert Y switches it)'],
     [['A', 'D', '\u2190', '\u2192'], 'Turn'],
-    [['\u2191', '\u2193'], 'Climb or dive'],
+    [['\u2193', '\u2191'], 'Climb or dive'],
     [['W', 'S'], 'Faster or slower; hold Shift to boost'],
     [['~Wheel'], 'Camera closer or farther'],
+    [['M'], 'Engine sound on or off'],
     [['Esc'], 'Back to map mode'],
   ], { flyOnly: true }],
   ['Panels', [

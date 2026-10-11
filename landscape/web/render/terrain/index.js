@@ -2,7 +2,7 @@
 //
 // createTerrain({ renderer, scene, camera, settings, manifest, rows, blocktimes, capabilities,
 //   labelsElement }) → { object3d, applyFrame, setBlock, update, pick, heightAt, focusDistance,
-//   stats, dispose }
+//   setDetailAhead, stats, dispose }
 import {
   Group, Mesh, PlaneGeometry, MeshStandardNodeMaterial, MeshBasicNodeMaterial, DoubleSide, Vector3, Matrix4,
   Color,
@@ -195,7 +195,30 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
       const d = (0.064 * projScale) / Math.max(0.5, px);
       return d > h ? Math.sqrt(d * d - h * h) / 0.064 : 0;
     };
-    return { focus: [o.x, o.z], radiusCells: Math.min(get('geo.columnRadius'), reach(get('geo.columnPixels'))), nearCells: reach(NEAR_PX) };
+    const px = get('geo.columnPixels') / aheadReach;
+    return { focus: [o.x, o.z], eye: [o.x, o.z], radiusCells: Math.min(get('geo.columnRadius'), reach(px)), nearCells: reach(NEAR_PX) };
+  }
+
+  // Detail ahead (plane mode): the column disc reaches "reach" times farther (cells down to
+  // geo.columnPixels / reach on screen) and moves forward along the view by shift times its
+  // radius, so the sharp area extends (1 + shift) radii ahead of the camera instead of being
+  // spent behind it; L0 tiles are kept that far out. 0 and 1 keep the disc centred on the camera.
+  let aheadShift = 0;
+  let aheadReach = 1;
+  const aheadDir = new Vector3();
+  function setDetailAhead(shift = 0, reach = 1) {
+    aheadShift = Math.max(0, Math.min(0.9, Number(shift) || 0));
+    aheadReach = Math.max(1, Math.min(3, Number(reach) || 1));
+  }
+  /** Moves region.focus ahead of the camera by aheadShift times the effective radius R (world units). */
+  function moveRegionAhead(region, cam, R) {
+    if (!(aheadShift > 0) || !(R > 0)) return;
+    cam.getWorldDirection(aheadDir);
+    const m = Math.hypot(aheadDir.x, aheadDir.z);
+    if (!(m > 1e-6)) return;
+    // Looking straight down keeps the disc centred: the shift scales with the horizontal part.
+    const s = (aheadShift * R * Math.min(1, m * 1.5)) / m;
+    region.focus = [region.eye[0] + aheadDir.x * s, region.eye[1] + aheadDir.z * s];
   }
   const needs = { rebuild: false, capacity: false };
   function applySetting(id, value) {
@@ -281,7 +304,12 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     let projScale;
     if (orthographic) projScale = viewportHeightPx / Math.max(1e-6, (cam.top - cam.bottom) / (cam.zoom || 1));
     else projScale = viewportHeightPx / (2 * Math.tan(((cam.fov || 50) * Math.PI) / 360));
-    const threshold = get('geo.pixelsPerCell') * 2 ** -get('geo.lodBias');
+    // With detail ahead, L0 must reach the far edge of the moved column disc: (1 + shift) times
+    // the distance where a cell is geo.columnPixels / reach wide.
+    const aheadBias = (aheadShift > 0 || aheadReach > 1) && mode.columns
+      ? Math.max(0, Math.log2(((1 + aheadShift) * aheadReach * get('geo.pixelsPerCell')) / Math.max(0.5, get('geo.columnPixels'))) + 0.1)
+      : 0;
+    const threshold = get('geo.pixelsPerCell') * 2 ** -(get('geo.lodBias') + aheadBias);
     const budget = Math.min(budgetFromSettings(), atlas.capacity);
     const pos = cam.position;
     const tileMaxH = (id) => (atlas.isResident(id) ? heightBound(atlas.tileMaxValue[id]) : -1);
@@ -301,6 +329,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     // entirely inside it (on resident L0 tiles) are skipped instead of drawn and discarded.
     const region = mode.columns ? columnRegion(cam, projScale) : null;
     const colR = region ? Math.min(region.radiusCells, columns ? columns.state.budgetCells : Infinity) * 0.064 : 0;
+    if (region) moveRegionAhead(region, cam, colR);
     const L0 = grid.levels[0];
     const insideColumns = (t, px, py) => {
       if (!(colR > 0)) return false;
@@ -405,7 +434,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     atlas.flush();
     if (mode.columns) {
       ensureColumns().update({
-        enabled: true, focus: region.focus, radiusCells: region.radiusCells, nearCells: region.nearCells,
+        enabled: true, focus: region.focus, eye: region.eye, radiusCells: region.radiusCells, nearCells: region.nearCells,
         budget: Math.round(get('geo.instanceBudget')), gap: get('geo.columnGap'), dataVersion: atlas.version,
         shape: get('geo.columnShape'), sides: Number(get('geo.cylinderSides')), edges: get('geo.coinEdges'),
         thickness: get('geo.coinThickness'),
@@ -428,6 +457,8 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     stats.columns = columns && mode.columns ? columns.state.drawn : 0;
     stats.columnTiles = columns && mode.columns ? columns.state.tiles : 0;
     stats.columnRadius = columns && mode.columns ? columns.state.effectiveCells : 0;
+    // How far the column disc sits ahead of the camera (world units; plane mode moves it).
+    stats.columnAhead = region ? Math.hypot(region.focus[0] - region.eye[0], region.focus[1] - region.eye[1]) : 0;
     stats.instances = n + stats.columns;
     stats.patches = n;
     stats.patchesUnderColumns = hiddenPatches;
@@ -671,7 +702,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
   }
 
   return {
-    object3d, applyFrame, setBlock, update, pick, heightAt, focusDistance, stats, dispose,
+    object3d, applyFrame, setBlock, update, pick, heightAt, focusDistance, setDetailAhead, stats, dispose,
     // extras for dev pages and tests
     atlas, shading, grid, cellAt, get mode() { return mode; }, get drawn() { return drawn; },
     get meshes() { return { heightfield: [...hfLevels.values()].map((L) => L.mesh), floor, nowPlane, columns: columns ? columns.mesh : null }; },

@@ -247,9 +247,17 @@ const CHECKS = [
       out.modeAfterT = L.controls.mode;
       await takeoffDone();
       out.tookOff = !L.plane.takingOff && !!L.plane.state;
+      const keysEl = document.getElementById('planekeys');
+      out.keys = keysEl.hidden ? null : keysEl.textContent;
+      out.sound0 = L.plane.sound.state;
       const s0 = L.plane.pose;
       key('KeyW', { key: 'w' }); key('KeyD', { key: 'd' }); await sleep(1500); up('KeyW'); up('KeyD');
       const s1 = L.plane.pose;
+      out.sound1 = L.plane.sound.state;
+      out.detailAhead = L.view.stats.columnAhead;
+      key('KeyM', { key: 'm' }); await sleep(50);
+      out.muted = { state: L.plane.sound.state, keys: keysEl.textContent.includes('Sound off') };
+      key('KeyM', { key: 'm' }); await sleep(50);
       out.moved = Math.hypot(s1.x - s0.x, s1.z - s0.z);
       out.turned = wrapDeg(s1.yaw - s0.yaw);
       out.throttle = [s0.throttle, s1.throttle];
@@ -277,7 +285,9 @@ const CHECKS = [
       out.frameError = L.frameError || null;
       out.backend = L.view.backend;
       key('Escape', { key: 'Escape' }); await sleep(100);
-      out.afterEsc = { mode: L.controls.mode, model: !!(L.plane.model && L.plane.model.visible), readout: !document.getElementById('planehud').hidden, crosshair: !document.getElementById('crosshair').hidden };
+      out.afterEsc = { mode: L.controls.mode, model: !!(L.plane.model && L.plane.model.visible), readout: !document.getElementById('planehud').hidden,
+        crosshair: !document.getElementById('crosshair').hidden, keys: !keysEl.hidden, sound: L.plane.sound.state.active };
+      await sleep(300); out.detailAfter = L.view.stats.columnAhead;
       L.plane.takeoff(); await takeoffDone(); out.again = L.controls.mode;
       L.plane.land(); await sleep(100);
       out.afterLand = { mode: L.controls.mode, model: !!(L.plane.model && L.plane.model.visible), state: L.plane.state };
@@ -287,12 +297,20 @@ const CHECKS = [
       ['T takes off (' + v.modeAfterT + ')', v.modeAfterT === 'plane' && v.tookOff],
       ['W and D for 1.5 s: moves (' + v.moved.toFixed(1) + ' units) and turns right (' + v.turned.toFixed(1) + ' degrees)', v.moved > 5 && v.turned < -20],
       ['W raises the throttle (' + v.throttle.map((t) => t.toFixed(2)).join(' -> ') + ')', v.throttle[1] > v.throttle[0] + 0.5],
+      ['the controls card stays visible: pull back to climb, sound, land', !!v.keys && /pull back to climb/.test(v.keys) && /Sound on/.test(v.keys) && /Land in map mode/.test(v.keys)],
+      ['engine sound: built on takeoff, pitch rises with the throttle (' + (v.sound0.target ? v.sound0.target.freq.toFixed(0) : '?') + ' -> ' + (v.sound1.target ? v.sound1.target.freq.toFixed(0) : '?') + ' Hz, context ' + v.sound1.context + ')',
+        v.sound0.created && v.sound0.active && v.sound1.target.freq > v.sound0.target.freq + 10],
+      ['M mutes the engine and the card says so', v.muted.state.muted && v.muted.state.target.gain === 0 && v.muted.keys],
+      // Coin stacks are WebGPU-only; WebGL2 has no column disc to move.
+      ['coin-stack detail moves ahead of the camera while flying (' + (v.detailAhead || 0).toFixed(1) + ' units), back to centred after landing (' + (v.detailAfter || 0).toFixed(1) + ')',
+        (v.backend !== 'webgpu' || v.detailAhead > 1) && v.detailAfter === 0],
       ['the plane model and the readout are visible (' + v.readout + ')', v.model && /^Blocks [\d,]+\u2013[\d,]+/.test(v.readout || '')],
       ['crosshair shown as the aim', v.crosshair],
       ['collision keeps the plane 0.15 above the surface (' + v.clearance.toFixed(3) + ')', v.clearance >= 0.149],
       ['links made while flying open in map mode (mode=' + v.hashMode + ')', v.hashMode === 'map'],
       ['flying into a tall column bumps and stops in front of it' + (v.spot ? '' : ' (no column found)'), !!v.spot && v.bumped && v.stoppedBefore],
-      ['Esc returns to map mode with the plane, readout and crosshair hidden', v.afterEsc.mode === 'map' && !v.afterEsc.model && !v.afterEsc.readout && !v.afterEsc.crosshair],
+      ['Esc returns to map mode with the plane, readout, crosshair and controls card hidden and the engine stopped',
+        v.afterEsc.mode === 'map' && !v.afterEsc.model && !v.afterEsc.readout && !v.afterEsc.crosshair && !v.afterEsc.keys && !v.afterEsc.sound],
       ['land() returns to map mode', v.again === 'plane' && v.afterLand.mode === 'map' && !v.afterLand.model && v.afterLand.state === null],
       ['no frame errors (' + v.backend + ')', v.frameError === null],
     ],

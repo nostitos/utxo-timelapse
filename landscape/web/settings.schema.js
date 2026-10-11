@@ -464,7 +464,7 @@ const ENTRIES = [
   { id: 'camera.sensitivity', label: 'Mouse sensitivity', type: 'number', min: 0.1, max: 5, step: 0.01, scale: 'log',
     default: 1, unit: 'x', url: false, preset: false, help: 'Mouse look and orbit sensitivity.' },
   { id: 'camera.invertY', label: 'Invert Y', type: 'bool', default: false, url: false, preset: false,
-    help: 'Invert vertical mouse look in flight mode.' },
+    help: 'Invert vertical mouse look in flight mode. In plane mode, pulling back (mouse or stick down, the down arrow) climbs; this switches to pushing up to climb.' },
   { id: 'camera.damping', label: 'Damping', type: 'number', min: 0, max: 0.95, step: 0.01, default: 0.2,
     url: false, preset: false, help: 'Smoothing of camera motion: 0 = immediate, higher = smoother.' },
   { id: 'camera.collision', label: 'Terrain collision', type: 'bool', default: true, url: false, preset: false,

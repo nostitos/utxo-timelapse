@@ -534,9 +534,16 @@ mode (F toggles; pointer lock, mouse look, WASD, E/Q up/down, Shift 4×, wheel s
 speed scales with height above terrain; collision keeps the camera above the surface) and
 plane mode (T or the timeline's Fly button; not on touch-only devices). Plane mode flies a
 small plane (`render/plane-model.js`) with the arcade model in `ui/plane.js`: the mouse
-moves the aim at the crosshair and the plane turns toward it (at most 75°/s, banking up to
-65°), A/D/arrows turn, climb and dive, W/S throttle 2–24 units/s, Shift 3×, wheel sets the
-chase distance (1.5–40, default 2.6). With `camera.collision` the plane keeps 0.15 above the
+moves the aim at the crosshair (0.001 rad/px × `camera.sensitivity`) and the plane turns
+toward it (at most 55°/s, banking up to 55°; the aim stays within 60° of the heading).
+Pitch is pull back to climb (mouse or stick down, ↓); `camera.invertY` switches it. A/D and
+←/→ turn at 45°/s, ↓/↑ climb and dive at 30°/s, easing in over 0.25 s; W/S throttle
+1–16 units/s (start 4), Shift 3×, wheel sets the chase distance (1.5–40, default 2.6), M
+toggles the synthesized engine sound (`ui/plane-sound.js`, remembered in localStorage). A
+controls card stays visible while flying. With `view.setDetailAhead(0.6, 1.6)` the terrain
+draws coin stacks down to `geo.columnPixels / 1.6` and moves their disc 0.6 radii ahead of
+the camera (near cylinders still measured from the camera; L0 tiles kept that far out).
+With `camera.collision` the plane keeps 0.15 above the
 surface, rides over rises up to 0.35 and bumps on taller columns (stops, half speed, aim
 pitched up). The chase camera looks along the aim and never rolls. A top-centre line shows
 the column, date and row amount under the plane. Esc, T or a lost pointer lock returns to

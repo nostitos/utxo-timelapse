@@ -1,14 +1,16 @@
 // Column cells (WebGPU): near the camera every occupied L0 cell is its own column, a coin
 // stack by default (geo.columnShape 'cylinder'), an oval cylinder that fills the cell, or a
 // box. index.js decides the disc that gets columns (cells at least geo.columnPixels wide on
-// screen, around the camera); the heightfield hides itself inside the disc and draws the rest.
+// screen, around the camera, or moved ahead of it in plane mode); the heightfield hides
+// itself inside the disc and draws the rest.
 //
 // A compute pass scans the resident L0 tiles in range, appends occupied cells with an atomic
 // counter and writes the indirect draw arguments; the vertex stage reads heights live from
 // the atlas, so playback needs no CPU work. Columns come in two levels of detail drawn from
-// one instance buffer: cells wider than NEAR_PX on screen use geo.cylinderSides, smaller ones
-// a 4-sided prism with the circle's area (near list from the start of the buffer, far list
-// from the end). When the occupied cells exceed geo.instanceBudget, the disc shrinks
+// one instance buffer: cells wider than NEAR_PX on screen (measured from the eye, the ground
+// under the camera) use geo.cylinderSides, smaller ones a 4-sided prism with the circle's
+// area (near list from the start of the buffer, far list from the end). When the occupied
+// cells exceed geo.instanceBudget, the disc shrinks
 // (measured by an asynchronous read of the counter) so the heightfield never shows holes.
 import {
   Group, InstancedBufferGeometry, BufferAttribute, Mesh, StorageBufferAttribute, IndirectStorageBufferAttribute,
@@ -120,6 +122,7 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
   const instAttr = new StorageBufferAttribute(new Uint32Array(budgetCap * 2), 2);
 
   const uFocus = uniform(new Vector2());
+  const uEye = uniform(new Vector2());
   const uR2 = uniform(0);
   const uNear2 = uniform(0);
   const uBudget = uniform(0, 'uint');
@@ -189,7 +192,9 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
               const t = atomicAdd(counterAtomic.element(0), uint(1)).toVar();
               If(t.lessThan(uBudget), () => {
                 const ref = uvec2(uint(rowBase.add(lx)), uint(col).mul(uint(4096)).add(uint(row)));
-                If(d2.lessThan(uNear2), () => {
+                const ex = float(col).add(0.5).mul(COL_W).sub(uEye.x);
+                const ez = float(row).add(0.5).mul(ROW_D).sub(uEye.y);
+                If(ex.mul(ex).add(ez.mul(ez)).lessThan(uNear2), () => {
                   const k = atomicAdd(counterAtomic.element(1), uint(1));
                   instWrite.element(k).assign(ref);
                 }).Else(() => {
@@ -325,10 +330,10 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
   /**
    * Rebuilds the instance list when needed. focus: [x, z] world (the disc centre, which may lie
    * outside the landscape); radiusCells: disc radius in L0 column widths (0 = no columns);
-   * nearCells: radius of the full-detail cylinders; shape: 'cylinder' | 'oval' | 'box';
-   * sides: cylinder sides; edges, thickness: coin edges.
+   * nearCells: radius of the full-detail cylinders around eye ([x, z], default focus); shape:
+   * 'cylinder' | 'oval' | 'box'; sides: cylinder sides; edges, thickness: coin edges.
    */
-  function update({ enabled, focus, radiusCells, nearCells = Infinity, budget, gap, dataVersion, shape = 'cylinder',
+  function update({ enabled, focus, eye = focus, radiusCells, nearCells = Infinity, budget, gap, dataVersion, shape = 'cylinder',
     sides = 12, edges = 0.4, thickness = 0.15 }) {
     uGap.value = gap;
     uEdges.value = Math.min(1, Math.max(0, edges));
@@ -389,8 +394,8 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
       state.drawn = 0;
       return;
     }
-    const key = ids + '|' + focus[0].toFixed(3) + ',' + focus[1].toFixed(3) + '|' + R.toFixed(3) + '|' + Rn.toFixed(3) + '|' +
-      budget + '|' + dataVersion;
+    const key = ids + '|' + focus[0].toFixed(3) + ',' + focus[1].toFixed(3) + '|' + eye[0].toFixed(3) + ',' + eye[1].toFixed(3) +
+      '|' + R.toFixed(3) + '|' + Rn.toFixed(3) + '|' + budget + '|' + dataVersion;
     if (key === state.key) return;
     state.key = key;
     tilesAttr.clearUpdateRanges();
@@ -402,6 +407,7 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
     uNear2.value = Rn * Rn;
     uBudget.value = Math.min(budget, budgetCap);
     uFocus.value.set(focus[0], focus[1]);
+    uEye.value.set(eye[0], eye[1]);
     append.count = n * 256;
     state.candidates = n * 65536;
     renderer.compute(append);

@@ -5,7 +5,9 @@
 // Angles follow ui/controls.js: yaw 0 looks toward -z and turning right lowers yaw; pitch > 0
 // climbs. bank > 0 is the right wing down. The player moves an aim direction (mouse, keys,
 // gamepad); the plane turns toward it at a limited rate and banks with the turn. There is no
-// engine start, stall, fuel or gravity: with no input the plane flies straight on.
+// engine start, stall, fuel or gravity: with no input the plane flies straight on. Pitch
+// follows flight-sim convention: pull back (mouse or stick down, the down arrow) to climb;
+// camera.invertY switches to push-up-to-climb.
 
 import { columnBlocks } from '../data/grid.js';
 import { rowAmountRange } from '../data/axis.js';
@@ -14,23 +16,24 @@ import { fmtInt, fmtAmount, isoUtc } from './format.js';
 const DEG = Math.PI / 180;
 
 export const PLANE = Object.freeze({
-  minSpeed: 2, // world units per second at throttle 0
-  maxSpeed: 24, // at throttle 1
-  startThrottle: 0.3, // about 8.6 units/s
-  throttleRate: 0.5, // throttle change per second (W/S, full trigger)
+  minSpeed: 1, // world units per second at throttle 0
+  maxSpeed: 16, // at throttle 1 (genesis to tip in about a minute)
+  startThrottle: 0.2, // 4 units/s
+  throttleRate: 0.4, // throttle change per second (W/S, full trigger)
   boost: 3, // Shift multiplies the speed
   speedEase: 3, // 1/s: how quickly the speed follows the throttle and boost
-  turnGain: 2, // 1/s: yaw rate per radian of yaw error
-  maxTurnRate: 75 * DEG,
-  pitchGain: 2.5,
-  maxPitchRate: 55 * DEG,
-  maxBank: 65 * DEG,
-  bankEase: 5,
+  turnGain: 1.5, // 1/s: yaw rate per radian of yaw error
+  maxTurnRate: 55 * DEG,
+  pitchGain: 2,
+  maxPitchRate: 40 * DEG,
+  maxBank: 55 * DEG,
+  bankEase: 4,
   maxAimPitch: 70 * DEG,
-  maxAimLead: 100 * DEG, // the aim stays within this of the plane's heading
-  keyTurnRate: 70 * DEG, // A/D, arrows, full stick
-  keyPitchRate: 45 * DEG,
-  mouseRadPerPx: 0.0022, // times camera.sensitivity, as flight-mode mouse look
+  maxAimLead: 60 * DEG, // the aim stays within this of the plane's heading
+  keyTurnRate: 45 * DEG, // A/D, arrows, full stick
+  keyPitchRate: 30 * DEG,
+  inputRamp: 4, // 1/s: keys and the stick ease in and out instead of jumping to full rate
+  mouseRadPerPx: 0.001, // times camera.sensitivity (half of flight-mode mouse look)
   clearance: 0.15, // above the terrain with collision on
   stepUp: 0.35, // rises up to this are ridden over; taller ones bump
   sweepStep: 0.05, // collision samples along each frame's movement
@@ -79,7 +82,7 @@ export function createPlane({ x = 0, y = PLANE.spawnHeight, z = 0, yaw = 0, pitc
     yaw: wrapAngle(yaw), pitch: p, bank: 0,
     aimYaw: wrapAngle(yaw), aimPitch: p,
     throttle: clamp(throttle, 0, 1), speed: speedFor(throttle), boosting: false,
-    cooldown: 0, shake: 0, bumps: 0, time: 0,
+    turnIn: 0, climbIn: 0, cooldown: 0, shake: 0, bumps: 0, time: 0,
   };
 }
 
@@ -97,10 +100,10 @@ export function steerAim(p, dYaw, dPitch) {
   p.aimPitch = clamp(p.aimPitch + dPitch, -PLANE.maxAimPitch, PLANE.maxAimPitch);
 }
 
-/** Mouse movement in pixels: right turns right, up climbs (invertY flips it). */
+/** Mouse movement in pixels: right turns right, down (pulling back) climbs; invertY flips it. */
 export function aimByMouse(p, dx, dy, { sensitivity = 1, invertY = false } = {}) {
   const k = PLANE.mouseRadPerPx * sensitivity;
-  steerAim(p, -dx * k, -dy * k * (invertY ? -1 : 1));
+  steerAim(p, -dx * k, dy * k * (invertY ? -1 : 1));
 }
 
 /** Step toward target: exponential with gain (1/s), at most maxRate * dt. */
@@ -110,7 +113,8 @@ function approach(value, target, gain, maxRate, dt) {
 
 /**
  * Advance the plane by dt seconds.
- * input: { throttle: -1..1 (rate), turn: -1..1 (+ right), climb: -1..1 (+ up), boost }.
+ * input: { throttle: -1..1 (rate), turn: -1..1 (+ right), climb: -1..1 (+ up), boost }; turn
+ * and climb ease toward the input at inputRamp per second.
  * env: { ground(x, z) -> terrain height, collision (bool), bounds: {minX, maxX, minZ, maxZ} }.
  * Returns { bumped } (true when a bump started this step).
  */
@@ -127,10 +131,12 @@ export function stepPlane(p, input = {}, dt = 0, env = {}) {
   p.cooldown = Math.max(0, p.cooldown - h);
   p.shake = Math.max(0, p.shake - h);
 
-  // Keys and sticks move the aim; the throttle and boost set the speed.
-  const turn = clamp(Number(input.turn) || 0, -1, 1);
-  const climb = clamp(Number(input.climb) || 0, -1, 1);
-  if (turn || climb) steerAim(p, -turn * PLANE.keyTurnRate * h, climb * PLANE.keyPitchRate * h);
+  // Keys and sticks move the aim (eased in and out); the throttle and boost set the speed.
+  const ramp = PLANE.inputRamp * h;
+  const toward = (v, target) => (target > v ? Math.min(target, v + ramp) : Math.max(target, v - ramp));
+  p.turnIn = toward(p.turnIn || 0, clamp(Number(input.turn) || 0, -1, 1));
+  p.climbIn = toward(p.climbIn || 0, clamp(Number(input.climb) || 0, -1, 1));
+  if (p.turnIn || p.climbIn) steerAim(p, -p.turnIn * PLANE.keyTurnRate * h, p.climbIn * PLANE.keyPitchRate * h);
   p.throttle = clamp(p.throttle + clamp(Number(input.throttle) || 0, -1, 1) * PLANE.throttleRate * h, 0, 1);
   p.boosting = !!input.boost;
   p.speed += (speedFor(p.throttle, p.boosting) - p.speed) * (1 - Math.exp(-PLANE.speedEase * h));
@@ -230,15 +236,18 @@ export function shakeOffset(p, distance = PLANE.chaseDistance) {
 }
 
 /**
- * A standard-mapping gamepad as plane input: the left stick aims (dead zone rescaled), RT/LT
- * move the throttle, A boosts, Start toggles plane mode and B leaves it. null when absent.
+ * A standard-mapping gamepad as plane input: the left stick aims (dead zone rescaled, then
+ * squared for fine control near the centre; pull back to climb), RT/LT move the throttle,
+ * A boosts, Start toggles plane mode and B leaves it. null when absent.
  */
 export function gamepadInput(gp, { deadZone = PLANE.gamepadDeadZone, invertY = false } = {}) {
   if (!gp || gp.connected === false) return null;
   const axis = (i) => {
     const v = Number(gp.axes && gp.axes[i]) || 0;
     const a = Math.abs(v);
-    return a <= deadZone ? 0 : (Math.sign(v) * (Math.min(1, a) - deadZone)) / (1 - deadZone);
+    if (a <= deadZone) return 0;
+    const r = (Math.min(1, a) - deadZone) / (1 - deadZone);
+    return Math.sign(v) * r * r;
   };
   const button = (i) => {
     const btn = gp.buttons && gp.buttons[i];
@@ -248,7 +257,7 @@ export function gamepadInput(gp, { deadZone = PLANE.gamepadDeadZone, invertY = f
   };
   return {
     turn: axis(0),
-    climb: -axis(1) * (invertY ? -1 : 1),
+    climb: axis(1) * (invertY ? -1 : 1), // axis 1 is + when the stick is pulled back
     throttle: button(7) - button(6),
     boost: button(0) > 0.5,
     start: button(9) > 0.5,
@@ -278,4 +287,20 @@ export function groundReadout(x, z, { grid, rows, blocktimes, block } = {}) {
   }
   if (Number.isInteger(block) && first > block) parts.push('not created yet at block ' + fmtInt(block));
   return parts.join(' \u00b7 ');
+}
+
+const kbd = (k) => '<kbd>' + k + '</kbd>';
+
+/** Controls card rows [keys HTML, action] for the pitch convention (invertY = push up to climb) and the sound state. */
+export function planeKeyRows({ invertY = false, muted = false } = {}) {
+  return [
+    ['Mouse', invertY ? 'Steer \u00b7 push up to climb' : 'Steer \u00b7 pull back to climb'],
+    [kbd('A') + kbd('D') + ' ' + kbd('\u2190') + kbd('\u2192'), 'Turn'],
+    [invertY ? kbd('\u2191') + kbd('\u2193') : kbd('\u2193') + kbd('\u2191'), 'Climb \u00b7 dive'],
+    [kbd('W') + kbd('S'), 'Faster \u00b7 slower'],
+    [kbd('Shift'), 'Boost'],
+    ['Wheel', 'Camera closer \u00b7 farther'],
+    [kbd('M'), muted ? 'Sound off' : 'Sound on'],
+    [kbd('Esc') + ' ' + kbd('T'), 'Land in map mode'],
+  ];
 }

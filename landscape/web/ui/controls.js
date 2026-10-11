@@ -16,10 +16,11 @@
 // and two fingers fly (spread to go forward, drag to slide or climb).
 // Plane mode (T, desktop only): a small plane flies on from the view centre (ui/plane.js).
 // The mouse moves the aim at the screen centre and the plane turns toward it; A/D and the
-// arrows turn, climb and dive, W/S set the throttle, Shift boosts, the wheel sets the chase
-// distance. The chase camera follows the aim from behind the plane. Esc, losing the pointer
-// lock or T again returns to map mode where the camera is. A standard gamepad also works:
-// left stick aims, RT/LT throttle, A boost, Start takes off or lands, B lands.
+// arrows turn, climb and dive (pull back, the down arrow, to climb), W/S set the throttle,
+// Shift boosts, the wheel sets the chase distance. The chase camera follows the aim from
+// behind the plane. Esc, losing the pointer lock or T again returns to map mode where the
+// camera is. A standard gamepad also works: left stick aims, RT/LT throttle, A boost, Start
+// takes off or lands, B lands.
 
 import { Vector3, Quaternion, Euler } from 'three';
 import { TAP_SLOP_PX, TAP_MAX_MS, DOUBLE_TAP_MS, pairOf, pairDelta, classifyTwoFinger, createTapTracker } from './touch.js';
@@ -381,7 +382,7 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
     const input = {
       throttle: key('KeyW') - key('KeyS'),
       turn: key('KeyD') + key('ArrowRight') - key('KeyA') - key('ArrowLeft'),
-      climb: (key('ArrowUp') - key('ArrowDown')) * inv,
+      climb: (key('ArrowDown') - key('ArrowUp')) * inv,
       boost: !!(key('ShiftLeft') || key('ShiftRight')),
     };
     if (pad.input) {

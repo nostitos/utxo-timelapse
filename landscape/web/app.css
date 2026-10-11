@@ -317,6 +317,39 @@ a { color: var(--mint); }
 .ph-throttle i { display: block; width: 30%; height: 100%; border-radius: 3px; background: var(--mint); transition: width 0.12s linear; }
 #planehud.boost .ph-throttle i { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
 body.plane #legend { display: none; }
+#planekeys {
+  position: fixed;
+  right: calc(var(--gap) + var(--sar) + var(--panel-space) + var(--insp-space));
+  bottom: calc(var(--tl-h) + var(--gap));
+  z-index: 5;
+  width: 300px;
+  padding: 11px 14px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(16px) saturate(1.25);
+  backdrop-filter: blur(16px) saturate(1.25);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.38);
+  pointer-events: none;
+}
+.pk-head { margin-bottom: 6px; }
+#planekeys dl { margin: 0; display: grid; gap: 4px; }
+#planekeys dl > div { display: grid; grid-template-columns: 92px 1fr; gap: 10px; align-items: center; }
+#planekeys dt { font: 11px var(--mono); color: var(--muted); white-space: nowrap; }
+#planekeys dd { margin: 0; font-size: 12px; color: var(--ink); }
+#planekeys kbd {
+  display: inline-block;
+  min-width: 18px;
+  margin-right: 3px;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  font: 10.5px/16px var(--mono);
+  text-align: center;
+  color: var(--ink);
+}
 
 /* ---- timeline (bottom) ---------------------------------------------------------------- */
 #timeline {

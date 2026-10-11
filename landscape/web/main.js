@@ -14,6 +14,7 @@ import { decodeHash, encodeHash } from './ui/hash.js';
 import { resolvePlace } from './ui/places.js';
 import { createControls, isTypingTarget } from './ui/controls.js';
 import { createPlaneHud } from './ui/plane-hud.js';
+import { createPlaneSound } from './ui/plane-sound.js';
 import { createPlaneModel } from './render/plane-model.js';
 import { createHud } from './ui/hud.js';
 import { createTimeline } from './ui/timeline.js';
@@ -150,8 +151,12 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     const MODE_NOTICES = {
       map: 'Map mode',
       flight: 'Flight: mouse to look, WASD to fly, E/Q up and down, Esc for map mode',
-      plane: 'Plane: point the mouse to steer \u00b7 W/S speed \u00b7 Shift boost \u00b7 wheel for the camera \u00b7 Esc for map mode',
+      plane: 'Plane mode \u00b7 Esc to land',
     };
+    // Plane mode draws coin stacks 1.6x farther out and moves that disc 0.6 radii ahead of the
+    // camera, so the sharp area reaches about 2.5x as far in front of the plane.
+    const PLANE_DETAIL = { shift: 0.6, reach: 1.6 };
+    const planeSound = createPlaneSound();
 
     const controls = createControls({
       view, canvas, settings: store,
@@ -163,6 +168,13 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         crosshair.hidden = mode === 'map';
         document.body.classList.toggle('flight', mode === 'flight');
         document.body.classList.toggle('plane', mode === 'plane');
+        if (typeof view.setDetailAhead === 'function') {
+          if (mode === 'plane') view.setDetailAhead(PLANE_DETAIL.shift, PLANE_DETAIL.reach);
+          else view.setDetailAhead(0, 1);
+        }
+        // Called inside the key press or click that takes off, so the browser lets the sound start.
+        if (mode === 'plane') planeSound.start();
+        else planeSound.stop();
         hashDirty = true;
         notice(MODE_NOTICES[mode] || 'Map mode', 'info', 'mode');
       },
@@ -170,8 +182,8 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     // The plane model needs the real scene; dev pages with a stub view run without it.
     const planeModel = view.scene ? createPlaneModel({ scene: view.scene }) : null;
     const planeHud = createPlaneHud({
-      container: $('planehud'), nose: $('plane-nose'), camera: view.camera, canvas, grid,
-      rows: replay.rows, blocktimes: replay.blocktimes,
+      container: $('planehud'), nose: $('plane-nose'), keys: $('planekeys'), camera: view.camera, canvas, grid,
+      rows: replay.rows, blocktimes: replay.blocktimes, settings: store, sound: planeSound,
     });
     const hud = createHud($('hud'));
     const help = createHelp($('help'), { touchFirst: touchOnly });
@@ -467,6 +479,9 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         case 'KeyT':
           if (!touchOnly) controls.togglePlane();
           break;
+        case 'KeyM':
+          notice(planeSound.toggleMuted() ? 'Plane sound off' : 'Plane sound on', 'info', 'sound');
+          break;
         case 'KeyG':
           // Panels need the cursor: leave plane mode (and its pointer lock) first.
           if (controls.mode === 'plane') controls.setMode('map');
@@ -496,6 +511,9 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         default:
       }
     });
+    // Browsers may keep the sound suspended until a gesture; any key press or click retries.
+    window.addEventListener('keydown', () => planeSound.unlock(), true);
+    window.addEventListener('pointerdown', () => planeSound.unlock(), true);
     window.addEventListener('resize', () => {
       try {
         view.resize();
@@ -550,6 +568,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         get model() {
           return planeModel ? planeModel.object3d : null;
         },
+        sound: planeSound,
         takeoff: () => controls.setMode('plane'),
         land: () => controls.setMode('map'),
       },
@@ -574,6 +593,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         controls.update(dt);
         if (planeModel) planeModel.update(controls.plane, dt);
         planeHud.update(controls.plane, replay.block);
+        planeSound.update(controls.plane);
         playback.tick(dt);
         const u = view.update(dt);
         const desired = u && u.desiredTiles;

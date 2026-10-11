@@ -1,24 +1,43 @@
 // Plane mode readout (landscape/SPEC.md §8): one line at the top centre about the ground under
 // the plane (the 64-block column, its UTC date and the row's amount) with a throttle bar that
-// lights up while boosting, and a small circle where the plane's nose points (the crosshair
-// at the screen centre is the aim).
+// lights up while boosting, a small circle where the plane's nose points (the crosshair at the
+// screen centre is the aim), and the controls card that stays visible while flying.
 
 import { Vector3 } from 'three';
-import { forward, groundReadout } from './plane.js';
+import { forward, groundReadout, planeKeyRows } from './plane.js';
 
 const NOSE_DISTANCE = 60;
 
-export function createPlaneHud({ container, nose, camera, canvas, grid, rows, blocktimes }) {
+export function createPlaneHud({ container, nose, keys = null, camera, canvas, grid, rows, blocktimes, settings = null, sound = null }) {
+  if (!container) return { update() {}, hide() {} };
   container.innerHTML = '<span class="ph-ground"></span><span class="ph-throttle" title="Throttle"><i></i></span>';
   const groundEl = container.querySelector('.ph-ground');
   const bar = container.querySelector('.ph-throttle i');
   const tmp = new Vector3();
   let lastKey = '';
   let lastWidth = '';
+  let keysKey = '';
+
+  function renderKeys() {
+    if (!keys) return;
+    let invertY = false;
+    try {
+      invertY = !!(settings && settings.get('camera.invertY'));
+    } catch {
+      invertY = false;
+    }
+    const muted = !!(sound && sound.muted);
+    const k = invertY + '|' + muted;
+    if (k === keysKey) return;
+    keysKey = k;
+    keys.innerHTML = '<div class="pk-head"><span class="eyebrow">Plane</span></div><dl>' +
+      planeKeyRows({ invertY, muted }).map(([a, b]) => '<div><dt>' + a + '</dt><dd>' + b + '</dd></div>').join('') + '</dl>';
+  }
 
   function hide() {
     container.hidden = true;
     if (nose) nose.hidden = true;
+    if (keys) keys.hidden = true;
     lastKey = '';
   }
 
@@ -30,6 +49,10 @@ export function createPlaneHud({ container, nose, camera, canvas, grid, rows, bl
         return;
       }
       container.hidden = false;
+      if (keys) {
+        keys.hidden = false;
+        renderKeys();
+      }
       const col = Math.floor((plane.x * 1000) / (grid ? grid.blocksPerColumn : 64));
       const row = Math.floor(plane.z * 10);
       const key = col + '|' + row + '|' + (block ?? '');
