@@ -52,6 +52,9 @@
   #legend .sw { display: inline-block; width: 11px; height: 11px; vertical-align: -1px; border-radius: 2px; margin-right: 4px; }
   #aboutFoot { display: flex; align-items: center; justify-content: space-between; margin-top: 18px; gap: 12px; }
   #aboutFoot .src { color: #565f74; font-size: 12px; }
+  /* Unlisted 3D preview link: almost the card colour until hovered. */
+  #landscapeLink { display: block; width: max-content; margin: 8px -14px -10px auto; padding: 2px 4px; font: 9px ui-monospace, Menlo, monospace; color: #161b27; text-decoration: none; }
+  #landscapeLink:hover { color: #7aa2f7; }
   #aboutClose { padding: 6px 16px; }
   #helpBtn { min-width: 26px; font-weight: 600; }
   #fsBtn { min-width: 26px; }
@@ -357,6 +360,7 @@
       <a href="https://bitcointimelapse.com/guide/" target="_blank" rel="noopener">Read the illustrated guide ↗</a>
       <button id="aboutClose" type="button">Got it</button>
     </div>
+    <a id="landscapeLink" href="https://3d.bitcointimelapse.com/" target="_blank" rel="noopener" tabindex="-1" aria-hidden="true">3D</a>
   </div>
 </div>
 <dialog id="shareDialog" aria-labelledby="shareTitle" aria-describedby="shareContext">
@@ -650,6 +654,14 @@ document.getElementById("helpBtn").onclick = showAbout;
 document.getElementById("aboutClose").onclick = hideAbout;
 about.addEventListener("click", e => { if (e.target === about) hideAbout(); });
 // Help remains available from [?]; keep the initial playback visible.
+
+// Unlisted link to the 3D landscape preview, opened at the current block.
+const landscapeLink = document.getElementById("landscapeLink");
+const LANDSCAPE_BASE = ["localhost", "127.0.0.1", "[::1]", "::1"].includes(location.hostname)
+  ? "http://127.0.0.1:12990/" : "https://3d.bitcointimelapse.com/";
+function updateLandscapeLink() { landscapeLink.href = LANDSCAPE_BASE + (info ? "#b=" + curBlock() : ""); }
+for (const type of ["pointerenter", "click"]) landscapeLink.addEventListener(type, updateLandscapeLink);
+updateLandscapeLink();
 
 // ---- fullscreen: hides the control bar; F toggles, Esc leaves (browser default) ----
 function toggleFullscreen() {
