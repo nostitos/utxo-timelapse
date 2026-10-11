@@ -250,6 +250,29 @@ const CHECKS = [
       const keysEl = document.getElementById('planekeys');
       out.keys = keysEl.hidden ? null : keysEl.textContent;
       out.sound0 = L.plane.sound.state;
+      // Bank to turn: a quarter second of D banks the plane while the heading has barely moved.
+      const b0 = L.plane.pose;
+      key('KeyD', { key: 'd' }); await sleep(250);
+      const b1 = L.plane.pose; up('KeyD');
+      out.bankFirst = { bank: b1.bank - b0.bank, heading: wrapDeg(b1.yaw - b0.yaw) };
+      // Level the wings again before the long turn.
+      await sleep(300); L.plane.state.bank = 0;
+      // The mouse is a stick that springs back: moving it right deflects the stick and banks right;
+      // once it stops the stick centres and the bank stays. With pointer lock the movement comes
+      // as mousemove deltas, otherwise as a drag on the canvas.
+      const cr = canvas.getBoundingClientRect(); const mx = cr.left + cr.width / 2, my = cr.top + cr.height / 2;
+      const locked = document.pointerLockElement === canvas;
+      if (!locked) ptr('pointerdown', mx, my);
+      for (let i = 1; i <= 6; i++) {
+        if (locked) document.dispatchEvent(new MouseEvent('mousemove', { movementX: 12, movementY: 0, bubbles: true }));
+        else ptr('pointermove', mx + i * 12, my);
+        await frame();
+      }
+      out.stick = { roll: L.plane.state.roll, mouseX: L.plane.state.mouseX, locked };
+      if (!locked) ptr('pointerup', mx + 72, my, { buttons: 0 });
+      await sleep(1500);
+      out.stickAfter = { mouseX: L.plane.state.mouseX, bank: L.plane.pose.bank };
+      L.plane.state.bank = 0;
       const s0 = L.plane.pose;
       key('KeyW', { key: 'w' }); key('KeyD', { key: 'd' }); await sleep(1500); up('KeyW'); up('KeyD');
       const s1 = L.plane.pose;
@@ -266,6 +289,7 @@ const CHECKS = [
       out.model = !!(L.plane.model && L.plane.model.visible);
       out.readout = document.getElementById('planehud').hidden ? null : document.querySelector('#planehud .ph-ground').textContent;
       out.crosshair = !document.getElementById('crosshair').hidden;
+      out.nose = !document.getElementById('plane-nose').hidden;
       out.hashMode = new URLSearchParams(L.hash().slice(1)).get('mode');
       await idle(); await sleep(600);
       // Bump: put the plane low in front of a column at least 1 unit taller than the ground it starts over.
@@ -276,7 +300,7 @@ const CHECKS = [
       }
       out.spot = spot;
       if (spot) {
-        Object.assign(st, { x: spot.x, z: spot.z, y: spot.g0 + 0.15, yaw: 0, aimYaw: 0, pitch: 0, aimPitch: 0, bank: 0, speed: 8.6, throttle: 0.3, cooldown: 0 });
+        Object.assign(st, { x: spot.x, z: spot.z, y: spot.g0 + 0.15, yaw: 0, camYaw: 0, pitch: 0, camPitch: 0, bank: 0, mouseX: 0, mouseY: 0, speed: 8.6, throttle: 0.3, cooldown: 0 });
         const b0 = st.bumps; const t = performance.now();
         while (st.bumps === b0 && performance.now() - t < 2000) await sleep(16);
         out.bumped = st.bumps > b0;
@@ -295,9 +319,14 @@ const CHECKS = [
     expect: (v) => [
       ['Fly button in the timeline', v.flyButton],
       ['T takes off (' + v.modeAfterT + ')', v.modeAfterT === 'plane' && v.tookOff],
-      ['W and D for 1.5 s: moves (' + v.moved.toFixed(1) + ' units) and turns right (' + v.turned.toFixed(1) + ' degrees)', v.moved > 5 && v.turned < -20],
+      ['D banks before it turns: after 0.25 s, ' + v.bankFirst.bank.toFixed(1) + ' degrees of bank and ' + v.bankFirst.heading.toFixed(2) + ' of heading',
+        v.bankFirst.bank > 5 && Math.abs(v.bankFirst.heading) < 1],
+      ['the mouse is a stick (' + (v.stick.locked ? 'pointer lock' : 'drag') + '): moving it right banks right (stick ' + v.stick.roll.toFixed(2) + '), then springs back (' + v.stickAfter.mouseX.toFixed(3) + ') while the bank stays (' + v.stickAfter.bank.toFixed(1) + ' degrees)',
+        v.stick.roll > 0.2 && Math.abs(v.stickAfter.mouseX) < 0.02 && v.stickAfter.bank > 5],
+      ['W and D for 1.5 s: moves (' + v.moved.toFixed(1) + ' units) and the bank turns it right (' + v.turned.toFixed(1) + ' degrees)', v.moved > 5 && v.turned < -20],
       ['W raises the throttle (' + v.throttle.map((t) => t.toFixed(2)).join(' -> ') + ')', v.throttle[1] > v.throttle[0] + 0.5],
-      ['the controls card stays visible: pull back to climb, sound, land', !!v.keys && /pull back to climb/.test(v.keys) && /Sound on/.test(v.keys) && /Land in map mode/.test(v.keys)],
+      ['the controls card stays visible: bank to turn, back raises the nose, sound, land',
+        !!v.keys && /banking turns/.test(v.keys) && /back raises the nose/.test(v.keys) && /Sound on/.test(v.keys) && /Land in map mode/.test(v.keys)],
       ['engine sound: built on takeoff, pitch rises with the throttle (' + (v.sound0.target ? v.sound0.target.freq.toFixed(0) : '?') + ' -> ' + (v.sound1.target ? v.sound1.target.freq.toFixed(0) : '?') + ' Hz, context ' + v.sound1.context + ')',
         v.sound0.created && v.sound0.active && v.sound1.target.freq > v.sound0.target.freq + 10],
       ['M mutes the engine and the card says so', v.muted.state.muted && v.muted.state.target.gain === 0 && v.muted.keys],
@@ -305,7 +334,7 @@ const CHECKS = [
       ['cylinder detail moves ahead of the camera while flying (' + (v.detailAhead || 0).toFixed(1) + ' units), back to centred after landing (' + (v.detailAfter || 0).toFixed(1) + ')',
         (v.backend !== 'webgpu' || v.detailAhead > 1) && v.detailAfter === 0],
       ['the plane model and the readout are visible (' + v.readout + ')', v.model && /^Blocks [\d,]+\u2013[\d,]+/.test(v.readout || '')],
-      ['crosshair shown as the aim', v.crosshair],
+      ['the nose circle marks where the plane points; no centre crosshair', v.nose && !v.crosshair],
       ['collision keeps the plane 0.15 above the surface (' + v.clearance.toFixed(3) + ')', v.clearance >= 0.149],
       ['links made while flying open in map mode (mode=' + v.hashMode + ')', v.hashMode === 'map'],
       ['flying into a tall column bumps and stops in front of it' + (v.spot ? '' : ' (no column found)'), !!v.spot && v.bumped && v.stoppedBefore],

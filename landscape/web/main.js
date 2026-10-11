@@ -165,7 +165,8 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       onInspect: (x, y) => inspectAt(x, y),
       onNotice: notice,
       onModeChange: (mode) => {
-        crosshair.hidden = mode === 'map';
+        // Plane mode marks the nose with its own circle; the centre crosshair is flight mode's.
+        crosshair.hidden = mode !== 'flight';
         document.body.classList.toggle('flight', mode === 'flight');
         document.body.classList.toggle('plane', mode === 'plane');
         if (typeof view.setDetailAhead === 'function') {
@@ -469,7 +470,8 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
           break;
         }
         case 'KeyI': {
-          const p = controls.inspectPoint();
+          // In plane mode, inspect where the nose points (its circle), else as the controls say.
+          const p = (controls.mode === 'plane' && planeHud.noseClient()) || controls.inspectPoint();
           if (p) inspectAt(p.x, p.y);
           break;
         }

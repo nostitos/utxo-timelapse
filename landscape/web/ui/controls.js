@@ -14,17 +14,17 @@
 // WASD, E/Q up/down, Shift 4x, wheel sets speed, speed scales with height above the
 // terrain, and collision keeps the camera above the surface. On touch, one finger looks
 // and two fingers fly (spread to go forward, drag to slide or climb).
-// Plane mode (T, desktop only): a small plane flies on from the view centre (ui/plane.js).
-// The mouse moves the aim at the screen centre and the plane turns toward it; A/D and the
-// arrows turn, climb and dive (pull back, the down arrow, to climb), W/S set the throttle,
-// Shift boosts, the wheel sets the chase distance. The chase camera follows the aim from
-// behind the plane. Esc, losing the pointer lock or T again returns to map mode where the
-// camera is. A standard gamepad also works: left stick aims, RT/LT throttle, A boost, Start
-// takes off or lands, B lands.
+// Plane mode (T, desktop only): a small plane flies on from the view centre (ui/plane.js) and
+// flies like a plane: the mouse is a stick that springs back to the centre, sideways banks
+// and the bank turns, back raises the nose (A/D and the left/right arrows bank, the down and
+// up arrows pitch), W/S set the throttle, Shift boosts, the wheel sets the chase distance.
+// The chase camera swings after the plane. Esc, losing the pointer lock or T again returns
+// to map mode where the camera is. A standard gamepad also works: left stick banks and
+// pitches, RT/LT throttle, A boost, Start takes off or lands, B lands.
 
 import { Vector3, Quaternion, Euler } from 'three';
 import { TAP_SLOP_PX, TAP_MAX_MS, DOUBLE_TAP_MS, pairOf, pairDelta, classifyTwoFinger, createTapTracker } from './touch.js';
-import { PLANE, createPlane, stepPlane, steerAim, aimByMouse, chasePose, shakeOffset, gamepadInput } from './plane.js';
+import { PLANE, createPlane, stepPlane, stickByMouse, chasePose, shakeOffset, gamepadInput } from './plane.js';
 
 const DEG = Math.PI / 180;
 const UP = new Vector3(0, 1, 0);
@@ -309,7 +309,7 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
   // ---- flight ----------------------------------------------------------------------
   function look(dx, dy) {
     if (mode === 'plane') {
-      if (plane && !anim) aimByMouse(plane, dx, dy, { sensitivity: setting('camera.sensitivity', 1), invertY: !!setting('camera.invertY', false) });
+      if (plane && !anim) stickByMouse(plane, dx, dy, { sensitivity: setting('camera.sensitivity', 1), invertY: !!setting('camera.invertY', false) });
       return;
     }
     const sens = setting('camera.sensitivity', 1) * 0.0022;
@@ -352,7 +352,7 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
       requestLock();
     } else if (mode === 'plane') {
       takeOff();
-      requestLock('Pointer lock unavailable: drag to aim');
+      requestLock('Pointer lock unavailable: drag to steer');
     } else if (document.pointerLockElement === canvas) {
       document.exitPointerLock();
     }
@@ -381,13 +381,13 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
     const inv = setting('camera.invertY', false) ? -1 : 1;
     const input = {
       throttle: key('KeyW') - key('KeyS'),
-      turn: key('KeyD') + key('ArrowRight') - key('KeyA') - key('ArrowLeft'),
-      climb: (key('ArrowDown') - key('ArrowUp')) * inv,
+      roll: key('KeyD') + key('ArrowRight') - key('KeyA') - key('ArrowLeft'),
+      pitch: (key('ArrowDown') - key('ArrowUp')) * inv,
       boost: !!(key('ShiftLeft') || key('ShiftRight')),
     };
     if (pad.input) {
-      input.turn += pad.input.turn;
-      input.climb += pad.input.climb;
+      input.roll += pad.input.roll;
+      input.pitch += pad.input.pitch;
       input.throttle += pad.input.throttle;
       input.boost = input.boost || pad.input.boost;
     }
@@ -395,7 +395,7 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
     placeChase();
   }
 
-  /** Camera behind the plane along the aim, with the bump shake unless reduced motion is on. */
+  /** Camera behind the plane (swinging after it), with the bump shake unless reduced motion is on. */
   function placeChase() {
     const c = chasePose(plane, chase, ground);
     pos.set(c.x, c.y, c.z);
@@ -607,7 +607,7 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
         const k = 0.004 * setting('camera.sensitivity', 1);
         const inv = setting('camera.invertY', false) ? -1 : 1;
         if (mode === 'plane') {
-          if (plane && !anim) steerAim(plane, (f.x - tg.lx) * k, (f.y - tg.ly) * k * inv);
+          if (plane && !anim) stickByMouse(plane, f.x - tg.lx, f.y - tg.ly, { sensitivity: setting('camera.sensitivity', 1), invertY: inv < 0 });
         } else {
           yaw = wrap(yaw + (f.x - tg.lx) * k);
           pitch = clamp(pitch + (f.y - tg.ly) * k * inv, -89 * DEG, 89 * DEG);

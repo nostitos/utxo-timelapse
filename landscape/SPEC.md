@@ -533,24 +533,27 @@ cursor; double-click flies there; arrows pan, Q/E rotate, PageUp/PageDown tilt),
 mode (F toggles; pointer lock, mouse look, WASD, E/Q up/down, Shift 4×, wheel sets speed,
 speed scales with height above terrain; collision keeps the camera above the surface) and
 plane mode (T or the timeline's Fly button; not on touch-only devices). Plane mode flies a
-small plane (`render/plane-model.js`) with the arcade model in `ui/plane.js`: the mouse
-moves the aim at the crosshair (0.001 rad/px × `camera.sensitivity`) and the plane turns
-toward it (at most 55°/s, banking up to 55°; the aim stays within 60° of the heading).
-Pitch is pull back to climb (mouse or stick down, ↓); `camera.invertY` switches it. A/D and
-←/→ turn at 45°/s, ↓/↑ climb and dive at 30°/s, easing in over 0.25 s; W/S throttle
+small plane (`render/plane-model.js`) with the flight model in `ui/plane.js`. It banks to
+turn: sideways stick rolls the plane (80°/s, bank up to 75°) and the bank turns it, at
+35°/s × tan(bank) × √(4 / speed) (at most 75°/s); centred, the bank holds and decays slowly
+(0.3/s). Back raises the nose along the plane's own axis (35°/s), so pulling back in a bank
+tightens the turn; pitch is limited to ±70°. The mouse is a stick that springs back to the
+centre (160 px ÷ `camera.sensitivity` for full deflection, return 3/s); A/D and ←/→ bank,
+↓/↑ pitch (pull back for nose up; `camera.invertY` switches it), easing in over 0.25 s; the
+chase camera swings after the plane (4/s) and never rolls, so the bank shows. W/S throttle
 1–16 units/s (start 4), Shift 3×, wheel sets the chase distance (1.5–40, default 2.6), M
 toggles the synthesized engine sound (`ui/plane-sound.js`, remembered in localStorage). A
 controls card stays visible while flying. With `view.setDetailAhead(0.6, 1.6)` the terrain
 draws cylinders down to `geo.columnPixels / 1.6` and moves their disc 0.6 radii ahead of
 the camera (near cylinders still measured from the camera; L0 tiles kept that far out).
 With `camera.collision` the plane keeps 0.15 above the
-surface, rides over rises up to 0.35 and bumps on taller columns (stops, half speed, aim
-pitched up). The chase camera looks along the aim and never rolls. A top-centre line shows
+surface, rides over rises up to 0.35 and bumps on taller columns (stops, half speed, nose
+pitched up). A top-centre line shows
 the column, date and row amount under the plane. Esc, T or a lost pointer lock returns to
 map mode at the camera; the URL hash records plane mode as `mode=map`. Standard gamepads:
-left stick aims, RT/LT throttle, A boost, Start takes off or lands, B lands.
+left stick banks and pitches, RT/LT throttle, A boost, Start takes off or lands, B lands.
 Keys everywhere (ignored while typing in inputs): Space play/pause, `[`/`]` ±1 block,
-Shift+`[`/`]` ±1,008, I inspect at cursor (crosshair in flight and plane mode), Esc exits
+Shift+`[`/`]` ±1,008, I inspect at cursor (crosshair in flight, nose circle in plane mode), Esc exits
 flight or plane mode/closes the drawer. Places: eras at 50,000, 210,000, 314,000, 420,000, 500,000, 630,000,
 700,000, 840,000, 900,000 and the tip (seek + fly to that creation column); amount bands:
 50 BTC coinbase row, ≥10 BTC, 1 BTC, 10,000 sat, 546 sat, 1–100 sat (fly to that row).

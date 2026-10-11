@@ -39,9 +39,9 @@ const SECTIONS = [
   ]],
   ['Plane', [
     [['T'], 'Take off from the centre of the view; T again lands in map mode'],
-    [['~Mouse'], 'Steer; pull back to climb (Invert Y switches it)'],
-    [['A', 'D', '\u2190', '\u2192'], 'Turn'],
-    [['\u2193', '\u2191'], 'Climb or dive'],
+    [['~Mouse'], 'Stick that springs back: sideways banks, back raises the nose (Invert Y switches it)'],
+    [['A', 'D', '\u2190', '\u2192'], 'Bank left or right; the bank turns the plane'],
+    [['\u2193', '\u2191'], 'Nose up or down; back in a bank tightens the turn'],
     [['W', 'S'], 'Faster or slower; hold Shift to boost'],
     [['~Wheel'], 'Camera closer or farther'],
     [['M'], 'Engine sound on or off'],

@@ -7,7 +7,7 @@
 // browsers keep it silent until such a gesture.
 
 const STORE_KEY = 'utxo-landscape-plane-sound';
-const MAX_BANK = (55 * Math.PI) / 180;
+const MAX_BANK = (75 * Math.PI) / 180;
 const MAX_SPEED = 48; // full throttle with boost (ui/plane.js)
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
