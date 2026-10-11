@@ -1576,8 +1576,8 @@ export const RELEASE = Object.freeze({
     1882
   ],
   "numBlocks": 970659,
-  "sitePrefix": "explorer/landscape-link-20261011/site",
-  "version": "landscape-link-20261011",
+  "sitePrefix": "explorer/landscape-link-bar-20261011/site",
+  "version": "landscape-link-bar-20261011",
   "historyBlockTimesKey": "explorer/append970658-20261009/history/block_times.bin",
   "historyShardSources": {
     "0": {
