@@ -22,6 +22,7 @@ import {
 import { createColumns, NEAR_PX } from './columns.js';
 import { createAxisLabels } from './labels.js';
 import { createFlashes } from './flashes.js';
+import { noGBufferWrites } from '../gbuffer.js';
 
 // Fallback values for ids the settings store might not provide (SPEC §7 defaults).
 export const TERRAIN_DEFAULTS = Object.freeze({
@@ -148,6 +149,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
   nowMat.depthWrite = false;
   nowMat.side = DoubleSide;
   nowMat.fog = true;
+  nowMat.mrtNode = noGBufferWrites();
   // Strongest at the ground, fading to nothing at the top (plane spans y -0.5..0.5 locally).
   const up = positionLocal.y.add(0.5);
   const fade = float(1).sub(smoothstep(0, 1, up)).pow(2);

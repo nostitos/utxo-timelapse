@@ -35,6 +35,8 @@ import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 import { traa } from 'three/addons/tsl/display/TRAANode.js';
 import { radialBlur } from 'three/addons/tsl/display/radialBlur.js';
+import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
+import { G_BUFFER_OUTPUTS, gBufferBlend } from './gbuffer.js';
 import { planPipeline, planKey, planStages, lutText } from './post-plan.js';
 import { parseCubeLUT } from './cube-lut.js';
 import { VOLUME_LAYER } from './env.js';
@@ -223,7 +225,13 @@ export function createPost({ renderer, scene, camera, env, capabilities }) {
     if (p.mrt.metalrough) outs.metalrough = vec2(metalness, roughness);
     if (p.mrt.diffuse) outs.diffuse = diffuseColor;
     if (p.mrt.velocity) outs.velocity = velocity;
-    if (Object.keys(outs).length > 1) scenePass.setMRT(mrt(outs));
+    if (Object.keys(outs).length > 1) {
+      // Alpha blending on the G-buffer attachments so transparent quads with zero outputs
+      // (render/gbuffer.js) leave them alone; opaque surfaces write alpha 1 and overwrite.
+      const targets = mrt(outs);
+      for (const name of G_BUFFER_OUTPUTS) if (outs[name]) targets.setBlendMode(name, gBufferBlend());
+      scenePass.setMRT(targets);
+    }
     if (p.mrt.normal) scenePass.getTexture('normal').type = UnsignedByteType;
     if (p.mrt.metalrough) scenePass.getTexture('metalrough').type = UnsignedByteType;
     if (p.mrt.diffuse) scenePass.getTexture('diffuse').type = UnsignedByteType;
@@ -280,7 +288,13 @@ export function createPost({ renderer, scene, camera, env, capabilities }) {
       label(vp, 'volumetric');
       env.setVolumeDepth(depthTex.sample(screenUV));
       st.volPass = vp;
-      litRGB = litRGB.add(vp.getTextureNode().rgb.mul(U.volIntensity));
+      // The ray march dithers its start offset per pixel (a fixed pattern: a per-frame offset
+      // sparkled whenever TRAA could not converge, which is whenever anything moves). A small
+      // separable blur at the pass's half resolution smooths the dither; scattering is low
+      // frequency, so the shafts keep their shape.
+      const smoothed = track(gaussianBlur(vp.getTextureNode(), null, 2));
+      label(smoothed, 'volumetric');
+      litRGB = litRGB.add(smoothed.rgb.mul(U.volIntensity));
       composite = true;
     }
     if (p.godRays) {

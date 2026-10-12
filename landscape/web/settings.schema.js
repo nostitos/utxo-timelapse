@@ -364,7 +364,7 @@ const ENTRIES = [
     help: 'Fog thins with height: density * exp(-falloff * y). 0 = uniform fog.' },
   { id: 'light.volumetric', section: 'Atmosphere', label: 'Volumetric light', type: 'bool', default: false,
     rebuild: 'post',
-    help: 'Ray-marched height-fog volume lit by the sun with its own shadow map, so peaks cast shafts through the haze. Density follows Fog density and Fog height falloff.' },
+    help: 'Ray-marched height-fog volume lit by the sun with its own shadow map, so peaks cast shafts through the haze; rendered at half resolution and smoothed. Density follows Fog density and Fog height falloff.' },
   { id: 'light.volumetricSteps', section: 'Atmosphere', label: 'Volumetric steps', type: 'int',
     min: 8, max: 256, step: 1, scale: 'log', default: 32, help: 'Ray-march steps of the half-resolution volumetric pass.' },
   { id: 'light.volumetricIntensity', section: 'Atmosphere', label: 'Volumetric intensity', type: 'number',
