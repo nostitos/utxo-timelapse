@@ -762,7 +762,8 @@ TEST_CASE("utxo_explorer" * doctest::skip()) {
         res.set_header("Content-Security-Policy",
                        "default-src 'self'; style-src 'self' 'unsafe-inline'; "
                        "script-src 'self' 'unsafe-inline'; "
-                       "media-src 'self' https://utxo-cdn.hat39.com; connect-src 'self'");
+                       "media-src 'self' https://utxo-cdn.hat39.com; connect-src 'self'; "
+                       "img-src 'self' data:");
         if (req.path == "/video.mp4") {
             // Versioned video URLs are immutable; the bare URL must revalidate
             // because operators can switch explorerVideoFile between renders.
