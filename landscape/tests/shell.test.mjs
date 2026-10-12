@@ -8,7 +8,7 @@ import { dateToBlock, parseUtc, toDateTimeInput, blockTime } from '../web/ui/tim
 import { encodeHash, decodeHash, encodeCam, decodeCam } from '../web/ui/hash.js';
 import {
   createPlayback, planPlay, snapshotAtOrBelow, speedById, defaultStartBlock, SPEEDS, STEP_LARGE,
-  START_BEFORE_TIP,
+  START_BEFORE_TIP, speedHint,
 } from '../web/ui/playback.js';
 import { ERAS, BANDS, bandRows, resolvePlace, eraBlock } from '../web/ui/places.js';
 import { buildMinAmtTable, rowOfAmount } from '../web/data/axis.js';
@@ -392,6 +392,8 @@ test('planPlay and snapshot lookup', () => {
   assert.equal(speedById('nope').id, '1');
   assert.deepEqual(SPEEDS.map((s) => s.label), ['1\u00d7', '2\u00d7', '5\u00d7', 'Max']);
   assert.deepEqual(SPEEDS.map((s) => s.rate), [60, 120, 300, Infinity]);
+  assert.deepEqual(SPEEDS.map((s) => speedHint(s).match(/about ([\d.]+ \w+)|([\d,]+)\u00d7 real time/g)),
+    [['about 10 hours', '36,000\u00d7 real time'], ['about 20 hours', '72,000\u00d7 real time'], ['about 2.1 days', '180,000\u00d7 real time'], null]);
 });
 
 test('places resolve eras and amount bands on the film rows', () => {

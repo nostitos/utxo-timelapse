@@ -4,7 +4,7 @@
 // On phones (app.css) the block and date inputs hide, Places and Settings show icons, and
 // narrow screens replace the speed buttons with one button that cycles through the speeds.
 
-import { SPEEDS, STEP_LARGE } from './playback.js';
+import { SPEEDS, STEP_LARGE, speedById, speedHint } from './playback.js';
 import { dateToBlock, parseUtc } from './time.js';
 import { fmtInt, isoUtc } from './format.js';
 
@@ -33,7 +33,7 @@ export function createTimeline({ container, tip, blocktimes, playback, onSeek, o
     '<button type="button" class="tl-btn" data-act="fwdLarge" title="Forward ' + fmtInt(STEP_LARGE) + ' blocks (Shift+])" aria-label="Forward ' + fmtInt(STEP_LARGE) + ' blocks">' + ICONS.fwdLarge + '</button>' +
     '</div>' +
     '<div class="tl-speeds" role="radiogroup" aria-label="Playback speed">' +
-    SPEEDS.map((s, i) => '<button type="button" role="radio" data-speed="' + s.id + '" title="' + s.label + ' (' + (i + 1) + ')">' + s.label + '</button>').join('') +
+    SPEEDS.map((s, i) => '<button type="button" role="radio" data-speed="' + s.id + '" title="' + speedHint(s) + ' (key ' + (i + 1) + ')">' + s.label + '</button>').join('') +
     '</div>' +
     '<button type="button" class="tl-speedcycle" data-act="speed" title="Playback speed (1 to 4)">' + SPEEDS[0].label + '</button>' +
     '<div class="tl-track"><div class="tl-marks" aria-hidden="true"></div>' +
@@ -169,6 +169,7 @@ export function createTimeline({ container, tip, blocktimes, playback, onSeek, o
       if (state && state.speed !== shown.speed) {
         speedBtns.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.speed === state.speed)));
         speedCycle.textContent = speedLabel(state.speed);
+        speedCycle.title = speedHint(speedById(state.speed)) + '; press for the next speed';
         speedCycle.setAttribute('aria-label', 'Playback speed ' + speedLabel(state.speed) + ', press for the next speed');
         shown.speed = state.speed;
       }

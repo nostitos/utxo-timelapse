@@ -140,13 +140,15 @@ A snapshot stores every level. A per-tile directory with CRC-32 checksums lets t
 
 The worker keeps exact Float64 state for the resident tiles at every level and decodes BLK2 records exactly as `ChangesInBlock::decode` does. A seek picks the cheapest start: the current state, the nearest snapshot below with forward replay, or the nearest snapshot above with backward replay. Coarse tiles arrive first, so an exact overview appears before the detail. Tiles stream to the main thread as 258 × 258 cells with a one-cell border, followed by per-cell changes. Change chunks are cached (512 MB LRU, read ahead in the playback direction), and a memory guard keeps tiles plus cache under 1.4 GB.
 
-| Speed | Behaviour |
-|---|---|
-| 1× | 60 blocks/s, exact |
-| 2× | 120 blocks/s, exact |
-| 5× | 300 blocks/s, exact; the HUD shows the achieved rate if the worker falls behind |
-| Max | Back-to-back exact replay |
-| Scrubbing | The snapshot at or below the handle while dragging, then an exact seek on release |
+| Speed | Behaviour | Bitcoin time per second (10 minutes a block) |
+|---|---|---|
+| 1× | 60 blocks/s, exact | 10 hours, 36,000× real time |
+| 2× | 120 blocks/s, exact | 20 hours, 72,000× real time |
+| 5× | 300 blocks/s, exact; the HUD shows the achieved rate if the worker falls behind | about 2.1 days, 180,000× real time |
+| Max | Back-to-back exact replay | the HUD's blocks/s × 10 minutes |
+| Scrubbing | The snapshot at or below the handle while dragging, then an exact seek on release | — |
+
+The speed buttons' tooltips give the same figures. Blocks have averaged about 9.6 minutes over the chain's history, so measured against the real calendar 1× is closer to 34,600× real time.
 
 Activity heat adds the BTC each spend moves to its cell and decays with a half-life in blocks. Seeks and backward steps clear it, and pausing keeps it. Every spend makes its cell glow: at least a floor brightness (as every spent output flashes in the film), brighter for more BTC moved, and dimmer for coins created within the last four weeks, which are spent constantly. Spends also get flash sprites that keep a minimum on-screen size, so activity stays visible from far away.
 

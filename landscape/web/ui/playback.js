@@ -9,8 +9,14 @@
 // Every speed replays every block. Only scrubbing seeks to snapshots: the snapshot at/below
 // the scrub position while dragging, then an exact seek on release. Steps of 1 block use
 // advance; 1,008-block steps use seek.
+//
+// At Bitcoin's 10-minute target, 1x shows about 10 hours of the chain every second, 36,000
+// times real time (speedHint, shown as the speed buttons' tooltips).
+
+import { fmtInt } from './format.js';
 
 export const BASE_RATE = 60;
+export const BLOCK_MINUTES = 10; // Bitcoin's target block interval
 export const STEP_SMALL = 1;
 export const STEP_LARGE = 1008;
 // A link without a block opens at least this many blocks (about a week) before the tip, so
@@ -30,6 +36,19 @@ const RATE_MIN_WINDOW_MS = 500;
 
 export function speedById(id) {
   return SPEEDS.find((s) => s.id === String(id)) || SPEEDS[0];
+}
+
+/**
+ * How a speed compares with real time, for tooltips: blocks a second and the chain time that
+ * passes every second at BLOCK_MINUTES per block (1x: 10 hours, 36,000 times real time).
+ */
+export function speedHint(spec) {
+  if (spec.policy === 'max') return 'Max: every block, as fast as this device and connection can replay them; the HUD shows the rate';
+  const minutes = spec.rate * BLOCK_MINUTES; // chain minutes per real second
+  const round = (x) => (Number.isInteger(x) ? String(x) : x.toFixed(1));
+  const span = minutes < 24 * 60 ? round(minutes / 60) + ' hours' : round(minutes / 1440) + ' days';
+  return spec.label + ': ' + fmtInt(spec.rate) + ' blocks a second, about ' + span + ' of Bitcoin every second (' +
+    fmtInt(minutes * 60) + '\u00d7 real time at 10 minutes a block)';
 }
 
 /** Largest snapshot block <= b in a sorted array, or null. */

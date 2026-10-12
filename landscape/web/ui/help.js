@@ -16,7 +16,7 @@ const SECTIONS = [
     [['Space'], 'Play or pause'],
     [['[', ']'], 'Back or forward 1 block (exact)'],
     [['Shift', '[', ']'], 'Back or forward 1,008 blocks (about a week)'],
-    [['1', '2', '3', '4'], 'Speed 1\u00d7, 2\u00d7, 5\u00d7, Max'],
+    [['1', '2', '3', '4'], 'Speed 1\u00d7, 2\u00d7, 5\u00d7, Max; 1\u00d7 is 60 blocks, about 10 hours of Bitcoin, every second'],
   ]],
   ['Map mode', [
     [['~Drag'], 'Pan; the grabbed point stays under the cursor'],
