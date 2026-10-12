@@ -123,14 +123,23 @@ const CHECKS = [
         // Rate over the HUD's own window (last 1.5 s), to compare with what the HUD shows.
         const w0 = samples.find((s) => s[0] >= t1 - 1500) || samples[0];
         const windowRate = (b1 - w0[1]) / ((t1 - w0[0]) / 1000);
+        // Longest stretch without visible progress after the first 1.5 s (50 ms samples).
+        let still = 0, longestStill = 0;
+        for (let i = 1; i < samples.length; i++) {
+          if (samples[i][0] < t0 + 1500) continue;
+          if (samples[i][1] === samples[i - 1][1]) still += samples[i][0] - samples[i - 1][0];
+          else { longestStill = Math.max(longestStill, still); still = 0; }
+        }
+        longestStill = Math.max(longestStill, still);
         L.playback.pause(); await idle();
-        return { from: b0, blocks: b1 - b0, seconds: (t1 - t0) / 1000, rate: (b1 - b0) / ((t1 - t0) / 1000), limited: st.limited, achieved: st.achieved, windowRate, seeks };
+        return { from: b0, blocks: b1 - b0, seconds: (t1 - t0) / 1000, rate: (b1 - b0) / ((t1 - t0) / 1000), limited: st.limited, achieved: st.achieved, windowRate, seeks, longestStill, paced: st.paced };
       }
       const busy = inData(300000);
       out.x1 = await run('1', 10, busy);
       out.x2 = await run('2', 5, busy);
       out.x5 = await run('5', 5, busy);
-      out.max = await run('max', 4, busy);
+      // Near the tip a chunk holds about 115 blocks, so online Max is paced to the download.
+      out.max = await run('max', 6, inData(840000));
       out.memoryMB = L.replay.status && Math.round(L.replay.status.memoryBytes / 1048576);
       return out;`,
     expect: (v) => [
@@ -142,6 +151,7 @@ const CHECKS = [
       ['5x: 300 blocks/s, or the HUD shows the achieved rate (measured ' + Math.round(v.x5.rate) + '/s, last 1.5 s ' + Math.round(v.x5.windowRate) +
         '/s, HUD ' + Math.round(v.x5.achieved) + '/s)', (v.x5.rate >= 285 && v.x5.rate <= 315) || Math.abs(v.x5.achieved - v.x5.windowRate) <= 0.1 * v.x5.windowRate],
       ['Max: exact advance only (' + Math.round(v.max.rate) + '/s)', v.max.seeks === 0 && v.max.blocks > 0],
+      ['Max: moves steadily, never still for 300 ms (longest ' + Math.round(v.max.longestStill) + ' ms' + (v.max.paced ? ', paced to the download' : '') + ')', v.max.longestStill < 300],
       ['worker memory <= 1.5 GB (' + v.memoryMB + ' MB)', v.memoryMB <= 1536],
     ],
   },
@@ -294,11 +304,20 @@ const CHECKS = [
       out.nose = !document.getElementById('plane-nose').hidden;
       out.hashMode = new URLSearchParams(L.hash().slice(1)).get('mode');
       await idle(); await sleep(600);
-      // Bump: put the plane low in front of a column at least 1 unit taller than the ground it starts over.
+      // Bump: put the plane low in front of a wall. Walk the path with the flight model's rule
+      // (0.05-unit samples, rises up to 0.35 are ridden over, taller ones bump) and take a spot
+      // only where the first bump is clear (a rise over 0.6) and every step before it is clearly
+      // rideable (under 0.2); heightAt blends between rows, so most columns rise over a ramp.
       let spot = null;
       for (let dz = 0; dz < 40 && !spot; dz += 0.5) for (let dx = -10; dx <= 10 && !spot; dx += 0.7) {
         const x = st.x + dx, z = st.z - dz, g0 = L.view.heightAt(x, z);
-        for (let d = 0.2; d < 2.5; d += 0.02) if (L.view.heightAt(x, z - d) > g0 + 1) { spot = { x, z, g0, d }; break; }
+        let cy = g0 + 0.15;
+        for (let d = 0.05; d < 2.5; d += 0.05) {
+          const rise = L.view.heightAt(x, z - d) + 0.15 - cy;
+          if (rise > 0.6) { if (d >= 0.2) spot = { x, z, g0, d }; break; }
+          if (rise > 0.2) break;
+          cy = Math.max(cy, cy + rise);
+        }
       }
       out.spot = spot;
       if (spot) {
