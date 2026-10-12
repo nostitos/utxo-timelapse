@@ -413,9 +413,33 @@ const CHECKS = [
       // A paused step of one block moves the camera one block's width.
       const q0 = L.controls.getPose(); key('BracketRight', { key: ']' }); await settle();
       out.step = L.controls.getPose().x - q0.x;
-      // A seek while following re-anchors: the camera stays put.
-      const k0 = L.controls.getPose(); await L.seek(L.replay.block + 5000); await idle(); await sleep(600);
-      const k1 = L.controls.getPose(); out.seek = Math.max(Math.abs(k1.x - k0.x), offAxis(k0, k1));
+      // A seek moves the camera as far as the tip went (y only rises for ground clearance).
+      const across = (a, b) => Math.max(Math.abs(a.z - b.z), Math.abs(a.yaw - b.yaw), Math.abs(a.pitch - b.pitch));
+      { const c0 = L.controls.getPose(); const b0 = L.replay.block; await L.seek(b0 + 5000); await settle(); await sleep(2000);
+        const c1 = L.controls.getPose(); out.seek = { blocks: L.replay.block - b0, dx: c1.x - c0.x, off: across(c0, c1), dy: c1.y - c0.y }; }
+      // Dragging the scrubber: the camera moves with each seek while dragging and ends as far
+      // as the tip went after the release.
+      { const s = document.querySelector('.tl-scrub'); const c0 = L.controls.getPose(); const b0 = L.replay.block;
+        const marks = [b0 + 8000, b0 + 16000, b0 + 24000]; let mid = null; let midScrubbing = null;
+        for (const m of marks) {
+          s.value = String(m); s.dispatchEvent(new Event('input', { bubbles: true }));
+          if (mid === null) {
+            // Still dragging: wait for the first scrub seek to land, then see the camera follow.
+            const t = performance.now(); while (L.replay.block === b0 && performance.now() - t < 6000) await sleep(50);
+            await sleep(800); mid = L.controls.getPose().x - c0.x; midScrubbing = L.playback.state.scrubbing;
+          } else await sleep(700);
+        }
+        const want = b0 + 24123; s.value = String(want); s.dispatchEvent(new Event('change', { bubbles: true }));
+        await sleep(300); await settle(); await sleep(2500);
+        const c1 = L.controls.getPose(); out.scrub = { want, block: L.replay.block, blocks: L.replay.block - b0, dx: c1.x - c0.x, mid, midScrubbing, off: across(c0, c1) }; }
+      // The block field moves it too.
+      { const bi = document.querySelector('.tl-block'); const c0 = L.controls.getPose(); const b0 = L.replay.block;
+        bi.focus(); bi.value = String(b0 - 1500); bi.dispatchEvent(new Event('change', { bubbles: true })); await sleep(200); await settle(); await sleep(1000);
+        const c1 = L.controls.getPose(); out.blockInput = { blocks: L.replay.block - b0, dx: c1.x - c0.x }; }
+      // Places sets the camera itself: following starts again from the place's pose.
+      { const p = await L.flyTo(inData(314000)); await settle();
+        const want = p.block / 1000 - 9 + 75 * Math.sin(28 * Math.PI / 180) * Math.cos(30 * Math.PI / 180);
+        out.place = { block: L.replay.block, placeBlock: p.block, x: L.controls.getPose().x, want, lag: L.follow.lag, active: L.follow.active }; }
       // Flight mode follows the same way.
       L.controls.setMode('flight'); await sleep(200);
       out.flight = await playFor(2500); out.flight.mode = L.controls.mode;
@@ -452,7 +476,15 @@ const CHECKS = [
         Math.abs(v.play.window.cam - v.play.window.tip) < 0.02],
       ['1x: the camera moves on every frame (' + v.play.still + ' still of ' + v.play.frames + ')', v.play.frames > 30 && v.play.still <= 2],
       ['a paused 1-block step moves the camera one block (' + v.step.toFixed(6) + ')', Math.abs(v.step - 0.001) < 1e-4],
-      ['a seek leaves the camera where it is (' + v.seek + ')', v.seek < 1e-9],
+      ['a seek moves the camera as far as the tip (' + v.seek.dx.toFixed(4) + ' for ' + v.seek.blocks + ' blocks)',
+        v.seek.blocks === 5000 && Math.abs(v.seek.dx - 5) < 0.002 && v.seek.off < 1e-6 && v.seek.dy >= 0],
+      ['the scrubber moves the camera while dragging (' + v.scrub.mid.toFixed(3) + ') and as far as the tip after the release (' +
+        v.scrub.dx.toFixed(4) + ' for ' + v.scrub.blocks + ' blocks)',
+        v.scrub.block === v.scrub.want && v.scrub.midScrubbing === true && v.scrub.mid > 1 && Math.abs(v.scrub.dx - v.scrub.blocks / 1000) < 0.002 && v.scrub.off < 1e-6],
+      ['the block field moves the camera as far as the tip (' + v.blockInput.dx.toFixed(4) + ' for ' + v.blockInput.blocks + ' blocks)',
+        v.blockInput.blocks === -1500 && Math.abs(v.blockInput.dx + 1.5) < 0.002],
+      ['Places puts the camera at the place, not shifted by the seek (x ' + v.place.x.toFixed(3) + ', place pose ' + v.place.want.toFixed(3) + ')',
+        v.place.active && v.place.block === v.place.placeBlock && Math.abs(v.place.x - v.place.want) < 1e-3 && v.place.lag === 0],
       ['flight mode follows the tip (' + v.flight.dx.toFixed(4) + ' for ' + v.flight.blocks + ' blocks)',
         v.flight.mode === 'flight' && v.flight.blocks > 50 && Math.abs(v.flight.dx - v.flight.blocks / 1000) < 0.002],
       ['plane mode keeps following on; landing does not jump (' + v.plane.landing + ')', v.plane.active && v.plane.mode === 'plane' && v.plane.landing < 1e-9],

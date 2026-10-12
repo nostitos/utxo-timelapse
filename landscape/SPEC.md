@@ -569,14 +569,16 @@ the column, date and row amount under the plane. Esc, T or a lost pointer lock r
 map mode at the camera; the URL hash records plane mode as `mode=map`. Standard gamepads:
 left stick banks and pitches, RT/LT throttle, A boost, Start takes off or lands, B lands.
 Follow tip (N or the timeline's Follow button, `aria-pressed`; also on touch devices,
-`ui/follow.js`): turning it on leaves the camera where it is. Replay frames with reason
-`advance` move a target block; frames with any other reason that change the block (seek,
-scrub, block or date input, Places, links) re-anchor it. Each frame, before the controls, the
+`ui/follow.js`): turning it on leaves the camera where it is. Every replay frame that changes
+the block moves a target block: playback and the 1-block steps (advance frames) and the
+scrubber, block and date input and the 1,008-block steps (seek frames). Seeks that place the
+camera themselves (Places, links, imported views, startup) run between `beginJump()` and
+`endJump(block)`, and frames in between re-anchor instead. Each frame, before the controls, the
 camera's anchor eases toward the target (τ = 0.25 s, snapping within 0.01 blocks) and
 `controls.shiftX(dx)` moves the camera by the change in world x (block / 1000), together with
 every point a gesture or animation in progress is anchored to (each point once). So the camera
-keeps the tip's speed and direction, steps with the 1-block steps, and its total shift equals the
-tip's. Map and flight mode follow; plane mode holds (re-anchors on every frame and replay
+keeps the tip's speed and direction, glides to the new tip after a seek, and its total shift
+equals the tip's. Map and flight mode follow; plane mode holds (re-anchors on every frame and replay
 frame), so landing never jumps.
 Keys everywhere (ignored while typing in inputs): Space play/pause, `[`/`]` ±1 block,
 Shift+`[`/`]` ±1,008, N Follow tip, I inspect at cursor (crosshair in flight, nose circle in plane mode), Esc exits

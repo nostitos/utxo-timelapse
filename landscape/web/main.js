@@ -233,6 +233,19 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       if (!quiet) notice(want ? 'Following the tip' : 'Stopped following the tip', 'info', 'follow');
     }
 
+    /**
+     * Seek for an action that places the camera itself (Places, links, imported views, startup):
+     * Follow tip starts again from the new block instead of moving the camera there. Every other
+     * seek (scrubber, block and date fields, steps) moves a following camera with the tip.
+     */
+    function seekPlacingCamera(block) {
+      follow.beginJump();
+      const p = playback.seek(block);
+      const done = () => follow.endJump(replay.block);
+      p.then(done, done);
+      return p;
+    }
+
     const panelOpen = () => !!(panel && typeof panel.isOpen === 'function' && panel.isOpen());
     // The panel is either open or fully hidden: a collapsed lil-gui title bar would sit on top
     // of the inspector. syncPanel also catches a collapse from the panel's own title bar.
@@ -284,10 +297,11 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       minimap.applyFrame(frame);
       view.applyFrame(frame);
       view.setBlock(frame.block);
-      // Plane mode holds Follow tip at every frame, so no tip motion while flying (not even a
-      // frame that arrives just before landing) moves the camera afterwards.
+      // Follow tip: every change of block moves a following camera. Plane mode holds it at every
+      // frame, so no tip motion while flying (not even a frame just before landing) moves the
+      // camera afterwards.
       if (controls.mode === 'plane') follow.hold(frame.block);
-      else follow.frame(frame.reason, frame.block);
+      else follow.frame(frame.block);
       if (!frame.partial && frame.block != null) gotData = true;
       hook.lastFrame = { seq: frame.seq, block: frame.block, reason: frame.reason, partial: frame.partial, full: (frame.full || []).length, deltas: frame.deltas && frame.deltas.ids ? frame.deltas.ids.length : 0, stats: frame.stats };
     });
@@ -373,7 +387,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         target.y = ground(target.x, target.z);
         const pose = controls.poseLookingAt(target, { distance: 75, yaw: 28, pitch: -30 });
         notice(p.title + ' \u00b7 block ' + fmtInt(p.block), 'info', 'place');
-        await Promise.all([playback.seek(p.block), controls.flyTo(pose)]);
+        await Promise.all([seekPlacingCamera(p.block), controls.flyTo(pose)]);
       } else {
         const f = focus();
         const edge = worldX((replay.block ?? tip) + 1);
@@ -432,7 +446,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       if (v.cam) controls.setPose(v.cam);
       if (v.mode === 'flight' || v.mode === 'map') controls.setMode(v.mode);
       if (typeof v.follow === 'boolean') setFollow(v.follow, { quiet: true });
-      if (Number.isInteger(v.b)) playback.seek(clamp(v.b, 0, tip));
+      if (Number.isInteger(v.b)) seekPlacingCamera(clamp(v.b, 0, tip));
     }
     let written = location.hash;
     let lastHashCheck = 0;
@@ -460,7 +474,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       if (h.cam) controls.flyTo({ position: h.cam, yaw: h.cam.yaw, pitch: h.cam.pitch });
       if (h.mode) controls.setMode(h.mode);
       setFollow(h.follow, { quiet: true });
-      if (h.block != null && h.block !== replay.block) playback.seek(clamp(h.block, 0, tip));
+      if (h.block != null && h.block !== replay.block) seekPlacingCamera(clamp(h.block, 0, tip));
     });
 
     // ---- keyboard -------------------------------------------------------------------
@@ -565,7 +579,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       : defaultStartBlock(tip, replay.snapshotBlocks || []);
     stage = 'seek';
     loading.set('Replaying to block ' + fmtInt(startBlock));
-    playback.seek(startBlock).catch((err) => {
+    seekPlacingCamera(startBlock).catch((err) => {
       hook.error = String(err && err.message ? err.message : err);
       notice('Seek failed: ' + hook.error, 'error');
     });
