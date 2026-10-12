@@ -17,6 +17,7 @@ const SECTIONS = [
     [['[', ']'], 'Back or forward 1 block (exact)'],
     [['Shift', '[', ']'], 'Back or forward 1,008 blocks (about a week)'],
     [['1', '2', '3', '4'], 'Speed 1\u00d7, 2\u00d7, 5\u00d7, Max; 1\u00d7 is 60 blocks, about 10 hours of Bitcoin, every second'],
+    [['N'], 'Follow the tip (the Follow button): the camera moves with the newest block at its speed, and you can still pan, orbit and zoom; N again stops'],
   ]],
   ['Map mode', [
     [['~Drag'], 'Pan; the grabbed point stays under the cursor'],

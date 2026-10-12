@@ -21,6 +21,8 @@
 // The chase camera swings after the plane. Esc, losing the pointer lock or T again returns
 // to map mode where the camera is. A standard gamepad also works: left stick banks and
 // pitches, RT/LT throttle, A boost, Start takes off or lands, B lands.
+// Follow tip (ui/follow.js) moves map and flight mode along x with shiftX, carrying the
+// points a gesture or animation in progress is anchored to.
 
 import { Vector3, Quaternion, Euler } from 'three';
 import { TAP_SLOP_PX, TAP_MAX_MS, DOUBLE_TAP_MS, pairOf, pairDelta, classifyTwoFinger, createTapTracker } from './touch.js';
@@ -989,6 +991,38 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
       sync();
       if (to.distanceToSquared(save) < 1e-10) return Promise.resolve({ cancelled: false });
       return api.flyTo({ position: to, duration });
+    },
+    /**
+     * Follow tip: move the camera dx along x (world units), keeping its direction, together
+     * with every point an animation or gesture in progress is anchored to, so they carry on
+     * in the moving frame. Cancels nothing; does nothing in plane mode.
+     */
+    shiftX(dx) {
+      if (!Number.isFinite(dx) || dx === 0 || mode === 'plane') return;
+      // A pan drag's grab and pivot can be the same point: shift each point once.
+      const points = new Set();
+      const add = (p) => {
+        if (p && Number.isFinite(p.x)) points.add(p);
+      };
+      if (anim) {
+        add(anim.from.pos);
+        add(anim.to.pos);
+      }
+      if (zoom) add(zoom.point);
+      add(keyOrbit.pivot);
+      if (drag) {
+        add(drag.grab);
+        add(drag.pivot);
+      }
+      if (tg) {
+        add(tg.grab);
+        add(tg.anchor);
+      }
+      for (const p of points) p.x += dx;
+      pos.x += dx;
+      if (mode === 'flight') flightLimits();
+      else constrain();
+      sync();
     },
     /** Ground footprint of the view as [x, z] corners (for the minimap). */
     footprint(maxDistance = 2500) {

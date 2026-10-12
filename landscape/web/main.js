@@ -2,14 +2,15 @@
 //
 // Creates the settings store, the replay client and the view, wires worker frames to the
 // view, settings to their consumers, and runs the frame loop:
-//   controls -> playback -> view.update -> replay.setTiles (when desired tiles change) -> view.render
+//   follow tip -> controls -> playback -> view.update -> replay.setTiles (when desired tiles change) -> view.render
 // ?webgl=1 forces WebGL2, ?data=URL picks the dataset (default: the current dataset named by
 // /dataset/index.json online, /dataset/ locally), ?explorer=URL the cell API (default: the
 // native explorer on 127.0.0.1:12989 locally, this site online), ?explorer2d=URL the 2D link,
 // ?startup=adaptive|high the first-visit quality (ui/online.js). The URL hash keeps b, cam,
-// mode and the settings preset and overrides.
+// mode, follow and the settings preset and overrides.
 
 import { createPlayback, defaultStartBlock, SPEEDS, STEP_LARGE } from './ui/playback.js';
+import { createTipFollow } from './ui/follow.js';
 import { decodeHash, encodeHash } from './ui/hash.js';
 import { resolvePlace } from './ui/places.js';
 import { createControls, isTypingTarget } from './ui/controls.js';
@@ -144,6 +145,8 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
 
     // ---- UI --------------------------------------------------------------------
     const playback = createPlayback({ replay, tip, snapshots: replay.snapshotBlocks || [] });
+    // Follow tip: map and flight mode move along x with the delivered block (ui/follow.js).
+    const follow = createTipFollow();
     const crosshair = $('crosshair');
     let hashDirty = true;
     // Plane mode needs a keyboard or mouse to steer; touch-only devices keep the map controls.
@@ -215,8 +218,20 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       onPlaces: () => placesMenu.toggle(),
       onSettings: () => togglePanel(),
       onHelp: () => help.toggle(),
+      onFollow: () => setFollow(!follow.active),
       onFly: touchOnly ? null : () => controls.togglePlane(),
     });
+
+    /** Turn Follow tip on or off; on, the camera stays put and moves on with the tip from here. */
+    function setFollow(on, { quiet = false } = {}) {
+      const want = !!on;
+      if (want === follow.active) return;
+      if (want) follow.enable(replay.block);
+      else follow.disable();
+      timeline.setFollow(want);
+      hashDirty = true;
+      if (!quiet) notice(want ? 'Following the tip' : 'Stopped following the tip', 'info', 'follow');
+    }
 
     const panelOpen = () => !!(panel && typeof panel.isOpen === 'function' && panel.isOpen());
     // The panel is either open or fully hidden: a collapsed lil-gui title bar would sit on top
@@ -269,6 +284,10 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       minimap.applyFrame(frame);
       view.applyFrame(frame);
       view.setBlock(frame.block);
+      // Plane mode holds Follow tip at every frame, so no tip motion while flying (not even a
+      // frame that arrives just before landing) moves the camera afterwards.
+      if (controls.mode === 'plane') follow.hold(frame.block);
+      else follow.frame(frame.reason, frame.block);
       if (!frame.partial && frame.block != null) gotData = true;
       hook.lastFrame = { seq: frame.seq, block: frame.block, reason: frame.reason, partial: frame.partial, full: (frame.full || []).length, deltas: frame.deltas && frame.deltas.ids ? frame.deltas.ids.length : 0, stats: frame.stats };
     });
@@ -406,12 +425,13 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     // ---- URL hash ---------------------------------------------------------------------
     // Plane mode is not shared: a link made while flying opens in map mode at the camera.
     const shareMode = () => (controls.mode === 'plane' ? 'map' : controls.mode);
-    const currentHash = () => encodeHash({ block: replay.block, mode: shareMode(), cam: controls.getPose() }, store.toURL());
-    const viewState = () => ({ b: replay.block, cam: controls.getPose(), mode: shareMode() });
+    const currentHash = () => encodeHash({ block: replay.block, mode: shareMode(), cam: controls.getPose(), follow: follow.active }, store.toURL());
+    const viewState = () => ({ b: replay.block, cam: controls.getPose(), mode: shareMode(), follow: follow.active });
     function restoreView(v) {
       if (!v) return;
       if (v.cam) controls.setPose(v.cam);
       if (v.mode === 'flight' || v.mode === 'map') controls.setMode(v.mode);
+      if (typeof v.follow === 'boolean') setFollow(v.follow, { quiet: true });
       if (Number.isInteger(v.b)) playback.seek(clamp(v.b, 0, tip));
     }
     let written = location.hash;
@@ -439,6 +459,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       if (h.settings) store.fromURL(location.hash);
       if (h.cam) controls.flyTo({ position: h.cam, yaw: h.cam.yaw, pitch: h.cam.pitch });
       if (h.mode) controls.setMode(h.mode);
+      setFollow(h.follow, { quiet: true });
       if (h.block != null && h.block !== replay.block) playback.seek(clamp(h.block, 0, tip));
     });
 
@@ -480,6 +501,9 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
           break;
         case 'KeyT':
           if (!touchOnly) controls.togglePlane();
+          break;
+        case 'KeyN':
+          setFollow(!follow.active);
           break;
         case 'KeyM':
           notice(planeSound.toggleMuted() ? 'Plane sound off' : 'Plane sound on', 'info', 'sound');
@@ -532,6 +556,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     }
     // Flight mode needs a keyboard to steer and to leave; touch-only devices open the link in map mode.
     if (initial.mode === 'flight' && !deviceTraits().coarseOnly) controls.setMode('flight');
+    if (initial.follow) setFollow(true, { quiet: true });
     controls.update(0);
     const first = view.update(0);
     if (first && first.desiredTiles) replay.setTiles(first.desiredTiles);
@@ -552,6 +577,17 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       flyTo: (place) => flyToPlace(place),
       inspect: (x, y) => inspectAt(x, y),
       hash: () => currentHash(),
+      follow: {
+        get active() {
+          return follow.active;
+        },
+        /** Blocks the camera still has to glide behind the tip. */
+        get lag() {
+          return follow.lag;
+        },
+        toggle: () => setFollow(!follow.active),
+        set: (on) => setFollow(on),
+      },
       plane: {
         get active() {
           return controls.mode === 'plane';
@@ -576,7 +612,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       },
       state: () => ({
         ready: hook.ready, block: replay.block, busy: replay.busy, playback: playback.state,
-        mode: controls.mode, pose: controls.getPose(), backend: view.backend, preset: store.preset,
+        mode: controls.mode, follow: follow.active, pose: controls.getPose(), backend: view.backend, preset: store.preset,
         inspector: inspector.isOpen ? inspector.current : null, status: lastStatus,
       }),
       idle: () => !replay.busy && !playback.state.op && replay.block != null,
@@ -592,6 +628,13 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       const dt = clamp((now - last) / 1000, 0, 0.1);
       last = now;
       try {
+        // Follow tip before the controls, so their update draws the shifted camera. Plane mode
+        // holds it, so following resumes from wherever the camera lands.
+        if (controls.mode === 'plane') follow.hold(replay.block);
+        else {
+          const dx = follow.step(dt);
+          if (dx !== 0) controls.shiftX(dx);
+        }
         controls.update(dt);
         if (planeModel) planeModel.update(controls.plane, dt);
         planeHud.update(controls.plane, replay.block);

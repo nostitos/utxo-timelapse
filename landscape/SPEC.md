@@ -536,9 +536,9 @@ overlay; ui_shell ← camera.*, `display.legend/minimap/hud`.
 `#labels`, `#overlay`, `#hud`, `#timeline`, `#panel`, `#minimap`, `#inspector`,
 `#legend`, `#toast`. `main.js` creates the settings store, replay client and view,
 wires frames → view, settings → consumers, and runs the rAF loop:
-controls → playback → `view.update` → (`replay.setTiles` when desired tiles change) →
+follow tip → controls → playback → `view.update` → (`replay.setTiles` when desired tiles change) →
 `view.render`. `?webgl=1` forces WebGL2. URL hash keeps
-`b` (block), `cam`, `mode`, `preset` and settings overrides.
+`b` (block), `cam`, `mode`, `follow=1` (Follow tip on), `preset` and settings overrides.
 Without `b`, the app opens at the latest snapshot at least 1,008 blocks (about a week)
 before the tip, so Play has blocks to play (`defaultStartBlock` in `ui/playback.js`).
 
@@ -568,8 +568,18 @@ pitched up). A top-centre line shows
 the column, date and row amount under the plane. Esc, T or a lost pointer lock returns to
 map mode at the camera; the URL hash records plane mode as `mode=map`. Standard gamepads:
 left stick banks and pitches, RT/LT throttle, A boost, Start takes off or lands, B lands.
+Follow tip (N or the timeline's Follow button, `aria-pressed`; also on touch devices,
+`ui/follow.js`): turning it on leaves the camera where it is. Replay frames with reason
+`advance` move a target block; frames with any other reason that change the block (seek,
+scrub, block or date input, Places, links) re-anchor it. Each frame, before the controls, the
+camera's anchor eases toward the target (τ = 0.25 s, snapping within 0.01 blocks) and
+`controls.shiftX(dx)` moves the camera by the change in world x (block / 1000), together with
+every point a gesture or animation in progress is anchored to (each point once). So the camera
+keeps the tip's speed and direction, steps with the 1-block steps, and its total shift equals the
+tip's. Map and flight mode follow; plane mode holds (re-anchors on every frame and replay
+frame), so landing never jumps.
 Keys everywhere (ignored while typing in inputs): Space play/pause, `[`/`]` ±1 block,
-Shift+`[`/`]` ±1,008, I inspect at cursor (crosshair in flight, nose circle in plane mode), Esc exits
+Shift+`[`/`]` ±1,008, N Follow tip, I inspect at cursor (crosshair in flight, nose circle in plane mode), Esc exits
 flight or plane mode/closes the drawer. Places: eras at 50,000, 210,000, 314,000, 420,000, 500,000, 630,000,
 700,000, 840,000, 900,000 and the tip (seek + fly to that creation column); amount bands:
 50 BTC coinbase row, ≥10 BTC, 1 BTC, 10,000 sat, 546 sat, 1–100 sat (fly to that row).
@@ -577,7 +587,8 @@ Minimap from the always-resident L6 tile. Inspection drawer: exact worker state 
 cell, the explorer cell API lifecycle data, and the 2D explorer link.
 
 Test hook: main.js sets `window.__landscape = { ready, settings, replay, view, controls,
-playback, seek(block), flyTo(place), inspect(x, y), plane: { active, takingOff, state, pose,
+playback, seek(block), flyTo(place), inspect(x, y), follow: { active, lag, toggle(), set(on) },
+plane: { active, takingOff, state, pose,
 model, takeoff(), land() } }` and sets `ready = true` after the
 first rendered frame that contains real data. Dev harness pages set `window.__ready` and
 expose their objects on `window.__dev`. browser-check scripts use these hooks.

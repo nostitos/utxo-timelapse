@@ -367,6 +367,105 @@ const CHECKS = [
     ],
   },
   {
+    name: 'follow',
+    shot: 'follow.png',
+    timeout: 120000,
+    script: `const out = {};
+      const btn = document.querySelector('#timeline [data-act="follow"]');
+      out.button = !!btn;
+      // Pose change of everything but x (y, z, yaw, pitch).
+      const offAxis = (a, b) => Math.max(Math.abs(a.y - b.y), Math.abs(a.z - b.z), Math.abs(a.yaw - b.yaw), Math.abs(a.pitch - b.pitch));
+      const settle = async () => { await idle(); await sleep(1500); };
+      // Play at 1x for ms; returns the camera's x shift against the tip's after the glide settles.
+      async function playFor(ms, track = null) {
+        const b0 = L.replay.block; const c0 = L.controls.getPose();
+        L.playback.setSpeed('1'); L.playback.play();
+        if (track) {
+          const t0 = performance.now(); let lastX = c0.x; let still = 0;
+          while (performance.now() - t0 < ms) {
+            await frame();
+            const t = performance.now(); const x = L.controls.getPose().x;
+            if (t - t0 > 1000) { if (x === lastX) still++; track.frames++; track.samples.push([t, x, L.replay.block]); }
+            lastX = x;
+          }
+          track.still = still;
+        } else await sleep(ms);
+        L.playback.pause(); await settle();
+        const c1 = L.controls.getPose();
+        return { blocks: L.replay.block - b0, dx: c1.x - c0.x, off: offAxis(c0, c1) };
+      }
+      await L.seek(inData(400000)); await idle();
+      const tx = L.replay.block / 1000;
+      const place = (x, z, up, yaw, pitch) => L.controls.setPose({ x, y: L.view.heightAt(x, z) + up, z, yaw, pitch });
+      place(tx - 5, 185, 8, -50, -28); await sleep(300); await idle();
+      // N turns following on without moving the camera.
+      const p0 = L.controls.getPose();
+      key('KeyN', { key: 'n' }); await frame(); await frame();
+      const p1 = L.controls.getPose();
+      out.on = { active: L.follow.active, pressed: btn && btn.getAttribute('aria-pressed'), moved: Math.max(Math.abs(p1.x - p0.x), offAxis(p0, p1)),
+        hash: L.hash().includes('follow=1') };
+      // 1x for 5 s: the camera moves on every frame and travels as far as the tip.
+      const track = { frames: 0, samples: [] };
+      out.play = await playFor(5000, track);
+      const s = track.samples; const a = s[0]; const z = s[s.length - 1];
+      out.play.still = track.still; out.play.frames = track.frames;
+      out.play.window = { cam: z[1] - a[1], tip: (z[2] - a[2]) / 1000 };
+      // A paused step of one block moves the camera one block's width.
+      const q0 = L.controls.getPose(); key('BracketRight', { key: ']' }); await settle();
+      out.step = L.controls.getPose().x - q0.x;
+      // A seek while following re-anchors: the camera stays put.
+      const k0 = L.controls.getPose(); await L.seek(L.replay.block + 5000); await idle(); await sleep(600);
+      const k1 = L.controls.getPose(); out.seek = Math.max(Math.abs(k1.x - k0.x), offAxis(k0, k1));
+      // Flight mode follows the same way.
+      L.controls.setMode('flight'); await sleep(200);
+      out.flight = await playFor(2500); out.flight.mode = L.controls.mode;
+      L.controls.setMode('map'); await sleep(200);
+      // Plane mode holds following; landing does not jump, and following resumes after it.
+      L.controls.setMode('plane');
+      { const t = performance.now(); while (L.plane.takingOff && performance.now() - t < 4000) await sleep(30); }
+      L.playback.play(); await sleep(1500); L.playback.pause(); await idle();
+      out.plane = { active: L.follow.active, mode: L.controls.mode };
+      const g0 = L.controls.getPose(); L.plane.land(); await frame(); await frame(); await frame(); await sleep(500);
+      const g1 = L.controls.getPose(); out.plane.landing = Math.max(Math.abs(g1.x - g0.x), Math.abs(g1.y - g0.y), Math.abs(g1.z - g0.z));
+      out.plane.after = await playFor(2500);
+      // Export carries following; the button turns it off; a link with follow=1 turns it on.
+      const json = await L.panel.exportJSON({ download: false }); out.exported = json && json.view && json.view.follow;
+      btn.click(); await frame();
+      out.off = { active: L.follow.active, pressed: btn.getAttribute('aria-pressed') };
+      await sleep(500); out.off.hash = L.hash().includes('follow=1');
+      location.hash = '#b=' + L.replay.block + '&follow=1'; await sleep(300);
+      out.link = { active: L.follow.active, pressed: btn.getAttribute('aria-pressed') };
+      // Screenshot: following on (turned on with the button) above the tip in map mode.
+      L.follow.set(false); btn.click(); await frame();
+      out.clicked = { active: L.follow.active, pressed: btn.getAttribute('aria-pressed') };
+      place(L.replay.block / 1000 - 16, 200, 20, -55, -30); await sleep(300); await idle(); await sleep(800);
+      out.frameError = L.frameError || null;
+      return out;`,
+    expect: (v) => [
+      ['Follow button in the timeline', v.button],
+      ['N turns following on without moving the camera (' + v.on.moved + ')', v.on.active && v.on.pressed === 'true' && v.on.moved === 0],
+      ['the link records follow=1', v.on.hash],
+      ['1x: the camera travels as far as the tip (' + v.play.dx.toFixed(4) + ' for ' + v.play.blocks + ' blocks)',
+        v.play.blocks > 100 && Math.abs(v.play.dx - v.play.blocks / 1000) < 0.002],
+      ['1x: only x changes (' + v.play.off + ')', v.play.off < 1e-6],
+      ['1x: the camera keeps pace with the tip (camera ' + v.play.window.cam.toFixed(4) + ', tip ' + v.play.window.tip.toFixed(4) + ' over the last 4 s)',
+        Math.abs(v.play.window.cam - v.play.window.tip) < 0.02],
+      ['1x: the camera moves on every frame (' + v.play.still + ' still of ' + v.play.frames + ')', v.play.frames > 30 && v.play.still <= 2],
+      ['a paused 1-block step moves the camera one block (' + v.step.toFixed(6) + ')', Math.abs(v.step - 0.001) < 1e-4],
+      ['a seek leaves the camera where it is (' + v.seek + ')', v.seek < 1e-9],
+      ['flight mode follows the tip (' + v.flight.dx.toFixed(4) + ' for ' + v.flight.blocks + ' blocks)',
+        v.flight.mode === 'flight' && v.flight.blocks > 50 && Math.abs(v.flight.dx - v.flight.blocks / 1000) < 0.002],
+      ['plane mode keeps following on; landing does not jump (' + v.plane.landing + ')', v.plane.active && v.plane.mode === 'plane' && v.plane.landing < 1e-9],
+      ['following resumes after landing (' + v.plane.after.dx.toFixed(4) + ' for ' + v.plane.after.blocks + ' blocks)',
+        v.plane.after.blocks > 50 && Math.abs(v.plane.after.dx - v.plane.after.blocks / 1000) < 0.002],
+      ['export carries following', v.exported === true],
+      ['the button turns following off', !v.off.active && v.off.pressed === 'false' && !v.off.hash],
+      ['a link with follow=1 turns it on', v.link.active && v.link.pressed === 'true'],
+      ['the button turns following on', v.clicked.active && v.clicked.pressed === 'true'],
+      ['no frame errors', v.frameError === null],
+    ],
+  },
+  {
     name: 'hash-export-import',
     hash: '#b=BLOCK&mode=map&cam=290.000,30.000,180.000,20.00,-25.00&preset=Film',
     script: `await idle();

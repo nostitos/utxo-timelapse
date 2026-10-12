@@ -116,7 +116,7 @@ test('hash round trip keeps settings untouched', () => {
   assert.deepEqual(d.cam, { x: 483.12, y: 96.4, z: 402, yaw: -12.35, pitch: -35 });
   assert.equal(d.settings, settings);
   // Without '#', with a leading '?' settings string, and with URLSearchParams.
-  assert.deepEqual(decodeHash('b=5&mode=map'), { block: 5, mode: 'map', cam: null, settings: '' });
+  assert.deepEqual(decodeHash('b=5&mode=map'), { block: 5, mode: 'map', cam: null, follow: false, settings: '' });
   assert.equal(encodeHash({ block: 7 }, '?preset=High'), '#b=7&preset=High');
   assert.equal(encodeHash({ block: 7 }, new URLSearchParams({ preset: 'Ultra' })), '#b=7&preset=Ultra');
   assert.equal(encodeHash({}), '');
@@ -127,6 +127,17 @@ test('hash round trip keeps settings untouched', () => {
   assert.equal(bad.cam, null);
   assert.equal(bad.settings, 'x=1&b2=4');
   assert.equal(decodeHash('#b=12.5').block, null);
+  // Follow tip: follow=1 after the mode; absent, 0 or any other value is off.
+  const followed = encodeHash({ block: 314000, mode: 'map', cam, follow: true }, 'preset=High');
+  assert.equal(followed, '#b=314000&mode=map&follow=1&cam=483.120,96.400,402.000,-12.35,-35.00&preset=High');
+  assert.equal(decodeHash(followed).follow, true);
+  assert.equal(decodeHash(followed).settings, 'preset=High');
+  assert.equal(encodeHash({ block: 7, follow: false }), '#b=7');
+  assert.equal(encodeHash({ block: 7, follow: 1 }), '#b=7');
+  assert.equal(decodeHash('#b=7').follow, false);
+  assert.equal(decodeHash('#b=7&follow=0').follow, false);
+  assert.equal(decodeHash('#b=7&follow=yes').follow, false);
+  assert.equal(decodeHash('#follow').follow, false);
   // Yaw wraps into [-180, 180), pitch clamps, negative zero prints as 0.
   assert.deepEqual(decodeCam('0,1,2,190,-120'), { x: 0, y: 1, z: 2, yaw: -170, pitch: -89.9 });
   assert.equal(encodeCam({ x: -0.0001, y: 0, z: 0, yaw: -0.001, pitch: 0 }), '0.000,0.000,0.000,0.00,0.00');

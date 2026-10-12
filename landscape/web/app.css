@@ -403,6 +403,7 @@ body.plane #legend { display: none; }
 .tl-tools { display: flex; gap: 6px; }
 .tl-text { height: 34px; padding: 0 12px; border: 1px solid var(--line); border-radius: 6px; background: transparent; font: 12px var(--body); color: var(--ink); }
 .tl-text:hover { border-color: var(--mint); color: var(--mint); }
+.tl-text.on { border-color: var(--mint); background: rgba(168, 214, 179, 0.16); color: var(--mint); }
 .tl-text svg { display: none; }
 .tl-round { width: 34px; padding: 0; border-radius: 50%; font-family: var(--mono); }
 
@@ -551,6 +552,12 @@ kbd {
   .tl-text svg { display: block; width: 16px; height: 16px; fill: currentColor; }
   .tl-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
+/* The narrowest of those windows (701-737 px) with Follow and Fly: tighter gaps keep the row inside. */
+@media (min-width: 701px) and (max-width: 737px) and (min-height: 501px) {
+  #timeline { gap: 10px; }
+  .tl-tools { gap: 4px; }
+  .tl-track { min-width: 104px; }
+}
 
 /* ---- phones -------------------------------------------------------------------------------- */
 /* Portrait phones (up to 700 px wide) and landscape phones (up to 500 px tall, under 1,024 px wide).
@@ -693,7 +700,8 @@ kbd {
   .tl-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
 
-/* Portrait phones: a two-row timeline (scrubber, then the buttons) and bottom sheets above it. */
+/* Portrait phones: a two-row timeline (scrubber, then the buttons) and bottom sheets above it.
+   The button row (steps, play, speed, Follow, Places, Settings, Help) needs 384 px. */
 @media (max-width: 700px) and (min-height: 501px) {
   :root { --tl-h: calc(100px + var(--sab)); --sheet-h: calc(var(--full-h) * 0.58); --insp-h: calc(var(--full-h) * 0.45); }
   #timeline {
@@ -702,13 +710,13 @@ kbd {
     grid-template-rows: 40px 44px;
     grid-template-areas: 'track track track track' 'transport speed . tools';
     align-content: start;
-    gap: 4px 6px;
+    gap: 4px;
     padding-top: 4px;
   }
   .tl-transport { grid-area: transport; }
-  .tl-speedcycle { grid-area: speed; }
+  .tl-speedcycle { grid-area: speed; min-width: 48px; }
   .tl-track { grid-area: track; min-width: 0; }
-  .tl-tools { grid-area: tools; }
+  .tl-tools { grid-area: tools; gap: 4px; }
 
   #panel, #inspector {
     top: auto;
@@ -735,8 +743,9 @@ kbd {
   .help-grid { columns: 1; }
   .help-grid dl div { grid-template-columns: 128px 1fr; gap: 10px; }
 }
-/* The smallest phones (320 px): the scrubber and the block keys replace the single-block steps. */
-@media (max-width: 345px) {
+/* Phones narrower than the 384 px button row (320, 360, 375 px): the scrubber replaces the
+   single-block steps. */
+@media (max-width: 383px) {
   .tl-transport [data-act='back'], .tl-transport [data-act='fwd'] { display: none; }
 }
 @keyframes sheetup { from { opacity: 0; transform: translateY(24px); } }
