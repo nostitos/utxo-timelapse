@@ -1,6 +1,12 @@
 // Chunk table, LRU cache of chunk bytes and per-block record access (SPEC §4, §5).
+// It also meters delivery (bytes per second of wall time with a fetch in flight, including
+// verification and indexing) and reports how far ahead of a block the cached run of chunks
+// reaches, which playback uses to pace itself to the download (ui/playback.js).
 // Pure ES module.
 import { indexRecords } from './blk2.js';
+
+export const MAX_PARALLEL = 3;        // background read-ahead fetches in flight
+const RATE_WINDOW_MS = 3000;          // delivery rate over about this much busy time
 
 function hex(buf) {
   return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
@@ -43,6 +49,12 @@ export class ChunkStore {
     this.loads = 0;
     this.loadMs = 0;
     this.loadedBytes = 0;
+    this.ahead = null;           // read-ahead window {index, direction, count}
+    this.busyMs = 0;             // wall time with at least one fetch in flight
+    this.busyStart = null;
+    this.rateSamples = [[0, 0]]; // [busy ms, loaded bytes] at each completed fetch
+    this.bytesPerSec = null;     // delivery rate while fetching
+    this.onLoad = null;          // called after each chunk is cached
   }
 
   /** Chunk index holding a block. */
@@ -79,8 +91,16 @@ export class ChunkStore {
     if (hit) { hit.lastUse = ++this.useCounter; return Promise.resolve(hit); }
     let p = this.inflight.get(index);
     if (p) return p;
-    p = this.fetchChunk(index, signal).finally(() => this.inflight.delete(index));
+    p = this.fetchChunk(index, signal).finally(() => {
+      this.inflight.delete(index);
+      if (!this.inflight.size && this.busyStart !== null) {
+        this.busyMs += performance.now() - this.busyStart;
+        this.busyStart = null;
+      }
+      this.pump();
+    });
     this.inflight.set(index, p);
+    if (this.inflight.size === 1) this.busyStart = performance.now();
     return p;
   }
 
@@ -104,7 +124,52 @@ export class ChunkStore {
     this.loadedBytes += u8.byteLength;
     this.loadMs += performance.now() - t0;
     this.trim(index);
+    this.sampleRate();
+    if (this.onLoad) this.onLoad(entry);
     return entry;
+  }
+
+  /** Busy time so far, including the current stretch with fetches in flight. */
+  busyClock() {
+    return this.busyMs + (this.busyStart !== null ? performance.now() - this.busyStart : 0);
+  }
+
+  sampleRate() {
+    const t = this.busyClock();
+    const s = this.rateSamples;
+    s.push([t, this.loadedBytes]);
+    while (s.length > 2 && t - s[1][0] >= RATE_WINDOW_MS) s.shift();
+    const [t0, b0] = s[0];
+    if (t - t0 > 20) this.bytesPerSec = ((this.loadedBytes - b0) * 1000) / (t - t0);
+  }
+
+  /**
+   * Last block of the run of cached chunks that follows 'block' (forward), or 'block' itself
+   * when the next block's chunk is not cached.
+   */
+  frontier(block) {
+    if (block >= this.numBlocks - 1) return this.numBlocks - 1;
+    let i = this.chunkOf(Math.max(0, block + 1));
+    if (!this.cache.has(i)) return block;
+    while (i + 1 < this.list.length && this.cache.has(i + 1)) i++;
+    return this.list[i].lastBlock;
+  }
+
+  /**
+   * Blocks a second the download delivers for the chunks after 'block', from the metered
+   * bytes a second and those chunks' sizes. null before the first fetch; Infinity at the end.
+   */
+  deliveryRate(block, count = 4) {
+    if (block >= this.numBlocks - 1) return Infinity;
+    if (!(this.bytesPerSec > 0)) return null;
+    const start = this.chunkOf(block + 1);
+    let bytes = 0;
+    let blocks = 0;
+    for (let i = start; i < Math.min(this.list.length, start + count); i++) {
+      bytes += this.list[i].bytes;
+      blocks += this.list[i].lastBlock - this.list[i].firstBlock + 1;
+    }
+    return bytes > 0 ? (this.bytesPerSec * blocks) / bytes : Infinity;
   }
 
   /** Evicts least recently used chunks above the budget, never 'keep'. */
@@ -136,9 +201,19 @@ export class ChunkStore {
     this.load(index).catch(() => {});
   }
 
-  /** Read-ahead around a block in the playback direction. */
+  /**
+   * Read-ahead: keeps the 'count' chunks after the block's chunk loading in the playback
+   * direction, at most MAX_PARALLEL at a time; each completed fetch starts the next.
+   */
   readAhead(block, direction, count = 2) {
     const i = this.chunkOf(Math.max(0, Math.min(this.numBlocks - 1, block)));
-    for (let k = 1; k <= count; k++) this.prefetch(i + direction * k);
+    this.ahead = { index: i, direction, count };
+    this.pump();
+  }
+
+  pump() {
+    const a = this.ahead;
+    if (!a) return;
+    for (let k = 1; k <= a.count && this.inflight.size < MAX_PARALLEL; k++) this.prefetch(a.index + a.direction * k);
   }
 }

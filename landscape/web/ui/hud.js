@@ -66,7 +66,10 @@ export function createHud(container) {
         else if (playback.playing) {
           const rate = playback.achieved;
           play = '\u25b6 ' + playback.label + (rate != null ? ' \u00b7 ' + fmtRate(Math.max(0, rate)) : '');
-          if (playback.limited) {
+          if (playback.netLimited) {
+            play += ' \u00b7 download-limited';
+            limited = true;
+          } else if (playback.limited) {
             play += ' \u00b7 worker-limited';
             limited = true;
           } else if (playback.policy === 'exact') play += ' \u00b7 exact';

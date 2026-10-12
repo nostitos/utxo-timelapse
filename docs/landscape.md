@@ -63,7 +63,7 @@ Measured on 2026-10-08 from this Mac over a home connection in Toronto (served f
 | Browser checks | `shell-browser-checks.mjs` passes 43 of 43 in Chrome and in Brave against https://3d.bitcointimelapse.com/. |
 | Cell API against the native explorer | 24 of 26 sampled cells identical. The other two are the densest cell at the tip (column 15,100, row 1,822), queried at the tip and with a block beyond it; they differ only in the `pop` curve, from floating-point histogram bin edges, as `/api/pixel` does against the native explorer. Median 260 ms per lookup. |
 
-Playback streams the change log. After block 420,000, 1× needs about 1.2–2.2 MiB/s, 2× twice that and 5× about 6–11 MiB/s, so 1× and 2× suit most broadband connections while 5× and Max follow the connection's speed. Each seek replays up to 16 MiB of changes from the nearest snapshot, which accounts for most of an online seek.
+Playback streams the change log. After block 420,000, 1× needs about 1.2–2.2 MiB/s, 2× twice that and 5× about 6–11 MiB/s, so 1× and 2× suit most broadband connections while 5× and Max follow the connection's speed. When the download is slower than the speed, playback is paced to it and the HUD says download-limited: the picture moves on every frame at the download rate instead of racing through each 4 MiB chunk and then waiting for the next. Each seek replays up to 16 MiB of changes from the nearest snapshot, which accounts for most of an online seek.
 
 Storing the dataset costs about 1.1 USD a month in R2 (75 GB); R2 charges nothing for egress. Cloudflare Web Analytics counts visits: the zone injects its beacon into every page, and both this site's and the 2D explorer's Content Security Policy allow it.
 
@@ -145,7 +145,7 @@ The worker keeps exact Float64 state for the resident tiles at every level and d
 | 1× | 60 blocks/s, exact | 10 hours, 36,000× real time |
 | 2× | 120 blocks/s, exact | 20 hours, 72,000× real time |
 | 5× | 300 blocks/s, exact; the HUD shows the achieved rate if the worker falls behind | about 2.1 days, 180,000× real time |
-| Max | Back-to-back exact replay | the HUD's blocks/s × 10 minutes |
+| Max | Back-to-back exact replay; paced to the download when that is slower (online, near the tip) | the HUD's blocks/s × 10 minutes |
 | Scrubbing | The snapshot at or below the handle while dragging, then an exact seek on release | — |
 
 The speed buttons' tooltips give the same figures. Blocks have averaged about 9.6 minutes over the chain's history, so measured against the real calendar 1× is closer to 34,600× real time.

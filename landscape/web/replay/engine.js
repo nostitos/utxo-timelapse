@@ -21,6 +21,9 @@ const RANGE_GAP = 256 * 1024;        // coalesce tile blobs closer than this
 const RANGE_MAX = 16 * 1048576;
 const FETCH_CONCURRENCY = 4;
 const DIR_CACHE = 48;
+// Forward playback keeps this many chunks (4 MiB each, 32 MiB) loading ahead of the playhead,
+// so the download never idles while playback is paced to it.
+export const PLAY_AHEAD_CHUNKS = 8;
 export const MEMORY_BUDGET = 1400 * 1048576;   // worker total target (SPEC: <= 1.5 GB)
 const MIN_CHUNK_CACHE = 64 * 1048576;
 
@@ -102,6 +105,7 @@ export class ReplayEngine {
     this.snapshots = snaps;
     this.snapshotBlocks = snaps.map((s) => s.block);
     this.chunks = new ChunkStore(this.source, chunkTable, grid.numBlocks, { cacheBytes: chunkCacheMB * 1048576, verify: verifyChunks });
+    this.chunks.onLoad = () => this.postBuffer();
     this.requestedCacheBytes = chunkCacheMB * 1048576;
     // blkEnd = source offset of block + 1: inside that block's chunk (exact at chunk
     // starts and at the tip). Directory headers are checked against it when loaded.
@@ -273,6 +277,29 @@ export class ReplayEngine {
     if (this.group && this.group.slots) for (const s of this.group.slots.values()) b += s.memoryBytes;
     if (this.blocktimes) b += this.blocktimes.byteLength + this.rows.byteLength;
     return b;
+  }
+
+  /**
+   * Download state ahead of the replay block, for pacing playback (ui/playback.js): the last
+   * block whose chunk is cached without a gap, and the blocks a second the download delivers
+   * for the chunks after it (null until a chunk has been fetched).
+   */
+  bufferInfo() {
+    const st = this.state;
+    if (!st || st.block === null || !this.chunks) return null;
+    const frontier = this.chunks.frontier(st.block);
+    return {
+      block: st.block,
+      frontier,
+      blocksPerSec: this.chunks.deliveryRate(frontier),
+      bytesPerSec: this.chunks.bytesPerSec,
+      loading: this.chunks.inflight.size,
+    };
+  }
+
+  postBuffer() {
+    const buffer = this.bufferInfo();
+    if (buffer) this.post({ type: 'buffer', buffer });
   }
 
   pendingTileCount() {
@@ -452,7 +479,7 @@ export class ReplayEngine {
    * opts: {totals, heat (forward only), deadline, isCancelled, onProgress, counters}
    */
   async replayRange(slotOf, from, to, opts = {}) {
-    const { totals = null, heat = false, deadline = Infinity, isCancelled = () => false, onProgress = null } = opts;
+    const { totals = null, heat = false, deadline = Infinity, isCancelled = () => false, onProgress = null, ahead = 2 } = opts;
     const st = this.state;
     const dec = this.dec;
     let b = from;
@@ -474,7 +501,7 @@ export class ReplayEngine {
       }
       if (rec.entry.index !== lastChunk) {
         lastChunk = rec.entry.index;
-        this.chunks.readAhead(blk, forward ? 1 : -1, 2);
+        this.chunks.readAhead(blk, forward ? 1 : -1, ahead);
       }
       decodeBlock(rec.u8, rec.pos, dec);
       if (forward) {
@@ -579,7 +606,7 @@ export class ReplayEngine {
       this.emit('seek');
       this.answerPendingCells();
       this.post({ type: 'seekDone', id: req.id, block: T, ms: now() - t0,
-        plan: { kind: plan.kind, from: plan.from, bytes: plan.bytes } });
+        plan: { kind: plan.kind, from: plan.from, bytes: plan.bytes }, buffer: this.bufferInfo() });
     } catch (err) {
       this.post({ type: 'seekDone', id: req.id, error: String(err && err.message || err) });
       this.post({ type: 'error', message: 'seek ' + T + ': ' + (err && err.message || err), stack: err && err.stack });
@@ -679,6 +706,7 @@ export class ReplayEngine {
       const deadline = t0 + Math.max(0, req.budgetMs);
       reached = await this.replayRange(st.slotOf, from, target, {
         totals: st.totals, heat: forward, deadline, counters: this.counters, rate: 'applyBytesPerMs',
+        ahead: forward ? PLAY_AHEAD_CHUNKS : 2,
         isCancelled: () => this.seekReq !== null || this.disposed,
       });
       if (reached === from && !this.seekReq) {
@@ -693,10 +721,11 @@ export class ReplayEngine {
     st.block = reached;
     if (reached !== from) {
       await this.updateMeta(reached, forward ? this.dec : null);
-      this.chunks.readAhead(reached, forward ? 1 : -1, 2);
+      this.chunks.readAhead(reached, forward ? 1 : -1, forward ? PLAY_AHEAD_CHUNKS : 2);
       this.emit('advance');
     }
-    this.post({ type: 'advanceDone', id: req.id, block: reached, reached: reached === target, blocks: Math.abs(reached - from), ms: now() - t0 });
+    this.post({ type: 'advanceDone', id: req.id, block: reached, reached: reached === target, blocks: Math.abs(reached - from), ms: now() - t0,
+      buffer: this.bufferInfo() });
   }
 
   // ------------------------------------------------------- tiles & cells
