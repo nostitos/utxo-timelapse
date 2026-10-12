@@ -534,7 +534,8 @@ overlay; ui_shell ← camera.*, `display.legend/minimap/hud`.
 
 `index.html` provides the import map, `<canvas id="view">`, and containers
 `#labels`, `#overlay`, `#hud`, `#timeline`, `#panel`, `#minimap`, `#inspector`,
-`#legend`, `#toast`. `main.js` creates the settings store, replay client and view,
+`#legend`, `#toast`, and for plane mode `#plane-nose`, `#planehud`, `#funpops`, `#planekeys`,
+`#fun` (the Fun menu) and `#funcard` (the Stack sats end card). `main.js` creates the settings store, replay client and view,
 wires frames → view, settings → consumers, and runs the rAF loop:
 follow tip → controls → playback → `view.update` → (`replay.setTiles` when desired tiles change) →
 `view.render`. `?webgl=1` forces WebGL2. URL hash keeps
@@ -545,10 +546,12 @@ before the tip, so Play has blocks to play (`defaultStartBlock` in `ui/playback.
 Navigation: map mode (left-drag pans keeping the grabbed point under the cursor;
 right-drag or Shift-drag orbits the point under the cursor; wheel/pinch zooms toward the
 cursor; double-click flies there; arrows pan, Q/E rotate, PageUp/PageDown tilt), flight
-mode (F toggles; pointer lock, mouse look, WASD, E/Q up/down, Shift 4×, wheel sets speed,
-speed scales with height above terrain; collision keeps the camera above the surface) and
-plane mode (T or the timeline's Fly button; not on touch-only devices). Plane mode flies a
-small plane (`render/plane-model.js`) with the flight model in `ui/plane.js`. It banks to
+mode (F or the timeline's Fly button, `aria-pressed` while on; pointer lock, mouse look, WASD,
+E/Q up/down, Shift 4×, wheel sets speed, speed scales with height above terrain; collision
+keeps the camera above the surface) and plane mode (T or the timeline's Fun menu; neither the
+Fly nor the Fun button on touch-only devices). Plane mode flies one of three crafts, the plane,
+the bird or the jet (`CRAFTS` in `ui/plane.js`; models in `render/plane-model.js`), all with
+the same flight model and their own numbers (table below). The plane banks to
 turn: sideways stick rolls the plane (80°/s, bank up to 75°) and the bank turns it, at
 35°/s × tan(bank) × √(4 / speed) (at most 75°/s); centred, the bank holds and decays slowly
 (0.3/s). Back raises the nose along the plane's own axis (35°/s), so pulling back in a bank
@@ -566,8 +569,51 @@ With `camera.collision` the plane keeps 0.15 above the
 surface, rides over rises up to 0.35 and bumps on taller columns (stops, half speed, nose
 pitched up). A top-centre line shows
 the column, date and row amount under the plane. Esc, T or a lost pointer lock returns to
-map mode at the camera; the URL hash records plane mode as `mode=map`. Standard gamepads:
-left stick banks and pitches, RT/LT throttle, A boost, Start takes off or lands, B lands.
+map mode at the camera; the URL hash records plane mode as `mode=map` and never records the
+craft or a game. Standard gamepads: left stick banks and pitches, RT/LT throttle, A boost,
+Start takes off or lands, B lands, Y next craft, X starts Stack sats.
+
+Fun (`ui/fun-menu.js`, timeline button `data-act="fun"`, `aria-haspopup`; it lands first in
+plane mode, as G/P/H do): a popover with a Craft column (Plane "Steady; banks to turn", Bird
+"Slow and nimble; flaps and hugs the ground", Jet "Fast and wide; afterburner"; `aria-pressed`,
+choosing keeps the menu open) and a Play column (Free flight, Stack sats with the craft's best
+stack). Play closes the menu and takes off inside the click. C cycles plane → bird → jet (in
+flight at the same pose, heading and throttle fraction, speed, bank and pitch clamped into the
+new craft's limits; refused during a run); the choice and the best runs are kept in
+localStorage `utxo-landscape-fun` (`ui/fun-store.js`, invalid data falls back to the
+defaults). Each craft keeps its own chase distance; the controls card is titled with the craft
+and lists C (next craft) and Enter.
+
+| Craft | Speed (u/s) | Start throttle, boost | Roll, max bank, stability | Pitch rate, max | turnAt45, turnSpeed, max turn | Clearance, stepUp, bump speed | Chase (min–max), spawn | Model scale | Detail ahead (shift, reach) | Coin reach |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Plane | 0.25–16 | 0.5, 3× | 80°/s, 75°, 0.3/s | 35°/s, 70° | 35°/s, 4, 75°/s | 0.15, 0.35, 0.5 | 2 (0.8–40), 3 | 0.5 | 0.6, 1.6 | 0.7 |
+| Bird | 0.1–4 | 0.5, 2× | 140°/s, 80°, 1/s | 60°/s, 75° | 70°/s, 1, 150°/s | 0.06, 0.5, 0.7 | 1 (0.4–20), 1.5 | 0.25 | 0.3, 1.2 | 0.5 |
+| Jet | 2–60 | 0.4, 1.6× | 180°/s, 85°, 0.15/s | 40°/s, 70° | 30°/s, 16, 60°/s | 0.3, 0.2, 0.4 | 4 (1.5–60), 5 | 0.6 | 0.8, 2.2 | 1.2 |
+
+The bird beats its hinged wings ±30° at `flapRate` = 2 + 4 × throttle Hz (+2 boosting) and
+glides with them raised 8° below 0.15 throttle; the jet's tail lamp glows 1 + 7 × throttle and
+an afterburner cone shows while boosting. Sound profiles (`engineTargets(state, volume,
+profile)`): the plane as above; the jet 110 + 260 × rpm Hz, cutoff 600–3,400 Hz, no propeller
+beat, louder engine and wind on boost; the bird no engine, wind pulsed at the flap rate (depth
+0.6, none while gliding), half-strength bump. The airspeed is measured against each craft's
+full throttle with boost.
+
+Stack sats (`ui/stack-sats.js`, pure; coins drawn by `render/coins.js`): Enter in plane mode,
+gamepad X or the Fun menu starts (or restarts) a 60 s run in the current craft; it steps once
+the takeoff ends. Up to 8 coins, topped up every 3 s and at once when the last one goes: the
+ground is sampled on a square of side 2R (R = clamp(4 × speed, 5, 24)) centred 0.5R ahead of
+the craft at R/40 spacing; 3×3 local maxima at least 0.25 high, tallest first, at least 1.5
+from other coins and the craft, become coins 0.5 above the highest ground within 0.15. A coin
+is worth `rowAmountRange(rows, floor(z × 10)).min` satoshis and vanishes after 25 s; it is
+collected when this frame's path passes within the craft's coin reach horizontally and
+vertically. Coins: upright discs r 0.22, 0.05 thick, Bitcoin orange with a ₿ face, spinning
+2 rad/s, bobbing ±0.05 at 1 Hz, growing in and shrinking out over 0.25 s. During a run the
+`#planehud` line starts with "Stack sats · m:ss · stack · n coins" and each coin pops "+amount"
+under it for 0.8 s. At 60 s the best for that craft is updated and `#funcard` shows the stack,
+the coins, "New best with the <craft>" or the best, and Again (Enter) / Land (Esc); it releases
+pointer lock without landing (`controls.releaseLock()`) and the craft flies on. Landing, Fly
+or Fun abandons a run without a score.
+
 Follow tip (N or the timeline's Follow button, `aria-pressed`; also on touch devices,
 `ui/follow.js`): turning it on leaves the camera where it is. Every replay frame that changes
 the block moves a target block: playback and the 1-block steps (advance frames) and the
@@ -581,8 +627,8 @@ keeps the tip's speed and direction, glides to the new tip after a seek, and its
 equals the tip's. Map and flight mode follow; plane mode holds (re-anchors on every frame and replay
 frame), so landing never jumps.
 Keys everywhere (ignored while typing in inputs): Space play/pause, `[`/`]` ±1 block,
-Shift+`[`/`]` ±1,008, N Follow tip, I inspect at cursor (crosshair in flight, nose circle in plane mode), Esc exits
-flight or plane mode/closes the drawer. Places: eras at 50,000, 210,000, 314,000, 420,000, 500,000, 630,000,
+Shift+`[`/`]` ±1,008, N Follow tip, I inspect at cursor (crosshair in flight, nose circle in plane mode), C next craft,
+Enter Stack sats (plane mode), Esc exits flight or plane mode/closes the drawer or a menu. Places: eras at 50,000, 210,000, 314,000, 420,000, 500,000, 630,000,
 700,000, 840,000, 900,000 and the tip (seek + fly to that creation column); amount bands:
 50 BTC coinbase row, ≥10 BTC, 1 BTC, 10,000 sat, 546 sat, 1–100 sat (fly to that row).
 Minimap from the always-resident L6 tile. Inspection drawer: exact worker state for the
@@ -591,7 +637,8 @@ cell, the explorer cell API lifecycle data, and the 2D explorer link.
 Test hook: main.js sets `window.__landscape = { ready, settings, replay, view, controls,
 playback, seek(block), flyTo(place), inspect(x, y), follow: { active, lag, toggle(), set(on) },
 plane: { active, takingOff, state, pose,
-model, takeoff(), land() } }` and sets `ready = true` after the
+model, craft, crafts, setCraft(id), coins, game: { active, state, start(), stop() }, sound, takeoff(), land() },
+fun: { open, toggle(), card } }` and sets `ready = true` after the
 first rendered frame that contains real data. Dev harness pages set `window.__ready` and
 expose their objects on `window.__dev`. browser-check scripts use these hooks.
 

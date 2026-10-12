@@ -254,7 +254,8 @@ const CHECKS = [
       const takeoffDone = async () => { const t = performance.now(); while (L.plane.takingOff && performance.now() - t < 4000) await sleep(30); };
       await L.seek(inData(314000)); await idle();
       L.controls.setPose({ x: Math.min(150, tip / 1000 - 40), y: 14, z: 120, yaw: -70, pitch: -14 }); await sleep(400); await idle();
-      const out = { flyButton: !!document.querySelector('#timeline [data-act="fly"]') };
+      L.plane.setCraft('plane');
+      const out = { funButton: !!document.querySelector('#timeline [data-act="fun"]') };
       key('KeyT', { key: 't' }); await sleep(50);
       out.modeAfterT = L.controls.mode;
       await takeoffDone();
@@ -339,7 +340,7 @@ const CHECKS = [
       out.afterLand = { mode: L.controls.mode, model: !!(L.plane.model && L.plane.model.visible), state: L.plane.state };
       return out;`,
     expect: (v) => [
-      ['Fly button in the timeline', v.flyButton],
+      ['Fun button in the timeline', v.funButton],
       ['T takes off (' + v.modeAfterT + ')', v.modeAfterT === 'plane' && v.tookOff],
       ['D banks before it turns: after 0.25 s, ' + v.bankFirst.bank.toFixed(1) + ' degrees of bank and ' + v.bankFirst.heading.toFixed(2) + ' of heading',
         v.bankFirst.bank > 5 && Math.abs(v.bankFirst.heading) < 1],
@@ -347,8 +348,9 @@ const CHECKS = [
         v.stick.roll > 0.2 && Math.abs(v.stickAfter.mouseX) < 0.02 && v.stickAfter.bank > 5],
       ['W and D for 1.5 s: moves (' + v.moved.toFixed(1) + ' units) and the bank turns it right (' + v.turned.toFixed(1) + ' degrees)', v.moved > 5 && v.turned < -20],
       ['W raises the throttle (' + v.throttle.map((t) => t.toFixed(2)).join(' -> ') + ')', v.throttle[1] > v.throttle[0] + 0.4],
-      ['the controls card stays visible: bank to turn, back raises the nose, sound, land',
-        !!v.keys && /banking turns/.test(v.keys) && /back raises the nose/.test(v.keys) && /Sound on/.test(v.keys) && /Land in map mode/.test(v.keys)],
+      ['the controls card stays visible: the craft, bank to turn, back raises the nose, next craft, Stack sats, sound, land',
+        !!v.keys && /^Plane/.test(v.keys) && /banking turns/.test(v.keys) && /back raises the nose/.test(v.keys) && /Next craft: Bird/.test(v.keys) &&
+        /Stack sats: 60 s/.test(v.keys) && /Sound on/.test(v.keys) && /Land in map mode/.test(v.keys)],
       ['engine sound: built on takeoff, pitch rises with the throttle (' + (v.sound0.target ? v.sound0.target.freq.toFixed(0) : '?') + ' -> ' + (v.sound1.target ? v.sound1.target.freq.toFixed(0) : '?') + ' Hz, context ' + v.sound1.context + ')',
         v.sound0.created && v.sound0.active && v.sound1.target.freq > v.sound0.target.freq + 10],
       ['M mutes the engine and the card says so', v.muted.state.muted && v.muted.state.target.gain === 0 && v.muted.keys],
@@ -364,6 +366,129 @@ const CHECKS = [
         v.afterEsc.mode === 'map' && !v.afterEsc.model && !v.afterEsc.readout && !v.afterEsc.crosshair && !v.afterEsc.keys && !v.afterEsc.sound],
       ['land() returns to map mode', v.again === 'plane' && v.afterLand.mode === 'map' && !v.afterLand.model && v.afterLand.state === null],
       ['no frame errors (' + v.backend + ')', v.frameError === null],
+    ],
+  },
+  {
+    name: 'fly-button',
+    shot: 'fly-button.png',
+    script: `const btn = document.querySelector('#timeline [data-act="fly"]');
+      const fun = document.querySelector('#timeline [data-act="fun"]');
+      const out = { title: btn && btn.title, pressed0: btn && btn.getAttribute('aria-pressed'), fun: fun && { title: fun.title, popup: fun.getAttribute('aria-haspopup') } };
+      key('KeyH', { key: 'h' }); await sleep(150);
+      out.help = [...document.querySelectorAll('#help h3')].map((h) => h.textContent);
+      L.ui.help.close(); await sleep(100);
+      btn.click(); await sleep(150);
+      out.on = { mode: L.controls.mode, pressed: btn.getAttribute('aria-pressed'), crosshair: !document.getElementById('crosshair').hidden };
+      out.hashMode = new URLSearchParams(L.hash().slice(1)).get('mode');
+      key('Escape', { key: 'Escape' }); await sleep(150);
+      out.esc = { mode: L.controls.mode, pressed: btn.getAttribute('aria-pressed') };
+      key('KeyF', { key: 'f' }); await sleep(150);
+      out.f = { mode: L.controls.mode, pressed: btn.getAttribute('aria-pressed') };
+      out.frameError = L.frameError || null;
+      return out;`,
+    expect: (v) => [
+      ['the Fly button says what it does (' + v.title + ')', /^Fly: mouse to look, W A S D to move \(F\)$/.test(v.title || '') && v.pressed0 === 'false'],
+      ['clicking Fly enters flight mode, shown pressed, with the crosshair', v.on.mode === 'flight' && v.on.pressed === 'true' && v.on.crosshair],
+      ['links made in flight mode keep it (mode=' + v.hashMode + ')', v.hashMode === 'flight'],
+      ['Esc returns to map mode and releases the button', v.esc.mode === 'map' && v.esc.pressed === 'false'],
+      ['F enters the same mode and presses the button', v.f.mode === 'flight' && v.f.pressed === 'true'],
+      ['a Fun button opens a menu (' + (v.fun && v.fun.title) + ')', !!v.fun && /^Fun: fly a plane, bird or jet/.test(v.fun.title) && v.fun.popup === 'true'],
+      ['help has Fly and Fun sections (' + v.help.join(', ') + ')', v.help.includes('Fly') && v.help.includes('Fun') && !v.help.includes('Plane')],
+      ['no frame errors', v.frameError === null],
+    ],
+  },
+  {
+    name: 'fun',
+    shot: 'fun.png',
+    timeout: 120000,
+    script: `const takeoffDone = async () => { const t = performance.now(); while (L.plane.takingOff && performance.now() - t < 4000) await sleep(30); };
+      const stored = () => JSON.parse(localStorage.getItem('utxo-landscape-fun') || '{}');
+      const live = () => L.plane.game.state.coins.filter((c) => c.gone == null);
+      localStorage.removeItem('utxo-landscape-fun');
+      await L.seek(inData(314000)); await idle();
+      L.controls.setPose({ x: Math.min(150, tip / 1000 - 40), y: 14, z: 120, yaw: -70, pitch: -14 }); await sleep(400); await idle();
+      const out = {};
+      document.querySelector('#timeline [data-act="fun"]').click(); await sleep(150);
+      out.menu = { open: L.fun.open, crafts: [...document.querySelectorAll('#fun [data-craft]')].map((b) => b.dataset.craft + '=' + b.getAttribute('aria-pressed')),
+        best: document.querySelector('#fun [data-play="stack-sats"] .pl-meta').textContent };
+      document.querySelector('#fun [data-craft="bird"]').click(); await sleep(100);
+      out.chose = { open: L.fun.open, craft: L.plane.craft, pressed: document.querySelector('#fun [data-craft="bird"]').getAttribute('aria-pressed'), stored: stored().craft };
+      document.querySelector('#fun [data-play="free"]').click(); await sleep(50);
+      out.free = { open: L.fun.open, mode: L.controls.mode };
+      await takeoffDone(); await sleep(400);
+      const pivots = L.plane.model.getObjectByName('bird').children.filter((o) => o.type === 'Group');
+      const z0 = pivots.length ? pivots[1].rotation.z : NaN; await sleep(90); const z1 = pivots.length ? pivots[1].rotation.z : NaN;
+      out.bird = { craft: L.plane.state.craft, shown: L.plane.model.getObjectByName('bird').visible && !L.plane.model.getObjectByName('plane').visible,
+        speed: L.plane.state.speed, head: document.querySelector('#planekeys .eyebrow').textContent, flapping: Math.abs(z1 - z0) > 0.01,
+        clearance: L.plane.state.y - L.view.heightAt(L.plane.state.x, L.plane.state.z) };
+      // Down to the ground: the bird skims at its 0.06 clearance.
+      { const st = L.plane.state; st.y = L.view.heightAt(st.x, st.z) + 0.4; st.pitch = -1.2; st.camPitch = -1.2;
+        const t = performance.now(); while (st.y - L.view.heightAt(st.x, st.z) > 0.1 && performance.now() - t < 4000) await sleep(30);
+        out.bird.low = st.y - L.view.heightAt(st.x, st.z);
+        // Climb clear of the columns before the jet takes over (it bumps on rises over 0.2).
+        Object.assign(st, { y: st.y + 8, pitch: 0, camPitch: 0, bank: 0 }); }
+      key('KeyC', { key: 'c' }); await sleep(100);
+      out.jet = { craft: L.plane.state.craft, shown: L.plane.model.getObjectByName('jet').visible && !L.plane.model.getObjectByName('bird').visible, stored: stored().craft,
+        head: document.querySelector('#planekeys .eyebrow').textContent, sound: L.plane.sound.state.target };
+      await sleep(2500); out.jet.speed = L.plane.state.speed;
+      key('Enter', { key: 'Enter' }); await sleep(50);
+      out.started = L.plane.game.active;
+      const t0 = performance.now();
+      while (!live().length && performance.now() - t0 < 3000) await sleep(30);
+      out.coins = { ms: Math.round(performance.now() - t0), n: live().length, meshes: L.plane.coins ? L.plane.coins.children.filter((m) => m.visible).length : 0,
+        hud: document.querySelector('#planehud .ph-game').textContent };
+      key('KeyC', { key: 'c' }); await sleep(50); out.craftDuringRun = L.plane.state.craft;
+      // Fly at a coin: just in front of it at its height, heading for it (collision off for this pass).
+      const coin = live()[0]; const st = L.plane.state;
+      L.settings.set('camera.collision', false);
+      Object.assign(st, { x: coin.x, z: coin.z + 2, y: coin.y, yaw: 0, camYaw: 0, pitch: 0, camPitch: 0, bank: 0, mouseX: 0, mouseY: 0 });
+      const t1 = performance.now();
+      while (L.plane.game.state.collected === 0 && performance.now() - t1 < 2000) await sleep(16);
+      L.settings.set('camera.collision', true);
+      out.hit = { collected: L.plane.game.state.collected, score: L.plane.game.state.score, value: coin.value, pops: [...document.querySelectorAll('#funpops .ph-pop')].map((e) => e.textContent),
+        hud: document.querySelector('#planehud .ph-game').textContent };
+      await sleep(400);
+      L.plane.game.stop(); await sleep(150);
+      const p0 = { x: st.x, z: st.z }; await sleep(300);
+      out.card = { open: L.fun.card, text: document.getElementById('funcard').textContent, mode: L.controls.mode, active: L.plane.game.active,
+        flying: Math.hypot(st.x - p0.x, st.z - p0.z) > 0.5, best: stored().best && stored().best['stack-sats'] && stored().best['stack-sats'].jet };
+      document.querySelector('#fun').hidden = true;
+      document.querySelector('#funcard [data-card="again"]').click(); await sleep(150);
+      out.again = { active: L.plane.game.active, score: L.plane.game.state.score, card: L.fun.card, mode: L.controls.mode };
+      document.querySelector('#timeline [data-act="fun"]').click(); await sleep(150);
+      out.menuInFlight = { open: L.fun.open, mode: L.controls.mode, active: L.plane.game.active,
+        best: document.querySelector('#fun [data-play="stack-sats"] .pl-meta').textContent };
+      L.fun.toggle();
+      key('Enter', { key: 'Enter' }); await sleep(50);
+      out.enterInMap = L.controls.mode;
+      L.plane.takeoff(); await takeoffDone(); key('Enter', { key: 'Enter' }); await sleep(100); L.plane.game.stop(); await sleep(100);
+      document.querySelector('#funcard [data-card="land"]').click(); await sleep(400);
+      out.land = { mode: L.controls.mode, card: L.fun.card, coins: live().length, model: L.plane.model.visible };
+      out.frameError = L.frameError || null;
+      return out;`,
+    expect: (v) => [
+      ['the Fun menu opens with three crafts, the plane chosen, no stack yet (' + v.menu.crafts.join(' ') + ')',
+        v.menu.open && v.menu.crafts.join(' ') === 'plane=true bird=false jet=false' && v.menu.best === 'No stack yet'],
+      ['choosing the bird keeps the menu open and remembers it', v.chose.open && v.chose.craft === 'bird' && v.chose.pressed === 'true' && v.chose.stored === 'bird'],
+      ['Free flight closes the menu and takes off', !v.free.open && v.free.mode === 'plane'],
+      ['the bird flies: its model shown, flapping, at most 4 units/s (' + v.bird.speed.toFixed(2) + ')',
+        v.bird.craft === 'bird' && v.bird.shown && v.bird.flapping && v.bird.speed <= 4 && v.bird.head === 'Bird'],
+      ['the bird dives to skim the ground (' + v.bird.low.toFixed(3) + ' above it, from ' + v.bird.clearance.toFixed(2) + ')', v.bird.low >= 0.059 && v.bird.low < 0.2],
+      ['C switches to the jet in flight and remembers it', v.jet.craft === 'jet' && v.jet.shown && v.jet.stored === 'jet' && v.jet.head === 'Jet'],
+      ['the jet speeds up past the bird (' + v.jet.speed.toFixed(1) + ' units/s)', v.jet.speed > 4],
+      ['Enter starts Stack sats and coins appear within 3 s (' + v.coins.n + ' coins, ' + v.coins.meshes + ' drawn, after ' + v.coins.ms + ' ms)',
+        v.started && v.coins.n > 0 && v.coins.ms < 3000 && v.coins.meshes >= v.coins.n],
+      ['the HUD shows the run (' + v.coins.hud + ')', /^Stack sats \u00b7 [01]:\d\d \u00b7 0 BTC \u00b7 0 coins$/.test(v.coins.hud)],
+      ['C does not change the craft during a run', v.craftDuringRun === 'jet'],
+      ['flying through a coin stacks its row amount and pops it (' + v.hit.pops.join(' ') + '; ' + v.hit.hud + ')',
+        v.hit.collected >= 1 && v.hit.score >= v.hit.value && v.hit.value > 0 && v.hit.pops.length >= 1 && /^\+/.test(v.hit.pops[0]) && / [1-8] coins?$/.test(v.hit.hud)],
+      ['the end card shows the stack and the new best, the craft flies on (' + v.card.text + ')',
+        v.card.open && !v.card.active && v.card.mode === 'plane' && v.card.flying && /^Stack sats \u00b7 JetStacked /.test(v.card.text) && /New best with the Jet/.test(v.card.text) && !!v.card.best && v.card.best.sats > 0],
+      ['Again restarts from zero', v.again.active && v.again.score === 0 && !v.again.card && v.again.mode === 'plane'],
+      ['the Fun button lands first and the menu shows the best', v.menuInFlight.open && v.menuInFlight.mode === 'map' && !v.menuInFlight.active && /^Best /.test(v.menuInFlight.best)],
+      ['Enter does nothing in map mode', v.enterInMap === 'map'],
+      ['Land returns to map mode, card closed, coins gone', v.land.mode === 'map' && !v.land.card && v.land.coins === 0 && !v.land.model],
+      ['no frame errors', v.frameError === null],
     ],
   },
   {
@@ -597,7 +722,7 @@ const CHECKS = [
         await run(() => gesture([[at(0.3), hy], [at(0.7), hy]], [[at(0.03), hy], [at(0.97), hy]])); await sleep(300);
       }
       out.pageScale = window.visualViewport ? visualViewport.scale : 1;
-      out.fly = { button: !!document.querySelector('#timeline [data-act="fly"]') };
+      out.fly = { button: !!document.querySelector('#timeline [data-act="fly"]'), fun: !!document.querySelector('#timeline [data-act="fun"]') };
       key('KeyT', { key: 't' }); await sleep(100); out.fly.mode = L.controls.mode;
       out.frameError = L.frameError || null;
       return out;`,
@@ -617,7 +742,7 @@ const CHECKS = [
         !v.tap.marker.hidden && v.tap.marker.y > 0 && (v.tap.marker.y < v.tap.marker.sheet[1] - 8 || v.tap.marker.x < v.tap.marker.sheet[0] - 8)],
       ['pinch over empty ground: no fling (' + v.background.moved.toFixed(0) + ' units, landscape edge ' + v.background.edgeDist.toFixed(0) + ' away)', v.background.sky && v.background.moved > 1 && v.background.moved < 0.6 * v.background.edgeDist],
       ['the page itself never zooms', v.pageScale === 1],
-      ['touch-only: no Fly button and T does not take off', !v.fly.button && v.fly.mode === 'map'],
+      ['touch-only: no Fly or Fun button and T does not take off', !v.fly.button && !v.fly.fun && v.fly.mode === 'map'],
       ['no frame errors', v.frameError === null],
     ],
   },

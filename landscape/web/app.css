@@ -79,7 +79,7 @@ a { color: var(--mint); }
 #overlay > * { pointer-events: auto; }
 
 .glass,
-#hud, #minimap, #legend, #inspector, #places, #timeline {
+#hud, #minimap, #legend, #inspector, #places, #fun, #funcard, #timeline {
   background: var(--glass);
   -webkit-backdrop-filter: blur(16px) saturate(1.25);
   backdrop-filter: blur(16px) saturate(1.25);
@@ -313,6 +313,31 @@ a { color: var(--mint); }
   pointer-events: none;
 }
 .ph-ground { overflow: hidden; text-overflow: ellipsis; }
+.ph-game { flex: none; color: var(--amber); }
+/* Stack sats: a collected coin's value rises and fades under the readout. */
+#funpops {
+  position: fixed;
+  top: calc(var(--gap) + var(--sat) + 44px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+.ph-pop {
+  font: 600 15px/1.2 var(--mono);
+  color: #f7931a;
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.9), 0 0 14px rgba(247, 147, 26, 0.45);
+  animation: ph-pop 0.8s ease-out forwards;
+}
+@keyframes ph-pop {
+  0% { opacity: 0; transform: translateY(6px) scale(0.9); }
+  15% { opacity: 1; transform: translateY(0) scale(1.08); }
+  100% { opacity: 0; transform: translateY(-16px) scale(1); }
+}
 .ph-throttle { flex: none; width: 64px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.14); overflow: hidden; }
 .ph-throttle i { display: block; width: 30%; height: 100%; border-radius: 3px; background: var(--mint); transition: width 0.12s linear; }
 #planehud.boost .ph-throttle i { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
@@ -430,6 +455,54 @@ body.plane #legend { display: none; }
 .pl-title { font-size: 12.5px; color: #cfd6d3; }
 .pl-meta { font: 10.5px var(--mono); color: var(--dim); white-space: nowrap; }
 .pl-col:last-child .pl-item { grid-template-columns: 1fr 0 auto; }
+
+/* ---- Fun popover (crafts and Stack sats) and the Stack sats end card ---------------------- */
+#fun {
+  position: fixed;
+  right: var(--gap);
+  bottom: calc(var(--tl-h) + 10px);
+  width: min(640px, calc(100vw - 2 * var(--gap)));
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 18px;
+  padding: 14px 16px 10px;
+  border-radius: 8px;
+  z-index: 9;
+  background: var(--glass-strong);
+}
+#fun .pl-item { grid-template-columns: 76px 1fr auto; }
+/* Play items: the name and its shortcut or best on one line, the description under them. */
+#fun .pl-item.fn-play { grid-template-columns: 1fr auto; grid-template-areas: 'key meta' 'title title'; row-gap: 2px; }
+.fn-play .pl-key { grid-area: key; }
+.fn-play .pl-title { grid-area: title; font-size: 12px; color: var(--muted); }
+.fn-play .pl-meta { grid-area: meta; }
+.fn-craft.on { background: rgba(247, 147, 26, 0.12); box-shadow: inset 2px 0 0 #f7931a; }
+.fn-craft.on .pl-key { color: #f7b45a; }
+.fn-craft.on .pl-meta { color: #f7b45a; }
+.fn-foot { grid-column: 1 / -1; margin: 2px 0 0; padding-top: 8px; border-top: 1px solid var(--line); font: 10.5px var(--mono); color: var(--dim); }
+#funcard {
+  position: fixed;
+  left: 50%;
+  top: 42%;
+  transform: translate(-50%, -50%);
+  z-index: 9;
+  width: min(380px, calc(100vw - 2 * var(--gap)));
+  padding: 18px 22px 18px;
+  border-radius: 10px;
+  background: var(--glass-strong);
+  text-align: center;
+}
+#funcard h2 { margin: 10px 0 2px; font: 400 30px/1.15 var(--display); letter-spacing: -0.01em; }
+#funcard h2 em { font-style: normal; color: #f7b45a; }
+.fc-sub { margin: 0; font: 12px var(--mono); color: var(--muted); }
+.fc-best { margin: 12px 0 0; font-size: 13px; color: var(--ink); }
+.fc-best.new { color: var(--mint); }
+.fc-actions { display: flex; justify-content: center; gap: 10px; margin-top: 16px; }
+.fc-btn { height: 34px; padding: 0 14px; border: 1px solid var(--line); border-radius: 6px; background: transparent; font: 12.5px var(--body); color: var(--ink); }
+.fc-btn:hover { border-color: var(--mint); color: var(--mint); }
+.fc-btn.primary { border-color: #f7931a; background: rgba(247, 147, 26, 0.16); color: #f7b45a; }
+.fc-btn.primary:hover { background: rgba(247, 147, 26, 0.26); }
+.fc-btn kbd { margin-left: 6px; padding: 0 4px; border: 1px solid var(--line); border-radius: 3px; font: 10px/14px var(--mono); color: var(--muted); }
 
 /* ---- toast ------------------------------------------------------------------------- */
 #toast {
@@ -552,11 +625,24 @@ kbd {
   .tl-text svg { display: block; width: 16px; height: 16px; fill: currentColor; }
   .tl-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
-/* The narrowest of those windows (701-737 px) with Follow and Fly: tighter gaps keep the row inside. */
-@media (min-width: 701px) and (max-width: 737px) and (min-height: 501px) {
+/* The narrower of those windows (701-800 px) with Follow, Fly and Fun: one button cycles the
+   speeds, as on phones, and tighter gaps keep the row inside. */
+@media (min-width: 701px) and (max-width: 800px) and (min-height: 501px) {
   #timeline { gap: 10px; }
   .tl-tools { gap: 4px; }
-  .tl-track { min-width: 104px; }
+  .tl-speeds { display: none; }
+  .tl-speedcycle {
+    display: block;
+    flex: none;
+    min-width: 48px;
+    height: 34px;
+    padding: 0 9px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: rgba(168, 214, 179, 0.16);
+    font: 11px var(--mono);
+    color: var(--mint);
+  }
 }
 
 /* ---- phones -------------------------------------------------------------------------------- */
@@ -664,7 +750,7 @@ kbd {
   #inspector .icon-btn { width: 40px; height: 40px; -webkit-tap-highlight-color: transparent; }
   #inspector .in-sec:first-of-type { border-top: 0; }
 
-  #places {
+  #places, #fun {
     right: calc(var(--gap) + var(--sar));
     bottom: calc(var(--tl-h) + 6px);
     width: min(660px, calc(100vw - 2 * var(--gap) - var(--sal) - var(--sar)));
@@ -739,7 +825,7 @@ kbd {
   body.inspector-open #toast { bottom: calc(var(--tl-h) + var(--insp-h) + 12px); }
   body.panel-open #toast { bottom: calc(var(--tl-h) + var(--sheet-h) + 12px); }
 
-  #places { grid-template-columns: 1fr; gap: 12px; }
+  #places, #fun { grid-template-columns: 1fr; gap: 12px; }
   .help-grid { columns: 1; }
   .help-grid dl div { grid-template-columns: 128px 1fr; gap: 10px; }
 }

@@ -2,32 +2,75 @@
 // files): two detuned sawtooth oscillators and a sub-octave sine through a low-pass filter,
 // pulsed by a slow oscillator for the propeller's beat, plus filtered noise for the wind.
 // Pitch and brightness follow the throttle and boost, the wind follows the airspeed, the
-// sound pans a little with the bank, and a bump plays a short thump. M mutes it (remembered
-// in localStorage). The audio context starts on the key press or click that takes off;
-// browsers keep it silent until such a gesture.
+// sound pans a little with the bank, and a bump plays a short thump. Each craft has its own
+// profile (engineTargets): the jet whines higher without the propeller beat and roars on
+// boost; the bird has no engine, only wind pulsed at its wing beat, silent beat while it
+// glides. A collected Stack sats coin plays a short two-note chime. M mutes it (remembered in
+// localStorage). The audio context starts on the key press or click that takes off; browsers
+// keep it silent until such a gesture.
+
+import { craftSpec, flapRate } from './plane.js';
 
 const STORE_KEY = 'utxo-landscape-plane-sound';
-const MAX_BANK = (75 * Math.PI) / 180;
-const MAX_SPEED = 48; // full throttle with boost (ui/plane.js)
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
 /**
- * Audio targets for a flight state. Pure: { throttle 0..1, speed, boost, bank (radians),
- * on } -> { freq (Hz), cutoff (Hz), beat (Hz), engine, wind, windFreq, pan, gain }.
+ * Audio targets for a flight state and craft (profile: 'plane', 'bird' or 'jet'). Pure:
+ * { throttle 0..1, speed, boost, bank (radians), on } -> { freq (Hz), cutoff (Hz), beat (Hz),
+ * beatDepth (engine pulse), windBeat (wind pulse), engine, wind, windFreq, pan, gain,
+ * bumpGain }. The airspeed is measured against the craft's full throttle with boost.
  */
-export function engineTargets({ throttle = 0, speed = 0, boost = false, bank = 0, on = true } = {}, volume = 0.18) {
+export function engineTargets({ throttle = 0, speed = 0, boost = false, bank = 0, on = true } = {}, volume = 0.18, profile = 'plane') {
+  const S = craftSpec(profile);
   const rpm = clamp(0.3 + 0.7 * clamp(throttle, 0, 1) + (boost ? 0.35 : 0), 0, 1.4);
+  const airspeed = clamp(speed / (S.maxSpeed * S.boost), 0, 1);
+  const pan = clamp((bank / S.maxBank) * 0.25, -0.25, 0.25);
+  const gain = on ? volume : 0;
+  if (S.id === 'jet') {
+    const freq = 110 + 260 * rpm;
+    return {
+      freq,
+      cutoff: 600 + 2000 * rpm,
+      beat: freq / 4,
+      beatDepth: 0,
+      windBeat: 0,
+      engine: 0.22 + 0.3 * rpm + (boost ? 0.15 : 0),
+      wind: 0.04 + 0.3 * airspeed + (boost ? 0.2 : 0),
+      windFreq: 700 + 2600 * airspeed,
+      pan,
+      gain,
+      bumpGain: 1,
+    };
+  }
+  if (S.id === 'bird') {
+    const flap = flapRate(throttle, boost);
+    return {
+      freq: 60,
+      cutoff: 300,
+      beat: flap > 0 ? flap : 2,
+      beatDepth: 0,
+      windBeat: flap > 0 ? 0.6 : 0,
+      engine: 0,
+      wind: 0.03 + 0.25 * airspeed,
+      windFreq: 600 + 2000 * airspeed,
+      pan,
+      gain,
+      bumpGain: 0.5,
+    };
+  }
   const freq = 46 + 58 * rpm;
-  const airspeed = clamp(speed / MAX_SPEED, 0, 1);
   return {
     freq,
     cutoff: 240 + 1100 * rpm,
     beat: freq / 4,
+    beatDepth: 0.25,
+    windBeat: 0,
     engine: 0.32 + 0.28 * rpm,
     wind: 0.02 + 0.16 * airspeed,
     windFreq: 450 + 1600 * airspeed,
-    pan: clamp((bank / MAX_BANK) * 0.25, -0.25, 0.25),
-    gain: on ? volume : 0,
+    pan,
+    gain,
+    bumpGain: 1,
   };
 }
 
@@ -91,9 +134,15 @@ export function buildEngine(ctx, { destination = ctx.destination, volume = 0.18 
   const band = ctx.createBiquadFilter();
   band.type = 'bandpass';
   band.Q.value = 0.7;
+  // The bird's wing beat pulses the wind: the same slow oscillator, at the flap rate.
+  const windPulse = ctx.createGain();
+  windPulse.gain.value = 1;
+  const windDepth = ctx.createGain();
+  windDepth.gain.value = 0;
+  lfo.connect(windDepth).connect(windPulse.gain);
   const wind = ctx.createGain();
   wind.gain.value = 0;
-  noise.connect(band).connect(wind).connect(out);
+  noise.connect(band).connect(windPulse).connect(wind).connect(out);
   const bumpNoise = noiseBuffer(ctx, 0.3);
 
   const t0 = ctx.currentTime;
@@ -109,14 +158,16 @@ export function buildEngine(ctx, { destination = ctx.destination, volume = 0.18 
 
   const api = {
     last: null,
-    /** params as engineTargets; t: when (default now); tau: smoothing time constant (s). */
-    set(params, t = ctx.currentTime, tau = 0.08) {
-      const g = engineTargets(params, volume);
+    /** params and profile as engineTargets; t: when (default now); tau: smoothing time constant (s). */
+    set(params, t = ctx.currentTime, tau = 0.08, profile = 'plane') {
+      const g = engineTargets(params, volume, profile);
       api.last = g;
       saw1.frequency.setTargetAtTime(g.freq, t, tau);
       saw2.frequency.setTargetAtTime(g.freq, t, tau);
       sub.frequency.setTargetAtTime(g.freq / 2, t, tau);
       lfo.frequency.setTargetAtTime(g.beat, t, tau);
+      lfoDepth.gain.setTargetAtTime(g.beatDepth, t, tau);
+      windDepth.gain.setTargetAtTime(g.windBeat, t, tau * 2);
       lowpass.frequency.setTargetAtTime(g.cutoff, t, tau);
       engine.gain.setTargetAtTime(g.engine, t, tau);
       wind.gain.setTargetAtTime(g.wind, t, tau * 2);
@@ -124,15 +175,15 @@ export function buildEngine(ctx, { destination = ctx.destination, volume = 0.18 
       if (pan) pan.pan.setTargetAtTime(g.pan, t, tau * 2);
       master.gain.setTargetAtTime(g.gain, t, g.gain > 0 ? 0.15 : 0.1);
     },
-    /** A short thump: a falling low sine and a burst of muffled noise. */
-    bump(t = ctx.currentTime) {
+    /** A short thump: a falling low sine and a burst of muffled noise (gain scales both). */
+    bump(t = ctx.currentTime, gain = 1) {
       const o = ctx.createOscillator();
       o.type = 'sine';
       o.frequency.setValueAtTime(120, t);
       o.frequency.exponentialRampToValueAtTime(38, t + 0.22);
       const og = ctx.createGain();
       og.gain.setValueAtTime(0.0001, t);
-      og.gain.exponentialRampToValueAtTime(1.1, t + 0.012);
+      og.gain.exponentialRampToValueAtTime(Math.max(0.001, 1.1 * gain), t + 0.012);
       og.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
       o.connect(og).connect(out);
       const n = ctx.createBufferSource();
@@ -141,13 +192,32 @@ export function buildEngine(ctx, { destination = ctx.destination, volume = 0.18 
       lp.type = 'lowpass';
       lp.frequency.value = 700;
       const ng = ctx.createGain();
-      ng.gain.setValueAtTime(0.6, t);
+      ng.gain.setValueAtTime(0.6 * gain, t);
       ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
       n.connect(lp).connect(ng).connect(out);
       o.start(t);
       o.stop(t + 0.32);
       n.start(t);
       n.stop(t + 0.2);
+    },
+    /** A Stack sats coin: two quick bright notes, the second held a little. */
+    coin(t = ctx.currentTime) {
+      const notes = [[988, 0, 0.07], [1319, 0.07, 0.32]];
+      for (const [f, at, len] of notes) {
+        const o = ctx.createOscillator();
+        o.type = 'square';
+        o.frequency.setValueAtTime(f, t + at);
+        const lp = ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.value = 3200;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t + at);
+        g.gain.exponentialRampToValueAtTime(0.5, t + at + 0.008);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + at + len);
+        o.connect(lp).connect(g).connect(out);
+        o.start(t + at);
+        o.stop(t + at + len + 0.02);
+      }
     },
     dispose() {
       for (const node of [saw1, saw2, sub, lfo, noise]) {
@@ -227,9 +297,15 @@ export function createPlaneSound({ storage = globalThis.localStorage, volume = 0
     /** Per frame with the ui/plane.js state. */
     update(plane) {
       if (!active || !plane || !engine) return;
-      engine.set({ throttle: plane.throttle, speed: plane.speed, boost: plane.boosting, bank: plane.bank, on: !muted && !hidden() });
-      if (lastBumps !== null && plane.bumps > lastBumps && !muted) engine.bump();
+      engine.set({ throttle: plane.throttle, speed: plane.speed, boost: plane.boosting, bank: plane.bank, on: !muted && !hidden() },
+        undefined, 0.08, plane.craft);
+      if (lastBumps !== null && plane.bumps > lastBumps && !muted) engine.bump(undefined, engine.last ? engine.last.bumpGain : 1);
       lastBumps = plane.bumps;
+    },
+    /** A collected coin (Stack sats). */
+    coin() {
+      if (!active || muted || !engine || hidden()) return;
+      engine.coin();
     },
     /** Any later key press or click: browsers may have kept the context suspended. */
     unlock() {

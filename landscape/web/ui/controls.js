@@ -14,19 +14,21 @@
 // WASD, E/Q up/down, Shift 4x, wheel sets speed, speed scales with height above the
 // terrain, and collision keeps the camera above the surface. On touch, one finger looks
 // and two fingers fly (spread to go forward, drag to slide or climb).
-// Plane mode (T, desktop only): a small plane flies on from the view centre (ui/plane.js) and
-// flies like a plane: the mouse is a stick that springs back to the centre, sideways banks
-// and the bank turns, back raises the nose (A/D and the left/right arrows bank, the down and
-// up arrows pitch), W/S set the throttle, Shift boosts, the wheel sets the chase distance.
-// The chase camera swings after the plane. Esc, losing the pointer lock or T again returns
-// to map mode where the camera is. A standard gamepad also works: left stick banks and
-// pitches, RT/LT throttle, A boost, Start takes off or lands, B lands.
+// Plane mode (T or the Fun menu, desktop only): the chosen craft (plane, bird or jet; setCraft,
+// also in flight) flies on from the view centre (ui/plane.js) and flies like a plane: the
+// mouse is a stick that springs back to the centre, sideways banks and the bank turns, back
+// raises the nose (A/D and the left/right arrows bank, the down and up arrows pitch), W/S set
+// the throttle, Shift boosts, the wheel sets the chase distance (kept per craft). The chase
+// camera swings after the craft. Esc, losing the pointer lock or T again returns to map mode
+// where the camera is; releaseLock() frees the cursor without landing (the Stack sats end
+// card). A standard gamepad also works: left stick banks and pitches, RT/LT throttle, A boost,
+// Start takes off or lands, B lands, Y and X call onPad('craft') and onPad('game').
 // Follow tip (ui/follow.js) moves map and flight mode along x with shiftX, carrying the
 // points a gesture or animation in progress is anchored to.
 
 import { Vector3, Quaternion, Euler } from 'three';
 import { TAP_SLOP_PX, TAP_MAX_MS, DOUBLE_TAP_MS, pairOf, pairDelta, classifyTwoFinger, createTapTracker } from './touch.js';
-import { PLANE, createPlane, stepPlane, stickByMouse, chasePose, shakeOffset, gamepadInput } from './plane.js';
+import { CRAFTS, craftSpec, createPlane, switchCraft, stepPlane, stickByMouse, chasePose, shakeOffset, gamepadInput } from './plane.js';
 
 const DEG = Math.PI / 180;
 const UP = new Vector3(0, 1, 0);
@@ -76,9 +78,10 @@ export function forwardOf(yaw, pitch, out = new Vector3()) {
  * extent ({minX, maxX, minZ, maxZ}, world units) is the landscape's ground rectangle. Points
  * that miss the terrain are kept within it, so gestures over empty background or the sky
  * move the camera at the landscape's scale. canFly = false refuses plane mode (touch-only
- * devices, which have no keys or mouse to steer it).
+ * devices, which have no keys or mouse to steer it). onPad(action) receives the gamepad's
+ * 'craft' (Y) and, in plane mode, 'game' (X) presses.
  */
-export function createControls({ view, canvas, settings, onInspect, onModeChange, onNotice, bounds, extent, canFly = true } = {}) {
+export function createControls({ view, canvas, settings, onInspect, onModeChange, onNotice, onPad, bounds, extent, canFly = true } = {}) {
   const camera = view.camera;
   const lim = Object.assign({ minX: -400, maxX: 1400, minZ: -400, maxZ: 650, maxY: 4000 }, bounds || {});
   const pos = new Vector3(483, 260, 560);
@@ -105,8 +108,11 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
   let moving = 0;
   let zoom = null; // {point, pending}: wheel zoom glides toward the cursor point
   let plane = null; // ui/plane.js state while in plane mode
-  let chase = PLANE.chaseDistance;
-  const pad = { start: false, exit: false, input: null };
+  let craft = 'plane'; // the craft plane mode takes off in
+  // Chase distance per craft: the wheel sets the flown craft's, and each starts at its default.
+  const chaseBy = Object.fromEntries(Object.values(CRAFTS).map((c) => [c.id, c.chaseDistance]));
+  let chase = chaseBy[craft];
+  const pad = { start: false, exit: false, craft: false, game: false, input: null };
   let reduceMotion = null;
   try {
     reduceMotion = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
@@ -369,7 +375,9 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
     const e = extent || lim;
     const x = clamp(c.x, e.minX, e.maxX);
     const z = clamp(c.z, e.minZ, e.maxZ);
-    plane = createPlane({ x, y: ground(x, z) + PLANE.spawnHeight, z, yaw });
+    const S = craftSpec(craft);
+    chase = chaseBy[S.id];
+    plane = createPlane({ craft: S.id, x, y: ground(x, z) + S.spawnHeight, z, yaw });
     const cam = chasePose(plane, chase, ground);
     const dist = pos.distanceTo(tmpV.set(cam.x, cam.y, cam.z));
     api.flyTo({
@@ -429,10 +437,16 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
     const input = gp ? gamepadInput(gp, { invertY: !!setting('camera.invertY', false) }) : null;
     const start = !!(input && input.start);
     const exit = !!(input && input.exit);
+    const craftBtn = !!(input && input.craft);
+    const gameBtn = !!(input && input.game);
     if (start && !pad.start) setMode(mode === 'plane' ? 'map' : 'plane');
     else if (exit && !pad.exit && mode === 'plane') setMode('map');
+    if (craftBtn && !pad.craft && onPad) onPad('craft');
+    if (gameBtn && !pad.game && mode === 'plane' && onPad) onPad('game');
     pad.start = start;
     pad.exit = exit;
+    pad.craft = craftBtn;
+    pad.game = gameBtn;
     pad.input = mode === 'plane' ? input : null;
   }
 
@@ -719,7 +733,9 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
     let dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1);
     if (mode === 'plane') {
       // Wheel down moves the chase camera back, up brings it closer.
-      chase = clamp(chase * Math.exp(clamp(dy, -400, 400) * 0.0015), PLANE.chaseMin, PLANE.chaseMax);
+      const S = craftSpec(craft);
+      chase = clamp(chase * Math.exp(clamp(dy, -400, 400) * 0.0015), S.chaseMin, S.chaseMax);
+      chaseBy[S.id] = chase;
       return;
     }
     if (mode === 'flight') {
@@ -903,6 +919,30 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
     },
     get chaseDistance() {
       return chase;
+    },
+    /** The craft plane mode flies (ui/plane.js CRAFTS id). */
+    get craft() {
+      return craft;
+    },
+    /** Choose the craft; in flight it changes at once (same pose and throttle). False for an unknown id. */
+    setCraft(id) {
+      if (!CRAFTS[id]) return false;
+      craft = id;
+      chase = chaseBy[id];
+      if (plane) switchCraft(plane, id);
+      return true;
+    },
+    /** Free the cursor (exit pointer lock) without leaving flight or plane mode. */
+    releaseLock() {
+      if (typeof document !== 'undefined' && document.pointerLockElement === canvas) {
+        hadLock = false;
+        document.exitPointerLock();
+      }
+    },
+    /** Ask for pointer lock again in flight or plane mode (call from a key press or click). */
+    lock() {
+      if (mode === 'plane') requestLock('Pointer lock unavailable: drag to steer');
+      else if (mode === 'flight') requestLock();
     },
     setMode,
     toggleFlight() {

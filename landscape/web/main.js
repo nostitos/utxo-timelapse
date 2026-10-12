@@ -17,6 +17,11 @@ import { createControls, isTypingTarget } from './ui/controls.js';
 import { createPlaneHud } from './ui/plane-hud.js';
 import { createPlaneSound } from './ui/plane-sound.js';
 import { createPlaneModel } from './render/plane-model.js';
+import { CRAFTS, CRAFT_ORDER, craftSpec, nextCraft } from './ui/plane.js';
+import { createStackSats, startStackSats, stopStackSats, stepStackSats } from './ui/stack-sats.js';
+import { loadFun, saveFun, recordBest, bestOf } from './ui/fun-store.js';
+import { createFunMenu, createFunCard } from './ui/fun-menu.js';
+import { createCoins } from './render/coins.js';
 import { createHud } from './ui/hud.js';
 import { createTimeline } from './ui/timeline.js';
 import { createPlacesMenu } from './ui/places-menu.js';
@@ -26,7 +31,7 @@ import { createInspector } from './ui/inspector.js';
 import { createHelp } from './ui/help.js';
 import { createToast } from './ui/toast.js';
 import { createLoading } from './ui/loading.js';
-import { fmtInt, escapeHtml } from './ui/format.js';
+import { fmtInt, fmtAmount, escapeHtml } from './ui/format.js';
 import { resolveEndpoints, resolveDataUrl, startupMode, chooseStartup, deviceTraits } from './ui/online.js';
 import { gridFromManifest, worldX, worldZ } from './data/grid.js';
 import { FILM_AXIS } from './data/axis.js';
@@ -154,12 +159,19 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     const MODE_NOTICES = {
       map: 'Map mode',
       flight: 'Flight: mouse to look, WASD to fly, E/Q up and down, Esc for map mode',
-      plane: 'Plane mode \u00b7 Esc to land',
     };
-    // Plane mode draws cylinders 1.6x farther out and moves that disc 0.6 radii ahead of the
-    // camera, so the sharp area reaches about 2.5x as far in front of the plane.
-    const PLANE_DETAIL = { shift: 0.6, reach: 1.6 };
     const planeSound = createPlaneSound();
+    // Plane mode draws cylinders farther out and moves that disc ahead of the camera, by the
+    // craft's detailReach and detailShift (the plane: 1.6x and 0.6 radii, so the sharp area
+    // reaches about 2.5x as far in front of it).
+    function applyDetail(mode) {
+      if (typeof view.setDetailAhead !== 'function') return;
+      if (mode === 'plane') {
+        const S = craftSpec(controls.craft);
+        view.setDetailAhead(S.detailShift, S.detailReach);
+      } else view.setDetailAhead(0, 1);
+    }
+    let timeline = null;
 
     const controls = createControls({
       view, canvas, settings: store,
@@ -167,28 +179,100 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       canFly: !touchOnly,
       onInspect: (x, y) => inspectAt(x, y),
       onNotice: notice,
+      onPad: (action) => {
+        if (action === 'craft') cycleCraft();
+        else if (action === 'game') startRun();
+      },
       onModeChange: (mode) => {
         // Plane mode marks the nose with its own circle; the centre crosshair is flight mode's.
         crosshair.hidden = mode !== 'flight';
         document.body.classList.toggle('flight', mode === 'flight');
         document.body.classList.toggle('plane', mode === 'plane');
-        if (typeof view.setDetailAhead === 'function') {
-          if (mode === 'plane') view.setDetailAhead(PLANE_DETAIL.shift, PLANE_DETAIL.reach);
-          else view.setDetailAhead(0, 1);
-        }
+        applyDetail(mode);
+        if (timeline) timeline.setFly(mode === 'flight');
         // Called inside the key press or click that takes off, so the browser lets the sound start.
         if (mode === 'plane') planeSound.start();
         else planeSound.stop();
+        // Landing (or switching to flight mode) abandons a Stack sats run and closes its card.
+        if (mode !== 'plane') abandonRun();
         hashDirty = true;
-        notice(MODE_NOTICES[mode] || 'Map mode', 'info', 'mode');
+        const message = mode === 'plane' ? craftSpec(controls.craft).name + ' \u00b7 Enter stacks sats \u00b7 Esc to land' : MODE_NOTICES[mode] || 'Map mode';
+        notice(message, 'info', 'mode');
       },
     });
-    // The plane model needs the real scene; dev pages with a stub view run without it.
+    // The craft models and the coins need the real scene; dev pages with a stub view run without them.
     const planeModel = view.scene ? createPlaneModel({ scene: view.scene }) : null;
+    const coinModels = view.scene ? createCoins({ scene: view.scene }) : null;
     const planeHud = createPlaneHud({
-      container: $('planehud'), nose: $('plane-nose'), keys: $('planekeys'), camera: view.camera, canvas, grid,
+      container: $('planehud'), nose: $('plane-nose'), keys: $('planekeys'), pops: $('funpops'), camera: view.camera, canvas, grid,
       rows: replay.rows, blocktimes: replay.blocktimes, settings: store, sound: planeSound,
     });
+
+    // ---- Fun: crafts and Stack sats (ui/fun-menu.js, ui/stack-sats.js) ------------------------
+    const funData = loadFun();
+    controls.setCraft(funData.craft);
+    const game = createStackSats({ rows: replay.rows });
+    const groundExtent = { minX: 0, maxX: worldX(tip + 1), minZ: 0, maxZ: worldZ(grid.rows) };
+    const funMenu = createFunMenu({
+      container: $('fun'),
+      getCraft: () => controls.craft,
+      getBest: (craft) => bestOf(funData, 'stack-sats', craft),
+      onCraft: (id) => setCraft(id),
+      onPlay: (kind) => {
+        if (kind === 'stack-sats') startRun();
+        else if (controls.mode !== 'plane') controls.setMode('plane');
+      },
+    });
+    const funCard = createFunCard({
+      container: $('funcard'),
+      onAgain: () => startRun(),
+      onLand: () => controls.setMode('map'),
+    });
+
+    /** Choose the craft (remembered); in flight it changes at once. Not during a Stack sats run. */
+    function setCraft(id, { quiet = false } = {}) {
+      if (!CRAFTS[id] || touchOnly) return false;
+      if (game.running) {
+        if (!quiet) notice('Change craft after this run', 'info', 'craft');
+        return false;
+      }
+      controls.setCraft(id);
+      funData.craft = id;
+      saveFun(undefined, funData);
+      if (controls.mode === 'plane') applyDetail('plane');
+      funMenu.render();
+      if (!quiet) notice(craftSpec(id).name + (controls.mode === 'plane' ? '' : ' \u00b7 T takes off'), 'info', 'craft');
+      return true;
+    }
+    function cycleCraft() {
+      return setCraft(nextCraft(controls.craft));
+    }
+    /** Start (or restart) a Stack sats run, taking off first in map or flight mode. */
+    function startRun() {
+      if (touchOnly) return;
+      funCard.hide();
+      funMenu.close();
+      placesMenu.close();
+      if (controls.mode !== 'plane') controls.setMode('plane');
+      else controls.lock();
+      if (controls.mode !== 'plane') return;
+      startStackSats(game, controls.craft);
+      notice('Stack sats: 60 s \u00b7 fly through the coins over the tallest columns', 'info', 'mode');
+    }
+    /** The minute is up: record the best for the craft and show the end card with a free cursor. */
+    function finishRun() {
+      const result = { sats: game.score, coins: game.collected };
+      const r = recordBest(funData, 'stack-sats', game.craft, result);
+      if (r.isBest) saveFun(undefined, funData);
+      funMenu.render();
+      controls.releaseLock();
+      funCard.show({ ...result, seconds: game.duration, craft: game.craft, best: r.best, isBest: r.isBest });
+    }
+    function abandonRun() {
+      stopStackSats(game);
+      funCard.hide();
+    }
+
     const hud = createHud($('hud'));
     const help = createHelp($('help'), { touchFirst: touchOnly });
     const legend = createLegend({ container: $('legend'), settings: store });
@@ -211,15 +295,24 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       onImport: (json) => restoreView(json && json.view),
       getShareURL: () => location.origin + location.pathname + location.search + currentHash(),
     });
-    const timeline = createTimeline({
+    timeline = createTimeline({
       container: $('timeline'), tip, blocktimes: replay.blocktimes, playback,
       onSeek: (b) => playback.seek(b),
       onNotice: notice,
-      onPlaces: () => placesMenu.toggle(),
+      onPlaces: () => {
+        funMenu.close();
+        placesMenu.toggle();
+      },
       onSettings: () => togglePanel(),
       onHelp: () => help.toggle(),
       onFollow: () => setFollow(!follow.active),
-      onFly: touchOnly ? null : () => controls.togglePlane(),
+      onFly: touchOnly ? null : () => controls.toggleFlight(),
+      onFun: touchOnly ? null : () => {
+        // The menu needs the cursor: land first, as G, P and H do.
+        if (controls.mode === 'plane') controls.setMode('map');
+        placesMenu.close();
+        funMenu.toggle();
+      },
     });
 
     /** Turn Follow tip on or off; on, the camera stays put and moves on with the tip from here. */
@@ -514,7 +607,22 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
           controls.toggleFlight();
           break;
         case 'KeyT':
-          if (!touchOnly) controls.togglePlane();
+          if (!touchOnly) {
+            funMenu.close();
+            controls.togglePlane();
+          }
+          break;
+        case 'KeyC':
+          if (!touchOnly) cycleCraft();
+          break;
+        case 'Enter':
+        case 'NumpadEnter':
+          // A focused button (the end card's Again, a menu item) handles Enter itself.
+          if (e.target && e.target.closest && e.target.closest('button')) break;
+          if (!touchOnly && controls.mode === 'plane') {
+            e.preventDefault();
+            startRun();
+          }
           break;
         case 'KeyN':
           setFollow(!follow.active);
@@ -525,25 +633,30 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         case 'KeyG':
           // Panels need the cursor: leave plane mode (and its pointer lock) first.
           if (controls.mode === 'plane') controls.setMode('map');
+          funMenu.close();
           togglePanel();
           break;
         case 'KeyP':
           if (controls.mode === 'plane') controls.setMode('map');
+          funMenu.close();
           placesMenu.toggle();
           break;
         case 'KeyH':
           if (controls.mode === 'plane') controls.setMode('map');
+          funMenu.close();
           help.toggle();
           break;
         case 'Slash':
           if (e.shiftKey) {
             if (controls.mode === 'plane') controls.setMode('map');
+            funMenu.close();
             help.toggle();
           }
           break;
         case 'Escape':
           if (controls.mode !== 'map') controls.setMode('map');
           else if (help.open) help.close();
+          else if (funMenu.open) funMenu.close();
           else if (placesMenu.open) placesMenu.close();
           else if (inspector.isOpen) inspector.close();
           else if (panelOpen()) togglePanel(false);
@@ -586,7 +699,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
 
     Object.assign(hook, {
       settings: store, replay, view, controls, playback, panel, manifest, grid,
-      ui: { hud, timeline, legend, minimap, inspector, placesMenu, help, toast },
+      ui: { hud, timeline, legend, minimap, inspector, placesMenu, help, toast, funMenu, funCard },
       seek: (b) => playback.seek(b),
       flyTo: (place) => flyToPlace(place),
       inspect: (x, y) => inspectAt(x, y),
@@ -620,9 +733,43 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         get model() {
           return planeModel ? planeModel.object3d : null;
         },
+        /** The craft plane mode flies; setCraft(id) chooses it (refused during a run). */
+        get craft() {
+          return controls.craft;
+        },
+        crafts: CRAFT_ORDER,
+        setCraft: (id) => setCraft(id, { quiet: true }),
+        get coins() {
+          return coinModels ? coinModels.object3d : null;
+        },
+        game: {
+          get active() {
+            return game.running;
+          },
+          /** Live ui/stack-sats.js state. Checks may move its coins. */
+          get state() {
+            return game;
+          },
+          start: () => startRun(),
+          /** End the run now as if the minute were up: records the best and opens the end card. */
+          stop: () => {
+            if (!game.running) return;
+            stopStackSats(game, { finished: true });
+            finishRun();
+          },
+        },
         sound: planeSound,
         takeoff: () => controls.setMode('plane'),
         land: () => controls.setMode('map'),
+      },
+      fun: {
+        get open() {
+          return funMenu.open;
+        },
+        toggle: () => funMenu.toggle(),
+        get card() {
+          return funCard.open;
+        },
       },
       state: () => ({
         ready: hook.ready, block: replay.block, busy: replay.busy, playback: playback.state,
@@ -650,8 +797,17 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
           if (dx !== 0) controls.shiftX(dx);
         }
         controls.update(dt);
+        // Stack sats steps once the craft has taken off; otherwise only the coin fades advance.
+        const flying = controls.mode === 'plane' && !controls.takingOff ? controls.plane : null;
+        const ev = stepStackSats(game, game.running ? flying : null, dt, { ground, extent: groundExtent });
+        for (const c of ev.collected) {
+          planeHud.pop('+' + fmtAmount(c.value));
+          planeSound.coin();
+        }
+        if (ev.ended) finishRun();
+        if (coinModels) coinModels.update(game);
         if (planeModel) planeModel.update(controls.plane, dt);
-        planeHud.update(controls.plane, replay.block);
+        planeHud.update(controls.plane, replay.block, game);
         planeSound.update(controls.plane);
         playback.tick(dt);
         const u = view.update(dt);

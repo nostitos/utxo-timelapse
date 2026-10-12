@@ -29,8 +29,8 @@ const SECTIONS = [
     [['Q', 'E'], 'Rotate around the screen centre'],
     [['PgUp', 'PgDn'], 'Tilt'],
   ]],
-  ['Flight mode', [
-    [['F'], 'Enter or leave flight mode'],
+  ['Fly', [
+    [['F', '~Fly button'], 'Enter or leave flight mode'],
     [['~Mouse'], 'Look (drag when pointer lock is unavailable)'],
     [['W', 'A', 'S', 'D'], 'Fly; Shift for 4\u00d7'],
     [['E', 'Q'], 'Up and down'],
@@ -38,10 +38,13 @@ const SECTIONS = [
     [['I'], 'Inspect the cell at the crosshair'],
     [['Esc'], 'Back to map mode'],
   ]],
-  ['Plane', [
+  ['Fun', [
+    [['~Fun button'], 'Choose a plane, a bird or a jet; fly free or play Stack sats'],
     [['T'], 'Take off from the centre of the view; T again lands in map mode'],
+    [['C'], 'Next craft: plane, bird, jet (also in flight)'],
+    [['Enter'], 'Stack sats: 60 s to collect coins over the tallest columns, each worth its row\u2019s amount'],
     [['~Mouse'], 'Stick that springs back: sideways banks, back raises the nose (Invert Y switches it)'],
-    [['A', 'D', '\u2190', '\u2192'], 'Bank left or right; the bank turns the plane'],
+    [['A', 'D', '\u2190', '\u2192'], 'Bank left or right; the bank turns the craft'],
     [['\u2193', '\u2191'], 'Nose up or down; back in a bank tightens the turn'],
     [['W', 'S'], 'Faster or slower; hold Shift to boost'],
     [['~Wheel'], 'Camera closer or farther'],
@@ -62,7 +65,7 @@ function keyHtml(k) {
 
 /** touchFirst puts the touch gestures first (phones and tablets without a mouse). */
 export function createHelp(dialog, { touchFirst = false } = {}) {
-  // Touch-only devices have no plane mode, so its keys are left out there.
+  // Touch-only devices have no plane mode (Fun), so its keys are left out there.
   const sections = SECTIONS.filter((s) => !(touchFirst && s[2] && s[2].flyOnly));
   const list = touchFirst ? [TOUCH, ...sections] : [...sections, TOUCH];
   const html = list.map(([title, rows]) =>

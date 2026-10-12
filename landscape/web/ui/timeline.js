@@ -1,7 +1,8 @@
 // Bottom timeline (landscape/SPEC.md §8): transport, speeds, scrubber with halving
-// marks, exact block input, UTC date input, and the Follow / Fly / Places / Settings / Help
-// buttons (Follow toggles Follow tip and shows its state; Fly only when onFly is given:
-// touch-only devices have no plane mode).
+// marks, exact block input, UTC date input, and the Follow / Fly / Fun / Places / Settings /
+// Help buttons (Follow toggles Follow tip and Fly flight mode, and both show their state; Fun
+// opens the Fun menu of crafts and Stack sats. Fly and Fun only when onFly and onFun are
+// given: touch-only devices leave them out).
 // On phones (app.css) the block and date inputs hide, Places and Settings show icons, and
 // narrow screens replace the speed buttons with one button that cycles through the speeds.
 
@@ -18,13 +19,14 @@ const ICONS = {
   fwdLarge: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1 3v10l6.5-5zM8 3v10l6.5-5z"/></svg>',
   places: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" d="M8 .9a5.1 5.1 0 0 0-5.1 5.1c0 3.9 5.1 9.1 5.1 9.1s5.1-5.2 5.1-9.1A5.1 5.1 0 0 0 8 .9zm0 7.1a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/></svg>',
   settings: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" d="M6.13 2.72L6.55 .85h2.9l.42 1.87.54.23 1.62-1.03 2.05 2.05-1.03 1.62.23.54 1.87.42v2.9l-1.87.42-.23.54 1.03 1.62-2.05 2.05-1.62-1.03-.54.23-.42 1.87h-2.9l-.42-1.87-.54-.23-1.62 1.03-2.05-2.05 1.03-1.62-.23-.54L.85 9.45v-2.9l1.87-.42.23-.54-1.03-1.62 2.05-2.05 1.62 1.03zM10.3 8a2.3 2.3 0 1 0-4.6 0 2.3 2.3 0 0 0 4.6 0z"/></svg>',
-  fly: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 .8c.55 0 .95.5.95 1.2v4.1l6 3.3v1.6L8.95 9.2v3.2l1.75 1.3v1.3L8 14.2 5.3 15v-1.3l1.75-1.3V9.2L1.05 11V9.4l6-3.3V2c0-.7.4-1.2.95-1.2z"/></svg>',
+  fly: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.6 7.4 14.6 1.4 8.6 14.4 7.3 8.7z"/></svg>',
+  fun: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 .8c.55 0 .95.5.95 1.2v4.1l6 3.3v1.6L8.95 9.2v3.2l1.75 1.3v1.3L8 14.2 5.3 15v-1.3l1.75-1.3V9.2L1.05 11V9.4l6-3.3V2c0-.7.4-1.2.95-1.2z"/></svg>',
   follow: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1 7.2h6.9V3.9L12.4 8l-4.5 4.1V8.8H1z"/><path d="M13.4 2.2H15v11.6h-1.6z"/></svg>',
 };
 const HALVINGS = [210000, 420000, 630000, 840000];
 const speedLabel = (id) => (SPEEDS.find((s) => s.id === id) || { label: String(id) }).label;
 
-export function createTimeline({ container, tip, blocktimes, playback, onSeek, onNotice, onPlaces, onSettings, onHelp, onFollow = null, onFly = null }) {
+export function createTimeline({ container, tip, blocktimes, playback, onSeek, onNotice, onPlaces, onSettings, onHelp, onFollow = null, onFly = null, onFun = null }) {
   let tipBlock = tip;
   container.innerHTML =
     '<div class="tl-transport">' +
@@ -44,7 +46,8 @@ export function createTimeline({ container, tip, blocktimes, playback, onSeek, o
     '<label class="tl-field tl-datefield"><span>UTC</span><input type="text" class="tl-date" spellcheck="false" autocomplete="off" placeholder="YYYY-MM-DD HH:MM" aria-label="Date and time, UTC (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)"></label>' +
     '<div class="tl-tools">' +
     (onFollow ? '<button type="button" class="tl-text" data-act="follow" aria-pressed="false" title="Follow the tip: the camera moves with the newest block (N)">' + ICONS.follow + '<span class="tl-label">Follow</span></button>' : '') +
-    (onFly ? '<button type="button" class="tl-text" data-act="fly" title="Fly the plane (T)">' + ICONS.fly + '<span class="tl-label">Fly</span></button>' : '') +
+    (onFly ? '<button type="button" class="tl-text" data-act="fly" aria-pressed="false" title="Fly: mouse to look, W A S D to move (F)">' + ICONS.fly + '<span class="tl-label">Fly</span></button>' : '') +
+    (onFun ? '<button type="button" class="tl-text" data-act="fun" aria-haspopup="true" title="Fun: fly a plane, bird or jet, and stack sats (T takes off)">' + ICONS.fun + '<span class="tl-label">Fun</span></button>' : '') +
     '<button type="button" class="tl-text" data-act="places" title="Places (P)" aria-haspopup="true">' + ICONS.places + '<span class="tl-label">Places</span></button>' +
     '<button type="button" class="tl-text" data-act="settings" title="Graphics settings (G)">' + ICONS.settings + '<span class="tl-label">Settings</span></button>' +
     '<button type="button" class="tl-text tl-round" data-act="help" title="Keyboard and mouse (H or ?)" aria-label="Help">?</button>' +
@@ -57,6 +60,7 @@ export function createTimeline({ container, tip, blocktimes, playback, onSeek, o
   const playBtn = q('[data-act="play"]');
   const speedCycle = q('[data-act="speed"]');
   const followBtn = q('[data-act="follow"]');
+  const flyBtn = q('[data-act="fly"]');
   const marks = q('.tl-marks');
   const speedBtns = [...container.querySelectorAll('[data-speed]')];
   let dragging = false;
@@ -84,6 +88,7 @@ export function createTimeline({ container, tip, blocktimes, playback, onSeek, o
     help: () => onHelp && onHelp(),
     follow: () => onFollow && onFollow(),
     fly: () => onFly && onFly(),
+    fun: () => onFun && onFun(),
   };
   container.addEventListener('click', (e) => {
     const btn = e.target.closest('button');
@@ -162,6 +167,12 @@ export function createTimeline({ container, tip, blocktimes, playback, onSeek, o
       if (!followBtn) return;
       followBtn.classList.toggle('on', !!on);
       followBtn.setAttribute('aria-pressed', String(!!on));
+    },
+    /** Show whether flight mode is on. */
+    setFly(on) {
+      if (!flyBtn) return;
+      flyBtn.classList.toggle('on', !!on);
+      flyBtn.setAttribute('aria-pressed', String(!!on));
     },
     update(block, state) {
       if (block != null && block !== shown.block) {

@@ -1,8 +1,9 @@
-// Plane mode flight model (landscape/web/ui/plane.js).
+// Plane mode flight model and the Fun crafts (landscape/web/ui/plane.js), and their sound targets.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  PLANE, createPlane, stepPlane, stickByMouse, chasePose, shakeOffset, gamepadInput, groundReadout,
+  PLANE, BIRD, JET, CRAFTS, CRAFT_ORDER, craftSpec, nextCraft, switchCraft, flapRate,
+  createPlane, stepPlane, stickByMouse, chasePose, shakeOffset, gamepadInput, groundReadout,
   speedFor, turnRate, wrapAngle, planeKeyRows,
 } from '../web/ui/plane.js';
 import { gridFromManifest } from '../web/data/grid.js';
@@ -314,4 +315,107 @@ test('controls card: bank to turn, back raises the nose (Invert Y swaps it), M s
   assert.match(planeKeyRows({ invertY: true })[0][1], /up raises the nose/);
   assert.ok(rows.some(([, d]) => d === 'Sound on'));
   assert.ok(planeKeyRows({ muted: true }).some(([, d]) => d === 'Sound off'));
+});
+
+test('crafts: the bird is slow and turns tight, the jet is fast and turns wide', () => {
+  near(speedFor(0, false, BIRD), 0.1, 1e-12, 'bird minimum');
+  near(speedFor(1, false, BIRD), 4, 1e-12, 'bird maximum');
+  near(speedFor(1, true, BIRD), 8, 1e-12, 'bird boost 2x');
+  near(speedFor(0, false, JET), 2, 1e-12, 'jet minimum');
+  near(speedFor(1, true, JET), 96, 1e-9, 'jet boost 1.6x');
+  const cruise = (S) => speedFor(S.startThrottle, false, S);
+  const radius = (S) => cruise(S) / turnRate(45 * DEG, cruise(S), S);
+  assert.ok(radius(BIRD) * 2 <= radius(PLANE), 'bird turn radius ' + radius(BIRD).toFixed(2) + ' vs plane ' + radius(PLANE).toFixed(2));
+  assert.ok(radius(JET) >= 3 * radius(PLANE), 'jet turn radius ' + radius(JET).toFixed(2) + ' vs plane ' + radius(PLANE).toFixed(2));
+  assert.ok(cruise(JET) >= 10 * cruise(BIRD), 'jet cruise ' + cruise(JET).toFixed(2) + ' vs bird ' + cruise(BIRD).toFixed(2));
+  assert.ok(cruise(JET) >= 3 * cruise(PLANE), 'jet cruise vs plane ' + cruise(PLANE));
+  assert.deepEqual(CRAFT_ORDER, ['plane', 'bird', 'jet']);
+  assert.equal(nextCraft('plane'), 'bird');
+  assert.equal(nextCraft('jet'), 'plane');
+  assert.equal(craftSpec('nope'), PLANE);
+  assert.equal(CRAFTS.bird, BIRD);
+});
+
+test('each craft flies with its own numbers: the bird skims low, the jet keeps its height over a rise', () => {
+  const b = createPlane({ craft: 'bird', y: 0, yaw: 0 });
+  assert.equal(b.craft, 'bird');
+  near(b.speed, speedFor(0.5, false, BIRD), 1e-12, 'bird start speed');
+  fly(b, 2);
+  near(b.y, BIRD.clearance, 1e-9, 'the bird rides 0.06 above flat ground');
+  near(b.z, -2 * b.speed, 0.02, 'and flies straight');
+  // A 0.45 rise: the bird rides over it (stepUp 0.5); the jet bumps on it (stepUp 0.2).
+  const rise = (x, z) => (z < -1 ? 0.45 : 0);
+  const bird = createPlane({ craft: 'bird', y: BIRD.clearance, yaw: 0 });
+  assert.equal(fly(bird, 6, { env: { ground: rise } }), false, 'bird rides over');
+  const jet = createPlane({ craft: 'jet', y: JET.clearance, yaw: 0 });
+  assert.equal(fly(jet, 1, { env: { ground: rise }, until: (_, r) => r.bumped }), true, 'jet bumps');
+  // Chase camera per craft.
+  const j = createPlane({ craft: 'jet', x: 0, y: 10, z: 0 });
+  near(chasePose(j).z, JET.chaseDistance, 1e-12, 'jet chase distance 4');
+  near(Math.hypot(chasePose(j, 1000).z), JET.chaseMax, 1e-9, 'clamped to the jet maximum');
+});
+
+test('switching craft in flight keeps the pose and throttle and clamps speed and bank', () => {
+  const p = createPlane({ x: 3, y: 9, z: 4, yaw: 1, throttle: 1 });
+  p.boosting = true;
+  p.speed = speedFor(1, true);
+  p.bank = 70 * DEG;
+  switchCraft(p, 'bird');
+  assert.equal(p.craft, 'bird');
+  assert.deepEqual([p.x, p.y, p.z, p.yaw, p.throttle], [3, 9, 4, 1, 1]);
+  near(p.speed, 8, 1e-12, 'clamped to the bird boost maximum');
+  near(p.bank, 70 * DEG, 1e-12, 'within the bird limit');
+  switchCraft(p, 'jet');
+  p.bank = 85 * DEG;
+  p.boosting = false;
+  p.speed = 2;
+  switchCraft(p, 'plane');
+  near(p.bank, 75 * DEG, 1e-12, 'bank clamped to the plane limit');
+  near(p.speed, 2, 1e-12);
+  const s = createPlane({ craft: 'bird' });
+  switchCraft(s, 'jet');
+  near(s.speed, 2, 1e-12, 'raised to the jet minimum');
+  fly(s, 4);
+  near(s.speed, speedFor(0.5, false, JET), 0.05, 'then settles at the jet speed for the kept throttle');
+});
+
+test('the bird flaps faster with the throttle and glides below 0.15', () => {
+  assert.equal(flapRate(0.1), 0);
+  near(flapRate(0.5), 4, 1e-12);
+  near(flapRate(1), 6, 1e-12);
+  near(flapRate(1, true), 8, 1e-12);
+});
+
+test('sound profiles: the jet whines above the plane without the propeller beat; the bird is wind pulsed at its wing beat', () => {
+  const plane = engineTargets({ throttle: 0.5, speed: 2 });
+  const jet = engineTargets({ throttle: 0.5, speed: 20 }, 0.18, 'jet');
+  const boost = engineTargets({ throttle: 1, speed: 96, boost: true }, 0.18, 'jet');
+  assert.ok(jet.freq > plane.freq + 100, 'jet ' + jet.freq.toFixed(0) + ' Hz vs plane ' + plane.freq.toFixed(0));
+  assert.equal(jet.beatDepth, 0);
+  assert.equal(plane.beatDepth, 0.25);
+  assert.ok(boost.engine > jet.engine + 0.15 && boost.wind > jet.wind + 0.2, 'boost roars');
+  const flap = engineTargets({ throttle: 0.5, speed: 1 }, 0.18, 'bird');
+  const glide = engineTargets({ throttle: 0.1, speed: 1 }, 0.18, 'bird');
+  assert.equal(flap.engine, 0);
+  assert.equal(flap.windBeat, 0.6);
+  near(flap.beat, 4, 1e-12, 'pulse at the flap rate');
+  assert.equal(glide.windBeat, 0, 'no pulse while gliding');
+  assert.equal(flap.bumpGain, 0.5);
+  assert.ok(engineTargets({ speed: 8 }, 0.18, 'bird').wind > engineTargets({ speed: 1 }, 0.18, 'bird').wind, 'wind with airspeed');
+});
+
+test('controls card: C names the next craft and Enter starts or restarts Stack sats', () => {
+  const rows = planeKeyRows({ craft: 'bird' });
+  assert.ok(rows.some(([k, d]) => k.includes('C') && d === 'Next craft: Jet'));
+  assert.ok(rows.some(([k, d]) => k.includes('Enter') && /^Stack sats/.test(d)));
+  assert.ok(planeKeyRows({ running: true }).some(([, d]) => d === 'Restart Stack sats'));
+});
+
+test('gamepad: Y changes the craft and X starts Stack sats', () => {
+  const buttons = Array.from({ length: 17 }, () => ({ pressed: false, value: 0 }));
+  buttons[2] = { pressed: true, value: 1 };
+  buttons[3] = { pressed: true, value: 1 };
+  const g = gamepadInput({ connected: true, mapping: 'standard', axes: [0, 0], buttons });
+  assert.equal(g.craft, true);
+  assert.equal(g.game, true);
 });
