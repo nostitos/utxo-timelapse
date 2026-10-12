@@ -29,14 +29,17 @@ export function createPlaneHud({ container, nose, keys = null, pops = null, came
   let lastGame = '';
   let noseAt = null;
 
+  function invertYSetting() {
+    try {
+      return !!(settings && settings.get('camera.invertY'));
+    } catch {
+      return false;
+    }
+  }
+
   function renderKeys(craft, running) {
     if (!keys) return;
-    let invertY = false;
-    try {
-      invertY = !!(settings && settings.get('camera.invertY'));
-    } catch {
-      invertY = false;
-    }
+    const invertY = invertYSetting();
     const muted = !!(sound && sound.muted);
     const k = invertY + '|' + muted + '|' + craft + '|' + running;
     if (k === keysKey) return;
@@ -89,9 +92,11 @@ export function createPlaneHud({ container, nose, keys = null, pops = null, came
         bar.style.width = width;
       }
       container.classList.toggle('boost', !!plane.boosting);
-      // Stick dot: right banks right; down is the stick pulled back (nose up by default).
+      // Stick dot where the stick is pushed: right banks right; up raises the nose (with Invert Y,
+      // down, the stick pulled back, raises it).
+      const up = invertYSetting() ? 1 : -1;
       const stick = 'translate(' + (Math.max(-1, Math.min(1, plane.roll || 0)) * 9).toFixed(1) + 'px,' +
-        (Math.max(-1, Math.min(1, plane.pull || 0)) * 9).toFixed(1) + 'px)';
+        (up * Math.max(-1, Math.min(1, plane.pull || 0)) * 9).toFixed(1) + 'px)';
       if (stick !== lastStick) {
         lastStick = stick;
         stickDot.style.transform = stick;

@@ -554,10 +554,11 @@ the bird or the jet (`CRAFTS` in `ui/plane.js`; models in `render/plane-model.js
 the same flight model and their own numbers (table below). The plane banks to
 turn: sideways stick rolls the plane (80°/s, bank up to 75°) and the bank turns it, at
 35°/s × tan(bank) × √(4 / speed) (at most 75°/s); centred, the bank holds and decays slowly
-(0.3/s). Back raises the nose along the plane's own axis (35°/s), so pulling back in a bank
-tightens the turn; pitch is limited to ±70°. The mouse is a stick that springs back to the
-centre (160 px ÷ `camera.sensitivity` for full deflection, return 3/s); A/D and ←/→ bank,
-↓/↑ pitch (pull back for nose up; `camera.invertY` switches it), easing in over 0.25 s; the
+(0.3/s). Nose-up stick raises the nose along the plane's own axis (35°/s), so nose-up stick in
+a bank tightens the turn; pitch is limited to ±70°. The mouse is a stick that springs back to
+the centre (160 px ÷ `camera.sensitivity` for full deflection, return 3/s); A/D and ←/→ bank,
+↑/↓ pitch (up for nose up with the mouse, the arrows and the gamepad stick; `camera.invertY`
+switches to the flight-sim convention, pull back for nose up), easing in over 0.25 s; the
 chase camera swings after the plane (4/s) and never rolls, so the bank shows. W/S throttle
 0.25–16 units/s on a logarithmic throttle (start 2; each quarter of the bar multiplies the
 speed by 2.83), Shift 3×, wheel sets the chase distance (0.8–40, default 2), M
@@ -570,7 +571,7 @@ surface, rides over rises up to 0.35 and bumps on taller columns (stops, half sp
 pitched up). A top-centre line shows
 the column, date and row amount under the plane. Esc, T or a lost pointer lock returns to
 map mode at the camera; the URL hash records plane mode as `mode=map` and never records the
-craft or a game. Standard gamepads: left stick banks and pitches, RT/LT throttle, A boost,
+craft or a game. Standard gamepads: left stick banks and pitches (up for nose up), RT/LT throttle, A boost,
 Start takes off or lands, B lands, Y next craft, X starts Stack sats.
 
 Fun (`ui/fun-menu.js`, timeline button `data-act="fun"`, `aria-haspopup`; it lands first in
@@ -586,27 +587,39 @@ and lists C (next craft) and Enter.
 
 | Craft | Speed (u/s) | Start throttle, boost | Roll, max bank, stability | Pitch rate, max | turnAt45, turnSpeed, max turn | Clearance, stepUp, bump speed | Chase (min–max), spawn | Model scale | Detail ahead (shift, reach) | Coin reach |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Plane | 0.25–16 | 0.5, 3× | 80°/s, 75°, 0.3/s | 35°/s, 70° | 35°/s, 4, 75°/s | 0.15, 0.35, 0.5 | 2 (0.8–40), 3 | 0.5 | 0.6, 1.6 | 0.7 |
-| Bird | 0.1–4 | 0.5, 2× | 140°/s, 80°, 1/s | 60°/s, 75° | 70°/s, 1, 150°/s | 0.06, 0.5, 0.7 | 1 (0.4–20), 1.5 | 0.25 | 0.3, 1.2 | 0.5 |
-| Jet | 2–60 | 0.4, 1.6× | 180°/s, 85°, 0.15/s | 40°/s, 70° | 30°/s, 16, 60°/s | 0.3, 0.2, 0.4 | 4 (1.5–60), 5 | 0.6 | 0.8, 2.2 | 1.2 |
+| Plane | 0.25–16 | 0.5, 3× | 80°/s, 75°, 0.3/s | 35°/s, 70° | 35°/s, 4, 75°/s | 0.15, 0.35, 0.5 | 2 (0.8–40), 3 | 0.5 | 0.6, 1.6 | 1 |
+| Bird | 0.1–4 | 0.5, 2× | 140°/s, 80°, 1/s | 60°/s, 75° | 70°/s, 1, 150°/s | 0.06, 0.5, 0.7 | 1 (0.4–20), 1.5 | 0.25 | 0.3, 1.2 | 0.8 |
+| Jet | 2–60 | 0.4, 1.6× | 180°/s, 85°, 0.15/s | 40°/s, 70° | 30°/s, 16, 60°/s | 0.3, 0.2, 0.4 | 4 (1.5–60), 5 | 0.6 | 0.8, 2.2 | 1.6 |
 
 The bird beats its hinged wings ±30° at `flapRate` = 2 + 4 × throttle Hz (+2 boosting) and
 glides with them raised 8° below 0.15 throttle; the jet's tail lamp glows 1 + 7 × throttle and
 an afterburner cone shows while boosting. Sound profiles (`engineTargets(state, volume,
-profile)`): the plane as above; the jet 110 + 260 × rpm Hz, cutoff 600–3,400 Hz, no propeller
-beat, louder engine and wind on boost; the bird no engine, wind pulsed at the flap rate (depth
+profile)`): the plane as above; the jet no oscillator engine (a pitched sawtooth sounded like
+a vacuum cleaner) but a turbine heard from behind: brown-noise rumble low-passed at 140–360 Hz
+(+120 on boost), a low-passed noise roar opening from 500 to 2,000 Hz with the throttle, slow
+turbulence (0.71 and 1.93 Hz) on both, a faint two-tone whine (1,500–2,800 Hz and × 1.5, gain
+0.016 falling with the throttle) and more rumble and roar on boost; the bird no engine, wind pulsed at the flap rate (depth
 0.6, none while gliding), half-strength bump. The airspeed is measured against each craft's
 full throttle with boost.
 
 Stack sats (`ui/stack-sats.js`, pure; coins drawn by `render/coins.js`): Enter in plane mode,
 gamepad X or the Fun menu starts (or restarts) a 60 s run in the current craft; it steps once
-the takeoff ends. Up to 8 coins, topped up every 3 s and at once when the last one goes: the
-ground is sampled on a square of side 2R (R = clamp(4 × speed, 5, 24)) centred 0.5R ahead of
-the craft at R/40 spacing; 3×3 local maxima at least 0.25 high, tallest first, at least 1.5
-from other coins and the craft, become coins 0.5 above the highest ground within 0.15. A coin
-is worth `rowAmountRange(rows, floor(z × 10)).min` satoshis and vanishes after 25 s; it is
-collected when this frame's path passes within the craft's coin reach horizontally and
-vertically. Coins: upright discs r 0.22, 0.05 thick, Bitcoin orange with a ₿ face, spinning
+the takeoff ends; randomness comes from a generator seeded per run. Trails: a chain of 10
+coins ahead along the heading, 0.45 s of flight apart (0.7–6 units), the first 1.5 s of flight
+ahead (1.5–40 units) and up to 25° off the heading; each coin's turn changes by up to 3°
+(at most 8° a coin) and its climb by up to 0.05 (at most 0.15 a coin), at the craft's height
+clamped between 0.5 and 8.5 above the highest ground within 0.15; at the landscape's edge a
+chain turns up to 30° a coin toward the middle (a chain that would start outside starts just
+inside, heading to the middle). A new trail, continuing from the last trail coin while that is
+still ahead, is laid whenever fewer than 8 trail coins are ahead (at most one a second).
+Bonus coins: up to 6, placed every 3 s: the ground is sampled on a square of side 2R
+(R = clamp(4 × speed, 5, 24)) centred 0.5R ahead of the craft at R/30 spacing; 3×3 local
+maxima at least 0.25 high, tallest first, at least 1.5 from other bonus coins and the craft,
+become coins 0.5 above the highest ground within 0.15. At most 60 coins are out. A coin is
+worth `rowAmountRange(rows, floor(z × 10)).min` satoshis and vanishes after 20 s or once it
+is more than 3 s of flight (at least 12 units) behind the craft; it is collected when this
+frame's path passes within the craft's coin reach horizontally and vertically. Coins: upright
+discs r 0.22, 0.05 thick, no shadow, Bitcoin orange with a ₿ face, spinning
 2 rad/s, bobbing ±0.05 at 1 Hz, growing in and shrinking out over 0.25 s. During a run the
 `#planehud` line starts with "Stack sats · m:ss · stack · n coins" and each coin pops "+amount"
 under it for 0.8 s. At 60 s the best for that craft is updated and `#funcard` shows the stack,

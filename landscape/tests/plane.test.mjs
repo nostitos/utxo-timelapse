@@ -126,7 +126,7 @@ test('limits: bank 75 deg, pitch 70 deg, ceiling 300', () => {
   near(q.pitch, 70 * DEG, 1e-12, 'pitch limit when level');
 });
 
-test('the mouse is a stick that springs back: right banks right, down raises the nose', () => {
+test('the mouse is a stick that springs back: right banks right, up raises the nose', () => {
   const p = createPlane({ y: 50 });
   stickByMouse(p, 80, 0);
   near(p.mouseX, 0.5, 1e-12, '80 px is half the stick');
@@ -140,13 +140,17 @@ test('the mouse is a stick that springs back: right banks right, down raises the
   fly(p, 0.2);
   assert.ok(p.bank > 0.9 * bank, 'the bank stays once the stick is centred');
   const q = createPlane({ y: 50 });
-  stickByMouse(q, 0, 160);
+  stickByMouse(q, 0, -160);
   stepPlane(q, {}, DT, {});
-  assert.ok(q.pitch > 0, 'mouse down (pulling back) raises the nose');
+  assert.ok(q.pitch > 0, 'mouse up raises the nose');
+  const d = createPlane({ y: 50 });
+  stickByMouse(d, 0, 160);
+  stepPlane(d, {}, DT, {});
+  assert.ok(d.pitch < 0, 'mouse down lowers it');
   const r = createPlane({ y: 50 });
   stickByMouse(r, 0, 160, { invertY: true });
   stepPlane(r, {}, DT, {});
-  assert.ok(r.pitch < 0, 'invertY flips it');
+  assert.ok(r.pitch > 0, 'invertY: mouse down (pulling back) raises the nose');
   const s = createPlane({ y: 50 });
   stickByMouse(s, 80, 0, { sensitivity: 2 });
   near(s.mouseX, 1, 1e-12, 'camera.sensitivity scales it');
@@ -258,7 +262,7 @@ test('chase camera: behind and above the plane, swinging after it in a turn, abo
   near(Math.hypot(high.x - p.x, high.z - p.z), PLANE.chaseMax, 1e-6, 'distance clamped to 40');
 });
 
-test('gamepad: left stick banks and pitches (pull back for nose up), triggers throttle, A boost, Start, B', () => {
+test('gamepad: left stick banks and pitches (push up for nose up), triggers throttle, A boost, Start, B', () => {
   const btn = (value) => ({ pressed: value > 0.5, value });
   const buttons = Array.from({ length: 17 }, () => btn(0));
   buttons[0] = btn(1);
@@ -268,15 +272,15 @@ test('gamepad: left stick banks and pitches (pull back for nose up), triggers th
   const gp = { connected: true, mapping: 'standard', axes: [0.1, 1, 0, 0], buttons };
   const g = gamepadInput(gp);
   assert.equal(g.roll, 0, 'inside the dead zone');
-  near(g.pitch, 1, 1e-12, 'stick pulled back: nose up');
-  near(gamepadInput({ ...gp, axes: [0, -1] }).pitch, -1, 1e-12, 'stick pushed forward: nose down');
+  near(g.pitch, -1, 1e-12, 'stick pulled back: nose down');
+  near(gamepadInput({ ...gp, axes: [0, -1] }).pitch, 1, 1e-12, 'stick pushed up: nose up');
   near(g.throttle, 0.75, 1e-12, 'RT - LT');
   assert.equal(g.boost, true);
   assert.equal(g.start, true);
   assert.equal(g.exit, false);
   near(gamepadInput({ ...gp, axes: [0.575, 0] }).roll, 0.25, 1e-12, 'rescaled past the dead zone, then squared');
   near(gamepadInput({ ...gp, axes: [-1, 0] }).roll, -1, 1e-12, 'full left');
-  near(gamepadInput(gp, { invertY: true }).pitch, -1, 1e-12, 'invertY');
+  near(gamepadInput(gp, { invertY: true }).pitch, 1, 1e-12, 'invertY: pull back for nose up');
   assert.equal(gamepadInput(null), null);
   assert.equal(gamepadInput({ ...gp, connected: false }), null);
 });
@@ -306,13 +310,15 @@ test('engine sound follows the throttle, boost, airspeed and bank; silent when o
   assert.ok(engineTargets({ bank: 55 * DEG }).pan > 0 && engineTargets({ bank: -55 * DEG }).pan < 0, 'pans with the bank');
 });
 
-test('controls card: bank to turn, back raises the nose (Invert Y swaps it), M shows the sound state', () => {
+test('controls card: bank to turn, up raises the nose (Invert Y swaps it), M shows the sound state', () => {
   const rows = planeKeyRows();
   assert.match(rows[0][1], /sideways banks/);
-  assert.match(rows[0][1], /back raises the nose/);
+  assert.match(rows[0][1], /up raises the nose/);
   assert.match(rows[1][1], /banking turns/);
-  assert.ok(rows[2][0].indexOf('\u2193') < rows[2][0].indexOf('\u2191'), 'down arrow listed first for nose up');
-  assert.match(planeKeyRows({ invertY: true })[0][1], /up raises the nose/);
+  assert.ok(rows[2][0].indexOf('\u2191') < rows[2][0].indexOf('\u2193'), 'up arrow listed first for nose up');
+  assert.match(planeKeyRows({ invertY: true })[0][1], /back raises the nose/);
+  const inv = planeKeyRows({ invertY: true })[2][0];
+  assert.ok(inv.indexOf('\u2193') < inv.indexOf('\u2191'), 'Invert Y: down arrow first');
   assert.ok(rows.some(([, d]) => d === 'Sound on'));
   assert.ok(planeKeyRows({ muted: true }).some(([, d]) => d === 'Sound off'));
 });
@@ -386,17 +392,23 @@ test('the bird flaps faster with the throttle and glides below 0.15', () => {
   near(flapRate(1, true), 8, 1e-12);
 });
 
-test('sound profiles: the jet whines above the plane without the propeller beat; the bird is wind pulsed at its wing beat', () => {
+test('sound profiles: the jet is turbine noise with no oscillator engine; the bird is wind pulsed at its wing beat', () => {
   const plane = engineTargets({ throttle: 0.5, speed: 2 });
-  const jet = engineTargets({ throttle: 0.5, speed: 20 }, 0.18, 'jet');
+  const cruise = engineTargets({ throttle: 0.4, speed: 7.8 }, 0.18, 'jet');
+  const full = engineTargets({ throttle: 1, speed: 60 }, 0.18, 'jet');
   const boost = engineTargets({ throttle: 1, speed: 96, boost: true }, 0.18, 'jet');
-  assert.ok(jet.freq > plane.freq + 100, 'jet ' + jet.freq.toFixed(0) + ' Hz vs plane ' + plane.freq.toFixed(0));
-  assert.equal(jet.beatDepth, 0);
+  assert.equal(cruise.engine, 0, 'no sawtooth engine (it buzzed like a vacuum cleaner)');
+  assert.equal(cruise.beatDepth, 0);
+  assert.ok(cruise.rumble > 0.5 && cruise.roar > 0, 'rumble and roar');
+  assert.ok(full.roar > cruise.roar && full.roarFreq > cruise.roarFreq && full.rumbleFreq > cruise.rumbleFreq, 'the roar opens up with the throttle');
+  assert.ok(boost.rumble > full.rumble && boost.roar > full.roar && boost.rumbleFreq > full.rumbleFreq, 'the afterburner adds rumble');
+  assert.ok(cruise.whine > 0 && cruise.whine < 0.02 && full.whine < cruise.whine, 'a faint whine that the roar covers');
   assert.equal(plane.beatDepth, 0.25);
-  assert.ok(boost.engine > jet.engine + 0.15 && boost.wind > jet.wind + 0.2, 'boost roars');
+  assert.deepEqual([plane.rumble, plane.roar, plane.whine], [0, 0, 0], 'the plane has no turbine');
   const flap = engineTargets({ throttle: 0.5, speed: 1 }, 0.18, 'bird');
   const glide = engineTargets({ throttle: 0.1, speed: 1 }, 0.18, 'bird');
   assert.equal(flap.engine, 0);
+  assert.deepEqual([flap.rumble, flap.roar, flap.whine], [0, 0, 0]);
   assert.equal(flap.windBeat, 0.6);
   near(flap.beat, 4, 1e-12, 'pulse at the flap rate');
   assert.equal(glide.windBeat, 0, 'no pulse while gliding');

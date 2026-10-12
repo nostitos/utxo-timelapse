@@ -16,8 +16,8 @@
 // and two fingers fly (spread to go forward, drag to slide or climb).
 // Plane mode (T or the Fun menu, desktop only): the chosen craft (plane, bird or jet; setCraft,
 // also in flight) flies on from the view centre (ui/plane.js) and flies like a plane: the
-// mouse is a stick that springs back to the centre, sideways banks and the bank turns, back
-// raises the nose (A/D and the left/right arrows bank, the down and up arrows pitch), W/S set
+// mouse is a stick that springs back to the centre, sideways banks and the bank turns, up
+// raises the nose (Invert Y: back; A/D and the left/right arrows bank, up/down pitch), W/S set
 // the throttle, Shift boosts, the wheel sets the chase distance (kept per craft). The chase
 // camera swings after the craft. Esc, losing the pointer lock or T again returns to map mode
 // where the camera is; releaseLock() frees the cursor without landing (the Stack sats end
@@ -392,7 +392,7 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
     const input = {
       throttle: key('KeyW') - key('KeyS'),
       roll: key('KeyD') + key('ArrowRight') - key('KeyA') - key('ArrowLeft'),
-      pitch: (key('ArrowDown') - key('ArrowUp')) * inv,
+      pitch: (key('ArrowUp') - key('ArrowDown')) * inv,
       boost: !!(key('ShiftLeft') || key('ShiftRight')),
     };
     if (pad.input) {

@@ -270,6 +270,10 @@ const CHECKS = [
       out.bankFirst = { bank: b1.bank - b0.bank, heading: wrapDeg(b1.yaw - b0.yaw) };
       // Level the wings again before the long turn.
       await sleep(300); L.plane.state.bank = 0;
+      // The up arrow raises the nose (Invert Y off).
+      { const st = L.plane.state; st.pitch = 0; st.camPitch = 0; const p0 = L.plane.pose.pitch;
+        key('ArrowUp', { key: 'ArrowUp' }); await sleep(400); up('ArrowUp');
+        out.arrowUp = L.plane.pose.pitch - p0; await sleep(300); st.pitch = 0; st.camPitch = 0; }
       // The mouse is a stick that springs back: moving it right deflects the stick and banks right;
       // once it stops the stick centres and the bank stays. With pointer lock the movement comes
       // as mousemove deltas, otherwise as a drag on the canvas.
@@ -344,12 +348,13 @@ const CHECKS = [
       ['T takes off (' + v.modeAfterT + ')', v.modeAfterT === 'plane' && v.tookOff],
       ['D banks before it turns: after 0.25 s, ' + v.bankFirst.bank.toFixed(1) + ' degrees of bank and ' + v.bankFirst.heading.toFixed(2) + ' of heading',
         v.bankFirst.bank > 5 && Math.abs(v.bankFirst.heading) < 1],
+      ['the up arrow raises the nose (' + v.arrowUp.toFixed(1) + ' degrees in 0.4 s)', v.arrowUp > 3],
       ['the mouse is a stick (' + (v.stick.locked ? 'pointer lock' : 'drag') + '): moving it right banks right (stick ' + v.stick.roll.toFixed(2) + '), then springs back (' + v.stickAfter.mouseX.toFixed(3) + ') while the bank stays (' + v.stickAfter.bank.toFixed(1) + ' degrees)',
         v.stick.roll > 0.2 && Math.abs(v.stickAfter.mouseX) < 0.02 && v.stickAfter.bank > 5],
       ['W and D for 1.5 s: moves (' + v.moved.toFixed(1) + ' units) and the bank turns it right (' + v.turned.toFixed(1) + ' degrees)', v.moved > 5 && v.turned < -20],
       ['W raises the throttle (' + v.throttle.map((t) => t.toFixed(2)).join(' -> ') + ')', v.throttle[1] > v.throttle[0] + 0.4],
-      ['the controls card stays visible: the craft, bank to turn, back raises the nose, next craft, Stack sats, sound, land',
-        !!v.keys && /^Plane/.test(v.keys) && /banking turns/.test(v.keys) && /back raises the nose/.test(v.keys) && /Next craft: Bird/.test(v.keys) &&
+      ['the controls card stays visible: the craft, bank to turn, up raises the nose, next craft, Stack sats, sound, land',
+        !!v.keys && /^Plane/.test(v.keys) && /banking turns/.test(v.keys) && /up raises the nose/.test(v.keys) && /Next craft: Bird/.test(v.keys) &&
         /Stack sats: 60 s/.test(v.keys) && /Sound on/.test(v.keys) && /Land in map mode/.test(v.keys)],
       ['engine sound: built on takeoff, pitch rises with the throttle (' + (v.sound0.target ? v.sound0.target.freq.toFixed(0) : '?') + ' -> ' + (v.sound1.target ? v.sound1.target.freq.toFixed(0) : '?') + ' Hz, context ' + v.sound1.context + ')',
         v.sound0.created && v.sound0.active && v.sound1.target.freq > v.sound0.target.freq + 10],
@@ -434,7 +439,7 @@ const CHECKS = [
       key('Enter', { key: 'Enter' }); await sleep(50);
       out.started = L.plane.game.active;
       const t0 = performance.now();
-      while (!live().length && performance.now() - t0 < 3000) await sleep(30);
+      while (live().length < 10 && performance.now() - t0 < 3000) await sleep(30);
       out.coins = { ms: Math.round(performance.now() - t0), n: live().length, meshes: L.plane.coins ? L.plane.coins.children.filter((m) => m.visible).length : 0,
         hud: document.querySelector('#planehud .ph-game').textContent };
       key('KeyC', { key: 'c' }); await sleep(50); out.craftDuringRun = L.plane.state.craft;
@@ -447,7 +452,19 @@ const CHECKS = [
       L.settings.set('camera.collision', true);
       out.hit = { collected: L.plane.game.state.collected, score: L.plane.game.state.score, value: coin.value, pops: [...document.querySelectorAll('#funpops .ph-pop')].map((e) => e.textContent),
         hud: document.querySelector('#planehud .ph-game').textContent };
-      await sleep(400);
+      // Follow the trail like a player: aim at the nearest coin ahead every frame for 6 s.
+      { const c0 = L.plane.game.state.collected; const t2 = performance.now(); let most = 0;
+        while (performance.now() - t2 < 6000 && L.plane.game.active) {
+          const lv = live(); most = Math.max(most, lv.length);
+          const target = lv.filter((k) => (k.x - st.x) * -Math.sin(st.yaw) + (k.z - st.z) * -Math.cos(st.yaw) > -0.3)
+            .sort((u, w) => Math.hypot(u.x - st.x, u.z - st.z) - Math.hypot(w.x - st.x, w.z - st.z))[0];
+          if (target) {
+            const dx = target.x - st.x, dz = target.z - st.z, d = Math.hypot(dx, dz);
+            Object.assign(st, { yaw: Math.atan2(-dx, -dz), pitch: Math.max(-1, Math.min(1, Math.atan2(target.y - st.y, Math.max(d, 0.5)))), bank: 0, mouseX: 0, mouseY: 0 });
+          }
+          await frame();
+        }
+        out.follow = { coins: L.plane.game.state.collected - c0, most, bumps: st.bumps }; }
       L.plane.game.stop(); await sleep(150);
       const p0 = { x: st.x, z: st.z }; await sleep(300);
       out.card = { open: L.fun.card, text: document.getElementById('funcard').textContent, mode: L.controls.mode, active: L.plane.game.active,
@@ -476,12 +493,13 @@ const CHECKS = [
       ['the bird dives to skim the ground (' + v.bird.low.toFixed(3) + ' above it, from ' + v.bird.clearance.toFixed(2) + ')', v.bird.low >= 0.059 && v.bird.low < 0.2],
       ['C switches to the jet in flight and remembers it', v.jet.craft === 'jet' && v.jet.shown && v.jet.stored === 'jet' && v.jet.head === 'Jet'],
       ['the jet speeds up past the bird (' + v.jet.speed.toFixed(1) + ' units/s)', v.jet.speed > 4],
-      ['Enter starts Stack sats and coins appear within 3 s (' + v.coins.n + ' coins, ' + v.coins.meshes + ' drawn, after ' + v.coins.ms + ' ms)',
-        v.started && v.coins.n > 0 && v.coins.ms < 3000 && v.coins.meshes >= v.coins.n],
+      ['Enter starts Stack sats and a coin trail appears at once (' + v.coins.n + ' coins, ' + v.coins.meshes + ' drawn, after ' + v.coins.ms + ' ms)',
+        v.started && v.coins.n >= 10 && v.coins.ms < 1000 && v.coins.meshes >= v.coins.n],
       ['the HUD shows the run (' + v.coins.hud + ')', /^Stack sats \u00b7 [01]:\d\d \u00b7 0 BTC \u00b7 0 coins$/.test(v.coins.hud)],
       ['C does not change the craft during a run', v.craftDuringRun === 'jet'],
       ['flying through a coin stacks its row amount and pops it (' + v.hit.pops.join(' ') + '; ' + v.hit.hud + ')',
         v.hit.collected >= 1 && v.hit.score >= v.hit.value && v.hit.value > 0 && v.hit.pops.length >= 1 && /^\+/.test(v.hit.pops[0]) && / [1-8] coins?$/.test(v.hit.hud)],
+      ['following the trails for 6 s collects many coins (' + v.follow.coins + ', up to ' + v.follow.most + ' out at once, ' + v.follow.bumps + ' bumps)', v.follow.coins >= 8 && v.follow.most >= 12],
       ['the end card shows the stack and the new best, the craft flies on (' + v.card.text + ')',
         v.card.open && !v.card.active && v.card.mode === 'plane' && v.card.flying && /^Stack sats \u00b7 JetStacked /.test(v.card.text) && /New best with the Jet/.test(v.card.text) && !!v.card.best && v.card.best.sats > 0],
       ['Again restarts from zero', v.again.active && v.again.score === 0 && !v.again.card && v.again.mode === 'plane'],

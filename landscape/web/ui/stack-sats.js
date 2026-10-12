@@ -1,39 +1,83 @@
 // Stack sats (landscape/SPEC.md §8), the Fun menu's game: a 60-second run in plane mode
-// collecting coins that hover over the tallest columns near the craft. Each coin is worth the
-// amount of the row it sits on (rowAmountRange(rows, row).min: the 50 BTC row pays 50 BTC,
-// the 546 sat row 546 sat), so the big coins sit far back over the whale rows. The score is
-// the stack in satoshis; best stacks per craft live in ui/fun-store.js. Pure module (no
-// three.js, no DOM): main.js steps it every frame and render/coins.js draws the coins.
+// collecting coins, each worth the amount of the row it floats over
+// (rowAmountRange(rows, row).min: the 50 BTC row pays 50 BTC, the 546 sat row 546 sat), so the
+// big coins are far back over the whale rows. The score is the stack in satoshis; best stacks
+// per craft live in ui/fun-store.js. Pure module (no three.js, no DOM): main.js steps it every
+// frame and render/coins.js draws the coins.
 //
-// Spawning keeps up to 8 coins, topping up every 3 s: it samples the ground on a square of
-// side 2R (R = 4 x speed, 5 to 24 units) centred 0.5 R ahead of the craft, takes the local
-// maxima at least 0.25 high, tallest first, at least 1.5 units from other coins and from the
-// craft, and hovers each 0.5 above the highest ground within 0.15 of it; when the last coin
-// goes, new ones are placed at once. Coins vanish 25 s after they appear. A coin is collected when the craft's path this frame passes within the
-// craft's coinReach of it, horizontally and vertically.
+// Most coins come in trails: a chain of 10 coins laid ahead along the craft's heading, 0.45 s of
+// flight apart (at least 0.7 units), curving smoothly left or right and up or down (the turn
+// and climb per coin change a little from coin to coin), at the craft's height but always
+// above the columns under them and at most 8 above the ground.
+// A trail starts 1.5 s of flight ahead and the next one continues from the end of the last,
+// so there is always a winding path to follow; a new trail is laid whenever fewer than 8 trail
+// coins are still ahead (at most one a second). Trails turn back toward the landscape at its
+// edges. Bonus coins sit on the tallest columns nearby: up to 6, placed every 3 s on a square
+// of side 2R (R = 4 x speed, 5 to 24) centred 0.5 R ahead, at local maxima at least 0.25 high,
+// 1.5 apart, 0.5 above the highest ground within 0.15. Coins vanish 20 s after they appear or
+// once they are well behind the craft (3 s of flight, at least 12 units); at most 60 are out
+// at once. A coin is collected when the craft's path this frame passes within the craft's
+// coinReach of it, horizontally and vertically. Randomness comes from a seeded generator, so a
+// run is repeatable for a given seed.
 
 import { rowAmountRange } from '../data/axis.js';
 import { craftSpec } from './plane.js';
 
+const DEG = Math.PI / 180;
+
 export const STACK = Object.freeze({
   duration: 60, // seconds per run
-  maxCoins: 8,
-  spawnEvery: 3, // seconds between top-ups
-  retry: 0.5, // seconds before trying again when no coin could be placed and none is left
-  life: 25, // seconds a coin stays
-  minGround: 0.25, // coins only over ground at least this high
-  gap: 1.5, // horizontal distance from other coins and from the craft
+  maxCoins: 60, // coins out at once
+  life: 20, // seconds a coin stays
+  fade: 0.25, // seconds a collected or expired coin takes to disappear
   hover: 0.5, // above the highest ground nearby
   top: 0.15, // the highest ground is looked for within this distance
-  samples: 40, // ground samples from the centre to each side of the square
+  behind: 3, // seconds of flight: coins farther behind than this go
+  behindMin: 12,
+  ceiling: 300,
+  // Trails
+  trailCoins: 10,
+  trailEvery: 1, // seconds between trails at most
+  trailAhead: 8, // a new trail when fewer trail coins than this are ahead
+  trailStart: 1.5, // seconds of flight from the craft to a new chain's first coin
+  trailStartMin: 1.5,
+  trailStartMax: 40,
+  trailSpacing: 0.45, // seconds of flight between coins
+  trailSpacingMin: 0.7,
+  trailSpacingMax: 6,
+  trailTurn: 25 * DEG, // a new chain heads up to this far off the heading
+  trailBend: 8 * DEG, // each coin turns up to this much
+  trailWobble: 3 * DEG, // and its turn differs from the previous coin's by up to this much
+  trailEdgeTurn: 30 * DEG, // and up to this much back toward the landscape at its edge
+  trailClimb: 0.15, // each coin rises or falls up to this much
+  trailClimbWobble: 0.05, // and its climb differs from the previous coin's by up to this much
+  trailHigh: 8, // trail coins stay at most this far above the ground
+  // Bonus coins on the tallest columns
+  bonusCoins: 6,
+  bonusEvery: 3,
+  minGround: 0.25,
+  gap: 1.5,
+  samples: 30, // ground samples from the centre to each side of the square
   radiusPerSpeed: 4,
   minRadius: 5,
   maxRadius: 24,
-  ahead: 0.5, // the square's centre, in radii ahead of the craft
-  fade: 0.25, // seconds a collected or expired coin takes to disappear
+  ahead: 0.5,
 });
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+const forwardXZ = (yaw) => ({ x: -Math.sin(yaw), z: -Math.cos(yaw) });
+
+/** Seeded uniform random numbers in [0, 1) (mulberry32). */
+export function seededRandom(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 /** A game that is not running. rows: rows.bin (minAmt per row) for the coin values. */
 export function createStackSats({ rows = null, duration = STACK.duration } = {}) {
@@ -44,20 +88,24 @@ export function createStackSats({ rows = null, duration = STACK.duration } = {})
     clock: 0, // seconds of game time, running or not (coin fades)
     score: 0, // satoshis
     collected: 0,
-    coins: [], // { id, x, y, z, row, value, born, gone, taken }
+    coins: [], // { id, kind: 'trail' | 'bonus', x, y, z, row, value, born, gone, taken }
     craft: 'plane',
-    nextSpawn: 0,
+    nextTrail: 0,
+    nextBonus: 0,
     nextId: 1,
+    chain: null, // { id, x, y, z, dir, turn, climb }: the last trail coin, where the next trail continues
+    random: seededRandom(1),
     last: null, // the craft's position at the previous step
   };
 }
 
 /** Start a run for a craft: score, time and coins from zero; the first coins appear at the next step. */
-export function startStackSats(s, craft = 'plane') {
+export function startStackSats(s, craft = 'plane', { seed = (Date.now() ^ (Math.random() * 4294967296)) >>> 0 } = {}) {
   for (const c of s.coins) if (c.gone == null) c.gone = s.clock;
   Object.assign(s, {
     running: true, ended: false, t: 0, score: 0, collected: 0,
-    craft: craftSpec(craft).id, nextSpawn: 0, last: null,
+    craft: craftSpec(craft).id, nextTrail: 0, nextBonus: 0, chain: null, last: null,
+    random: seededRandom(seed),
   });
   return s;
 }
@@ -68,6 +116,7 @@ export function stopStackSats(s, { finished = false } = {}) {
   s.running = false;
   s.ended = !!finished;
   s.last = null;
+  s.chain = null;
   for (const c of s.coins) if (c.gone == null) c.gone = s.clock;
   return s;
 }
@@ -93,19 +142,114 @@ export function reaches(a, b, c, reach) {
   return Math.hypot(c.x - x, c.z - z) <= reach && Math.abs(c.y - y) <= reach;
 }
 
+function topNear(ground, x, z) {
+  let g = -Infinity;
+  for (const dz of [-STACK.top, 0, STACK.top]) {
+    for (const dx of [-STACK.top, 0, STACK.top]) {
+      const v = ground(x + dx, z + dz);
+      if (Number.isFinite(v) && v > g) g = v;
+    }
+  }
+  return Number.isFinite(g) ? g : 0;
+}
+
+const inside = (e, x, z) => x >= e.minX && x < e.maxX && z >= e.minZ && z < e.maxZ;
+/** Heading (yaw) from (x, z) toward the middle of the extent (or dir when it is unbounded). */
+function towardMiddle(e, x, z, dir) {
+  if (!Number.isFinite(e.minX + e.maxX + e.minZ + e.maxZ)) return dir;
+  return Math.atan2(-((e.minX + e.maxX) / 2 - x), -((e.minZ + e.maxZ) / 2 - z));
+}
+const alive = (s) => s.coins.filter((c) => c.gone == null);
+
 /**
- * Place new coins ahead of the craft p (ui/plane.js state) up to STACK.maxCoins. ground(x, z)
- * is the terrain height; extent ({minX, maxX, minZ, maxZ}) limits the coins to the landscape.
+ * Lay a trail of up to STACK.trailCoins ahead of the craft p, continuing the last trail when
+ * its end is still ahead. ground(x, z) is the terrain height; extent ({minX, maxX, minZ, maxZ})
+ * keeps the coins on the landscape. Returns the new coins (already added to s.coins).
+ */
+export function spawnTrail(s, p, ground, extent = null) {
+  if (typeof ground !== 'function') return [];
+  const room = STACK.maxCoins - alive(s).length;
+  if (room <= 0) return [];
+  const e = extent || { minX: -Infinity, maxX: Infinity, minZ: -Infinity, maxZ: Infinity };
+  const rnd = s.random;
+  const sym = () => rnd() * 2 - 1;
+  const speed = Math.max(p.speed || 0, 0.1);
+  const spacing = clamp(STACK.trailSpacing * speed, STACK.trailSpacingMin, STACK.trailSpacingMax);
+  const f = forwardXZ(p.yaw);
+  const head = s.chain && s.coins.some((c) => c.id === s.chain.id && c.gone == null) &&
+    (s.chain.x - p.x) * f.x + (s.chain.z - p.z) * f.z > 0 ? s.chain : null;
+  let x, y, z, dir, first;
+  let turn = 0;
+  let climb = 0;
+  if (head) {
+    ({ x, y, z, dir, turn, climb } = head);
+    first = false;
+  } else {
+    dir = p.yaw + sym() * STACK.trailTurn;
+    const start = clamp(STACK.trailStart * speed, STACK.trailStartMin, STACK.trailStartMax);
+    x = p.x + f.x * start;
+    z = p.z + f.z * start;
+    y = p.y;
+    first = true;
+    if (!inside(e, x, z) && Number.isFinite(e.minX + e.maxX + e.minZ + e.maxZ)) {
+      // Heading off the landscape: start just inside its edge, turned toward the middle.
+      x = clamp(x, e.minX + 0.5, e.maxX - 0.5);
+      z = clamp(z, e.minZ + 0.5, e.maxZ - 0.5);
+      dir = towardMiddle(e, x, z, dir);
+    }
+  }
+  const out = [];
+  const n = Math.min(STACK.trailCoins, room);
+  for (let i = 0; i < n; i++) {
+    if (!first) {
+      turn = clamp(turn + sym() * STACK.trailWobble, -STACK.trailBend, STACK.trailBend);
+      dir += turn;
+      let d = forwardXZ(dir);
+      if (!inside(e, x + d.x * spacing, z + d.z * spacing)) {
+        // At the edge: turn toward the middle of the landscape.
+        const want = towardMiddle(e, x, z, dir);
+        const turn = ((want - dir + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+        dir += clamp(turn, -STACK.trailEdgeTurn, STACK.trailEdgeTurn);
+        d = forwardXZ(dir);
+      }
+      x += d.x * spacing;
+      z += d.z * spacing;
+      climb = clamp(climb + sym() * STACK.trailClimbWobble, -STACK.trailClimb, STACK.trailClimb);
+      y += climb;
+    }
+    first = false;
+    if (!inside(e, x, z)) break;
+    const value = coinValue(s.rows, z);
+    if (s.rows && !(value > 0)) continue;
+    const g = topNear(ground, x, z);
+    const lo = g + STACK.hover;
+    const hi = Math.min(g + STACK.hover + STACK.trailHigh, STACK.ceiling);
+    // Held at the floor or the top: stop climbing that way.
+    if (y < lo) climb = Math.max(climb, 0);
+    if (y > hi) climb = Math.min(climb, 0);
+    y = clamp(y, lo, hi);
+    const coin = { id: s.nextId++, kind: 'trail', x, y, z, row: Math.floor(z * 10), value, born: s.clock, gone: null, taken: false };
+    out.push(coin);
+    s.chain = { id: coin.id, x, y, z, dir, turn, climb };
+  }
+  s.coins.push(...out);
+  return out;
+}
+
+/**
+ * Place bonus coins on the tallest columns ahead of the craft p, up to STACK.bonusCoins.
  * Returns the new coins (already added to s.coins).
  */
-export function spawnCoins(s, p, ground, extent = null) {
-  const alive = s.coins.filter((c) => c.gone == null);
-  const want = STACK.maxCoins - alive.length;
+export function spawnBonus(s, p, ground, extent = null) {
+  const live = alive(s);
+  const bonus = live.filter((c) => c.kind === 'bonus');
+  const want = Math.min(STACK.bonusCoins - bonus.length, STACK.maxCoins - live.length);
   if (want <= 0 || typeof ground !== 'function') return [];
   const e = extent || { minX: -Infinity, maxX: Infinity, minZ: -Infinity, maxZ: Infinity };
   const R = clamp(STACK.radiusPerSpeed * (p.speed || 0), STACK.minRadius, STACK.maxRadius);
-  const cx = p.x - Math.sin(p.yaw) * STACK.ahead * R;
-  const cz = p.z - Math.cos(p.yaw) * STACK.ahead * R;
+  const f = forwardXZ(p.yaw);
+  const cx = p.x + f.x * STACK.ahead * R;
+  const cz = p.z + f.z * STACK.ahead * R;
   const n = STACK.samples;
   const N = 2 * n + 1;
   const step = R / n;
@@ -114,8 +258,7 @@ export function spawnCoins(s, p, ground, extent = null) {
     const z = cz + (j - n) * step;
     for (let i = 0; i < N; i++) {
       const x = cx + (i - n) * step;
-      const inside = x >= e.minX && x < e.maxX && z >= e.minZ && z < e.maxZ;
-      const g = inside ? ground(x, z) : -Infinity;
+      const g = inside(e, x, z) ? ground(x, z) : -Infinity;
       h[j * N + i] = Number.isFinite(g) ? g : -Infinity;
     }
   }
@@ -137,7 +280,7 @@ export function spawnCoins(s, p, ground, extent = null) {
     }
   }
   candidates.sort((a, b) => b.g - a.g);
-  const taken = alive.map((c) => ({ x: c.x, z: c.z }));
+  const taken = bonus.map((c) => ({ x: c.x, z: c.z }));
   taken.push({ x: p.x, z: p.z });
   const out = [];
   for (const c of candidates) {
@@ -145,15 +288,9 @@ export function spawnCoins(s, p, ground, extent = null) {
     if (taken.some((t) => Math.hypot(t.x - c.x, t.z - c.z) < STACK.gap)) continue;
     const value = coinValue(s.rows, c.z);
     if (s.rows && !(value > 0)) continue;
-    let g = c.g;
-    for (const dz of [-STACK.top, 0, STACK.top]) {
-      for (const dx of [-STACK.top, 0, STACK.top]) {
-        const v = ground(c.x + dx, c.z + dz);
-        if (Number.isFinite(v) && v > g) g = v;
-      }
-    }
+    const g = Math.max(c.g, topNear(ground, c.x, c.z));
     const coin = {
-      id: s.nextId++, x: c.x, y: g + STACK.hover, z: c.z, row: Math.floor(c.z * 10), value,
+      id: s.nextId++, kind: 'bonus', x: c.x, y: g + STACK.hover, z: c.z, row: Math.floor(c.z * 10), value,
       born: s.clock, gone: null, taken: false,
     };
     out.push(coin);
@@ -180,8 +317,9 @@ export function stepStackSats(s, p, dt, env = {}) {
   const reach = craftSpec(s.craft).coinReach;
   const here = { x: p.x, y: p.y, z: p.z };
   const from = s.last || here;
-  let alive = 0;
-  for (const c of s.coins) if (c.gone == null) alive++;
+  const f = forwardXZ(p.yaw);
+  const behind = -Math.max(STACK.behindMin, STACK.behind * (p.speed || 0));
+  let ahead = 0;
   for (const c of s.coins) {
     if (c.gone != null) continue;
     if (reaches(from, here, c, reach)) {
@@ -190,9 +328,11 @@ export function stepStackSats(s, p, dt, env = {}) {
       s.score += c.value;
       s.collected++;
       out.collected.push(c);
-    } else if (s.clock - c.born >= STACK.life) {
-      c.gone = s.clock;
+      continue;
     }
+    const along = (c.x - p.x) * f.x + (c.z - p.z) * f.z;
+    if (s.clock - c.born >= STACK.life || along < behind) c.gone = s.clock;
+    else if (c.kind === 'trail' && along > 0) ahead++;
   }
   s.last = here;
   if (s.t >= s.duration) {
@@ -201,12 +341,14 @@ export function stepStackSats(s, p, dt, env = {}) {
     out.ended = true;
     return out;
   }
-  // The last coin just went (collected or expired): place new ones now.
-  if (alive > 0 && !s.coins.some((c) => c.gone == null)) s.nextSpawn = Math.min(s.nextSpawn, s.t);
-  if (s.t >= s.nextSpawn) {
-    out.spawned = spawnCoins(s, p, env.ground, env.extent).length;
-    const left = s.coins.some((c) => c.gone == null);
-    s.nextSpawn = s.t + (out.spawned || left ? STACK.spawnEvery : STACK.retry);
+  if (s.t >= s.nextTrail && ahead < STACK.trailAhead) {
+    const n = spawnTrail(s, p, env.ground, env.extent).length;
+    out.spawned += n;
+    s.nextTrail = s.t + (n ? STACK.trailEvery : 0.5);
+  }
+  if (s.t >= s.nextBonus) {
+    out.spawned += spawnBonus(s, p, env.ground, env.extent).length;
+    s.nextBonus = s.t + STACK.bonusEvery;
   }
   return out;
 }

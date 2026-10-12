@@ -1,7 +1,7 @@
 // Stack sats coins (landscape/SPEC.md §8): the coins of ui/stack-sats.js as upright Bitcoin
 // orange discs (radius 0.22, 0.05 thick) with a white B-stroke glyph on both faces, spinning
 // at 2 rad/s and bobbing 0.05 at 1 Hz. A new coin grows in and a collected or expired one
-// shrinks out over STACK.fade. Ordinary lit node materials with a strong self-glow, so they
+// shrinks out over STACK.fade. They cast no shadow (up to 60 are out at once). Ordinary lit node materials with a strong self-glow, so they
 // read in every preset; view.pick only tests the terrain, so a coin never blocks a pick.
 
 import { Group, Mesh, CylinderGeometry, MeshStandardNodeMaterial, CanvasTexture, SRGBColorSpace } from 'three/webgpu';
@@ -69,7 +69,7 @@ export function createCoins({ scene }) {
   function meshAt(i) {
     while (pool.length <= i) {
       const m = new Mesh(geometry, materials);
-      m.castShadow = true;
+      m.castShadow = false; // up to 60 coins: no shadow pass for them
       m.receiveShadow = false;
       m.visible = false;
       root.add(m);

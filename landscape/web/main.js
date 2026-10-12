@@ -257,7 +257,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       else controls.lock();
       if (controls.mode !== 'plane') return;
       startStackSats(game, controls.craft);
-      notice('Stack sats: 60 s \u00b7 fly through the coins over the tallest columns', 'info', 'mode');
+      notice('Stack sats: 60 s \u00b7 follow the coin trails', 'info', 'mode');
     }
     /** The minute is up: record the best for the craft and show the end card with a free cursor. */
     function finishRun() {

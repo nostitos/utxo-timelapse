@@ -9,8 +9,9 @@
 // rolls at up to maxRollRate; once banked the plane turns at a rate that grows with the bank
 // (tan bank, as a coordinated turn) and shrinks at higher speed. Pulling back while banked
 // tightens the turn, since the nose moves along the tilted wings. With the stick centred the
-// plane keeps its bank and slowly rolls level (dihedral). Pitch follows flight-sim convention:
-// pull back (mouse or stick down, the down arrow) for nose up; camera.invertY switches it.
+// plane keeps its bank and slowly rolls level (dihedral). Pitch follows the direction you push:
+// up (mouse or stick up, the up arrow) raises the nose; camera.invertY switches to the flight-sim
+// convention (pull back for nose up).
 // The mouse is a joystick that springs back to the centre. There is no engine start, stall,
 // fuel or gravity: with the stick centred and the wings level the plane flies straight on.
 // The bird is slow and nimble (tight turns, low clearance, it flaps), the jet fast and wide
@@ -69,7 +70,7 @@ export const PLANE = Object.freeze({
   // radii ahead of the camera (view.setDetailAhead).
   detailShift: 0.6,
   detailReach: 1.6,
-  coinReach: 0.7, // Stack sats: a coin this close (horizontally and vertically) is collected
+  coinReach: 1, // Stack sats: a coin this close (horizontally and vertically) is collected
 });
 
 /** Slow and nimble: tight turns, quick wings, low clearance; flaps (flapRate). */
@@ -99,7 +100,7 @@ export const BIRD = Object.freeze({
   modelScale: 0.25,
   detailShift: 0.3,
   detailReach: 1.2,
-  coinReach: 0.5,
+  coinReach: 0.8,
 });
 
 /** Fast and wide: a large turn radius, a quick roll, higher clearance; afterburner on boost. */
@@ -129,7 +130,7 @@ export const JET = Object.freeze({
   modelScale: 0.6,
   detailShift: 0.8,
   detailReach: 2.2,
-  coinReach: 1.2,
+  coinReach: 1.6,
 });
 
 export const CRAFTS = Object.freeze({ plane: PLANE, bird: BIRD, jet: JET });
@@ -217,13 +218,13 @@ export function switchCraft(p, id) {
 }
 
 /**
- * Mouse movement in pixels moves the mouse stick: right banks right, down (pulling back)
- * raises the nose; invertY flips the vertical. The stick springs back in stepPlane.
+ * Mouse movement in pixels moves the mouse stick: right banks right, up raises the nose;
+ * invertY flips the vertical (down, pulling back, raises it). The stick springs back in stepPlane.
  */
 export function stickByMouse(p, dx, dy, { sensitivity = 1, invertY = false } = {}) {
   const k = Math.max(0.05, sensitivity) / specOf(p).mouseFullPx;
   p.mouseX = clamp(p.mouseX + dx * k, -1, 1);
-  p.mouseY = clamp(p.mouseY + dy * k * (invertY ? -1 : 1), -1, 1);
+  p.mouseY = clamp(p.mouseY - dy * k * (invertY ? -1 : 1), -1, 1);
 }
 
 /**
@@ -373,7 +374,8 @@ export function shakeOffset(p, distance = specOf(p).chaseDistance) {
 
 /**
  * A standard-mapping gamepad as plane input: the left stick rolls and pitches (dead zone
- * rescaled, then squared for fine control near the centre; pull back for nose up), RT/LT move
+ * rescaled, then squared for fine control near the centre; push up for nose up, or pull back
+ * with invertY), RT/LT move
  * the throttle, A boosts, Start toggles plane mode, B leaves it, Y changes the craft and X
  * starts Stack sats. null when absent.
  */
@@ -394,7 +396,7 @@ export function gamepadInput(gp, { deadZone = PLANE.gamepadDeadZone, invertY = f
   };
   return {
     roll: axis(0),
-    pitch: axis(1) * (invertY ? -1 : 1), // axis 1 is + when the stick is pulled back
+    pitch: -axis(1) * (invertY ? -1 : 1), // axis 1 is + when the stick is pulled back
     throttle: button(7) - button(6),
     boost: button(0) > 0.5,
     start: button(9) > 0.5,
@@ -431,14 +433,14 @@ export function groundReadout(x, z, { grid, rows, blocktimes, block } = {}) {
 const kbd = (k) => '<kbd>' + k + '</kbd>';
 
 /**
- * Controls card rows [keys HTML, action] for the pitch convention (invertY = push up for nose
+ * Controls card rows [keys HTML, action] for the pitch convention (invertY = pull back for nose
  * up), the sound state, the craft (C names the next one) and whether a Stack sats run is on.
  */
 export function planeKeyRows({ invertY = false, muted = false, craft = 'plane', running = false } = {}) {
   return [
-    ['Mouse', invertY ? 'Stick \u00b7 sideways banks \u00b7 up raises the nose' : 'Stick \u00b7 sideways banks \u00b7 back raises the nose'],
+    ['Mouse', invertY ? 'Stick \u00b7 sideways banks \u00b7 back raises the nose' : 'Stick \u00b7 sideways banks \u00b7 up raises the nose'],
     [kbd('A') + kbd('D') + ' ' + kbd('\u2190') + kbd('\u2192'), 'Bank left \u00b7 right (banking turns)'],
-    [invertY ? kbd('\u2191') + kbd('\u2193') : kbd('\u2193') + kbd('\u2191'), 'Nose up \u00b7 down (back in a bank: tighter turn)'],
+    [invertY ? kbd('\u2193') + kbd('\u2191') : kbd('\u2191') + kbd('\u2193'), 'Nose up \u00b7 down (nose up in a bank: tighter turn)'],
     [kbd('W') + kbd('S'), 'Faster \u00b7 slower'],
     [kbd('Shift'), 'Boost'],
     ['Wheel', 'Camera closer \u00b7 farther'],

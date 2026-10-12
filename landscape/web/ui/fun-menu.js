@@ -33,7 +33,7 @@ export function createFunMenu({ container, getCraft, getBest, onCraft, onPlay })
       '<button type="button" class="pl-item fn-play" data-play="free"><span class="pl-key">Free flight</span>' +
       '<span class="pl-title">Fly anywhere, time keeps running</span><span class="pl-meta">T</span></button>' +
       '<button type="button" class="pl-item fn-play" data-play="stack-sats"><span class="pl-key">Stack sats</span>' +
-      '<span class="pl-title">60 s to collect coins over the tallest columns; each is worth its row\u2019s amount</span>' +
+      '<span class="pl-title">60 s to follow coin trails and grab coins on the tallest columns; each is worth its row\u2019s amount</span>' +
       '<span class="pl-meta">' + (best ? 'Best ' + escapeHtml(fmtStack(best.sats)) : 'No stack yet') + '</span></button>';
     container.innerHTML =
       '<div class="pl-col"><h3>Craft <span>how it flies</span></h3>' + crafts + '</div>' +
