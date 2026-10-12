@@ -1,14 +1,14 @@
 // Playback on top of the replay client (landscape/SPEC.md §5 "Playback"). Pure module:
 // no DOM, no three.js; it only calls replay.advance / replay.seek and reads replay.block.
 //
-//   1x   = 60 blocks/s, exact (every block applied by replay.advance)
-//   10x  = 600 blocks/s, exact; when the worker is slower the playhead follows the
-//          worker and state.limited reports it (the HUD shows the achieved rate)
-//   100x = target moves at 6,000 blocks/s; exact advance while the gap is small, else a
-//          seek to the largest snapshot <= target (snapshot to snapshot)
-//   Max  = exact advance toward the tip with the whole frame budget
-// Scrubbing seeks to the snapshot at/below the scrub position while dragging, then
-// seeks exactly on release. Steps of 1 block use advance; 1,008-block steps use seek.
+//   1x  = 60 blocks/s, exact (every block applied by replay.advance)
+//   2x  = 120 blocks/s, exact
+//   5x  = 300 blocks/s, exact; when the worker is slower the playhead follows the
+//         worker and state.limited reports it (the HUD shows the achieved rate)
+//   Max = exact advance toward the tip with the whole frame budget
+// Every speed replays every block. Only scrubbing seeks to snapshots: the snapshot at/below
+// the scrub position while dragging, then an exact seek on release. Steps of 1 block use
+// advance; 1,008-block steps use seek.
 
 export const BASE_RATE = 60;
 export const STEP_SMALL = 1;
@@ -18,8 +18,8 @@ export const STEP_LARGE = 1008;
 export const START_BEFORE_TIP = 1008;
 export const SPEEDS = Object.freeze([
   Object.freeze({ id: '1', label: '1\u00d7', rate: 60, policy: 'exact' }),
-  Object.freeze({ id: '10', label: '10\u00d7', rate: 600, policy: 'exact' }),
-  Object.freeze({ id: '100', label: '100\u00d7', rate: 6000, policy: 'snapshot' }),
+  Object.freeze({ id: '2', label: '2\u00d7', rate: 120, policy: 'exact' }),
+  Object.freeze({ id: '5', label: '5\u00d7', rate: 300, policy: 'exact' }),
   Object.freeze({ id: 'max', label: 'Max', rate: Infinity, policy: 'max' }),
 ]);
 // While paused, gaps up to this size (steps, nudges) are covered by exact advance;
@@ -66,32 +66,24 @@ export function frameBudgetMs(frameMs) {
 
 /**
  * Next worker operation while playing. Pure: all inputs are plain values.
- * Returns {kind: 'advance', target, budgetMs} | {kind: 'seek', block} | null.
+ * Returns {kind: 'advance', target, budgetMs} | null.
  */
-export function planPlay({ speed, block, target, tip, snapshots, exactRate = 0, frameMs = 16 }) {
+export function planPlay({ speed, block, target, tip, frameMs = 16 }) {
   const spec = speedById(speed);
   const budgetMs = frameBudgetMs(frameMs);
   if (spec.policy === 'max') return block < tip ? { kind: 'advance', target: tip, budgetMs } : null;
   const goal = Math.min(tip, Math.floor(target));
   if (!(goal > block)) return null;
-  if (spec.policy === 'exact') return { kind: 'advance', target: goal, budgetMs };
-  // 100x: exact when the worker can close the gap quickly, else snapshot to snapshot.
-  const small = Math.max(spec.rate / BASE_RATE, (exactRate || 0) * 0.25);
-  if (goal - block <= small) return { kind: 'advance', target: goal, budgetMs };
-  const s = snapshotAtOrBelow(snapshots, goal);
-  if (s !== null && s - block > small) return { kind: 'seek', block: s };
   return { kind: 'advance', target: goal, budgetMs };
 }
 
 /**
- * Lead the playhead target may have over the delivered block. Exact speeds keep a
- * quarter second of lead so a slow worker is followed rather than skipped; 100x allows
- * one second so snapshot seeks always have somewhere to go.
+ * Lead the playhead target may have over the delivered block: a quarter second at the
+ * speed's rate, so a slow worker is followed rather than skipped.
  */
 export function maxLead(speed) {
   const spec = speedById(speed);
   if (spec.policy === 'exact') return Math.max(1, spec.rate * 0.25);
-  if (spec.policy === 'snapshot') return spec.rate;
   return Infinity;
 }
 
@@ -199,10 +191,9 @@ export function createPlayback({ replay, tip, snapshots = [], now = () => perfor
     const block = replay.block;
     if (block == null) return;
     if (playing) {
-      const plan = planPlay({ speed, block, target: target ?? block, tip: tipBlock, snapshots: snaps, exactRate, frameMs });
+      const plan = planPlay({ speed, block, target: target ?? block, tip: tipBlock, frameMs });
       if (!plan) return;
-      if (plan.kind === 'seek') issueSeek(plan.block);
-      else issueAdvance(plan.target, plan.budgetMs);
+      issueAdvance(plan.target, plan.budgetMs);
       return;
     }
     if (requested == null || requested === block) return;

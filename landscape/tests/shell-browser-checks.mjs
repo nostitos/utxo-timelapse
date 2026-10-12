@@ -128,17 +128,19 @@ const CHECKS = [
       }
       const busy = inData(300000);
       out.x1 = await run('1', 10, busy);
-      out.x10 = await run('10', 5, busy);
-      out.x100 = await run('100', 4, inData(200000));
+      out.x2 = await run('2', 5, busy);
+      out.x5 = await run('5', 5, busy);
       out.max = await run('max', 4, busy);
       out.memoryMB = L.replay.status && Math.round(L.replay.status.memoryBytes / 1048576);
       return out;`,
     expect: (v) => [
       ['1x: about 600 blocks in 10 s, exact (' + v.x1.blocks + ')', v.x1.blocks >= 590 && v.x1.blocks <= 610 && v.x1.seeks === 0],
-      ['10x: exact (no snapshot seeks)', v.x10.seeks === 0],
-      ['10x: 600 blocks/s, or the HUD shows the achieved rate (measured ' + Math.round(v.x10.rate) + '/s, last 1.5 s ' + Math.round(v.x10.windowRate) +
-        '/s, HUD ' + Math.round(v.x10.achieved) + '/s)', v.x10.rate >= 570 || Math.abs(v.x10.achieved - v.x10.windowRate) <= 0.1 * v.x10.windowRate],
-      ['100x: no faster than 6,000 blocks/s (' + Math.round(v.x100.rate) + '/s)', v.x100.rate <= 6000 * 1.05 && v.x100.blocks > 0],
+      ['2x: exact (no snapshot seeks)', v.x2.seeks === 0],
+      ['2x: 120 blocks/s, or the HUD shows the achieved rate (measured ' + Math.round(v.x2.rate) + '/s, last 1.5 s ' + Math.round(v.x2.windowRate) +
+        '/s, HUD ' + Math.round(v.x2.achieved) + '/s)', (v.x2.rate >= 114 && v.x2.rate <= 126) || Math.abs(v.x2.achieved - v.x2.windowRate) <= 0.1 * v.x2.windowRate],
+      ['5x: exact (no snapshot seeks)', v.x5.seeks === 0],
+      ['5x: 300 blocks/s, or the HUD shows the achieved rate (measured ' + Math.round(v.x5.rate) + '/s, last 1.5 s ' + Math.round(v.x5.windowRate) +
+        '/s, HUD ' + Math.round(v.x5.achieved) + '/s)', (v.x5.rate >= 285 && v.x5.rate <= 315) || Math.abs(v.x5.achieved - v.x5.windowRate) <= 0.1 * v.x5.windowRate],
       ['Max: exact advance only (' + Math.round(v.max.rate) + '/s)', v.max.seeks === 0 && v.max.blocks > 0],
       ['worker memory <= 1.5 GB (' + v.memoryMB + ' MB)', v.memoryMB <= 1536],
     ],
@@ -198,7 +200,7 @@ const CHECKS = [
       [']: +1 block exact', v.keys.b1 === v.keys.b0 + 1],
       ['Shift+]: +1,008 blocks', v.keys.b2 === v.keys.b1 + 1008],
       ['[: -1 block', v.keys.b3 === v.keys.b2 - 1],
-      ['2 selects 10x', v.keys.speed === '10'],
+      ['2 selects 2x', v.keys.speed === '2'],
       ['Space plays about 60 blocks/s and pauses (' + v.keys.oneSecond + ')', v.keys.playing && v.keys.paused && v.keys.oneSecond >= 50 && v.keys.oneSecond <= 70],
       ['block input seeks exactly', v.blockInput.got === v.blockInput.want],
       ['UTC date matches the explorer /api/date (' + v.dateInput + ' vs ' + v.explorerDate + ')', v.explorerDate == null ? v.dateInput > 0 : v.dateInput === v.explorerDate],

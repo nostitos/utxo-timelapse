@@ -56,14 +56,14 @@ Measured on 2026-10-08 from this Mac over a home connection in Toronto (served f
 | First visit | Balanced with auto scale. The exact tip appears 1.5–2.0 s after navigation, after 6.9 MB in 101 requests. |
 | Random seeks, 30 blocks | Median 1.48 s, 95th percentile 1.97 s from cold R2 (one outlier at 6.6 s). The same 30 blocks again with Cloudflare's cache warm: 0.86 s and 1.14 s. Every seek landed exactly. |
 | 1× from block 840,000 | 3,602 blocks in 60.0 s, exact, with no snapshot shortcut and never behind. |
-| 10× from block 630,000 | 446 blocks/s, limited by the download; the HUD showed the achieved rate. |
+| 600 blocks/s target from block 630,000 (the 10× speed of that release) | 446 blocks/s, limited by the download; the HUD showed the achieved rate. |
 | Max | 1,040 blocks/s at 630,000 and 667 at 840,000. |
 | Replay worker memory | 526 MB |
 | 4K, headed fullscreen (3840 × 2072) | First visit: Balanced at full resolution, 119.6 fps (the display's 120 Hz cap), 5.4 ms GPU. Ultra at block 630,000 with the inspector open: 61.5 fps at full resolution, 14.8 ms GPU. |
 | Browser checks | `shell-browser-checks.mjs` passes 43 of 43 in Chrome and in Brave against https://3d.bitcointimelapse.com/. |
 | Cell API against the native explorer | 24 of 26 sampled cells identical. The other two are the densest cell at the tip (column 15,100, row 1,822), queried at the tip and with a block beyond it; they differ only in the `pop` curve, from floating-point histogram bin edges, as `/api/pixel` does against the native explorer. Median 260 ms per lookup. |
 
-Playback streams the change log. After block 420,000, 1× needs about 1.2–2.2 MiB/s and 10× about 12–22 MiB/s, so 1× suits most broadband connections while 10× and Max follow the connection's speed. Each seek replays up to 16 MiB of changes from the nearest snapshot, which accounts for most of an online seek.
+Playback streams the change log. After block 420,000, 1× needs about 1.2–2.2 MiB/s, 2× twice that and 5× about 6–11 MiB/s, so 1× and 2× suit most broadband connections while 5× and Max follow the connection's speed. Each seek replays up to 16 MiB of changes from the nearest snapshot, which accounts for most of an online seek.
 
 Storing the dataset costs about 1.1 USD a month in R2 (75 GB); R2 charges nothing for egress. Cloudflare Web Analytics counts visits: the zone injects its beacon into every page, and both this site's and the 2D explorer's Content Security Policy allow it.
 
@@ -74,7 +74,7 @@ Storing the dataset costs about 1.1 USD a month in R2 (75 GB); R2 charges nothin
 | Space | Play or pause |
 | `[` / `]` | Back or forward one block (exact) |
 | Shift + `[` / `]` | Back or forward 1,008 blocks (about a week) |
-| 1, 2, 3, 4 | Speed 1×, 10×, 100×, Max |
+| 1, 2, 3, 4 | Speed 1×, 2×, 5×, Max |
 | Drag | Pan; the grabbed point stays under the cursor |
 | Right-drag or Shift-drag | Orbit around the point under the cursor |
 | Wheel or trackpad pinch | Zoom toward the cursor |
@@ -101,7 +101,7 @@ On a touch screen, map mode follows the conventions of map apps. Every gesture k
 
 Pinch, twist and a two-finger drag combine in one movement, as in a map app. Moving both fingers up or down together, side by side, tilts instead. Over empty ground or the sky, gestures stay at the landscape's scale, so a pinch near the horizon cannot throw the camera thousands of units away. The page itself never zooms. Flight mode needs a keyboard to enter; on a touchscreen laptop, one finger then looks around and two fingers fly (spread to go forward, drag to slide or climb). The help panel lists the touch gestures first on touch-only devices, and the first visit shows a one-line hint.
 
-Phones get their own layout below 700 px of width, or below 500 px of height in landscape. The HUD shrinks to the block, date and play state (tap it for the totals). The minimap, legend and block and date fields are hidden, and the timeline keeps the scrubber, transport, one speed button that cycles through 1×, 10×, 100× and Max, and Places, Settings and Help, with 40 px touch targets. In portrait the inspector and the settings open as sheets from the bottom; in landscape they open at the right. When the inspector's sheet would cover the tapped cell, the view slides so the cell stays visible beside it. In portrait the first view looks along the block axis from beyond the tip, so the landscape fills the screen. Safe areas such as the iPhone home indicator are respected.
+Phones get their own layout below 700 px of width, or below 500 px of height in landscape. The HUD shrinks to the block, date and play state (tap it for the totals). The minimap, legend and block and date fields are hidden, and the timeline keeps the scrubber, transport, one speed button that cycles through 1×, 2×, 5× and Max, and Places, Settings and Help, with 40 px touch targets. In portrait the inspector and the settings open as sheets from the bottom; in landscape they open at the right. When the inspector's sheet would cover the tapped cell, the view slides so the cell stays visible beside it. In portrait the first view looks along the block axis from beyond the tip, so the landscape fills the screen. Safe areas such as the iPhone home indicator are respected.
 
 Places jumps to the eras at blocks 50,000, 210,000, 314,000, 420,000, 500,000, 630,000, 700,000, 840,000, 900,000 and the tip, or flies to the amount bands: the 50 BTC coinbase row, 10 BTC and up, 1 BTC, 10,000 sat, 546 sat and 1–100 sat. The timeline accepts a block height or a UTC date.
 
@@ -143,8 +143,8 @@ The worker keeps exact Float64 state for the resident tiles at every level and d
 | Speed | Behaviour |
 |---|---|
 | 1× | 60 blocks/s, exact |
-| 10× | 600 blocks/s, exact; the HUD shows the achieved rate if the worker falls behind |
-| 100× | The target moves at 6,000 blocks/s; small gaps replay exactly, large gaps seek to the snapshot at or below the target |
+| 2× | 120 blocks/s, exact |
+| 5× | 300 blocks/s, exact; the HUD shows the achieved rate if the worker falls behind |
 | Max | Back-to-back exact replay |
 | Scrubbing | The snapshot at or below the handle while dragging, then an exact seek on release |
 
@@ -411,7 +411,7 @@ Headless Chrome 154 on the full dataset:
 | Random seeks, default view (66–74 tiles) | median 157 ms, 95th percentile 267 ms; first coarse frame 66 ms |
 | Random seeks, 225 / 400 resident tiles | 95th percentile 537 ms / 624 ms |
 | 1× in seven eras (50,000 to 960,000) | exactly 60 blocks/s, never behind |
-| 10× from 420,000 to 960,000 | 598–599 blocks/s, exact |
+| 600 blocks/s target from 420,000 to 960,000 (the 10× speed of that build) | 598–599 blocks/s, exact |
 | Max (chained exact replay) | 1,154 blocks/s at 630,000, 886 at 840,000, 868 at 960,000 |
 | Worker memory | 714 MB (74 tiles), 853 MB (225), 878 MB (400) |
 
@@ -427,7 +427,7 @@ In the app, 1× playback from block 314,000 advanced 602 blocks in 10.03 s witho
 - God rays work in screen space and appear only when the sun is near the view; the volumetric option gives shadowed light shafts from any angle. Fewer bloom mips narrow the glow without saving GPU time. PCSS estimates blocker distance approximately.
 - Flight-mode and plane-mode pointer lock were checked only through the drag fallback (headless Chrome refuses the lock), and the gamepad mapping only with simulated gamepads. Firefox was not tested; Brave passed the browser checks online. Touch gestures were checked with real multi-touch input in Chrome's phone emulation (390 × 844), not yet on a physical phone or in iOS Safari.
 - Locally, the inspector's history section needs the explorer on port 12989, and its cell API shares `/api/pixel`'s rate limit (15 requests/s, burst 40). Online, the Worker answers it with 8 requests/s and a burst of 20 per visitor and Worker instance.
-- Online, a seek takes about 1–2 s and 10× or Max playback follows the connection's download speed (see Online). The dataset ends at block 970,658; a newer tip needs a new dataset. `scripts/landscape_r2_publish.py` copies every chunk and snapshot before the old tip inside R2 and uploads only the new ones, about 60 MB of snapshots a day. The first dataset built after snapshots became self-describing still uploads its snapshots once (58 GB, about 36 minutes from here), because the published 970,658 files record that dataset's block count.
+- Online, a seek takes about 1–2 s and 5× or Max playback follows the connection's download speed (see Online). The dataset ends at block 970,658; a newer tip needs a new dataset. `scripts/landscape_r2_publish.py` copies every chunk and snapshot before the old tip inside R2 and uploads only the new ones, about 60 MB of snapshots a day. The first dataset built after snapshots became self-describing still uploads its snapshots once (58 GB, about 36 minutes from here), because the published 970,658 files record that dataset's block count.
 - Unchanged and worth a follow-up: `/api/pixel` and `/api/ranges` share one mutable inverter across request threads, so simultaneous requests for blocks in different epochs could compute wrong column ranges. The new cell endpoint does not use it.
 
 ## Files

@@ -233,52 +233,52 @@ test('1x plays 60 exact blocks per second', async () => {
   assert.deepEqual(events, []);
 });
 
-test('10x follows a slower worker exactly and reports it', async () => {
-  const { w, pb, run } = await setup({ start: 700000, tip: 966827, rate: 350, speed: '10' });
+test('2x plays 120 exact blocks per second', async () => {
+  const { w, pb, run } = await setup({ start: 300000, tip: 966827, rate: 5000, speed: '2' });
+  pb.play();
+  await run(5);
+  const advanced = w.block - 300000;
+  assert.ok(Math.abs(advanced - 600) <= 6, 'advanced ' + advanced);
+  assert.equal(w.calls.filter((c) => c.kind === 'seek').length, 0);
+  assert.ok(w.calls.every((c) => c.target > c.from), 'forward only');
+  const s = pb.state;
+  assert.ok(Math.abs(s.achieved - 120) < 6, 'achieved ' + s.achieved);
+  assert.equal(s.limited, false);
+  assert.equal(w.busyErrors, 0);
+});
+
+test('5x follows a slower worker exactly and reports it', async () => {
+  const { w, pb, run } = await setup({ start: 700000, tip: 966827, rate: 200, speed: '5' });
   pb.play();
   await run(10);
   const advanced = w.block - 700000;
-  assert.ok(advanced > 3300 && advanced <= 3510, 'advanced ' + advanced);
+  assert.ok(advanced > 1880 && advanced <= 2010, 'advanced ' + advanced);
   assert.equal(w.calls.filter((c) => c.kind === 'seek').length, 0);
   const s = pb.state;
   assert.equal(s.limited, true);
-  assert.ok(Math.abs(s.achieved - 350) < 35, 'achieved ' + s.achieved);
+  assert.ok(Math.abs(s.achieved - 200) < 20, 'achieved ' + s.achieved);
   assert.equal(w.busyErrors, 0);
 });
 
-test('10x keeps up with a fast worker', async () => {
-  const { w, pb, run } = await setup({ start: 150000, tip: 966827, rate: 5400, speed: '10' });
+test('5x keeps up with a fast worker', async () => {
+  const { w, pb, run } = await setup({ start: 150000, tip: 966827, rate: 5400, speed: '5' });
   pb.play();
   await run(5);
   const advanced = w.block - 150000;
-  assert.ok(Math.abs(advanced - 3000) <= 160, 'advanced ' + advanced);
+  assert.ok(Math.abs(advanced - 1500) <= 80, 'advanced ' + advanced);
   assert.equal(pb.state.limited, false);
 });
 
-test('100x steps snapshot to snapshot when the worker is slow', async () => {
+test('5x never seeks to a snapshot, even when the worker is far behind', async () => {
   const snapshots = Array.from({ length: 2200 }, (_, i) => i * 450);
-  const { w, pb, run } = await setup({ start: 700000, tip: 966827, rate: 350, seekMs: 80, snapshots, speed: '100' });
+  const { w, pb, run } = await setup({ start: 700000, tip: 966827, rate: 60, seekMs: 80, snapshots, speed: '5' });
   pb.play();
   await run(5);
   const advanced = w.block - 700000;
-  const seeks = w.calls.filter((c) => c.kind === 'seek');
-  assert.ok(seeks.length > 5, 'seeks ' + seeks.length);
-  assert.ok(advanced > 350 * 5 * 3, 'advanced ' + advanced);
-  assert.ok(advanced <= 6000 * 5 + 450, 'not faster than 6000 blocks/s: ' + advanced);
-  for (const s of seeks) {
-    assert.ok(snapshots.includes(s.block), 'seek to snapshot ' + s.block);
-    assert.ok(s.block > s.from, 'forward seek');
-  }
-  assert.equal(w.busyErrors, 0);
-});
-
-test('100x stays exact when the worker is fast enough', async () => {
-  const snapshots = Array.from({ length: 200 }, (_, i) => i * 5000);
-  const { w, pb, run } = await setup({ start: 100000, tip: 966827, rate: 60000, snapshots, speed: '100' });
-  pb.play();
-  await run(3);
   assert.equal(w.calls.filter((c) => c.kind === 'seek').length, 0);
-  assert.ok(Math.abs(w.block - 100000 - 18000) <= 200, 'advanced ' + (w.block - 100000));
+  assert.ok(advanced > 280 && advanced <= 305, 'followed the worker: ' + advanced);
+  assert.equal(pb.state.limited, true);
+  assert.equal(w.busyErrors, 0);
 });
 
 test('Max advances toward the tip with the frame budget and stops there', async () => {
@@ -386,11 +386,12 @@ test('planPlay and snapshot lookup', () => {
   assert.equal(defaultStartBlock(500, [0, 450, 500]), 0);
   assert.equal(planPlay({ speed: '1', block: 10, target: 10.9, tip: 100, snapshots: snaps }), null);
   assert.deepEqual(planPlay({ speed: '1', block: 10, target: 11.2, tip: 100, snapshots: snaps, frameMs: 16.7 }), { kind: 'advance', target: 11, budgetMs: 17 });
-  assert.deepEqual(planPlay({ speed: '100', block: 0, target: 2000, tip: 5000, snapshots: snaps, exactRate: 300 }), { kind: 'seek', block: 900 });
-  assert.equal(planPlay({ speed: '100', block: 0, target: 2000, tip: 5000, snapshots: snaps, exactRate: 50000 }).kind, 'advance');
+  assert.deepEqual(planPlay({ speed: '2', block: 0, target: 2000, tip: 5000, snapshots: snaps }), { kind: 'advance', target: 2000, budgetMs: 16 });
+  assert.deepEqual(planPlay({ speed: '5', block: 0, target: 2000, tip: 5000, snapshots: snaps }), { kind: 'advance', target: 2000, budgetMs: 16 });
   assert.deepEqual(planPlay({ speed: 'max', block: 0, target: 0, tip: 5000, snapshots: snaps, frameMs: 100 }), { kind: 'advance', target: 5000, budgetMs: 50 });
   assert.equal(speedById('nope').id, '1');
-  assert.deepEqual(SPEEDS.map((s) => s.label), ['1\u00d7', '10\u00d7', '100\u00d7', 'Max']);
+  assert.deepEqual(SPEEDS.map((s) => s.label), ['1\u00d7', '2\u00d7', '5\u00d7', 'Max']);
+  assert.deepEqual(SPEEDS.map((s) => s.rate), [60, 120, 300, Infinity]);
 });
 
 test('places resolve eras and amount bands on the film rows', () => {

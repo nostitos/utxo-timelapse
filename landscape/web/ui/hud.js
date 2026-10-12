@@ -69,8 +69,7 @@ export function createHud(container) {
           if (playback.limited) {
             play += ' \u00b7 worker-limited';
             limited = true;
-          } else if (playback.policy === 'snapshot') play += ' \u00b7 snapshot steps';
-          else if (playback.policy === 'exact') play += ' \u00b7 exact';
+          } else if (playback.policy === 'exact') play += ' \u00b7 exact';
         } else play = 'Paused \u00b7 ' + playback.label;
       }
       set('play', play);

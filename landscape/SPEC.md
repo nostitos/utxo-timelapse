@@ -309,7 +309,7 @@ await replay.cell(level, col, row, {load} = {})  // raw (not area-normalised) {c
                                       // demand (≤ 4 pinned) unless {load: false}, which returns null instead
 replay.onFrame(cb); replay.onStatus(cb); replay.onError(cb)
 replay.meta             // {block, time, nTx, size, created, spent, totals:{countSmall,countLarge,satsSmall,satsLarge}}
-replay.snapshotBlocks   // sorted snapshot block heights (for scrubbing / 100× stepping)
+replay.snapshotBlocks   // sorted snapshot block heights (for scrubbing and seek planning)
 replay.grid; replay.status; replay.stats; replay.setChunkCacheMB(mb)
 // onFrame/onStatus/onError return unsubscribe functions; the top tile is grid.tiles - 1 (757 on the full grid)
 replay.dispose()
@@ -341,12 +341,12 @@ Tiles that become resident during playback load from a snapshot and replay to th
 block before their first full frame. Chunk bytes are cached (LRU, `chunkCacheMB`) with
 read-ahead in the playback direction. Worker memory budget ≤ 1.5 GB.
 
-Playback (implemented by ui_shell on top of the client): 1× = 60 blocks/s exact; 10× =
-600 blocks/s exact, HUD shows achieved rate when the worker cannot keep up; 100× = target
-moves at 6000 blocks/s, using exact `advance` when the gap is small and seeking to the
-largest snapshot ≤ target when it is not; Max = exact advance with the whole frame budget;
-scrubbing seeks to the nearest snapshot at/below the scrub position while dragging, then
-an exact seek on release. `[`/`]` step 1 block, Shift+`[`/`]` step 1,008 (via seek).
+Playback (implemented by ui_shell on top of the client): 1× = 60 blocks/s exact; 2× = 120
+blocks/s exact; 5× = 300 blocks/s exact, HUD shows the achieved rate when the worker cannot
+keep up; Max = exact advance with the whole frame budget. Every speed replays every block;
+only scrubbing seeks to snapshots: the nearest snapshot at/below the scrub position while
+dragging, then an exact seek on release. `[`/`]` step 1 block, Shift+`[`/`]` step 1,008
+(via seek).
 
 Local server: `node landscape/tools/serve.mjs --data "/Volumes/4T Data/buv_render/landscape_966827"
 [--port 12990] [--host 127.0.0.1]` serves `landscape/web/` at `/` and the data
@@ -594,7 +594,7 @@ A static browser app in `landscape/web/` renders the UTXO set as a 3D landscape:
 - New C++ task `landscape_verify`: every snapshot equals a fresh replay; 20 random backward replays equal the snapshot below; history-index pass reproduces every L0 cell at blocks 210,000, 630,000 and the tip; weighted density at 965,399 matches the renderer checkpoint within 1e-6 per cell; unit case `landscape_state` covers apply/undo round trip, same-block create+spend, zero amounts skipped, exact 5 BTC boundary, level sums, tile borders, snapshot round trip, row mapping at boundary amounts.
 - Worker `landscape/web/replay.worker.js` (plain JS, no WASM in v1): decodes BLK2 (LEB128, zigzag), applies changes to all loaded levels; backward steps negate a block. Satoshi sums stay exact in doubles (< 2^53). Only tiles the viewer has requested are allocated (sparse), with a 512 MB LRU of chunk bytes. Measured in Node on this Mac: 293–378 blocks/s apply in the busiest eras, about 5,400 in 2012, 33–37M changes/s decode, exact return to zero after forward+backward.
 - Seek: pick the cheapest of current state, nearest snapshot at or below the target, or the one above with backward replay; range-request only the loaded tiles' directory entries; load L4–L6 first so an exact coarse view appears immediately, then stream finer tiles; replay the gap. A tile that becomes visible mid-playback initialises from the nearest snapshot plus cached chunks. Latest seek wins.
-- Speeds: 1× = 60 blocks/s exact; 10× exact while the worker sustains ≥600 blocks/s, otherwise the HUD shows the achieved rate; 100× and scrubbing step snapshot to snapshot. Frame deltas go to the main thread as transferable buffers: per tile either full 258×258 values (per measure) + heat, or changed-cell lists.
+- Speeds: 1× = 60 blocks/s exact; 2× = 120 blocks/s exact; 5× exact while the worker sustains ≥300 blocks/s, otherwise the HUD shows the achieved rate; Max replays with the whole frame budget; only scrubbing steps snapshot to snapshot. Frame deltas go to the main thread as transferable buffers: per tile either full 258×258 values (per measure) + heat, or changed-cell lists.
 - Activity heat: during forward playback each spend adds actual BTC moved to its cell's heat; decay half-life in blocks is a setting; seeks and backward steps clear heat.
 - Cell inspection: add `GET /api/landscape/cell?block&col&row` to `src/cpp/app/utxo_explorer.cpp` (heights `col*64 … col*64+63`, satoshi range from `rowSatoshiRange`, same JSON fields as `/api/pixel`, CORS for `127.0.0.1:12990`). Run a second explorer instance from `build_local/buv` on port 12989 with `configs/buv_explorer.json`; the installed copy under `~/.local/share/buv-explorer` is untouched.
 - Local serving: `landscape/tools/serve.mjs` (Node 20, no dependencies) serves `landscape/web/` and the data directory with HTTP Range support and correct MIME types on `127.0.0.1:12990`.
