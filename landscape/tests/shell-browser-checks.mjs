@@ -302,7 +302,8 @@ const CHECKS = [
       }
       out.spot = spot;
       if (spot) {
-        Object.assign(st, { x: spot.x, z: spot.z, y: spot.g0 + 0.15, yaw: 0, camYaw: 0, pitch: 0, camPitch: 0, bank: 0, mouseX: 0, mouseY: 0, speed: 8.6, throttle: 0.3, cooldown: 0 });
+        // Throttle 0.75 is 5.7 units/s on the logarithmic throttle, so the column 2.5 units ahead is reached well within the wait.
+        Object.assign(st, { x: spot.x, z: spot.z, y: spot.g0 + 0.15, yaw: 0, camYaw: 0, pitch: 0, camPitch: 0, bank: 0, mouseX: 0, mouseY: 0, speed: 8.6, throttle: 0.75, cooldown: 0 });
         const b0 = st.bumps; const t = performance.now();
         while (st.bumps === b0 && performance.now() - t < 2000) await sleep(16);
         out.bumped = st.bumps > b0;
@@ -326,7 +327,7 @@ const CHECKS = [
       ['the mouse is a stick (' + (v.stick.locked ? 'pointer lock' : 'drag') + '): moving it right banks right (stick ' + v.stick.roll.toFixed(2) + '), then springs back (' + v.stickAfter.mouseX.toFixed(3) + ') while the bank stays (' + v.stickAfter.bank.toFixed(1) + ' degrees)',
         v.stick.roll > 0.2 && Math.abs(v.stickAfter.mouseX) < 0.02 && v.stickAfter.bank > 5],
       ['W and D for 1.5 s: moves (' + v.moved.toFixed(1) + ' units) and the bank turns it right (' + v.turned.toFixed(1) + ' degrees)', v.moved > 5 && v.turned < -20],
-      ['W raises the throttle (' + v.throttle.map((t) => t.toFixed(2)).join(' -> ') + ')', v.throttle[1] > v.throttle[0] + 0.5],
+      ['W raises the throttle (' + v.throttle.map((t) => t.toFixed(2)).join(' -> ') + ')', v.throttle[1] > v.throttle[0] + 0.4],
       ['the controls card stays visible: bank to turn, back raises the nose, sound, land',
         !!v.keys && /banking turns/.test(v.keys) && /back raises the nose/.test(v.keys) && /Sound on/.test(v.keys) && /Land in map mode/.test(v.keys)],
       ['engine sound: built on takeoff, pitch rises with the throttle (' + (v.sound0.target ? v.sound0.target.freq.toFixed(0) : '?') + ' -> ' + (v.sound1.target ? v.sound1.target.freq.toFixed(0) : '?') + ' Hz, context ' + v.sound1.context + ')',

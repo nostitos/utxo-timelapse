@@ -404,7 +404,10 @@ smoothing, subdivision, instanced columns, palette LUTs and colour transfer, hea
 emissive and flash sprites, creation-edge glow, now plane, grid, axis labels
 (HTML positioned by projection into `labelsElement`), CPU tile copies for picking.
 Terrain materials are NodeMaterials (`MeshStandardNodeMaterial`) so lights, shadows
-and the MRT outputs used by AO/SSGI/SSR/TRAA/motion blur work.
+and the MRT outputs used by AO/SSGI/SSR/TRAA/motion blur work. Transparent quads (flash
+sprites, the now plane) declare zero outputs for those G-buffer attachments and the scene
+pass alpha-blends them (`render/gbuffer.js`), so a sprite's rectangle never lands in the
+normal, roughness or velocity buffers (it used to: SSR drew a square around every flash).
 
 Height curve (on the area-normalised value `v`, with `e = amp.exposure`,
 `R = amp.reference`): log: `log(1 + e*v) / log(1 + e*R)`; power:
@@ -423,7 +426,9 @@ render_post owns everything else in the frame: renderer creation (WebGPU with ra
 `requiredLimits` and `trackTimestamp` when available; `forceWebGL` / missing
 `navigator.gpu` → WebGL2 backend, compute features off, presets capped at High), sun +
 cascaded shadows (CSMShadowNode), hemisphere ambient, sky, stars, fog, volumetric
-scattering, god rays, the RenderPipeline chain (AO → SSGI → SSR → volumetrics/god rays →
+scattering (half-resolution ray march with a fixed per-pixel dither, blurred with a small
+gaussian before compositing; a per-frame dither sparkled during motion), god rays, the
+RenderPipeline chain (AO → SSGI → SSR → volumetrics/god rays →
 bloom → DOF → motion blur → tone mapping → exposure → grade → LUT → grain/CA/vignette →
 AA/SSAA), resolution scale and auto scale, Display P3, perf overlay, GPU timing.
 
@@ -541,7 +546,8 @@ tightens the turn; pitch is limited to ±70°. The mouse is a stick that springs
 centre (160 px ÷ `camera.sensitivity` for full deflection, return 3/s); A/D and ←/→ bank,
 ↓/↑ pitch (pull back for nose up; `camera.invertY` switches it), easing in over 0.25 s; the
 chase camera swings after the plane (4/s) and never rolls, so the bank shows. W/S throttle
-1–16 units/s (start 4), Shift 3×, wheel sets the chase distance (1.5–40, default 2.6), M
+0.25–16 units/s on a logarithmic throttle (start 2; each quarter of the bar multiplies the
+speed by 2.83), Shift 3×, wheel sets the chase distance (0.8–40, default 2), M
 toggles the synthesized engine sound (`ui/plane-sound.js`, remembered in localStorage). A
 controls card stays visible while flying. With `view.setDetailAhead(0.6, 1.6)` the terrain
 draws cylinders down to `geo.columnPixels / 1.6` and moves their disc 0.6 radii ahead of

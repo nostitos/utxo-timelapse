@@ -98,7 +98,7 @@ export function buildEngine(ctx, { destination = ctx.destination, volume = 0.18 
 
   const t0 = ctx.currentTime;
   // Start at the idle note so takeoff does not slide down from the 440 Hz default.
-  const idle = engineTargets({ throttle: 0.2, speed: 4 }, volume);
+  const idle = engineTargets({ throttle: 0.5, speed: 2 }, volume);
   saw1.frequency.value = idle.freq;
   saw2.frequency.value = idle.freq;
   sub.frequency.value = idle.freq / 2;

@@ -20,9 +20,11 @@ import { fmtInt, fmtAmount, isoUtc } from './format.js';
 const DEG = Math.PI / 180;
 
 export const PLANE = Object.freeze({
-  minSpeed: 1, // world units per second at throttle 0
+  minSpeed: 0.25, // world units per second at throttle 0 (about four columns a second)
   maxSpeed: 16, // at throttle 1 (genesis to tip in about a minute)
-  startThrottle: 0.2, // 4 units/s
+  // The throttle is logarithmic: speed = minSpeed * (maxSpeed / minSpeed) ^ throttle, so each
+  // quarter of the bar multiplies the speed by 2.83 and the slow end stays controllable.
+  startThrottle: 0.5, // 2 units/s
   throttleRate: 0.4, // throttle change per second (W/S, full trigger)
   boost: 3, // Shift multiplies the speed
   speedEase: 3, // 1/s: how quickly the speed follows the throttle and boost
@@ -50,8 +52,9 @@ export const PLANE = Object.freeze({
   ceiling: 300,
   margin: 30, // the plane may leave the landscape by this much
   spawnHeight: 3,
-  chaseDistance: 2.6,
-  chaseMin: 1.5,
+  modelScale: 0.5, // render/plane-model.js builds a 0.8-unit wingspan; flown at 0.4
+  chaseDistance: 2,
+  chaseMin: 0.8,
   chaseMax: 40,
   chaseRise: 0.25, // the camera sits this fraction of the distance above the plane
   chaseFollow: 4, // 1/s: the camera swings after the plane's heading and pitch
@@ -73,9 +76,9 @@ export function forward(yaw, pitch) {
   return { x: -Math.sin(yaw) * cp, y: Math.sin(pitch), z: -Math.cos(yaw) * cp };
 }
 
-/** Airspeed the plane settles at for a throttle (0..1) and boost. */
+/** Airspeed the plane settles at for a throttle (0..1) and boost: logarithmic between minSpeed and maxSpeed. */
 export function speedFor(throttle, boost = false) {
-  const s = PLANE.minSpeed + clamp(throttle, 0, 1) * (PLANE.maxSpeed - PLANE.minSpeed);
+  const s = PLANE.minSpeed * Math.pow(PLANE.maxSpeed / PLANE.minSpeed, clamp(throttle, 0, 1));
   return boost ? s * PLANE.boost : s;
 }
 

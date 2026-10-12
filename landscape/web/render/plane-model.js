@@ -1,5 +1,6 @@
 // Plane mode model (landscape/SPEC.md §8): a small procedural propeller plane, about 320
-// triangles with a 0.8-unit wingspan, flown by ui/plane.js. It faces -z like the camera, is
+// triangles built with a 0.8-unit wingspan and shown at PLANE.modelScale (0.4 units, about
+// six columns), flown by ui/plane.js. It faces -z like the camera, is
 // lit like the terrain (node materials, so the post chain and shadows work on WebGPU and
 // WebGL2) and casts a sun shadow (faint on the default, mostly self-lit cylinders; clear
 // with a lower Emissive strength). A faint self-glow keeps the plane readable in the unlit
@@ -8,6 +9,7 @@
 import {
   Group, Mesh, BoxGeometry, CylinderGeometry, ConeGeometry, SphereGeometry, MeshStandardNodeMaterial,
 } from 'three/webgpu';
+import { PLANE } from '../ui/plane.js';
 
 const ORANGE = 0xf7931a;
 const WHITE = 0xe8e4da;
@@ -34,6 +36,7 @@ export function createPlaneModel({ scene }) {
   root.name = 'plane';
   root.visible = false;
   root.rotation.order = 'YXZ';
+  root.scale.setScalar(PLANE.modelScale);
   const geometries = [];
   const materials = [];
   const keep = (x, list) => (list.push(x), x);

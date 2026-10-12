@@ -27,19 +27,21 @@ function fly(p, seconds, { input = {}, env = {}, dt = DT, until = null } = {}) {
 
 test('with the stick centred and the wings level the plane flies straight at the throttle speed', () => {
   const p = createPlane({ x: 100, y: 5, z: 100, yaw: 0 });
-  near(p.speed, 4, 1e-9, 'start speed');
+  near(p.speed, 2, 1e-9, 'start speed');
   fly(p, 2);
   near(p.x, 100, 1e-9, 'x');
   near(p.y, 5, 1e-9, 'y');
-  near(p.z, 100 - 8, 1e-6, 'z: 2 s at 4 units/s toward -z');
+  near(p.z, 100 - 4, 1e-6, 'z: 2 s at 2 units/s toward -z');
   assert.equal(p.yaw, 0);
   assert.equal(p.bank, 0);
 });
 
-test('throttle and boost set the speed: 1 to 16 units/s, Shift 3x', () => {
-  assert.equal(speedFor(0), 1);
-  assert.equal(speedFor(1), 16);
-  assert.equal(speedFor(1, true), 48);
+test('throttle and boost set the speed: 0.25 to 16 units/s on a logarithmic throttle, Shift 3x', () => {
+  assert.equal(speedFor(0), 0.25);
+  near(speedFor(0.25), 0.25 * Math.sqrt(Math.sqrt(64)), 1e-9, 'a quarter of the bar multiplies by 2.83');
+  near(speedFor(0.5), 2, 1e-9, 'half throttle (the start) is 2 units/s');
+  near(speedFor(1), 16, 1e-9);
+  near(speedFor(1, true), 48, 1e-9);
   const p = createPlane({ y: 5 });
   fly(p, 2, { input: { throttle: 1 } });
   near(p.throttle, 1, 1e-9, 'W for 2 s reaches full throttle (0.4/s)');
@@ -47,7 +49,7 @@ test('throttle and boost set the speed: 1 to 16 units/s, Shift 3x', () => {
   near(p.speed, 48, 0.1, 'boost settles at 3x');
   fly(p, 5, { input: { throttle: -1 } });
   assert.equal(p.throttle, 0);
-  near(p.speed, 1, 0.1, 'S slows to the minimum; the plane never stops or falls');
+  near(p.speed, 0.25, 0.03, 'S slows to the minimum; the plane never stops or falls');
 });
 
 test('bank to turn: sideways stick rolls first, and the turn only builds with the bank', () => {
@@ -164,7 +166,7 @@ test('keys ease in and out over a quarter second', () => {
 test('a 0.2 rise is ridden over', () => {
   const ground = (x, z) => (z < -2 ? 0.2 : 0);
   const p = createPlane({ y: PLANE.clearance, yaw: 0 });
-  const bumped = fly(p, 2, { env: { ground } });
+  const bumped = fly(p, 4, { env: { ground } });
   assert.equal(bumped, false);
   assert.ok(p.z < -5, 'passed the step (z ' + p.z + ')');
   near(p.y, 0.2 + PLANE.clearance, 1e-9, 'rides at the clearance');
@@ -224,7 +226,7 @@ test('terrain rising under the plane lifts it at once', () => {
 test('collision off: through towers, still above the floor; bounds hold', () => {
   const wall = (x, z) => (z < -2 ? 10 : 0);
   const p = createPlane({ y: 3, yaw: 0 });
-  const bumped = fly(p, 2, { env: { ground: wall, collision: false } });
+  const bumped = fly(p, 4, { env: { ground: wall, collision: false } });
   assert.equal(bumped, false);
   assert.ok(p.z < -5, 'passed through (z ' + p.z + ')');
   const d = createPlane({ y: 3, yaw: 0, pitch: -60 * DEG });
