@@ -36,7 +36,7 @@ import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 import { traa } from 'three/addons/tsl/display/TRAANode.js';
 import { radialBlur } from 'three/addons/tsl/display/radialBlur.js';
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
-import { G_BUFFER_OUTPUTS, gBufferBlend } from './gbuffer.js';
+import { G_BUFFER_OUTPUTS, gBufferBlend, setGBufferLayout } from './gbuffer.js';
 import { planPipeline, planKey, planStages, lutText } from './post-plan.js';
 import { parseCubeLUT } from './cube-lut.js';
 import { VOLUME_LAYER } from './env.js';
@@ -232,6 +232,8 @@ export function createPost({ renderer, scene, camera, env, capabilities }) {
       for (const name of G_BUFFER_OUTPUTS) if (outs[name]) targets.setBlendMode(name, gBufferBlend());
       scenePass.setMRT(targets);
     }
+    // Transparent materials write zero alpha to exactly these attachments (render/gbuffer.js).
+    setGBufferLayout(G_BUFFER_OUTPUTS.filter((name) => outs[name]));
     if (p.mrt.normal) scenePass.getTexture('normal').type = UnsignedByteType;
     if (p.mrt.metalrough) scenePass.getTexture('metalrough').type = UnsignedByteType;
     if (p.mrt.diffuse) scenePass.getTexture('diffuse').type = UnsignedByteType;

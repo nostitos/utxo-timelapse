@@ -149,7 +149,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
   nowMat.depthWrite = false;
   nowMat.side = DoubleSide;
   nowMat.fog = true;
-  nowMat.mrtNode = noGBufferWrites();
+  noGBufferWrites(nowMat);
   // Strongest at the ground, fading to nothing at the top (plane spans y -0.5..0.5 locally).
   const up = positionLocal.y.add(0.5);
   const fade = float(1).sub(smoothstep(0, 1, up)).pow(2);

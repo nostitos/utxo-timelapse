@@ -50,7 +50,7 @@ export function createFlashes({ shading, capacity = FLASH_CAPACITY }) {
   material.depthWrite = false;
   material.blending = AdditiveBlending;
   material.fog = true;
-  material.mrtNode = noGBufferWrites(); // the quad must not stamp the normal/SSR/velocity buffers
+  noGBufferWrites(material); // the quad must not stamp the normal/SSR/velocity buffers
   const p = instancedBufferAttribute(posAttr);
   const v = instancedBufferAttribute(valAttr);
   const wp = modelWorldMatrix.mul(vec4(p.xyz, 1)).xyz;

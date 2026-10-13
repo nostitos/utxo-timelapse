@@ -415,9 +415,16 @@ emissive and flash sprites, creation-edge glow, now plane, grid, axis labels
 (HTML positioned by projection into `labelsElement`), CPU tile copies for picking.
 Terrain materials are NodeMaterials (`MeshStandardNodeMaterial`) so lights, shadows
 and the MRT outputs used by AO/SSGI/SSR/TRAA/motion blur work. Transparent quads (flash
-sprites, the now plane) declare zero outputs for those G-buffer attachments and the scene
-pass alpha-blends them (`render/gbuffer.js`), so a sprite's rectangle never lands in the
-normal, roughness or velocity buffers (it used to: SSR drew a square around every flash).
+sprites, the now plane) write zero alpha to exactly the G-buffer attachments the scene pass
+has (`render/post.js` reports them to `setGBufferLayout` in `render/gbuffer.js`) and the scene pass
+alpha-blends them, so a sprite's rectangle never lands in the normal, roughness or velocity
+buffers (it used to: SSR drew a square around every flash). Outputs for attachments the pass
+lacks broke rendering: no G-buffer left an empty output struct (the now plane never compiled
+at Performance), and, because three r186 keys a pipeline by shader code plus the first colour
+format, identical zero outputs reused a pipeline across layouts and blacked out the frame
+(Extreme with motion blur off). Each output therefore writes its own constant (alpha 0).
+SSGI is left out while depth of field is on (`render/post-plan.js`): the two together froze
+the page (WebGPU, Chrome 155, Apple M4 Max, 2026-10-13); the cause is open.
 
 Height curve (on the area-normalised value `v`, with `e = amp.exposure`,
 `R = amp.reference`): log: `log(1 + e*v) / log(1 + e*R)`; power:

@@ -145,6 +145,13 @@ test('High, Ultra and Extreme plans', () => {
   assert.equal(gi.ao, 'off');
   assert.equal(gi.aoFromSsgi, true);
   assert.deepEqual(gi.mrt, { normal: true, metalrough: false, diffuse: true, velocity: true });
+  // Depth of field wins over SSGI: the pipeline with both froze the page.
+  const both = planPipeline({ ...presetSettings('Ultra'), 'fx.ssgi': true, 'fx.dof': true }, WEBGPU);
+  assert.equal(both.dof, true);
+  assert.equal(both.ssgi, false);
+  assert.equal(both.ao, 'gtao', 'the AO pass returns when SSGI steps aside');
+  assert.equal(both.mrt.diffuse, false);
+  assert.equal(planPipeline({ ...presetSettings('Ultra'), 'fx.ssgi': true, 'fx.dof': true, 'fx.dofMaxBlur': 0 }, WEBGPU).ssgi, true);
   const extreme = planPipeline(presetSettings('Extreme'), WEBGPU);
   assert.equal(extreme.ssaa, 2);
   assert.equal(extreme.traa, false, 'SSAA replaces TRAA (TRAA needs output-sized depth)');
