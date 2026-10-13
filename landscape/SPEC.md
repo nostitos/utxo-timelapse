@@ -492,11 +492,19 @@ savedAt, look, quality, overrides}]}`; up to 50; names 1–40 characters, unique
 built-in or quality name or Custom). A record keeps its built-in look, its quality and the
 governed values that differ from them. Values are validated and clamped.
 
-`settings.quick.js` exports `QUICK`, the sixteen quick controls (Look, Quality, Time of day, Sky,
-Haze, Shadows, Glow, Height shows, Colours, Height, Big coins, Cell shape, Flashes, Flash
-trail, Field of view, Show), and `quickOption`, `quickState`, `quickPatch`, `quickIds`. Choice
-and toggle controls write a bundle (`set`) and recognise their option by a subset of it
-(`match`); none matching means set by hand. `ui/quick.js` draws them at the top of the panel,
+`settings.quick.js` exports `QUICK`, the eighteen quick controls (Look, Quality, Column distance,
+Terrain detail, Time of day, Sky, Haze, Shadows, Glow, Height shows, Colours, Height, Big coins,
+Cell shape, Flashes, Flash trail, Field of view, Show), and `quickOption`, `quickState`,
+`quickPatch`, `quickIds`, `blendPatch`, `blendPosition`, `blendValue`, `blendIndex`. Choice,
+toggle and blend controls write a bundle (`set`) and recognise their option by a subset of it
+(`match`); none matching means set by hand. A blend control is a slider across its options:
+between two stops numbers interpolate (`log` ids in log space), colours mix in sRGB, a boolean
+is true if either stop has it, and a stop's `blendAs` gives values it blends from without
+writing them; `blendPosition` finds the point the current values lie on, or null. Time of
+day maps its stops to clock hours (`at`). Column distance and Terrain detail bind
+`geo.columnPixels` and `geo.pixelsPerCell` on inverted log sliders. Tiles under the column
+disc always refine to level 0 (`selectTiles` option `mustRefine`), so columns appear wherever
+Column distance reaches. `ui/quick.js` draws them at the top of the panel,
 with Save… and Delete for saved looks; the schema's settings sit in the panel's closed
 Advanced folder, dimmed while their `needs` fail.
 

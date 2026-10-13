@@ -164,7 +164,9 @@ export function rootTiles(grid) {
  *         isResident(id) → bool, isEmpty(id) → bool (resident and all zero; drawn by the floor),
  *         tileMaxHeight(id) → height bound of a resident tile, or a negative number when unknown,
  *         defaultMaxHeight: bound for tiles without data,
- *         previousSplit: Set of tiles split last time (hysteresis), hysteresis: 0.8 }
+ *         previousSplit: Set of tiles split last time (hysteresis), hysteresis: 0.8,
+ *         mustRefine(id) → bool: split this tile whatever its error, before any other
+ *         (the column region needs level-0 tiles; still within the budget) }
  * Returns { desired: number[] (priority order), split: Set<number>, draw: [{id, mask}],
  *           selected: number }.
  */
@@ -175,6 +177,7 @@ export function selectTiles(grid, view, opts) {
   const prev = opts.previousSplit || null;
   const isResident = opts.isResident || (() => false);
   const isEmpty = opts.isEmpty || (() => false);
+  const mustRefine = opts.mustRefine || null;
   const maxH = (id) => {
     const h = opts.tileMaxHeight ? opts.tileMaxHeight(id) : -1;
     return h >= 0 ? h : opts.defaultMaxHeight ?? 50;
@@ -207,7 +210,9 @@ export function selectTiles(grid, view, opts) {
   const desired = roots.slice();
   const split = new Set();
   const heap = new MaxHeap();
-  for (const r of roots) if (visible(r)) heap.push(r, error(r));
+  // Tiles that must refine sort ahead of every error (their key exceeds any pixel size).
+  const key = (id) => (mustRefine && mustRefine(id) ? 1e12 + error(id) : error(id));
+  for (const r of roots) if (visible(r)) heap.push(r, key(r));
   while (heap.size) {
     const [id, e] = heap.pop();
     const limit = prev && prev.has(id) ? threshold * hysteresis : threshold;
@@ -221,7 +226,7 @@ export function selectTiles(grid, view, opts) {
     for (const k of kids) {
       selected.add(k);
       desired.push(k);
-      if (tileInfo(grid, k).level > 0) heap.push(k, error(k));
+      if (tileInfo(grid, k).level > 0) heap.push(k, key(k));
     }
   }
 

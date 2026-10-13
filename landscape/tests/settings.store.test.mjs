@@ -122,7 +122,7 @@ test('subscribe batches per microtask, coalesces, filters and unsubscribes', asy
   s.set('fx.bloom', false);
   s.set('amp.floor', 0.5);
   s.set('amp.floor', 0.05); // back to the original: no notification
-  s.set('light.sunIntensity', 3); // unchanged: no notification
+  s.set('light.sunIntensity', 5); // unchanged: no notification
   assert.equal(all.length, 0, 'delivery is asynchronous');
   await tick();
   assert.equal(all.length, 1, 'one batch');

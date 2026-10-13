@@ -207,3 +207,36 @@ test('height curve: log, power, linear, whale rows, floor and empty cells', () =
   assert.ok(heightBoundCpu(300, p) >= heightOfCpu(300, 0, p));
   assert.ok(heightBoundCpu(300, { ...p, whale: 0.5 }) >= heightOfCpu(300, 900, { ...p, whale: 0.5 }));
 });
+
+test('mustRefine brings level 0 under a region at any distance, before other refinement', () => {
+  const grid = GRIDS[0];
+  // Camera high above: by error alone nothing reaches level 0.
+  const view = { position: [500, 300, 120], planes: null, projScale: 1000 };
+  const plain = selectTiles(grid, view, { threshold: 3, budget: 400 });
+  assert.ok(!plain.desired.some((id) => tileInfo(grid, id).level === 0), 'no L0 by error');
+  // A disc of 20 world units around (500, 120) must be level 0 throughout.
+  const focus = [500, 120];
+  const R = 20;
+  const near = (id) => {
+    const t = tileInfo(grid, id);
+    const { cw, ch } = cellSize(grid, t.level);
+    const dx = Math.max(t.col0 * cw - focus[0], 0, focus[0] - (t.col0 + t.cols) * cw);
+    const dz = Math.max(t.row0 * ch - focus[1], 0, focus[1] - (t.row0 + t.rows) * ch);
+    return dx * dx + dz * dz < R * R;
+  };
+  const mustRefine = (id) => tileInfo(grid, id).level > 0 && near(id);
+  const sel = selectTiles(grid, view, { threshold: 3, budget: 400, mustRefine });
+  const l0 = sel.desired.filter((id) => tileInfo(grid, id).level === 0);
+  assert.ok(l0.length > 0);
+  // Every L0 cell centre within the disc lies in a selected L0 tile.
+  for (let x = focus[0] - R; x <= focus[0] + R; x += 2) {
+    for (let z = focus[1] - R; z <= focus[1] + R; z += 2) {
+      if ((x - focus[0]) ** 2 + (z - focus[1]) ** 2 >= R * R || z < 0 || z >= 207.2) continue;
+      const id = tileOfCell(grid, 0, Math.floor(x / 0.064), Math.floor(z / 0.1));
+      assert.ok(sel.desired.includes(id), 'L0 tile under (' + x + ', ' + z + ')');
+    }
+  }
+  // Within a tight budget the region still wins over refinement by error.
+  const tight = selectTiles(grid, { ...view, position: [500, 5, 120] }, { threshold: 0.5, budget: 60, mustRefine });
+  assert.ok(tight.desired.filter((id) => tileInfo(grid, id).level === 0).length >= l0.length);
+});

@@ -837,7 +837,7 @@ const CHECKS = [
       out.ui.status = document.querySelector('#panel .lsp-status').textContent;
       out.ui.advancedClosed = L.panel.advanced._closed;
       // Every option of every choice and toggle, clicked in the panel, selects itself.
-      for (const c of QUICK.filter((q) => q.type === 'choice' || q.type === 'toggle')) {
+      for (const c of QUICK.filter((q) => q.type === 'choice' || q.type === 'toggle' || q.type === 'blend')) {
         for (const o of c.options) {
           const b = quickButton(c.id, o.id);
           if (!b) { out.bad.push(c.id + '.' + o.id + ' missing'); continue; }
@@ -1009,7 +1009,10 @@ const CHECKS = [
       out.film = { shadowsInert: shadowRow.classList.contains('lsq-inert'), shadowsTitle: shadowRow.querySelector('.lsq-label').title.split('\\n').pop(),
         todInert: document.querySelector('#panel [data-quick="timeOfDay"]').classList.contains('lsq-inert'),
         sunInert: settingRow('light.sunElevation').classList.contains('lsp-inert'), status: document.querySelector('#panel .lsp-status').textContent, quality: S.quality };
+      // Haze is a slider: a density between its stops is a point on it, one beyond Thick is set by hand.
       S.setLook('Landscape'); S.set('light.fogDensity', 0.003); await sleep(100);
+      out.between = document.querySelector('#panel [data-quick="haze"] .lsq-mixed').hidden;
+      S.set('light.fogDensity', 0.03); await sleep(100);
       out.mixed = !document.querySelector('#panel [data-quick="haze"] .lsq-mixed').hidden;
       out.matches = L.panel.filter('bloom');
       out.searching = { quickHidden: L.panel.quick.domElement.hidden, advancedOpen: !L.panel.advanced._closed };
@@ -1023,7 +1026,7 @@ const CHECKS = [
       ['shadows off dims the cascade setting (' + v.cascades.title + ')', v.cascades.inert && v.cascades.title === 'No effect with Shadows off.'],
       ['Advanced counts the changed settings (' + v.advancedTitle + ', ' + v.changedList + ' listed, ' + v.governedChanged + ' of them look or quality)', v.advancedTitle === (v.changedList ? 'Advanced \u00b7 ' + v.changedList + ' changed' : 'Advanced') && v.governedChanged === 0],
       ['Film dims Shadows and the sun direction, not Time of day (' + v.film.shadowsTitle + ')', v.film.shadowsInert && v.film.sunInert && !v.film.todInert && v.film.shadowsTitle === 'No effect with Sun intensity 0.' && v.film.status === 'Film \u00b7 ' + v.film.quality],
-      ['a hand-set fog density shows Haze as mixed', v.mixed],
+      ['a fog density between the Haze stops sits on its slider; one beyond Thick shows Haze as mixed', v.between && v.mixed],
       ['search finds the bloom settings and steps the quick settings aside', v.matches >= 5 && v.searching.quickHidden && v.searching.advancedOpen && !v.afterSearch.quickHidden],
     ],
   },

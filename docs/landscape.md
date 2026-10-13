@@ -183,7 +183,7 @@ The settings combine two independent choices. A **look** sets the appearance: pa
 
 | Look | What it shows |
 |---|---|
-| Landscape | The default: film palette colours lit by a high sun under a dusk sky with faint stars, light haze, shadows, bloom and cylinder columns near the camera |
+| Landscape | The default: film palette colours in the blue hour just after sunset, the afterglow on the walls that face it and the first stars out, with light haze, shadows, bloom and cylinder columns near the camera |
 | Film | Unlit film colours: weighted density through the film palette (white-hot rows at 10 BTC and above), stepped cells instead of cylinders, black background and ground; no grid, lighting, shadows, fog, sky, tone mapping or post effects. Heat glow and flashes still appear during playback, like the film's activity flashes, and are zero right after a seek |
 | Daylight | Midday: a high white sun in a pale blue sky, crisp shadows and the viridis palette with no glow, so the relief reads like a map |
 | Golden hour | Sunset from the tip side: a low orange sun, long shadows, thick warm haze, light shafts toward the sun and the inferno palette |
@@ -197,7 +197,7 @@ The settings combine two independent choices. A **look** sets the appearance: pa
 | Balanced | Native resolution, SMAA, two 2048 shadow cascades, SSAO, bloom, 160 resident tiles; cylinders where cells are 6 px wide or more |
 | High | Startup quality: TRAA, three 2048 shadow cascades, GTAO, bloom, fog, sky, stars, 225 resident tiles; 12-sided cylinders where cells are 4 px wide or more |
 | Ultra | High plus three 4096 shadow cascades, volumetric light, god rays and bicubic smoothing |
-| Extreme | Ultra plus a fourth cascade, 2× supersampling, softer shadows, GTAO with 32 samples, SSR, 64 volumetric steps, motion blur, subdivision 2, finer detail and cylinders out to 1,024 cells (up to 2 million); deliberately GPU-bound |
+| Extreme | Ultra plus a fourth cascade, 2× supersampling, softer shadows, GTAO with 32 samples, SSR, 64 volumetric steps, motion blur, subdivision 2, finer detail and up to 2 million cylinders; deliberately GPU-bound |
 
 A look may switch on an effect that defines it, and the look wins over the tier for that setting: Daylight and Golden hour keep their shadows at Performance, Golden hour keeps its light shafts, and Film keeps native resolution and no anti-aliasing at every tier. The quality tier sets everything a look leaves alone. In the measurements below, which predate looks, Film is the Film look at High.
 
@@ -242,22 +242,24 @@ G or the Settings button opens the panel. Its header shows the look and the qual
 |---|---|---|
 | Look | The seven looks above and the looks saved in this browser | Every look and quality setting, from the look at the current quality; changes made by hand are cleared, with Undo |
 | Quality | Performance, Balanced, High, Ultra, Extreme | The cost settings; the look and the settings changed by hand stay (Ultra and Extreme need WebGPU) |
-| Time of day | Sunrise, Day, Sunset, Dusk, Night | Sun direction, height, intensity and colour, sky and ground light, ambient light, stars and fog colour. Dusk is the default; Night puts the sun just below the horizon, so the stars come out and the palette's own glow lights the landscape |
+| Column distance | Slider, Near to Far (×0.25 to ×4 of High) | Columns > Column detail, 16 to 1 px: how far from the camera cells stand as columns. The quality tier sets it too (Performance ×0.33, Balanced ×0.67, High ×1); needs Column cells |
+| Terrain detail | Slider, Coarse to Fine (×0.38 to ×3 of High) | Level of detail > Pixels per cell, 8 to 1 px: how fine the surface beyond the columns is |
+| Time of day | Slider, 6:30 to 21:00, with Sunrise, Day, Sunset, Dusk and Night as stops | A clock along one sun path: sun direction, height, intensity and colour, sky and ground light, ambient light, stars and fog colour blend between the stops. Dusk (18:15, the default) is the blue hour, with the sun just below the horizon; Night is moonlight, so the palette's own glow lights the landscape |
 | Sky | On, Off | The sky dome; Off also hides the stars and shows the background colour |
-| Haze | None, Light, Thick | Fog density 0, 0.002 or 0.008, thinning with height |
+| Haze | Slider, None to Thick | Fog density 0 to 0.008, thinning with height |
 | Shadows | On, Off | Sun shadows |
-| Glow | Off, Soft, Normal, Strong | Bloom with its strength, threshold and radius |
+| Glow | Slider, Off to Strong | Bloom with its strength, threshold and radius |
 | Height shows | Weighted density, Output count, BTC value | Amplification > Measure; colour follows it unless set otherwise |
 | Colours | Film, Turbo, Viridis, Inferno, Magma, Plasma, Cividis, Grey | Colour > Palette; the custom gradient is edited in Advanced |
 | Height | 0–40 | Amplification > Exaggeration (Advanced allows up to 200) |
-| Big coins | Normal, Taller, Towering | Height multiplier 1, 2 or 4 for the rows at or above the whale threshold (10 BTC) |
+| Big coins | Slider, Normal to Towering | Height multiplier 1 to 4 for the rows at or above the whale threshold (10 BTC) |
 | Cell shape | Smooth, Columns, Boxes, Stepped | Column cells, their shape and stepped cells; Boxes also steps the landscape beyond the columns. Columns and Boxes need WebGPU |
-| Flashes | Off, Subtle, Normal, Strong | Heat gain and flash size of spends |
-| Flash trail | Short, Normal, Long | Heat half-life of 10, 30 or 300 blocks |
+| Flashes | Slider, Off to Strong | Heat gain and flash size of spends |
+| Flash trail | Slider, Short to Long | Heat half-life from 10 to 300 blocks, applied when the slider is released (the replay worker recomputes heat) |
 | Field of view | 15–110° | Camera > Field of view |
 | Show | Grid, Labels, Legend, Minimap, HUD | The overlays |
 
-A quick setting shows the option the current values match, or a dash when they were set by hand in Advanced. Every built-in look reads as one option in each of them; Film's time of day is the exception, because Film turns the sun off (choosing a time of day turns it back on). Quick settings and Advanced settings that have no effect with the current values are dimmed, and their tooltip says why: the bloom settings with Bloom off, Shadows and the sun direction with Film (it has no sun), Flash trail with Flashes off, the cylinder settings with Column cells off. The conditions are `NEEDS` in `landscape/web/settings.schema.js`; a condition on a setting that itself has no effect counts as unmet, and the tooltip names the root cause.
+Settings that come in degrees are sliders: the named options sit under the slider as stops, a click jumps to one, and between stops the values blend (colours mix, numbers interpolate). A quick setting shows the option or slider position the current values match, or a dash when they were set by hand in Advanced. Every built-in look reads as one option in each of them; Film's time of day is the exception, because Film turns the sun off (choosing a time of day turns it back on). Quick settings and Advanced settings that have no effect with the current values are dimmed, and their tooltip says why: the bloom settings with Bloom off, Shadows and the sun direction with Film (it has no sun), Flash trail with Flashes off, the cylinder settings with Column cells off. The conditions are `NEEDS` in `landscape/web/settings.schema.js`; a condition on a setting that itself has no effect counts as unmet, and the tooltip names the root cause.
 
 **Saving looks.** Save… beside the look stores the current settings under a name in this browser's local storage (`utxo-landscape-presets-v1`; up to 50 looks, names up to 40 characters, built-in names excluded). A saved look records its built-in look, its quality and the settings that differ from them; personal preferences such as camera feel and overlays stay out. It appears under Saved in the look list. Choosing it restores its values and quality, saving again under the same name updates it, and Delete removes it while keeping the values on screen; each offers Undo. A copied link carries the built-in look and the changed settings, so it opens the same view in any browser. An exported JSON file names the saved look; where it is not saved, the import shows its values on its built-in look and says so.
 
@@ -279,7 +281,7 @@ Sixteen settings changed the frame by less than 0.5 in all three views. None is 
 
 | Settings | When they show |
 |---|---|
-| Shadows (0.08), and faintly cascades, map size and softness | The default high sun and glowing palette leave little to shade; a low sun (Sunrise, Sunset, Golden hour) casts long shadows |
+| Shadows (0.08), and faintly cascades, map size and softness | Measured with the earlier default, a high sun; the glowing palette leaves little to shade, and a low sun (Sunrise, Sunset, Golden hour) casts long shadows |
 | SSGI intensity (0) | Not visibly: SSGI's indirect light is too faint at any intensity, and what SSGI adds is its ambient occlusion |
 | God rays and their intensity (0) | With the sun in or near the view |
 | Stars and star density (0.02, 0.04) | At night or with the sky off; daylight hides them |
@@ -310,7 +312,7 @@ The tables below are generated from `landscape/web/settings.schema.js` by `node 
 | Whale threshold (BTC) <br><code>color.whiteHotBTC</code> | 1e-8–100,000 (log) BTC | 10 | — | Rows whose amounts are at least this many BTC count as whale rows (white-hot palette, the whale height multiplier and Stepped whale rows). Film: 10 BTC. Has an effect with White-hot whale rows on or Whale multiplier not 1 or Stepped whale rows on. |
 | Background <br><code>color.background</code> | color | #05070c | Film #000000; Daylight #c9d8ee; Golden hour #2a1a1a; Neon night #0e0824; Pulse #060a14 | Clear colour behind the landscape; the sky gradient covers it when Sky is on. Film: black. Has an effect with Sky off. |
 | Empty cells <br><code>color.ground</code> | color | #0c0f15 | Film #000000; Daylight #3b3f48; Golden hour #1a1210; Neon night #07080f; Pulse #000000 | Colour of cells with no outputs (v <= 0). Film: black. |
-| Fog <br><code>color.fog</code> | color | #141b2b | Daylight #bed3ee; Golden hour #4a2a2a; Neon night #05070d; Whales #5a3f3a; Pulse #05070d | Fog and volumetric scattering colour. Has an effect with Fog density above 0 or Sky on. |
+| Fog <br><code>color.fog</code> | color | #1a2034 | Daylight #bed3ee; Golden hour #4a2a2a; Neon night #05070d; Whales #5a3f3a; Pulse #05070d | Fog and volumetric scattering colour. Has an effect with Fog density above 0 or Sky on. |
 | Heat colour <br><code>color.heat</code> | color | #ffe9c4 | Film #ffffff; Neon night #ffffff; Pulse #ffd27a | Colour of spend flashes: the glow on cells whose outputs were just spent, and the flash sprites. Has an effect with Heat gain above 0 or Flash size above 0. |
 | Heat gain <br><code>color.heatGain</code> | 0–20 | 2.5 | Neon night 6; Pulse 6 | Overall brightness of spend flashes on the terrain; 0 hides them. Above 1 they glow through bloom. |
 | Hue shift <br><code>color.hueShift</code> | -180–180 deg | 0 | — | Rotates every hue by this many degrees. |
@@ -369,8 +371,8 @@ The tables below are generated from `landscape/web/settings.schema.js` by `node 
 | Column cells <br><code>geo.columns</code> | bool | on | Film off | WebGPU only, rebuilds terrain. Near the view, every occupied level-0 cell (64 blocks x 1 amount row) is its own column, a cylinder by default (Cell shape); the heightfield continues beyond Column radius. Needs WebGPU compute; WebGL2 draws the heightfield only. |
 | Cell shape <br><code>geo.columnShape</code> | cylinder, oval, box | cylinder | Neon night box | WebGPU only, rebuilds material. Shape of each column. Cylinder: a plain round column as wide as the cell (64 blocks), leaving room between amount rows. Oval: a cylinder stretched to fill the cell. Box: a square prism like Stepped cells. Has an effect with Column cells on. |
 | Cylinder sides <br><code>geo.cylinderSides</code> | 6, 8, 12, 16, 24, 32 | 12 | Performance 8 | WebGPU only, rebuilds material. Sides of each cylinder: rounder outlines up close, at 3 triangles per side per column. Has an effect with Column cells on and Cell shape not Box. |
-| Column radius <br><code>geo.columnRadius</code> | 16–8,192 (log) L0 cells | 512 | Extreme 1,024 | WebGPU only. Upper limit on how far columns reach from the camera, in level-0 cell widths (64 blocks each). Column detail usually sets the reach first. Has an effect with Column cells on. |
-| Column detail <br><code>geo.columnPixels</code> | 1–32 (log) px | 4 | Performance 12; Balanced 6 | WebGPU only. Columns are drawn where a cell is at least this many pixels wide on screen, so they follow the camera; smaller cells are drawn by the heightfield, where their shape would not show. Lower = columns reach farther and cost more. Has an effect with Column cells on. |
+| Column radius <br><code>geo.columnRadius</code> | 16–8,192 (log) L0 cells | 4,096 | — | WebGPU only. Upper limit on how far columns reach from the camera, in level-0 cell widths (64 blocks each). Column detail and the instance budget set the reach first. Has an effect with Column cells on. |
+| Column detail <br><code>geo.columnPixels</code> | 1–32 (log) px | 4 | Performance 12; Balanced 6 | WebGPU only. Columns are drawn where a cell is at least this many pixels wide on screen, measured from the camera to the ground, so they follow the camera; smaller cells are drawn by the heightfield. Lower = columns reach farther and cost more (quick setting Column distance). Has an effect with Column cells on. |
 | Instance budget <br><code>geo.instanceBudget</code> | 10,000–8,000,000 (log) | 1,000,000 | Performance 250,000; Extreme 2,000,000 | WebGPU only, rebuilds terrain. Maximum instanced columns per frame (up to 8,000,000). Has an effect with Column cells on. |
 | Column gap <br><code>geo.columnGap</code> | 0–0.9 | 0.12 | Neon night 0.25 | WebGPU only. Fraction of each cell footprint left empty between columns. Has an effect with Column cells on. |
 | LOD bias <br><code>geo.lodBias</code> | -3–3 | 0 | — | +1 asks for one level finer detail, -1 one level coarser (refinement threshold = pixels per cell x 2^-bias). |
@@ -381,13 +383,13 @@ The tables below are generated from `landscape/web/settings.schema.js` by `node 
 
 | Setting | Range / options | Default (Landscape, High) | Looks and quality that change it | Notes |
 |---|---|---|---|---|
-| Sun azimuth <br><code>light.sunAzimuth</code> | 0–360 deg | 225 | Daylight 200; Golden hour 110; Whales 290 | Direction the sunlight comes from, clockwise seen from above: 0 = from -z (large-amount rows), 90 = from +x (tip), 180 = from +z (default camera side), 270 = from -x (genesis). Has an effect with Sun intensity above 0 or Sky on or Volumetric light on or God rays on. |
-| Sun elevation <br><code>light.sunElevation</code> | -5–90 deg | 35 | Daylight 62; Golden hour 6; Neon night -3; Whales 9; Pulse -3 | Height of the sun above the horizon. Has an effect with Sun intensity above 0 or Sky on or Volumetric light on or God rays on. |
-| Sun intensity <br><code>light.sunIntensity</code> | 0–20 | 3 | Film 0; Daylight 4; Golden hour 6; Neon night 0.8; Whales 4.5; Pulse 0.8 | Directional light intensity. Film: 0. |
-| Sun colour <br><code>light.sunColor</code> | color | #fff1dc | Daylight #ffffff; Golden hour #ff9a4a; Neon night #a8bcff; Whales #ffc78a; Pulse #a8bcff | Colour of the directional light. Has an effect with Sun intensity above 0 or Sky on or Volumetric light on or God rays on. |
-| Sky light <br><code>light.skyColor</code> | color | #9bb7ff | Daylight #7eabef; Golden hour #ffb27a; Neon night #1b2747; Whales #f6d6b8; Pulse #1b2747 | Hemisphere light colour from above. Has an effect with Sky on or Ambient intensity above 0. |
-| Ground light <br><code>light.groundColor</code> | color | #2a2420 | Daylight #6b6e72; Golden hour #3a2a2e; Neon night #08090d; Whales #3a2e28; Pulse #08090d | Hemisphere light colour from below. Has an effect with Sky on or Ambient intensity above 0. |
-| Ambient intensity <br><code>light.ambient</code> | 0–5 | 0.6 | Film 0; Daylight 1.1; Golden hour 0.35; Neon night 0.5; Whales 0.5; Pulse 0.5 | Hemisphere (sky and ground) light intensity. Film: 0. Has an effect with Albedo above 0. |
+| Sun azimuth <br><code>light.sunAzimuth</code> | 0–360 deg | 98 | Daylight 200; Golden hour 110; Neon night 225; Whales 290; Pulse 225 | Direction the sunlight comes from, clockwise seen from above: 0 = from -z (large-amount rows), 90 = from +x (tip), 180 = from +z (default camera side), 270 = from -x (genesis). Has an effect with Sun intensity above 0 or Sky on or Volumetric light on or God rays on. |
+| Sun elevation <br><code>light.sunElevation</code> | -5–90 deg | -1.5 | Daylight 62; Golden hour 6; Neon night -3; Whales 9; Pulse -3 | Height of the sun above the horizon; below 0 only its afterglow lights the walls that face it. Has an effect with Sun intensity above 0 or Sky on or Volumetric light on or God rays on. |
+| Sun intensity <br><code>light.sunIntensity</code> | 0–20 | 5 | Film 0; Daylight 4; Golden hour 6; Neon night 0.8; Whales 4.5; Pulse 0.8 | Directional light intensity. Film: 0. |
+| Sun colour <br><code>light.sunColor</code> | color | #ffa58c | Daylight #ffffff; Golden hour #ff9a4a; Neon night #a8bcff; Whales #ffc78a; Pulse #a8bcff | Colour of the directional light. Has an effect with Sun intensity above 0 or Sky on or Volumetric light on or God rays on. |
+| Sky light <br><code>light.skyColor</code> | color | #9aaef0 | Daylight #7eabef; Golden hour #ffb27a; Neon night #1b2747; Whales #f6d6b8; Pulse #1b2747 | Hemisphere light colour from above. Has an effect with Sky on or Ambient intensity above 0. |
+| Ground light <br><code>light.groundColor</code> | color | #2a2430 | Daylight #6b6e72; Golden hour #3a2a2e; Neon night #08090d; Whales #3a2e28; Pulse #08090d | Hemisphere light colour from below. Has an effect with Sky on or Ambient intensity above 0. |
+| Ambient intensity <br><code>light.ambient</code> | 0–5 | 1.6 | Film 0; Daylight 1.1; Golden hour 0.35; Neon night 0.5; Whales 0.5; Pulse 0.5 | Hemisphere (sky and ground) light intensity. Film: 0. Has an effect with Albedo above 0. |
 | Rim light <br><code>light.rim</code> | 0–5 | 0.35 | Film 0; Daylight 0; Neon night 0.8 | Fresnel rim light that outlines peaks against the background. Film: 0. |
 | Rim colour <br><code>light.rimColor</code> | color | #8fb8ff | Neon night #ff5ad9; Pulse #b8c0cc | Colour of the rim light. Has an effect with Rim light above 0. |
 | Emissive strength <br><code>light.emissive</code> | 0–10 | 0.4 | Film 1; Daylight 0.15; Golden hour 0.25; Neon night 0.9; Pulse 0.25 | Self-illumination by the palette colour. Emissive 1 with albedo 0 shows the unlit palette colour (Film). |

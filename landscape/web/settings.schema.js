@@ -84,11 +84,11 @@ export const QUALITY_INFO = Object.freeze({
   Balanced: 'Native resolution, SMAA, two 2048 PCF shadow cascades, SSAO with 8 samples, bloom, 160 resident tiles and cylinders where cells are 6 px wide or more.',
   High: 'Startup quality (schema defaults): native resolution, TRAA, three 2048 PCF shadow cascades, GTAO with 16 samples, bloom, fog, sky, stars, 225 resident tiles and 12-sided cylinders where cells are 4 px wide or more.',
   Ultra: 'High plus three 4096 shadow cascades, volumetric light (32 steps), god rays, and bicubic smoothing (applies once Subdivision is raised). At 4K on an M4 Max: 60 fps in the overview, about 35 to 40 fps among cylinders (about 60 with Column cells off).',
-  Extreme: 'Deliberately GPU-bound: Ultra plus a fourth shadow cascade, 2x supersampling, softer shadows (softness 1.5), GTAO with 32 samples, SSR, 64 volumetric steps, motion blur, subdivision 2, finer detail (2 px per cell, 320 resident tiles) and cylinders out to 1,024 cells (up to 2M). At 4K on an M4 Max: about 55 fps in the overview, 13 to 15 fps among cylinders.',
+  Extreme: 'Deliberately GPU-bound: Ultra plus a fourth shadow cascade, 2x supersampling, softer shadows (softness 1.5), GTAO with 32 samples, SSR, 64 volumetric steps, motion blur, subdivision 2, finer detail (2 px per cell, 320 resident tiles) and up to 2M cylinders. At 4K on an M4 Max: about 55 fps in the overview, 13 to 15 fps among cylinders.',
 });
 
 export const LOOK_INFO = Object.freeze({
-  Landscape: 'The default look: film palette colours lit by a high sun under a dusk sky with faint stars, light haze, shadows, bloom and cylinder columns near the camera.',
+  Landscape: 'The default look: film palette colours in the blue hour just after sunset, the afterglow on the walls that face it and the first stars out, with light haze, shadows, bloom and cylinder columns near the camera.',
   Film: 'Unlit film colours: weighted density through the film palette (white-hot whale rows at 10 BTC and above), stepped cells instead of cylinders, black background and ground; no grid, lighting, shadows, fog, sky, tone mapping or post effects. Matches the film colour at equal density. Heat glow and flashes still appear during playback, like the activity flashes in the film, and are zero right after a seek.',
   Daylight: 'Midday: a high white sun in a pale blue sky, crisp shadows and the viridis palette, with no glow, so the relief reads like a map.',
   'Golden hour': 'Sunset from the tip side: a low orange sun, long shadows, thick warm haze, light shafts toward the sun and the inferno palette.',
@@ -149,7 +149,7 @@ const ENTRIES = [
     help: 'Clear colour behind the landscape; the sky gradient covers it when Sky is on. Film: black.' },
   { id: 'color.ground', section: 'Scene colours', label: 'Empty cells', type: 'color', default: '#0c0f15',
     help: 'Colour of cells with no outputs (v <= 0). Film: black.' },
-  { id: 'color.fog', section: 'Scene colours', label: 'Fog', type: 'color', default: '#141b2b',
+  { id: 'color.fog', section: 'Scene colours', label: 'Fog', type: 'color', default: '#1a2034',
     help: 'Fog and volumetric scattering colour.' },
   { id: 'color.heat', section: 'Scene colours', label: 'Heat colour', type: 'color', default: '#ffe9c4',
     help: 'Colour of spend flashes: the glow on cells whose outputs were just spent, and the flash sprites.' },
@@ -300,11 +300,11 @@ const ENTRIES = [
     default: 12, webgpu: true, rebuild: 'material',
     help: 'Sides of each cylinder: rounder outlines up close, at 3 triangles per side per column.' },
   { id: 'geo.columnRadius', section: 'Columns', label: 'Column radius', type: 'int',
-    min: 16, max: 8192, step: 1, scale: 'log', default: 512, unit: 'L0 cells', webgpu: true,
-    help: 'Upper limit on how far columns reach from the camera, in level-0 cell widths (64 blocks each). Column detail usually sets the reach first.' },
+    min: 16, max: 8192, step: 1, scale: 'log', default: 4096, unit: 'L0 cells', webgpu: true,
+    help: 'Upper limit on how far columns reach from the camera, in level-0 cell widths (64 blocks each). Column detail and the instance budget set the reach first.' },
   { id: 'geo.columnPixels', section: 'Columns', label: 'Column detail', type: 'number',
     min: 1, max: 32, step: 0.1, scale: 'log', default: 4, unit: 'px', webgpu: true,
-    help: 'Columns are drawn where a cell is at least this many pixels wide on screen, so they follow the camera; smaller cells are drawn by the heightfield, where their shape would not show. Lower = columns reach farther and cost more.' },
+    help: 'Columns are drawn where a cell is at least this many pixels wide on screen, measured from the camera to the ground, so they follow the camera; smaller cells are drawn by the heightfield. Lower = columns reach farther and cost more (quick setting Column distance).' },
   { id: 'geo.instanceBudget', section: 'Columns', label: 'Instance budget', type: 'int',
     min: 10000, max: 8000000, step: 1000, scale: 'log', default: 1000000, webgpu: true,
     rebuild: 'terrain', capMax: 'maxInstances',
@@ -326,22 +326,22 @@ const ENTRIES = [
 
   // Lighting: sun
   { id: 'light.sunAzimuth', section: 'Sun', label: 'Sun azimuth', type: 'number',
-    min: 0, max: 360, step: 1, default: 225, unit: 'deg',
+    min: 0, max: 360, step: 1, default: 98, unit: 'deg',
     help: 'Direction the sunlight comes from, clockwise seen from above: 0 = from -z (large-amount rows), 90 = from +x (tip), 180 = from +z (default camera side), 270 = from -x (genesis).' },
   { id: 'light.sunElevation', section: 'Sun', label: 'Sun elevation', type: 'number',
-    min: -5, max: 90, step: 0.5, default: 35, unit: 'deg', help: 'Height of the sun above the horizon.' },
+    min: -5, max: 90, step: 0.5, default: -1.5, unit: 'deg', help: 'Height of the sun above the horizon; below 0 only its afterglow lights the walls that face it.' },
   { id: 'light.sunIntensity', section: 'Sun', label: 'Sun intensity', type: 'number',
-    min: 0, max: 20, step: 0.01, default: 3, help: 'Directional light intensity. Film: 0.' },
-  { id: 'light.sunColor', section: 'Sun', label: 'Sun colour', type: 'color', default: '#fff1dc',
+    min: 0, max: 20, step: 0.01, default: 5, help: 'Directional light intensity. Film: 0.' },
+  { id: 'light.sunColor', section: 'Sun', label: 'Sun colour', type: 'color', default: '#ffa58c',
     help: 'Colour of the directional light.' },
 
   // Lighting: ambient
-  { id: 'light.skyColor', section: 'Ambient', label: 'Sky light', type: 'color', default: '#9bb7ff',
+  { id: 'light.skyColor', section: 'Ambient', label: 'Sky light', type: 'color', default: '#9aaef0',
     help: 'Hemisphere light colour from above.' },
-  { id: 'light.groundColor', section: 'Ambient', label: 'Ground light', type: 'color', default: '#2a2420',
+  { id: 'light.groundColor', section: 'Ambient', label: 'Ground light', type: 'color', default: '#2a2430',
     help: 'Hemisphere light colour from below.' },
   { id: 'light.ambient', section: 'Ambient', label: 'Ambient intensity', type: 'number',
-    min: 0, max: 5, step: 0.01, default: 0.6, help: 'Hemisphere (sky and ground) light intensity. Film: 0.' },
+    min: 0, max: 5, step: 0.01, default: 1.6, help: 'Hemisphere (sky and ground) light intensity. Film: 0.' },
   { id: 'light.rim', section: 'Ambient', label: 'Rim light', type: 'number',
     min: 0, max: 5, step: 0.01, default: 0.35, help: 'Fresnel rim light that outlines peaks against the background. Film: 0.' },
   { id: 'light.rimColor', section: 'Ambient', label: 'Rim colour', type: 'color', default: '#8fb8ff',
@@ -652,9 +652,12 @@ export const SCHEMA_BY_ID = new Map(SCHEMA.map((entry) => [entry.id, entry]));
 })();
 
 // Value bundles shared by the looks below and the quick settings (settings.quick.js). A look
-// built from them reads as one definite option in every quick control. Dusk is the schema
-// defaults (the Landscape look); Night puts the sun just below the horizon, so the sky
-// darkens and the stars come out while the palette's own glow lights the landscape.
+// built from them reads as one definite option in every quick control. The times of day lie
+// on one sun path, which the quick setting Time of day runs as a clock: sunrise at 6:30
+// (azimuth 290), noon (200, 62 degrees up), sunset at 17:30 (110), about 16 degrees an hour.
+// Dusk, the schema defaults (the Landscape look), is the blue hour at 18:15: the sun just below
+// the horizon on the same path, its afterglow on the walls that face it, stars coming out.
+// Night is moonlight from the other side, so the palette's own glow lights the landscape.
 export const TIME_OF_DAY = deepFreeze({
   sunrise: { 'light.sunAzimuth': 290, 'light.sunElevation': 9, 'light.sunIntensity': 4.5, 'light.sunColor': '#ffc78a',
     'light.skyColor': '#f6d6b8', 'light.groundColor': '#3a2e28', 'light.ambient': 0.5, 'light.stars': false, 'color.fog': '#5a3f3a' },
@@ -662,8 +665,8 @@ export const TIME_OF_DAY = deepFreeze({
     'light.skyColor': '#7eabef', 'light.groundColor': '#6b6e72', 'light.ambient': 1.1, 'light.stars': false, 'color.fog': '#bed3ee' },
   sunset: { 'light.sunAzimuth': 110, 'light.sunElevation': 6, 'light.sunIntensity': 6, 'light.sunColor': '#ff9a4a',
     'light.skyColor': '#ffb27a', 'light.groundColor': '#3a2a2e', 'light.ambient': 0.35, 'light.stars': false, 'color.fog': '#4a2a2a' },
-  dusk: { 'light.sunAzimuth': 225, 'light.sunElevation': 35, 'light.sunIntensity': 3, 'light.sunColor': '#fff1dc',
-    'light.skyColor': '#9bb7ff', 'light.groundColor': '#2a2420', 'light.ambient': 0.6, 'light.stars': true, 'color.fog': '#141b2b' },
+  dusk: { 'light.sunAzimuth': 98, 'light.sunElevation': -1.5, 'light.sunIntensity': 5, 'light.sunColor': '#ffa58c',
+    'light.skyColor': '#9aaef0', 'light.groundColor': '#2a2430', 'light.ambient': 1.6, 'light.stars': true, 'color.fog': '#1a2034' },
   night: { 'light.sunAzimuth': 225, 'light.sunElevation': -3, 'light.sunIntensity': 0.8, 'light.sunColor': '#a8bcff',
     'light.skyColor': '#1b2747', 'light.groundColor': '#08090d', 'light.ambient': 0.5, 'light.stars': true, 'color.fog': '#05070d' },
 });
@@ -758,7 +761,6 @@ export const QUALITY_PRESETS = deepFreeze({
     'geo.smoothing': 'bicubic',
     'geo.subdivision': 2,
     'geo.columns': true,
-    'geo.columnRadius': 1024,
     'geo.instanceBudget': 2000000,
     'geo.tileBudget': 320,
     'geo.pixelsPerCell': 2,

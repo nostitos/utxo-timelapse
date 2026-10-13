@@ -1,12 +1,16 @@
 // UTXO Timelapse Landscape: quick settings at the top of the settings panel (ui_settings).
 //
 // Draws the controls of settings.quick.js: Look (with Save… and Delete for presets saved in
-// this browser), Quality, then the Scene, Data and View rows. Each row reads the store, shows
-// the active option ('—' when the values were set by hand in Advanced) and dims, with the
-// reason in its tooltip, while it has no effect. Changes go straight to the store.
+// this browser), Quality, Column distance and Terrain detail, then the Scene, Data and View
+// rows. Each row reads the store, shows the active option or slider position ('—' when the
+// values were set by hand in Advanced) and dims, with the reason in its tooltip, while it has
+// no effect. Blend sliders run between named stops, listed under them as buttons that jump to
+// the stop. Changes go straight to the store.
 // ui/panel.js mounts the element; messages (with Undo) go through its message box.
 
-import { QUICK, QUICK_SECTIONS, quickOption, quickPatch } from '../settings.quick.js';
+import {
+  QUICK, QUICK_SECTIONS, quickOption, quickPatch, blendPatch, blendPosition, blendValue,
+} from '../settings.quick.js';
 import { LOOK_INFO, QUALITY_INFO, REBUILD_CLASSES } from '../settings.schema.js';
 import { MAX_PRESET_NAME } from '../settings.js';
 
@@ -27,6 +31,12 @@ function el(tag, className, attrs) {
 }
 
 const nextId = (prefix) => 'lsq-' + prefix + '-' + ++uid;
+
+/** Fills the track up to the thumb's centre (fraction 0..1; the thumb is 14 px wide). */
+function setFill(range, fraction) {
+  const f = Math.min(1, Math.max(0, Number(fraction) || 0));
+  range.style.setProperty('--fill', 'calc(7px + ' + f.toFixed(4) + ' * (100% - 14px))');
+}
 
 function formatNumber(value) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return String(value);
@@ -72,6 +82,7 @@ export function createQuickSettings({ store, controls = QUICK, message = () => {
       case 'quality': return buildQuality(control);
       case 'choice':
       case 'toggle': return buildChoice(control);
+      case 'blend': return buildBlend(control);
       case 'select': return buildSelect(control);
       case 'slider': return buildSlider(control);
       case 'toggles': return buildToggles(control);
@@ -298,6 +309,90 @@ export function createQuickSettings({ store, controls = QUICK, message = () => {
     return { control, row, update };
   }
 
+  // ---- Blend (a slider across the stops of a bundle) ------------------------------------------
+  // The slider moves evenly from stop to stop, and the stop buttons sit in equal columns with
+  // the track inset by half a column, so the thumb stands exactly over the stop it reaches
+  // (Time of day shows its clock time beside the label: its stops are not evenly spaced in time).
+  function buildBlend(control) {
+    const stops = control.options;
+    const n = stops.length;
+    const row = el('div', 'lsq-row lsq-stack lsq-blend');
+    row.style.setProperty('--n', String(n));
+    const id = nextId(control.id);
+    const head = el('div', 'lsq-head');
+    const label = labelFor(control, id);
+    head.appendChild(label);
+    const tag = rebuildTag(control);
+    if (tag) head.appendChild(tag);
+    const mixed = el('span', 'lsq-mixed', { text: '\u2014', title: 'Set by hand in Advanced' });
+    mixed.hidden = true;
+    head.appendChild(mixed);
+    let out = null;
+    if (control.format) {
+      out = el('output', null, { for: id });
+      head.appendChild(out);
+    }
+    const wrap = el('div', 'lsq-range');
+    const range = el('input', null, { type: 'range', id, min: 0, max: n - 1, step: 0.01 });
+    wrap.appendChild(range);
+    const seg = el('div', 'lsq-seg lsq-stops', { role: 'group', 'aria-label': control.label });
+    const buttons = stops.map((opt) => {
+      const button = el('button', null, { type: 'button', text: opt.label, 'data-option': opt.id, 'aria-pressed': 'false' });
+      button.addEventListener('click', () => {
+        try {
+          store.setMany(quickPatch(control, opt.id));
+        } catch (error) {
+          message(error.message, 'error');
+        }
+      });
+      seg.appendChild(button);
+      return [opt, button];
+    });
+    row.append(head, wrap, seg);
+    // Near a stop the slider lands on it exactly, so the stop's button lights up.
+    const positionOf = () => {
+      const p = Number(range.value);
+      const r = Math.round(p);
+      return Math.abs(p - r) < 0.04 ? r : p;
+    };
+    const show = (position) => {
+      setFill(range, position / (n - 1));
+      if (out) out.textContent = control.format(blendValue(control, position));
+    };
+    const write = () => {
+      try {
+        store.setMany(blendPatch(control, positionOf()));
+      } catch (error) {
+        message(error.message, 'error');
+      }
+    };
+    let dragging = false;
+    range.addEventListener('pointerdown', () => { dragging = true; });
+    range.addEventListener('input', () => {
+      show(positionOf());
+      if (control.commit !== 'change') write();
+    });
+    range.addEventListener('change', () => {
+      dragging = false;
+      if (control.commit === 'change') write();
+      update();
+    });
+    range.addEventListener('pointerup', () => { dragging = false; });
+    range.addEventListener('blur', () => { dragging = false; });
+    function update() {
+      const active = quickOption(control, store.get);
+      for (const [opt, button] of buttons) button.setAttribute('aria-pressed', String(active === opt.id));
+      const { position } = blendPosition(control, store.get);
+      mixed.hidden = position !== null;
+      if (position !== null && !dragging) {
+        range.value = String(position);
+        show(position);
+      }
+      applyNeeds(control, row, label);
+    }
+    return { control, row, update };
+  }
+
   // ---- Select (one enum setting) -------------------------------------------------------------
   function buildSelect(control) {
     const entry = store.entry(control.setting);
@@ -341,31 +436,58 @@ export function createQuickSettings({ store, controls = QUICK, message = () => {
   }
 
   // ---- Slider (one number setting) -----------------------------------------------------------
+  // A log or inverted slider runs over positions 0..1000; others over the setting's own range.
   function buildSlider(control) {
     const entry = store.entry(control.setting);
     const min = control.min ?? entry.min;
     const max = control.max ?? entry.max;
     const step = control.step ?? entry.step;
+    const mapped = control.scale === 'log' || !!control.invert;
+    const toValue = (pos) => {
+      let f = pos / 1000;
+      if (control.invert) f = 1 - f;
+      const v = control.scale === 'log' ? min * Math.pow(max / min, f) : min + f * (max - min);
+      return Number(v.toPrecision(3));
+    };
+    const toPos = (v) => {
+      let f = control.scale === 'log' ? Math.log(v / min) / Math.log(max / min) : (v - min) / (max - min);
+      f = Math.min(1, Math.max(0, f));
+      if (control.invert) f = 1 - f;
+      return Math.round(f * 1000);
+    };
     const row = el('div', 'lsq-row');
     const id = nextId(control.id);
     const label = labelFor(control, id);
     const wrap = el('div', 'lsq-range');
-    const range = el('input', null, { type: 'range', id, min, max, step });
+    const range = el('input', null, mapped ? { type: 'range', id, min: 0, max: 1000, step: 1 } : { type: 'range', id, min, max, step });
     const out = el('output', null, { for: id });
     wrap.append(range, out);
     row.append(label, wrap);
+    if (control.ends) {
+      const ends = el('div', 'lsq-ends', { 'aria-hidden': 'true' });
+      ends.append(el('span', null, { text: control.ends[0] }), el('span', null, { text: control.ends[1] }));
+      row.appendChild(ends);
+    }
+    let dragging = false;
+    range.addEventListener('pointerdown', () => { dragging = true; });
+    for (const type of ['pointerup', 'change', 'blur']) range.addEventListener(type, () => { dragging = false; });
     range.addEventListener('input', () => {
+      setFill(range, mapped ? Number(range.value) / 1000 : (Number(range.value) - min) / (max - min));
       try {
-        store.set(control.setting, Number(range.value));
+        store.set(control.setting, mapped ? toValue(Number(range.value)) : Number(range.value));
       } catch (error) {
         message(error.message, 'error');
       }
     });
     function update() {
       const value = store.get(control.setting);
-      if (document.activeElement !== range) range.value = String(Math.min(max, Math.max(min, value)));
-      out.textContent = formatNumber(value) + (control.unit || '');
-      out.title = value > max ? 'Set to ' + formatNumber(value) + ' in Advanced' : '';
+      if (mapped) {
+        if (!dragging) range.value = String(toPos(value));
+      } else if (document.activeElement !== range) range.value = String(Math.min(max, Math.max(min, value)));
+      setFill(range, mapped ? Number(range.value) / 1000 : (Number(range.value) - min) / (max - min));
+      out.textContent = control.format ? control.format(value) : formatNumber(value) + (control.unit || '');
+      const exact = formatNumber(value) + (entry.unit ? ' ' + entry.unit : '');
+      out.title = value > max || value < min ? 'Set to ' + exact + ' in Advanced' : control.format ? exact : '';
       applyNeeds(control, row, label);
     }
     return { control, row, update };

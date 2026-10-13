@@ -35,7 +35,7 @@ export const TERRAIN_DEFAULTS = Object.freeze({
   'amp.flashSize': 1, 'amp.flashThreshold': 0.0001, 'amp.edgeGlow': 0.25, 'amp.edgeBlocks': 1008,
   'amp.nowPlane': 0.15,
   'geo.smoothing': 'bilinear', 'geo.stepped': false, 'geo.steppedWhales': true, 'geo.subdivision': 1, 'geo.columns': true,
-  'geo.columnRadius': 512, 'geo.instanceBudget': 1000000, 'geo.columnGap': 0.12, 'geo.lodBias': 0,
+  'geo.columnRadius': 4096, 'geo.instanceBudget': 1000000, 'geo.columnGap': 0.12, 'geo.lodBias': 0,
   'geo.columnShape': 'cylinder', 'geo.cylinderSides': 12,
   'geo.columnPixels': 4,
   'geo.pixelsPerCell': 3, 'geo.tileBudget': 225, 'geo.skirts': true, 'geo.wireframe': false,
@@ -332,9 +332,26 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     const tileMaxH = (id) => (atlas.isResident(id) ? heightBound(atlas.tileMaxValue[id]) : -1);
     let globalMax = 1;
     for (let id = 0; id < tileCount; id++) if (atlas.tileMaxValue[id] > globalMax) globalMax = atlas.tileMaxValue[id];
+    // Columns stand in a disc around the camera, where the heightfield hides itself; patches
+    // entirely inside it (on resident L0 tiles) are skipped instead of drawn and discarded.
+    // Every tile under the disc refines to L0 first, so the columns exist wherever the disc
+    // reaches, also when Column distance asks for cells smaller than the terrain's detail.
+    const region = mode.columns ? columnRegion(cam, projScale) : null;
+    const colR = region ? Math.min(region.radiusCells, columns ? columns.state.budgetCells : Infinity) * 0.064 : 0;
+    if (region) moveRegionAhead(region, cam, colR);
+    const mustRefine = colR > 0
+      ? (id) => {
+        const t = tileInfo(grid, id);
+        if (t.level === 0) return false;
+        const { cw, ch } = cellSize(grid, t.level);
+        const dx = Math.max(t.col0 * cw - region.focus[0], 0, region.focus[0] - (t.col0 + t.cols) * cw);
+        const dz = Math.max(t.row0 * ch - region.focus[1], 0, region.focus[1] - (t.row0 + t.rows) * ch);
+        return dx * dx + dz * dz < colR * colR;
+      }
+      : null;
     const sel = selectTiles(grid, { position: [pos.x, pos.y, pos.z], planes, projScale, orthographic }, {
       threshold, budget, previousSplit, isResident: (id) => atlas.isResident(id), isEmpty: (id) => atlas.isEmpty(id),
-      tileMaxHeight: tileMaxH, defaultMaxHeight: heightBound(globalMax * 4),
+      tileMaxHeight: tileMaxH, defaultMaxHeight: heightBound(globalMax * 4), mustRefine,
     });
     previousSplit = sel.split;
 
@@ -343,11 +360,6 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     drawn = new Map();
     const maxSub = mode.stepped ? 1 : mode.sub;
     const whiteRow = mode.whaleSteps ? shading.heightParams().whiteRow : -1;
-    // Columns stand in a disc around the camera, where the heightfield hides itself; patches
-    // entirely inside it (on resident L0 tiles) are skipped instead of drawn and discarded.
-    const region = mode.columns ? columnRegion(cam, projScale) : null;
-    const colR = region ? Math.min(region.radiusCells, columns ? columns.state.budgetCells : Infinity) * 0.064 : 0;
-    if (region) moveRegionAhead(region, cam, colR);
     const L0 = grid.levels[0];
     const insideColumns = (t, px, py) => {
       if (!(colR > 0)) return false;
