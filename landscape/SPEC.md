@@ -409,7 +409,8 @@ camera, settings, manifest, rows, blocktimes, capabilities, labelsElement })` re
 pick(ray) → hit|null, heightAt(x,z), focusDistance(camera), stats, dispose }`.
 Terrain owns: GPU tile atlas (storage buffer on WebGPU, texture on WebGL2), page table,
 LOD selection (always drawing the deepest fully resident level so there are no holes or
-overlaps; L6 is always resident), heightfield mesh with skirts, stepped cells,
+overlaps; L6 is always resident), heightfield mesh with skirts, stepped cells (everywhere, or
+on the whale rows only, at least 1.5 px wide far away: `geo.steppedWhales`),
 smoothing, subdivision, instanced columns, palette LUTs and colour transfer, heat
 emissive and flash sprites, creation-edge glow, now plane, grid, axis labels
 (HTML positioned by projection into `labelsElement`), CPU tile copies for picking.
@@ -518,7 +519,7 @@ ui_settings with the consumers):
   linear), `amp.exponent`, `amp.exposure`, `amp.reference`, `amp.exaggeration`,
   `amp.floor`, `amp.whale`, `amp.heatHalfLife` (blocks), `amp.heatFloor`, `amp.heatReference` (BTC), `amp.heatEdge`, `amp.heatEdgeBlocks`, `amp.flashSize`,
   `amp.flashThreshold` (BTC), `amp.edgeGlow`, `amp.edgeBlocks`, `amp.nowPlane`.
-- Geometry: `geo.smoothing` (none, bilinear, bicubic), `geo.stepped`,
+- Geometry: `geo.smoothing` (none, bilinear, bicubic), `geo.stepped`, `geo.steppedWhales`,
   `geo.subdivision` (1, 2, 4), `geo.columns`, `geo.columnShape` (cylinder, oval, box),
   `geo.cylinderSides` (6–32),
   `geo.columnRadius` (L0 cells), `geo.columnPixels` (px),

@@ -14,7 +14,7 @@ import { TileAtlas, FLOATS_PER_SLOT } from './atlas.js';
 import { createShading } from './shading.js';
 import { heightOfCpu, heightBoundCpu } from './curve.js';
 import {
-  buildPatchGeometry, buildTerrainMaterial, createPatchInstances, createHeightfieldMesh, MAX_PATCH_INSTANCES,
+  buildPatchGeometry, buildTerrainMaterial, createPatchInstances, createHeightfieldMesh, MAX_PATCH_INSTANCES, whaleBandEnd,
 } from './heightfield.js';
 import {
   selectTiles, cellSize, patchBounds, boxVisible, boxDistance, PATCH_CELLS, PATCHES_PER_SIDE,
@@ -34,7 +34,7 @@ export const TERRAIN_DEFAULTS = Object.freeze({
   'amp.heatFloor': 0.35, 'amp.heatReference': 100, 'amp.heatEdge': 0.15, 'amp.heatEdgeBlocks': 4032,
   'amp.flashSize': 1, 'amp.flashThreshold': 0.0001, 'amp.edgeGlow': 0.25, 'amp.edgeBlocks': 1008,
   'amp.nowPlane': 0.15,
-  'geo.smoothing': 'bilinear', 'geo.stepped': false, 'geo.subdivision': 1, 'geo.columns': true,
+  'geo.smoothing': 'bilinear', 'geo.stepped': false, 'geo.steppedWhales': true, 'geo.subdivision': 1, 'geo.columns': true,
   'geo.columnRadius': 512, 'geo.instanceBudget': 1000000, 'geo.columnGap': 0.12, 'geo.lodBias': 0,
   'geo.columnShape': 'cylinder', 'geo.cylinderSides': 12,
   'geo.columnPixels': 4,
@@ -72,19 +72,26 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
   object3d.name = 'Terrain';
 
   // ---- heightfield ---------------------------------------------------------------------
-  // One instanced mesh per subdivision level in use (1, 2, 4). Each visible patch gets the
-  // smallest level whose sub-quads stay below SUB_TARGET_PX on screen, capped by
-  // geo.subdivision, so subdivision is spent only where cells are large on screen.
+  // One instanced mesh per subdivision level in use (1, 2, 4) plus one for stepped cells.
+  // Each visible smooth patch gets the smallest level whose sub-quads stay below
+  // SUB_TARGET_PX on screen, capped by geo.subdivision, so subdivision is spent only where
+  // cells are large on screen. With Stepped cells every patch is stepped; with Stepped whale
+  // rows the patches holding whale rows are stepped and the others smooth, and a patch across
+  // the band edge is drawn by both, each masked to its side (heightfield.js).
   const SUB_TARGET_PX = 6;
   let mode = null;
   let layoutVersion = -1;
-  const hfLevels = new Map(); // sub -> {sub, inst, geometry, material, mesh}
+  const hfLevels = new Map(); // 1 | 2 | 4 | 'stepped' -> {key, sub, inst, geometry, material, mesh}
+  const HF_KEYS = [1, 2, 4, 'stepped'];
+  // Camera for the whale band's minimum on-screen cell width (set every update).
+  const viewU = { eye: uniform(new Vector3()), pxPerUnit: uniform(1000), perspective: uniform(1) };
   const instCapacity = Math.min(MAX_PATCH_INSTANCES, maxSlots * 16);
   function currentMode() {
     const stepped = !!get('geo.stepped');
     return {
       stepped, sub: stepped ? 1 : Number(get('geo.subdivision')) || 1, smoothing: get('geo.smoothing') || 'bilinear',
       columns: backend === 'webgpu' && !!get('geo.columns'),
+      whaleSteps: !stepped && !!get('geo.steppedWhales'),
     };
   }
   function disposeLevels() {
@@ -95,18 +102,21 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     }
     hfLevels.clear();
   }
-  function hfLevel(sub) {
-    let L = hfLevels.get(sub);
+  function hfLevel(key) {
+    let L = hfLevels.get(key);
     if (!L) {
+      const stepped = key === 'stepped';
+      const sub = stepped ? 1 : key;
+      const band = mode.whaleSteps ? (stepped ? 'in' : 'out') : null;
       const inst = createPatchInstances(instCapacity);
-      const geometry = buildPatchGeometry({ sub, stepped: mode.stepped });
-      const material = buildTerrainMaterial({ atlas, shading, instances: inst, mode: { ...mode, sub } });
+      const geometry = buildPatchGeometry({ sub, stepped });
+      const material = buildTerrainMaterial({ atlas, shading, instances: inst, mode: { ...mode, stepped, sub, band }, view: viewU });
       material.wireframe = !!get('geo.wireframe');
       const m = createHeightfieldMesh(geometry, material);
-      m.name = 'TerrainHeightfield' + (mode.stepped ? 'Stepped' : 'Sub' + sub);
+      m.name = 'TerrainHeightfield' + (stepped ? 'Stepped' : 'Sub' + sub);
       object3d.add(m);
-      L = { sub, inst, geometry, material, mesh: m };
-      hfLevels.set(sub, L);
+      L = { key, sub, inst, geometry, material, mesh: m };
+      hfLevels.set(key, L);
     }
     return L;
   }
@@ -230,7 +240,9 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
       return;
     }
     switch (id) {
-      case 'geo.smoothing': case 'geo.stepped': case 'geo.subdivision': case 'geo.columns': needs.rebuild = true; break;
+      case 'geo.smoothing': case 'geo.stepped': case 'geo.steppedWhales': case 'geo.subdivision': case 'geo.columns':
+        needs.rebuild = true;
+        break;
       case 'display.labels': if (labels) labels.setVisible(!!value); break;
       case 'geo.wireframe': for (const L of hfLevels.values()) { L.material.wireframe = !!value; L.material.needsUpdate = true; } break;
       case 'geo.tileBudget': needs.capacity = true; break;
@@ -306,6 +318,9 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     let projScale;
     if (orthographic) projScale = viewportHeightPx / Math.max(1e-6, (cam.top - cam.bottom) / (cam.zoom || 1));
     else projScale = viewportHeightPx / (2 * Math.tan(((cam.fov || 50) * Math.PI) / 360));
+    viewU.eye.value.copy(cam.position);
+    viewU.pxPerUnit.value = projScale;
+    viewU.perspective.value = orthographic ? 0 : 1;
     // With detail ahead, L0 must reach the far edge of the moved column disc: (1 + shift) times
     // the distance where a cell is geo.columnPixels / reach wide.
     const aheadBias = (aheadShift > 0 || aheadReach > 1) && mode.columns
@@ -327,6 +342,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     const list = [];
     drawn = new Map();
     const maxSub = mode.stepped ? 1 : mode.sub;
+    const whiteRow = mode.whaleSteps ? shading.heightParams().whiteRow : -1;
     // Columns stand in a disc around the camera, where the heightfield hides itself; patches
     // entirely inside it (on resident L0 tiles) are skipped instead of drawn and discarded.
     const region = mode.columns ? columnRegion(cam, projScale) : null;
@@ -377,39 +393,50 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
           continue;
         }
         const d = boxDistance(pos.x, pos.y, pos.z, bb);
+        if (mode.stepped) {
+          list.push({ id, slot, px, py, d, key: 'stepped', t });
+          continue;
+        }
+        // Whale band: stepped where the patch holds whale rows; smooth where its surface (which
+        // reaches the next patch's first cell centre) passes the band edge.
+        let inBand = false;
+        let smooth = true;
+        if (whiteRow >= 0) {
+          const rowScale = 2 ** grid.levels[t.level].rowShift;
+          const row0 = t.row0 + py * PATCH_CELLS;
+          inBand = row0 * rowScale <= whiteRow;
+          smooth = !inBand || (row0 + PATCH_CELLS + 0.5) * ch > whaleBandEnd(whiteRow, rowScale);
+        }
+        if (inBand) list.push({ id, slot, px, py, d, key: 'stepped', t });
+        if (!smooth) continue;
         let sub = 1;
         if (maxSub > 1) {
           const cellPx = orthographic ? cellWorld * projScale : (cellWorld * projScale) / Math.max(d, 1e-3);
           while (sub < maxSub && cellPx / sub > SUB_TARGET_PX) sub *= 2;
         }
-        list.push({ id, slot, px, py, d, sub, t });
+        list.push({ id, slot, px, py, d, key: sub, t });
       }
     }
     list.sort((a, b) => a.d - b.d);
     const counts = new Map();
     let n = 0;
     let triangles = 0;
-    for (const sub of [1, 2, 4]) {
-      if (sub > maxSub) {
-        const L = hfLevels.get(sub);
-        if (L) { L.mesh.visible = false; L.geometry.instanceCount = 0; }
-        continue;
-      }
+    for (const key of HF_KEYS) {
       let k = 0;
-      for (const p of list) if (p.sub === sub) k++;
+      for (const p of list) if (p.key === key) k++;
       if (!k) {
-        const L = hfLevels.get(sub);
+        const L = hfLevels.get(key);
         if (L) { L.mesh.visible = false; L.geometry.instanceCount = 0; }
         continue;
       }
-      const L = hfLevel(sub);
+      const L = hfLevel(key);
       const A = L.inst.a.array;
       const B = L.inst.b.array;
       const C = L.inst.c.array;
       const D = L.inst.d.array;
       let i = 0;
       for (const p of list) {
-        if (p.sub !== sub || i >= L.inst.capacity) continue;
+        if (p.key !== key || i >= L.inst.capacity) continue;
         const { id, slot, px, py, t } = p;
         const Lv = grid.levels[t.level];
         const { cw, ch } = cellSize(grid, t.level);
@@ -428,7 +455,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
       L.inst.count = i;
       L.geometry.instanceCount = i;
       L.mesh.visible = i > 0;
-      counts.set(sub, i);
+      counts.set(key, i);
       n += i;
       triangles += i * L.geometry.userData.triangles;
     }
@@ -470,7 +497,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     stats.columnShape = columns && mode.columns ? columns.state.shape : null;
     const cs = columns && mode.columns && columns.state.tiles > 0 ? columns.state : null;
     stats.triangles = triangles + (cs ? cs.near * cs.trianglesPerColumn + cs.far * cs.trianglesFar : 0);
-    stats.patchesBySub = { 1: counts.get(1) || 0, 2: counts.get(2) || 0, 4: counts.get(4) || 0 };
+    stats.patchesBySub = { 1: counts.get(1) || 0, 2: counts.get(2) || 0, 4: counts.get(4) || 0, stepped: counts.get('stepped') || 0 };
     stats.lodMs = performance.now() - t0;
 
     const key = sel.desired.join(',');
@@ -583,7 +610,10 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     if (!d) return 0;
     const p = shading.heightParams();
     const { id, t, cw, ch } = d;
-    if (mode.stepped) return cellHeightCpu(id, t, d.col - t.col0, d.row - t.row0, p);
+    // Stepped cells: the cell's own height (everywhere, or on the whale rows, which reach the
+    // far edge of the level cell holding the last whale row: whaleBandEnd).
+    const steppedHere = mode.stepped || (mode.whaleSteps && p.whiteRow >= 0 && d.row * 2 ** grid.levels[d.level].rowShift <= p.whiteRow);
+    if (steppedHere) return cellHeightCpu(id, t, d.col - t.col0, d.row - t.row0, p);
     const u = x / cw - 0.5 - t.col0;
     const v = z / ch - 0.5 - t.row0;
     const i0 = Math.floor(u);

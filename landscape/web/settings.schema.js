@@ -142,7 +142,7 @@ const ENTRIES = [
     help: 'Use the white-hot palette variant on rows at or above the whale threshold, as the film does.' },
   { id: 'color.whiteHotBTC', section: 'Transfer', label: 'Whale threshold (BTC)', type: 'number',
     min: 0.00000001, max: 100000, step: 0.00000001, scale: 'log', default: 10, unit: 'BTC',
-    help: 'Rows whose amounts are at least this many BTC count as whale rows (white-hot palette and the whale height multiplier). Film: 10 BTC.' },
+    help: 'Rows whose amounts are at least this many BTC count as whale rows (white-hot palette, the whale height multiplier and Stepped whale rows). Film: 10 BTC.' },
 
   // Colour: scene colours
   { id: 'color.background', section: 'Scene colours', label: 'Background', type: 'color', default: '#05070c',
@@ -278,6 +278,8 @@ const ENTRIES = [
     help: 'Height interpolation between cell centres. Changes the surface only when Subdivision is 2 or 4 (at 1x every vertex sits on a cell centre); Stepped cells ignore it.' },
   { id: 'geo.stepped', section: 'Surface', label: 'Stepped cells', type: 'bool', default: false, rebuild: 'material',
     help: 'Flat-topped cells with vertical walls; each cell shows exactly one palette colour. Ignores Smoothing and Subdivision. Applies to the heightfield, which draws the landscape beyond the cylinders of Column cells (and everywhere on WebGL2). About four times the triangles of the smooth surface.' },
+  { id: 'geo.steppedWhales', section: 'Surface', label: 'Stepped whale rows', type: 'bool', default: true, rebuild: 'material',
+    help: 'Draws the whale rows (amounts at or above the whale threshold, 10 BTC by default) as stepped cells while the rest of the surface stays smooth. Large amounts are sparse, and the smooth surface turns a lone tall cell into a pyramid that narrows to a point, so whale spikes break into dotted hairs from a distance; a stepped cell keeps its width to the top, and far away it is widened to at least 1.5 px. Costs about four times the triangles on those rows.' },
   { id: 'geo.subdivision', section: 'Surface', label: 'Subdivision', type: 'enum', options: [1, 2, 4],
     optionLabels: { 1: '1x', 2: '2x', 4: '4x' }, default: 1, rebuild: 'terrain',
     help: 'Heightfield vertices per cell edge (more = smoother bicubic surfaces, more triangles).' },
@@ -564,7 +566,7 @@ const SUN_SEEN = { any: [gt0('light.sunIntensity'), on('light.sky'), on('light.v
 const AO_ON = { id: 'fx.ao', ne: 'off' };
 export const NEEDS = deepFreeze({
   'color.gradient': [{ id: 'color.palette', is: 'custom' }],
-  'color.whiteHotBTC': [{ any: [on('color.whiteHot'), { id: 'amp.whale', ne: 1 }] }],
+  'color.whiteHotBTC': [{ any: [on('color.whiteHot'), { id: 'amp.whale', ne: 1 }, on('geo.steppedWhales')] }],
   'color.background': [{ id: 'light.sky', is: false }],
   'color.fog': [{ any: [gt0('light.fogDensity'), on('light.sky')] }],
   'color.heat': [HEAT_OR_FLASH],
@@ -584,6 +586,7 @@ export const NEEDS = deepFreeze({
   'amp.edgeBlocks': [gt0('amp.edgeGlow')],
   'geo.smoothing': [{ id: 'geo.stepped', is: false }, { id: 'geo.subdivision', ne: 1 }],
   'geo.subdivision': [{ id: 'geo.stepped', is: false }],
+  'geo.steppedWhales': [{ id: 'geo.stepped', is: false }],
   'geo.columnShape': [on('geo.columns')],
   'geo.cylinderSides': [on('geo.columns'), { id: 'geo.columnShape', ne: 'box' }],
   'geo.columnRadius': [on('geo.columns')],
