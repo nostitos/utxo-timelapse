@@ -296,5 +296,5 @@ try {
   try { rmSync(profile, { recursive: true, force: true }); } catch {}
 }
 if (opts.failOnError && (summary.exceptions.length || summary.console.some((c) => c.type === 'error'))) exitCode = exitCode || 5;
-console.log(JSON.stringify(summary, null, 2));
-process.exit(exitCode);
+// Exit once stdout has drained: through a pipe, exiting at once would cut a long report short.
+process.stdout.write(JSON.stringify(summary, null, 2) + '\n', () => process.exit(exitCode));

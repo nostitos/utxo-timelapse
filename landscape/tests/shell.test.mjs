@@ -132,6 +132,10 @@ test('hash round trip keeps settings untouched', () => {
   assert.equal(followed, '#b=314000&mode=map&follow=1&cam=483.120,96.400,402.000,-12.35,-35.00&preset=High');
   assert.equal(decodeHash(followed).follow, true);
   assert.equal(decodeHash(followed).settings, 'preset=High');
+  // The look travels with the settings, untouched (spaces as '+').
+  const looked = encodeHash({ block: 5 }, 'preset=Ultra&look=Golden+hour&fx.grain=0.2');
+  assert.equal(looked, '#b=5&preset=Ultra&look=Golden+hour&fx.grain=0.2');
+  assert.equal(decodeHash(looked).settings, 'preset=Ultra&look=Golden+hour&fx.grain=0.2');
   assert.equal(encodeHash({ block: 7, follow: false }), '#b=7');
   assert.equal(encodeHash({ block: 7, follow: 1 }), '#b=7');
   assert.equal(decodeHash('#b=7').follow, false);

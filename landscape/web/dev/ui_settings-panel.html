@@ -48,8 +48,9 @@
   const batches = [];
   const states = [];
   const render = () => {
-    document.getElementById('state').textContent = JSON.stringify({ preset: store.preset, basePreset: store.basePreset,
-      overrides: Object.keys(store.overrides()), webgpu: store.webgpu, fromHash }, null, 1);
+    document.getElementById('state').textContent = JSON.stringify({ preset: store.preset, look: store.look, quality: store.quality,
+      modified: store.modified, overrides: Object.keys(store.overrides()), saved: store.userPresets.map((p) => p.name),
+      webgpu: store.webgpu, fromHash }, null, 1);
     document.getElementById('batches').textContent = batches.slice(0, 14)
       .map((batch, i) => '#' + (batches.length - i) + '\n' + batch.map((c) => '  ' + c.id + ': ' + fmt(c.previous) + ' -> ' + fmt(c.value)).join('\n'))
       .join('\n');

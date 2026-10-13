@@ -451,23 +451,53 @@ AA/SSAA), resolution scale and auto scale, Display P3, perf overlay, GPU timing.
 
 ## 7. Settings
 
-`settings.schema.js` exports `SCHEMA` (array of entries) and `PRESETS`. Entry:
+`settings.schema.js` exports `SCHEMA` (array of entries) and the presets. Entry:
 `{ id, group, label, type: 'number'|'int'|'bool'|'enum'|'color'|'gradient'|'file',
 min, max, step, scale: 'linear'|'log', options, default, webgpu: bool, rebuild:
 'none'|'material'|'terrain'|'post'|'shadows'|'renderer'|'worker', url: bool, help }`.
 Extra entry fields (documented in the schema header): `section`, `optionLabels`, `unit`,
 `logMin`, `webgpuOptions`/`fallback`, `capMax` (capped by `view.capabilities.maxTileBudget` /
-`maxInstances`), `maxStops`, `accept`, `preset: false` (personal preferences presets never change).
-`PRESETS` maps preset name → partial `{id: value}` (Film, Performance, Balanced, High,
-Ultra, Extreme); unspecified ids use `default`. Startup preset: High (capped at High on
-WebGL2).
+`maxInstances`), `maxStops`, `accept`, `preset: false` (personal preferences that looks and quality
+never change), `needs` (conditions under which the setting changes the image, from `NEEDS`:
+`[{id, is | ne | gt | notNull}]` must all hold, `{any: [...]}` holds when one does; only the
+panel reads it).
+
+Presets have two axes. `LOOK_PRESETS` (`LOOKS`: Landscape, Film, Daylight, Golden hour, Neon
+night, Whales, Pulse; `LOOK_INFO`) set the appearance; `QUALITY_PRESETS` (`QUALITY_ORDER`:
+Performance, Balanced, High, Ultra, Extreme; `QUALITY_INFO`) set the cost. Both are partial
+`{id: value}` maps; a setting's base value is the look's value, else the quality tier's, else
+`default`. Landscape and High are empty (the schema defaults); startup is Landscape at High,
+and on WebGL2 quality stops at High. `PRESETS` merges both maps. Looks are built from value
+bundles shared with the quick settings (`TIME_OF_DAY`, `SKY`, `HAZE`, `SHADOWS`, `GLOW`, `BIG_COINS`,
+`CELL_SHAPES`, `FLASHES`, `FLASH_TRAIL`), so each built-in look reads as one option in every quick
+control (Film's time of day aside: Film turns the sun off).
 
 `settings.js` exports `createSettingsStore(schema, presets, {capabilities, storage})`:
 `get(id)`, `set(id, v)`, `setMany(obj)`, `subscribe(filter, fn)` (filter: id, group
 name, or `'*'`; fn receives `[{id, value, previous, entry}]` batched per microtask),
-`applyPreset(name)`, `reset(group?)`, `preset` (name, `'Custom'` when overridden),
-`overrides()`, `toJSON()`, `fromJSON()`, `toURL()`, `fromURL()`, `load()`/`save()`
-(localStorage key `utxo-landscape-settings-v1`). Values are validated and clamped.
+`setLook(name)` (built-in or saved look; every look and quality setting to its base value,
+dropping changes made by hand), `setQuality(name)` (settings still at the old base value move to the
+new one; changed settings stay), `applyPreset(name)` (either, by name), `reset(group?)`, `look`,
+`quality`, `baseLook`, `modified`, `preset` (display label: `'Custom'` when modified, the quality for
+Landscape, else `'Look · Quality'`), `overrides()`, `baseValues(look?, quality?)`, `inert(id)` and
+`checkNeeds(needs)` (null, or `{text}` such as 'Bloom off' naming the root cause),
+`toJSON()` (`{format, quality, look, baseLook, values, preset: quality}`), `fromJSON()`, `toURL()`
+(`preset=<quality>`, `look=<built-in look>` unless Landscape, then the url settings that differ),
+`fromURL()` (a pre-look `preset=Film` opens the Film look at High), `load()`/`save()`
+(localStorage key `utxo-landscape-settings-v1`). Saved looks: `saveUserPreset(name)`,
+`deleteUserPreset(name)`, `restoreUserPreset(record, {activate})`, `userPresets`, `userPreset(name)`
+in localStorage key `utxo-landscape-presets-v1` (`{format: 'utxo-landscape-presets-1', presets: [{name,
+savedAt, look, quality, overrides}]}`; up to 50; names 1–40 characters, unique in any case, not a
+built-in or quality name or Custom). A record keeps its built-in look, its quality and the
+governed values that differ from them. Values are validated and clamped.
+
+`settings.quick.js` exports `QUICK`, the sixteen quick controls (Look, Quality, Time of day, Sky,
+Haze, Shadows, Glow, Height shows, Colours, Height, Big coins, Cell shape, Flashes, Flash
+trail, Field of view, Show), and `quickOption`, `quickState`, `quickPatch`, `quickIds`. Choice
+and toggle controls write a bundle (`set`) and recognise their option by a subset of it
+(`match`); none matching means set by hand. `ui/quick.js` draws them at the top of the panel,
+with Save… and Delete for saved looks; the schema's settings sit in the panel's closed
+Advanced folder, dimmed while their `needs` fail.
 
 Required ids (consumers must use exactly these; ranges/defaults may be refined by
 ui_settings with the consumers):
@@ -517,11 +547,16 @@ ui_settings with the consumers):
   `display.ssaa` (1, 2, 4), `display.overlay`, `display.labels`, `display.grid`,
   `display.legend`, `display.minimap`, `display.hud`.
 
-Preset intent: **Film** reproduces the film's colours (density colour measure, film
-palette with whale rows ≥ 10 BTC, offset 30, upper 500, gamma 1, unlit: albedo 0,
-emissive 1, no sun/ambient/rim/shadows/sky/stars/fog, every post effect off, tone mapping
-none, exposure 1, neutral grade, AA none, black background and ground).
-**Performance → Balanced → High → Ultra → Extreme** scale quality up: Ultra targets
+Look intent: **Landscape** is the schema defaults. **Film** reproduces the film's colours
+(density colour measure, film palette with whale rows ≥ 10 BTC, offset 30, upper 500,
+gamma 1, unlit: albedo 0, emissive 1, no sun/ambient/rim/shadows/sky/stars/fog, every post
+effect off, tone mapping none, exposure 1, neutral grade, AA none, black background and
+ground). **Daylight** (high white sun, viridis, no bloom), **Golden hour** (low sun from the
+tip side, thick haze, god rays, inferno), **Neon night** (sky off with stars, plasma boxes,
+pink rim, strong bloom), **Whales** (height and colour by BTC value, magma, whale rows twice
+as tall) and **Pulse** (dim grey on a near-black background with the sky off, strong amber
+flashes with a 300-block trail) each change at least eight settings.
+Quality intent: **Performance → Balanced → High → Ultra → Extreme** scale quality up: Ultra targets
 ≥ 60 fps at 3840×2160 on the M4 Max with the heightfield alone; with cylinder columns (the
 default since 2026-10-09) it measures about 35–40 fps in close and middle views and
 60 fps in the overview. Extreme deliberately exceeds the GPU (GPU-bound: 2× scale or SSAA,

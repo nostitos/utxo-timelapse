@@ -146,7 +146,14 @@ export async function timing(d, { warmMs = 2500, ms = 4000 } = {}) {
 export async function runtimeSwitches(d, { names = ['Film', 'Performance', 'Balanced', 'High', 'Ultra', 'Extreme', 'High'] } = {}) {
   const log = [];
   for (const name of names) {
-    d.settings.applyPreset(name);
+    // Each preset exactly (a quality at the default look, or Film at High).
+    if (d.settings.isQuality(name)) {
+      d.settings.setQuality(name);
+      d.settings.setLook(d.settings.defaultLook);
+    } else {
+      d.settings.setQuality('High');
+      d.settings.setLook(name);
+    }
     await sleep(700);
     log.push({ preset: name, mode: d.terrain.mode, instances: d.terrain.stats.instances, capacity: d.terrain.stats.capacity });
   }

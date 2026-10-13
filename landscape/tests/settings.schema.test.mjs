@@ -1,10 +1,11 @@
-// Settings schema and presets (landscape/SPEC.md section 7).
+// Settings schema, looks, quality tiers and needs (landscape/SPEC.md section 7).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   SCHEMA, SCHEMA_BY_ID, PRESETS, PRESET_NAMES, PRESET_INFO, QUALITY_ORDER, STARTUP_PRESET,
-  WEBGL2_MAX_PRESET, GROUPS, TYPES, REBUILD_CLASSES, DEFAULT_GRADIENT,
+  WEBGL2_MAX_PRESET, GROUPS, TYPES, REBUILD_CLASSES, DEFAULT_GRADIENT, LOOKS, DEFAULT_LOOK, LOOK_INFO,
+  QUALITY_INFO, LOOK_PRESETS, QUALITY_PRESETS, NEEDS, TIME_OF_DAY,
 } from '../web/settings.schema.js';
 import { createSettingsStore, validateValue, valuesEqual, normalizeGradient } from '../web/settings.js';
 
@@ -39,7 +40,7 @@ const WEBGPU = { webgpu: true };
 function specRequiredIds() {
   const spec = readFileSync(new URL('../SPEC.md', import.meta.url), 'utf8');
   const start = spec.indexOf('Required ids');
-  const end = spec.indexOf('Preset intent', start);
+  const end = spec.indexOf('Look intent', start);
   assert.ok(start > 0 && end > start, 'SPEC.md section 7 required-id block not found');
   const ids = [];
   for (const m of spec.slice(start, end).matchAll(/\x60((?:color|amp|geo|light|fx|camera|display)\.[A-Za-z0-9]+)\x60/g)) {
@@ -152,6 +153,13 @@ test('schema flags: compute-dependent entries need WebGPU; preferences stay out 
 test('presets: names, metadata and every value valid without clamping', () => {
   assert.deepEqual(Object.keys(PRESETS), [...PRESET_NAMES]);
   assert.deepEqual(Object.keys(PRESET_INFO), [...PRESET_NAMES]);
+  assert.deepEqual([...PRESET_NAMES], [...LOOKS, ...QUALITY_ORDER]);
+  assert.deepEqual(Object.keys(LOOK_PRESETS), [...LOOKS]);
+  assert.deepEqual(Object.keys(QUALITY_PRESETS), [...QUALITY_ORDER]);
+  assert.deepEqual(Object.keys(LOOK_INFO), [...LOOKS]);
+  assert.deepEqual(Object.keys(QUALITY_INFO), [...QUALITY_ORDER]);
+  assert.deepEqual([...LOOKS], ['Landscape', 'Film', 'Daylight', 'Golden hour', 'Neon night', 'Whales', 'Pulse']);
+  assert.equal(DEFAULT_LOOK, 'Landscape');
   assert.equal(STARTUP_PRESET, 'High');
   assert.equal(WEBGL2_MAX_PRESET, 'High');
   assert.deepEqual([...QUALITY_ORDER], ['Performance', 'Balanced', 'High', 'Ultra', 'Extreme']);
@@ -166,10 +174,13 @@ test('presets: names, metadata and every value valid without clamping', () => {
     }
   }
   assert.deepEqual(PRESETS.High, {}, 'High is the schema defaults');
+  assert.deepEqual(PRESETS.Landscape, {}, 'Landscape is the schema defaults');
 });
 
+// Base values of one quality tier at the default look, or of one look at High.
 function resolved(name, capabilities = WEBGPU) {
-  return createSettingsStore(SCHEMA, PRESETS, { storage: null, capabilities }).presetValues(name);
+  const store = createSettingsStore(SCHEMA, PRESETS, { storage: null, capabilities });
+  return QUALITY_ORDER.includes(name) ? store.baseValues(DEFAULT_LOOK, name) : store.baseValues(name, 'High');
 }
 
 test('Film preset reproduces the film colours: unlit, film palette, every effect off', () => {
@@ -258,4 +269,54 @@ test('quality presets scale up from Performance to Extreme', () => {
 test('High preset equals the schema defaults', () => {
   const high = resolved('High');
   for (const e of SCHEMA) assert.ok(valuesEqual(high[e.id], e.default), e.id);
+});
+
+test('looks: each one changes the appearance in at least 8 settings and leaves cost to the quality tier', () => {
+  const landscape = resolved('Landscape');
+  for (const name of LOOKS) {
+    if (name === 'Landscape') continue;
+    const look = resolved(name);
+    const changed = SCHEMA.filter((e) => e.preset !== false && !valuesEqual(look[e.id], landscape[e.id])).map((e) => e.id);
+    assert.ok(changed.length >= 8, name + ' differs from Landscape in only ' + changed.length + ' settings');
+    assert.ok(LOOK_INFO[name].length > 40, name + ' description');
+  }
+  // Quality-only settings belong to the tiers (Film alone pins its resolution and anti-aliasing).
+  const costIds = ['geo.tileBudget', 'geo.pixelsPerCell', 'geo.columnPixels', 'geo.instanceBudget', 'light.cascades',
+    'light.shadowMapSize', 'fx.aoSamples', 'light.volumetricSteps'];
+  for (const name of LOOKS) {
+    for (const id of costIds) assert.equal(Object.hasOwn(LOOK_PRESETS[name], id), false, name + ' sets ' + id);
+  }
+  // Dusk, the Landscape look's time of day, is the schema defaults.
+  for (const [id, value] of Object.entries(TIME_OF_DAY.dusk)) assert.ok(valuesEqual(SCHEMA_BY_ID.get(id).default, value), 'dusk ' + id);
+  // Night sets the sun just below the horizon, so the stars show.
+  assert.ok(TIME_OF_DAY.night['light.sunElevation'] < 0 && TIME_OF_DAY.night['light.stars'] === true);
+});
+
+test('needs: every condition names a real setting with a valid value', () => {
+  const check = (cond, owner) => {
+    if (cond.any) {
+      assert.ok(Array.isArray(cond.any) && cond.any.length >= 2, owner + ' any');
+      for (const c of cond.any) check(c, owner);
+      return;
+    }
+    const target = SCHEMA_BY_ID.get(cond.id);
+    assert.ok(target, owner + ' needs unknown ' + cond.id);
+    assert.notEqual(cond.id, owner, owner + ' needs itself');
+    const kinds = ['is', 'ne', 'gt', 'notNull'].filter((k) => Object.hasOwn(cond, k));
+    assert.equal(kinds.length, 1, owner + ': one test per condition');
+    if ('is' in cond || 'ne' in cond) {
+      const v = 'is' in cond ? cond.is : cond.ne;
+      const r = validateValue(target, v, WEBGPU);
+      assert.ok(r.ok && valuesEqual(r.value, v), owner + ': ' + cond.id + ' value ' + v);
+    }
+    if ('gt' in cond) assert.ok(target.type === 'number' || target.type === 'int', owner + ': gt on a number');
+    if (cond.notNull) assert.equal(target.type, 'file', owner + ': notNull on a file');
+  };
+  for (const [id, list] of Object.entries(NEEDS)) {
+    const e = SCHEMA_BY_ID.get(id);
+    assert.ok(e, 'needs for unknown ' + id);
+    assert.equal(e.needs, list, id + ' carries its needs');
+    for (const cond of list) check(cond, id);
+  }
+  assert.equal(SCHEMA.filter((e) => e.needs).length, Object.keys(NEEDS).length);
 });

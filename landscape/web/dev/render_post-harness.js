@@ -21,6 +21,20 @@ function parseValue(text) {
   return text;
 }
 
+/**
+ * Exactly one named preset, as benchmarks compare them: a quality tier at the default look,
+ * or a look (Film) at High. Changes made by hand are dropped.
+ */
+export function applyExactPreset(store, name) {
+  if (store.isQuality(name)) {
+    store.setQuality(name);
+    store.setLook(store.defaultLook);
+  } else {
+    store.setQuality('High');
+    store.setLook(name);
+  }
+}
+
 export function setCamera(view, name, width = 966.848) {
   const c = CAMERAS[name] || CAMERAS.overview;
   view.camera.position.set(c.pos[0] * width, c.pos[1], c.pos[2]);
@@ -33,7 +47,7 @@ export async function startHarness({ canvas, overlayElement = null, labelsElemen
   const probe = await probeCapabilities({ forceWebGL });
   const store = createSettingsStore(SCHEMA, PRESETS, { capabilities: probe, storage: null });
   const preset = params.get('preset') || 'High';
-  store.applyPreset(preset);
+  applyExactPreset(store, preset);
   if (params.get('overlay') !== '0') store.set('display.overlay', true);
   const sets = params.get('set');
   if (sets) {
@@ -125,7 +139,7 @@ export async function startHarness({ canvas, overlayElement = null, labelsElemen
   }
 
   async function applyPreset(name, extra = {}) {
-    store.applyPreset(name);
+    applyExactPreset(store, name);
     if (params.get('overlay') !== '0') store.set('display.overlay', true);
     for (const [k, v] of Object.entries(extra)) store.set(k, v);
     store.flush && store.flush();

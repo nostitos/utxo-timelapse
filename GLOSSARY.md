@@ -74,6 +74,10 @@ X coordinates are clamped then truncated to integer pixels. Positions stay stabl
 | `BUVLSN1` | Landscape snapshot: exact cell state after one block at every level, with a per-tile directory (offset, length, CRC-32) so the browser range-reads only the tiles it needs, and a SHA-256 of the body. Its header describes the grid of blocks 0..block, so the same block's file is identical in every dataset. See [`Landscape.h`](src/cpp/app/Landscape.h). |
 | Landscape dataset | `landscape_build` output: manifest, row table, block times, exact BLK2 chunks and `BUVLSN1` snapshots after block 0, every 16 MiB of change data and at the tip. `landscape_verify` checks it against fresh replay, backward replay, the history index and a renderer checkpoint. |
 | Exact browser replay | The landscape worker rebuilds the cell state from the nearest snapshot plus the change log, forward or backward, so the displayed block is exact at 1× and single-step. 100× and scrubbing may land on snapshot blocks first. |
+| Look | The landscape's appearance preset: Landscape (the default), Film, Daylight, Golden hour, Neon night, Whales or Pulse, or a look saved in the browser. It sets palette, light, sky, cell shape and the effects that define it, and wins over the quality tier where both name a setting. See `LOOK_PRESETS` in [`settings.schema.js`](landscape/web/settings.schema.js). |
+| Quality | The landscape's cost preset: Performance, Balanced, High, Ultra or Extreme (resolution, anti-aliasing, shadow maps, effect samples, detail). Changing it keeps the look and settings changed by hand; WebGL2 stops at High. |
+| Quick settings | The sixteen controls at the top of the landscape's settings panel (look, quality, time of day, sky, haze, glow, cell shape and others). Most set a bundle of settings at once; the full schema sits under Advanced. See [`settings.quick.js`](landscape/web/settings.quick.js). |
+| Saved look | A named look stored in the browser's local storage (`utxo-landscape-presets-v1`): a built-in look, a quality and the settings that differ from them. Links carry its built-in look and those settings, so they work in any browser. |
 
 ## Correctness vocabulary
 

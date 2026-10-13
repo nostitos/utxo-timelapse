@@ -34,6 +34,10 @@
 //   maxStops      'gradient': maximum number of stops
 //   accept        'file': accepted file extensions
 //   help          one-line explanation with units and semantics
+//   needs         conditions under which the setting changes the image, from NEEDS below:
+//                 [{id, is | ne | gt | notNull}, ...] must all hold; {any: [...]} holds when
+//                 one of its conditions does. Only the panel reads it (it dims settings that
+//                 have no effect); validation and consumers ignore it.
 //
 // Value formats: colours are lowercase '#rrggbb' strings; gradients are frozen arrays of
 // 2..16 frozen stops {t: 0..1 (4 decimals), color: '#rrggbb'} sorted by t; files are
@@ -62,21 +66,38 @@ export const REBUILD_CLASSES = Object.freeze({
   worker: 'Sent to the replay worker, which repacks resident tiles',
 });
 
-// Presets, from look to quality tiers. Startup preset: High. On WebGL2 presets above
-// High are capped to High.
-export const PRESET_NAMES = Object.freeze(['Film', 'Performance', 'Balanced', 'High', 'Ultra', 'Extreme']);
+// Two preset axes. A look sets the appearance (palette, light, sky, cell shape and the
+// effects that define it); a quality tier sets the cost (resolution, anti-aliasing, shadow
+// maps, sample counts, detail). The base value of a setting is the look's value, else the
+// quality tier's, else the schema default. Startup: look Landscape at quality High. On WebGL2
+// quality stops at High. Users can also save their own presets (settings.js), each a
+// built-in look, a quality and the settings they changed.
 export const QUALITY_ORDER = Object.freeze(['Performance', 'Balanced', 'High', 'Ultra', 'Extreme']);
 export const STARTUP_PRESET = 'High';
 export const WEBGL2_MAX_PRESET = 'High';
+export const LOOKS = Object.freeze(['Landscape', 'Film', 'Daylight', 'Golden hour', 'Neon night', 'Whales', 'Pulse']);
+export const DEFAULT_LOOK = 'Landscape';
+export const PRESET_NAMES = Object.freeze([...LOOKS, ...QUALITY_ORDER]);
 
-export const PRESET_INFO = Object.freeze({
-  Film: 'Unlit film colours: weighted density through the film palette (white-hot whale rows at 10 BTC and above), stepped cells instead of cylinders, black background and ground; no grid, lighting, shadows, fog, sky, tone mapping or post effects. Matches the film colour at equal density. Heat glow and flashes still appear during playback, like the activity flashes in the film, and are zero right after a seek.',
+export const QUALITY_INFO = Object.freeze({
   Performance: '75% resolution, FXAA, no shadows or ambient occlusion, bloom with 4 mips, 96 resident tiles, coarser terrain detail (6 px per cell) and 8-sided cylinders only close to the camera (cells 12 px wide or more, at most 250,000).',
   Balanced: 'Native resolution, SMAA, two 2048 PCF shadow cascades, SSAO with 8 samples, bloom, 160 resident tiles and cylinders where cells are 6 px wide or more.',
-  High: 'Startup preset (schema defaults): native resolution, TRAA, three 2048 PCF shadow cascades, GTAO with 16 samples, bloom, fog, sky, stars, 225 resident tiles and 12-sided cylinders where cells are 4 px wide or more.',
+  High: 'Startup quality (schema defaults): native resolution, TRAA, three 2048 PCF shadow cascades, GTAO with 16 samples, bloom, fog, sky, stars, 225 resident tiles and 12-sided cylinders where cells are 4 px wide or more.',
   Ultra: 'High plus three 4096 shadow cascades, volumetric light (32 steps), god rays, and bicubic smoothing (applies once Subdivision is raised). At 4K on an M4 Max: 60 fps in the overview, about 35 to 40 fps among cylinders (about 60 with Column cells off).',
   Extreme: 'Deliberately GPU-bound: Ultra plus a fourth shadow cascade, 2x supersampling, softer shadows (softness 1.5), GTAO with 32 samples, SSR, 64 volumetric steps, motion blur, subdivision 2, finer detail (2 px per cell, 320 resident tiles) and cylinders out to 1,024 cells (up to 2M). At 4K on an M4 Max: about 55 fps in the overview, 13 to 15 fps among cylinders.',
 });
+
+export const LOOK_INFO = Object.freeze({
+  Landscape: 'The default look: film palette colours lit by a high sun under a dusk sky with faint stars, light haze, shadows, bloom and cylinder columns near the camera.',
+  Film: 'Unlit film colours: weighted density through the film palette (white-hot whale rows at 10 BTC and above), stepped cells instead of cylinders, black background and ground; no grid, lighting, shadows, fog, sky, tone mapping or post effects. Matches the film colour at equal density. Heat glow and flashes still appear during playback, like the activity flashes in the film, and are zero right after a seek.',
+  Daylight: 'Midday: a high white sun in a pale blue sky, crisp shadows and the viridis palette, with no glow, so the relief reads like a map.',
+  'Golden hour': 'Sunset from the tip side: a low orange sun, long shadows, thick warm haze, light shafts toward the sun and the inferno palette.',
+  'Neon night': 'A deep violet night full of stars, glowing boxes in the plasma palette with pink rims, strong bloom and bright white spend flashes.',
+  Whales: 'Sunrise over the BTC held in each cell instead of the number of outputs: the large-amount rows tower over the dust, twice as tall, and the magma palette runs to white on the biggest holdings.',
+  Pulse: 'A dim grey landscape where activity shows: spends flash amber and their glow lingers for hundreds of blocks. Press Play to watch the chain breathe.',
+});
+
+export const PRESET_INFO = Object.freeze({ ...LOOK_INFO, ...QUALITY_INFO });
 
 export const DEFAULT_GRADIENT = Object.freeze([
   Object.freeze({ t: 0, color: '#08142b' }),
@@ -336,7 +357,7 @@ const ENTRIES = [
     min: 0, max: 1, step: 0.01, default: 0.05, help: 'Metalness of the terrain material.' },
   { id: 'light.floorReflection', section: 'Material', label: 'Floor reflection', type: 'number',
     min: 0, max: 1, step: 0.01, default: 0,
-    help: 'Makes the ground (empty cells) a mirror through screen-space reflections; needs Effects > SSR. 0 = off.' },
+    help: 'Makes the ground (empty cells) a mirror through screen-space reflections (Effects > SSR); without SSR it only turns the ground dark and glossy. 0 = off.' },
 
   // Lighting: shadows
   { id: 'light.shadows', section: 'Shadows', label: 'Shadows', type: 'bool', default: true, rebuild: 'shadows',
@@ -394,7 +415,7 @@ const ENTRIES = [
 
   // Effects: global illumination (WebGPU)
   { id: 'fx.ssgi', section: 'Global illumination', label: 'SSGI', type: 'bool', default: false,
-    webgpu: true, rebuild: 'post', help: 'Screen-space global illumination: indirect light and colour bleeding between peaks.' },
+    webgpu: true, rebuild: 'post', help: 'Screen-space global illumination: indirect light and colour bleeding between peaks. Off while Depth of field is on: the two together froze the page.' },
   { id: 'fx.ssgiSamples', section: 'Global illumination', label: 'SSGI steps', type: 'int',
     min: 4, max: 32, step: 1, default: 8, webgpu: true,
     help: 'SSGINode stepCount; slices = ceil(steps / 8); samples per pixel = slices * steps * 2.' },
@@ -424,7 +445,7 @@ const ENTRIES = [
 
   // Effects: depth of field
   { id: 'fx.dof', section: 'Depth of field', label: 'Depth of field', type: 'bool', default: false, rebuild: 'post',
-    help: 'Blur outside the focal plane.' },
+    help: 'Blur outside the focal plane. Turns SSGI off while it is on (the two together froze the page).' },
   { id: 'fx.dofAutoFocus', section: 'Depth of field', label: 'Auto focus', type: 'bool', default: true,
     help: 'Focus on the terrain at screen centre (the crosshair).' },
   { id: 'fx.dofFocus', section: 'Depth of field', label: 'Focus distance', type: 'number',
@@ -523,14 +544,158 @@ function finalize(raw) {
     ...raw,
   };
   if (entry.group !== group) throw new Error('settings schema: group/id mismatch for ' + raw.id);
+  if (NEEDS[raw.id]) entry.needs = NEEDS[raw.id];
   return deepFreeze(entry);
 }
+
+// Conditions under which a setting changes the image (the 'needs' field; the panel dims a
+// setting whose conditions fail and says why). Read from the renderer and checked by the
+// settings audit (landscape/tests/shell-browser-checks.mjs --audit): the floor and terrain
+// colours are multiplied by albedo, so with albedo 0 ambient light shows nowhere, but the sun
+// still makes specular highlights; the flash sprites read the heat reference, edge strength and
+// edge window even when the terrain's heat glow is off; SSGI uses the AO radius as its own
+// radius; the shadow filter sets the renderer's shadow-map type, which the volumetric light's
+// shadow map uses too.
+const gt0 = (id) => ({ id, gt: 0 });
+const on = (id) => ({ id, is: true });
+const LIT = gt0('light.albedo');
+const HEAT_OR_FLASH = { any: [gt0('color.heatGain'), gt0('amp.flashSize')] };
+const SUN_SEEN = { any: [gt0('light.sunIntensity'), on('light.sky'), on('light.volumetric'), on('light.godRays')] };
+const AO_ON = { id: 'fx.ao', ne: 'off' };
+export const NEEDS = deepFreeze({
+  'color.gradient': [{ id: 'color.palette', is: 'custom' }],
+  'color.whiteHotBTC': [{ any: [on('color.whiteHot'), { id: 'amp.whale', ne: 1 }] }],
+  'color.background': [{ id: 'light.sky', is: false }],
+  'color.fog': [{ any: [gt0('light.fogDensity'), on('light.sky')] }],
+  'color.heat': [HEAT_OR_FLASH],
+  'color.liftColor': [{ id: 'color.lift', ne: 0 }],
+  'color.autoExposureMin': [{ id: 'color.exposureMode', is: 'auto' }],
+  'color.autoExposureMax': [{ id: 'color.exposureMode', is: 'auto' }],
+  'color.autoExposureSpeed': [{ id: 'color.exposureMode', is: 'auto' }],
+  'color.lutIntensity': [{ id: 'color.lut', notNull: true }],
+  'amp.exponent': [{ id: 'amp.curve', is: 'power' }],
+  'amp.exposure': [{ id: 'amp.curve', is: 'log' }],
+  'amp.heatHalfLife': [HEAT_OR_FLASH],
+  'amp.heatFloor': [gt0('color.heatGain')],
+  'amp.heatReference': [HEAT_OR_FLASH],
+  'amp.heatEdge': [HEAT_OR_FLASH],
+  'amp.heatEdgeBlocks': [HEAT_OR_FLASH],
+  'amp.flashThreshold': [gt0('amp.flashSize')],
+  'amp.edgeBlocks': [gt0('amp.edgeGlow')],
+  'geo.smoothing': [{ id: 'geo.stepped', is: false }, { id: 'geo.subdivision', ne: 1 }],
+  'geo.subdivision': [{ id: 'geo.stepped', is: false }],
+  'geo.columnShape': [on('geo.columns')],
+  'geo.cylinderSides': [on('geo.columns'), { id: 'geo.columnShape', ne: 'box' }],
+  'geo.columnRadius': [on('geo.columns')],
+  'geo.columnPixels': [on('geo.columns')],
+  'geo.instanceBudget': [on('geo.columns')],
+  'geo.columnGap': [on('geo.columns')],
+  'light.sunAzimuth': [SUN_SEEN],
+  'light.sunElevation': [SUN_SEEN],
+  'light.sunColor': [SUN_SEEN],
+  'light.skyColor': [{ any: [on('light.sky'), gt0('light.ambient')] }],
+  'light.groundColor': [{ any: [on('light.sky'), gt0('light.ambient')] }],
+  'light.ambient': [LIT],
+  'light.rimColor': [gt0('light.rim')],
+  'light.shadows': [gt0('light.sunIntensity')],
+  'light.cascades': [on('light.shadows')],
+  'light.shadowMapSize': [on('light.shadows')],
+  'light.shadowFilter': [{ any: [on('light.shadows'), on('light.volumetric')] }],
+  'light.shadowSoftness': [on('light.shadows')],
+  'light.shadowBias': [on('light.shadows')],
+  'light.fogHeightFalloff': [gt0('light.fogDensity')],
+  'light.volumetric': [gt0('light.sunIntensity')],
+  'light.volumetricSteps': [on('light.volumetric')],
+  'light.volumetricIntensity': [on('light.volumetric')],
+  'light.godRays': [gt0('light.sunIntensity')],
+  'light.godRaysIntensity': [on('light.godRays')],
+  'light.starDensity': [on('light.stars')],
+  'fx.aoRadius': [{ any: [AO_ON, on('fx.ssgi')] }],
+  'fx.aoIntensity': [AO_ON],
+  'fx.aoSamples': [AO_ON, { id: 'fx.ssgi', is: false }],
+  'fx.ssgi': [{ id: 'fx.dof', is: false }],
+  'fx.ssgiSamples': [on('fx.ssgi')],
+  'fx.ssgiIntensity': [on('fx.ssgi')],
+  'fx.ssrIntensity': [on('fx.ssr')],
+  'fx.ssrSteps': [on('fx.ssr')],
+  'fx.bloomThreshold': [on('fx.bloom')],
+  'fx.bloomStrength': [on('fx.bloom')],
+  'fx.bloomRadius': [on('fx.bloom')],
+  'fx.bloomMips': [on('fx.bloom')],
+  'fx.dofAutoFocus': [on('fx.dof')],
+  'fx.dofFocus': [on('fx.dof'), { id: 'fx.dofAutoFocus', is: false }],
+  'fx.dofAperture': [on('fx.dof')],
+  'fx.dofMaxBlur': [on('fx.dof')],
+  'fx.motionBlurAmount': [on('fx.motionBlur')],
+  'display.targetFps': [on('display.autoScale')],
+  'display.scaleMin': [on('display.autoScale')],
+  'display.scaleMax': [on('display.autoScale')],
+});
 
 export const SCHEMA = Object.freeze(ENTRIES.map(finalize));
 
 export const SCHEMA_BY_ID = new Map(SCHEMA.map((entry) => [entry.id, entry]));
 
-// Presets are partial: ids they do not name take the schema default (High is the defaults).
+// Every condition names a real setting (checked once at load).
+(function checkNeeds() {
+  const visit = (cond, owner) => {
+    if (cond.any) { for (const c of cond.any) visit(c, owner); return; }
+    if (!SCHEMA_BY_ID.has(cond.id)) throw new Error('settings schema: ' + owner + ' needs unknown setting ' + cond.id);
+  };
+  for (const [id, list] of Object.entries(NEEDS)) {
+    if (!SCHEMA_BY_ID.has(id)) throw new Error('settings schema: needs for unknown setting ' + id);
+    for (const cond of list) visit(cond, id);
+  }
+})();
+
+// Value bundles shared by the looks below and the quick settings (settings.quick.js). A look
+// built from them reads as one definite option in every quick control. Dusk is the schema
+// defaults (the Landscape look); Night puts the sun just below the horizon, so the sky
+// darkens and the stars come out while the palette's own glow lights the landscape.
+export const TIME_OF_DAY = deepFreeze({
+  sunrise: { 'light.sunAzimuth': 290, 'light.sunElevation': 9, 'light.sunIntensity': 4.5, 'light.sunColor': '#ffc78a',
+    'light.skyColor': '#f6d6b8', 'light.groundColor': '#3a2e28', 'light.ambient': 0.5, 'light.stars': false, 'color.fog': '#5a3f3a' },
+  day: { 'light.sunAzimuth': 200, 'light.sunElevation': 62, 'light.sunIntensity': 4, 'light.sunColor': '#ffffff',
+    'light.skyColor': '#7eabef', 'light.groundColor': '#6b6e72', 'light.ambient': 1.1, 'light.stars': false, 'color.fog': '#bed3ee' },
+  sunset: { 'light.sunAzimuth': 110, 'light.sunElevation': 6, 'light.sunIntensity': 6, 'light.sunColor': '#ff9a4a',
+    'light.skyColor': '#ffb27a', 'light.groundColor': '#3a2a2e', 'light.ambient': 0.35, 'light.stars': false, 'color.fog': '#4a2a2a' },
+  dusk: { 'light.sunAzimuth': 225, 'light.sunElevation': 35, 'light.sunIntensity': 3, 'light.sunColor': '#fff1dc',
+    'light.skyColor': '#9bb7ff', 'light.groundColor': '#2a2420', 'light.ambient': 0.6, 'light.stars': true, 'color.fog': '#141b2b' },
+  night: { 'light.sunAzimuth': 225, 'light.sunElevation': -3, 'light.sunIntensity': 0.8, 'light.sunColor': '#a8bcff',
+    'light.skyColor': '#1b2747', 'light.groundColor': '#08090d', 'light.ambient': 0.5, 'light.stars': true, 'color.fog': '#05070d' },
+});
+export const SKY = deepFreeze({ on: { 'light.sky': true }, off: { 'light.sky': false, 'light.stars': false } });
+export const HAZE = deepFreeze({
+  none: { 'light.fogDensity': 0 },
+  light: { 'light.fogDensity': 0.002, 'light.fogHeightFalloff': 0.05 },
+  thick: { 'light.fogDensity': 0.008, 'light.fogHeightFalloff': 0.02 },
+});
+export const SHADOWS = deepFreeze({ on: { 'light.shadows': true }, off: { 'light.shadows': false } });
+export const GLOW = deepFreeze({
+  off: { 'fx.bloom': false },
+  soft: { 'fx.bloom': true, 'fx.bloomStrength': 0.35, 'fx.bloomThreshold': 0.95, 'fx.bloomRadius': 0.3 },
+  normal: { 'fx.bloom': true, 'fx.bloomStrength': 0.6, 'fx.bloomThreshold': 0.85, 'fx.bloomRadius': 0.4 },
+  strong: { 'fx.bloom': true, 'fx.bloomStrength': 1.2, 'fx.bloomThreshold': 0.55, 'fx.bloomRadius': 0.6 },
+});
+export const BIG_COINS = deepFreeze({ normal: { 'amp.whale': 1 }, taller: { 'amp.whale': 2 }, towering: { 'amp.whale': 4 } });
+// Boxes also step the heightfield beyond the columns, so the far landscape matches them.
+export const CELL_SHAPES = deepFreeze({
+  smooth: { 'geo.columns': false, 'geo.stepped': false },
+  columns: { 'geo.columns': true, 'geo.columnShape': 'cylinder', 'geo.stepped': false },
+  boxes: { 'geo.columns': true, 'geo.columnShape': 'box', 'geo.stepped': true },
+  stepped: { 'geo.columns': false, 'geo.stepped': true },
+});
+export const FLASHES = deepFreeze({
+  off: { 'color.heatGain': 0, 'amp.flashSize': 0 },
+  subtle: { 'color.heatGain': 1, 'amp.flashSize': 0.5 },
+  normal: { 'color.heatGain': 2.5, 'amp.flashSize': 1 },
+  strong: { 'color.heatGain': 6, 'amp.flashSize': 2 },
+});
+export const FLASH_TRAIL = deepFreeze({
+  short: { 'amp.heatHalfLife': 10 }, normal: { 'amp.heatHalfLife': 30 }, long: { 'amp.heatHalfLife': 300 },
+});
+
+// Quality tiers are partial: ids they do not name take the schema default (High is the defaults).
 // Personal-preference entries (preset: false) are never set by presets.
 // Ultra and Extreme are render_post's measured retune (2026-10-07: headless Chrome, WebGPU,
 // M4 Max, 3840x2160 at dpr 1, full dataset at the tip): Ultra 78 fps overview / 66 close;
@@ -538,7 +703,70 @@ export const SCHEMA_BY_ID = new Map(SCHEMA.map((entry) => [entry.id, entry]));
 // (Chrome 154, 120 Hz) measured Ultra at 59–65 fps in the close view with four cascades, so
 // Ultra now uses three 4096 cascades (the fourth cost 1.1 ms; map size and bicubic ~0 ms).
 // See docs/landscape.md for the final measurements.
-export const PRESETS = deepFreeze({
+export const QUALITY_PRESETS = deepFreeze({
+  Performance: {
+    'display.scale': 0.75,
+    'display.aa': 'fxaa',
+    'light.shadows': false,
+    'light.cascades': 2,
+    'light.shadowMapSize': 1024,
+    'fx.ao': 'off',
+    'fx.aoSamples': 8,
+    'fx.bloomMips': 4,
+    'geo.tileBudget': 96,
+    'geo.pixelsPerCell': 6,
+    'geo.columnPixels': 12,
+    'geo.cylinderSides': 8,
+    'geo.instanceBudget': 250000,
+  },
+  Balanced: {
+    'display.aa': 'smaa',
+    'light.cascades': 2,
+    'light.shadowMapSize': 2048,
+    'fx.ao': 'ssao',
+    'fx.aoSamples': 8,
+    'geo.tileBudget': 160,
+    'geo.pixelsPerCell': 4,
+    'geo.columnPixels': 6,
+  },
+  High: {},
+  Ultra: {
+    'light.cascades': 3,
+    'light.shadowMapSize': 4096,
+    'light.volumetric': true,
+    'light.volumetricSteps': 32,
+    'light.godRays': true,
+    'geo.smoothing': 'bicubic',
+  },
+  Extreme: {
+    'display.ssaa': 2,
+    'light.cascades': 4,
+    'light.shadowMapSize': 4096,
+    'light.shadowFilter': 'pcf',
+    'light.shadowSoftness': 1.5,
+    'fx.ao': 'gtao',
+    'fx.aoSamples': 32,
+    'fx.ssr': true,
+    'fx.ssrSteps': 32,
+    'light.volumetric': true,
+    'light.volumetricSteps': 64,
+    'light.godRays': true,
+    'fx.motionBlur': true,
+    'geo.smoothing': 'bicubic',
+    'geo.subdivision': 2,
+    'geo.columns': true,
+    'geo.columnRadius': 1024,
+    'geo.instanceBudget': 2000000,
+    'geo.tileBudget': 320,
+    'geo.pixelsPerCell': 2,
+  },
+});
+
+// Looks are partial too and win over the quality tier for the ids they name, so a look may
+// switch on an effect that defines it (god rays in Golden hour). Landscape is the schema
+// defaults; Film is unchanged from when it was one of the single-axis presets.
+export const LOOK_PRESETS = deepFreeze({
+  Landscape: {},
   Film: {
     'color.palette': 'film',
     'color.reverse': false,
@@ -597,60 +825,42 @@ export const PRESETS = deepFreeze({
     'display.scale': 1,
     'display.grid': false,
   },
-  Performance: {
-    'display.scale': 0.75,
-    'display.aa': 'fxaa',
-    'light.shadows': false,
-    'light.cascades': 2,
-    'light.shadowMapSize': 1024,
-    'fx.ao': 'off',
-    'fx.aoSamples': 8,
-    'fx.bloomMips': 4,
-    'geo.tileBudget': 96,
-    'geo.pixelsPerCell': 6,
-    'geo.columnPixels': 12,
-    'geo.cylinderSides': 8,
-    'geo.instanceBudget': 250000,
+  Daylight: {
+    ...TIME_OF_DAY.day, ...HAZE.light, ...GLOW.off, ...SHADOWS.on,
+    'light.shadowSoftness': 0.6,
+    'color.palette': 'viridis', 'color.background': '#c9d8ee', 'color.ground': '#3b3f48',
+    'light.emissive': 0.15, 'light.albedo': 0.95, 'light.roughness': 0.8, 'light.rim': 0,
+    'color.toneMapping': 'neutral', 'display.grid': true, 'amp.nowPlane': 0.1,
   },
-  Balanced: {
-    'display.aa': 'smaa',
-    'light.cascades': 2,
-    'light.shadowMapSize': 2048,
-    'fx.ao': 'ssao',
-    'fx.aoSamples': 8,
-    'geo.tileBudget': 160,
-    'geo.pixelsPerCell': 4,
-    'geo.columnPixels': 6,
+  'Golden hour': {
+    ...TIME_OF_DAY.sunset, ...HAZE.thick, ...GLOW.soft, ...SHADOWS.on,
+    'light.shadowSoftness': 1.2, 'light.godRays': true, 'light.godRaysIntensity': 1.2,
+    'color.palette': 'inferno', 'color.background': '#2a1a1a', 'color.ground': '#1a1210',
+    'light.emissive': 0.25, 'light.albedo': 0.9, 'color.temperature': 0.25, 'fx.vignette': 0.25,
   },
-  High: {},
-  Ultra: {
-    'light.cascades': 3,
-    'light.shadowMapSize': 4096,
-    'light.volumetric': true,
-    'light.volumetricSteps': 32,
-    'light.godRays': true,
-    'geo.smoothing': 'bicubic',
+  'Neon night': {
+    ...TIME_OF_DAY.night, ...SKY.off, 'light.stars': true, 'light.starDensity': 0.45,
+    ...HAZE.none, ...GLOW.strong, 'fx.bloomThreshold': 0.95, ...CELL_SHAPES.boxes, 'geo.columnGap': 0.25,
+    ...FLASHES.strong, 'color.heat': '#ffffff',
+    'color.background': '#0e0824', 'color.ground': '#07080f', 'color.palette': 'plasma', 'color.upper': 1500,
+    'light.emissive': 0.9, 'light.albedo': 0.15, 'light.rim': 0.8, 'light.rimColor': '#ff5ad9',
+    'color.exposure': 0.8, 'color.saturation': 1.25, 'fx.chromatic': 0.3, 'fx.vignette': 0.35,
   },
-  Extreme: {
-    'display.ssaa': 2,
-    'light.cascades': 4,
-    'light.shadowMapSize': 4096,
-    'light.shadowFilter': 'pcf',
-    'light.shadowSoftness': 1.5,
-    'fx.ao': 'gtao',
-    'fx.aoSamples': 32,
-    'fx.ssr': true,
-    'fx.ssrSteps': 32,
-    'light.volumetric': true,
-    'light.volumetricSteps': 64,
-    'light.godRays': true,
-    'fx.motionBlur': true,
-    'geo.smoothing': 'bicubic',
-    'geo.subdivision': 2,
-    'geo.columns': true,
-    'geo.columnRadius': 1024,
-    'geo.instanceBudget': 2000000,
-    'geo.tileBudget': 320,
-    'geo.pixelsPerCell': 2,
+  Whales: {
+    ...TIME_OF_DAY.sunrise, ...BIG_COINS.taller,
+    'amp.measure': 'value', 'color.palette': 'magma', 'color.whiteHot': true,
+    'amp.curve': 'log', 'amp.exposure': 0.5, 'amp.reference': 50000, 'amp.exaggeration': 16,
+    'color.offset': 2, 'color.upper': 20000,
+  },
+  Pulse: {
+    ...TIME_OF_DAY.night, ...SKY.off, ...HAZE.none, ...FLASHES.strong, ...FLASH_TRAIL.long, ...GLOW.normal,
+    'color.background': '#060a14', 'color.ground': '#000000',
+    'color.palette': 'grey', 'color.upper': 5000, 'color.gamma': 1.6,
+    'light.emissive': 0.25, 'light.albedo': 0.5, 'light.rimColor': '#b8c0cc',
+    'color.heat': '#ffd27a', 'amp.heatFloor': 0.5,
+    'amp.edgeGlow': 0, 'amp.nowPlane': 0.25, 'display.grid': false,
   },
 });
+
+// Both axes in one map, so applyPreset(name) accepts a look or a quality name.
+export const PRESETS = deepFreeze({ ...LOOK_PRESETS, ...QUALITY_PRESETS });

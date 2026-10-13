@@ -1,20 +1,23 @@
 // UTXO Timelapse Landscape: settings panel (contract: landscape/SPEC.md section 7).
 //
 // createPanel({ container, store, schema, presets, capabilities, onExport, onImport,
-// getShareURL }) builds a lil-gui 0.17 panel from the settings schema: one folder per group
-// and section, a preset selector showing the current preset and override count, an override
-// list with per-setting revert, search, per-group and global reset (with undo), JSON
-// export/import, a share link, a .cube LUT loader and a gradient editor. Controls and store
-// stay in sync in both directions; WebGPU-only settings are disabled on WebGL2.
+// getShareURL }) builds a lil-gui 0.17 panel: a header with the look, quality and number of
+// changed settings; the quick settings (ui/quick.js: look with saved presets, quality, time of
+// day, sky, haze and the other most used controls); Reset and Copy link; and a closed Advanced
+// folder generated from the settings schema with search, JSON export/import, the list of
+// changed settings with per-setting revert, one folder per group and section, per-group reset
+// (with undo), a .cube LUT loader and a gradient editor. Settings that have no effect with the
+// current values are dimmed with the reason in their tooltip. Controls and store stay in sync
+// in both directions; WebGPU-only settings are disabled on WebGL2.
 
 import GUI, { Controller } from '../vendor/three/addons/libs/lil-gui.module.min.js';
-import { GROUPS, PRESET_INFO, REBUILD_CLASSES } from '../settings.schema.js';
+import { GROUPS, REBUILD_CLASSES } from '../settings.schema.js';
 import { sliderPosition, sliderValue, valuesEqual } from '../settings.js';
+import { createQuickSettings } from './quick.js';
 
 const STYLE_ID = 'lsp-styles';
 const MESSAGE_MS = 4000;
 const UNDO_MS = 9000;
-const DEFAULT_OPEN_GROUPS = new Set(['color', 'amp', 'fx']);
 const STRIP_IDS = new Set(['color.palette', 'color.gradient', 'color.reverse', 'color.whiteHot']);
 const UNIT_TEXT = { deg: '\u00b0', x: '\u00d7' };
 
@@ -496,7 +499,7 @@ class FileController extends Controller {
  * @param {HTMLElement} [options.container] element to mount into (lil-gui autoPlaces without it)
  * @param {object} options.store settings store from createSettingsStore
  * @param {object[]} [options.schema] defaults to store.schema
- * @param {object} [options.presets] defaults to store.presets
+ * @param {object} [options.presets] unused; looks and qualities come from the store
  * @param {object} [options.capabilities] shown in the header (backend, timestamp-query); the
  *        store's capabilities decide availability, so call store.setCapabilities() first
  * @param {(json: object) => object|void|Promise} [options.onExport] may return an augmented object
@@ -509,7 +512,6 @@ export function createPanel(options = {}) {
   const { container, store, onExport, onImport, getShareURL } = options;
   if (!store) throw new TypeError('createPanel: store is required');
   const schema = options.schema ?? store.schema;
-  const presetNames = Object.keys(options.presets ?? store.presets);
   const entries = new Map(schema.map((entry) => [entry.id, entry]));
   const groupLabels = new Map(GROUPS.map((g) => [g.id, g.label]));
   const groupOrder = [...new Set(schema.map((entry) => entry.group))]
@@ -520,6 +522,7 @@ export function createPanel(options = {}) {
   gui.domElement.classList.add('lsp');
 
   const controllers = new Map();
+  const tooltips = new Map();
   const extras = new Map();
   const folders = [];
   const resetButtons = [];
@@ -528,48 +531,55 @@ export function createPanel(options = {}) {
   let savedOpen = null;
   let paletteModule = null;
 
-  // Header: preset, status, search, actions, notes, overrides
+  // Header (stays in place while the rest scrolls): the state, the backend, notes, messages.
   const header = el('div', 'lsp-header');
-  const presetRow = el('div', 'lsp-hrow');
-  const presetLabel = el('label', 'lsp-hlabel', { text: 'Preset', for: 'lsp-preset-' + Math.random().toString(36).slice(2) });
-  const presetSelect = el('select', 'lsp-preset', { id: presetLabel.getAttribute('for') });
-  for (const name of presetNames) presetSelect.appendChild(el('option', null, { value: name, text: name }));
-  const presetPill = el('span', 'lsp-pill');
-  const backendPill = el('span', 'lsp-pill lsp-backend');
-  presetRow.append(presetLabel, presetSelect, presetPill, backendPill);
+  const statusRow = el('div', 'lsp-hrow');
   const status = el('div', 'lsp-status', { role: 'status' });
-  const description = el('div', 'lsp-desc');
-  const search = el('input', 'lsp-search', { type: 'search', placeholder: 'Search settings', 'aria-label': 'Search settings', spellcheck: 'false' });
-  const buttons = el('div', 'lsp-buttons');
-  const buttonDefs = [
-    ['reset', 'Reset all', 'Reset every setting to the preset (personal preferences to defaults)'],
-    ['export', 'Export', 'Download all settings as JSON'],
-    ['import', 'Import', 'Load settings from a JSON file'],
-    ['share', 'Copy link', 'Copy a link with the preset and the settings that differ from it'],
-  ];
-  const actionButtons = {};
-  for (const [action, text, title] of buttonDefs) {
-    const button = el('button', null, { type: 'button', text, title, 'data-action': action });
-    actionButtons[action] = button;
-    buttons.appendChild(button);
-  }
-  const importInput = el('input', null, { type: 'file', accept: '.json,application/json' });
-  importInput.hidden = true;
+  const backendPill = el('span', 'lsp-pill lsp-backend');
+  statusRow.append(status, backendPill);
   const note = el('div', 'lsp-note');
   note.hidden = true;
   const messageBox = el('div', 'lsp-message', { 'aria-live': 'polite' });
   messageBox.hidden = true;
+  header.append(statusRow, note, messageBox);
+  gui.domElement.insertBefore(header, gui.$children);
+  // lil-gui's root stops keydown/keyup propagation, so keys typed anywhere in the panel never
+  // reach the app's shortcuts.
+
+  // Quick settings, then Reset and Copy link, then Advanced with every setting.
+  const quick = createQuickSettings({ store, message: (text, kind, undo) => message(text, kind, undo) });
+  gui.$children.appendChild(quick.domElement);
+  const actions = el('div', 'lsp-buttons lsp-actions');
+  const actionButtons = {};
+  const addButton = (parent, action, text, title) => {
+    const button = el('button', null, { type: 'button', text, title, 'data-action': action });
+    actionButtons[action] = button;
+    parent.appendChild(button);
+    return button;
+  };
+  addButton(actions, 'reset', 'Reset', 'Return every setting to the look and quality (personal preferences to their defaults)');
+  addButton(actions, 'share', 'Copy link', 'Copy a link to this view with the look, the quality and the settings that differ from them');
+  gui.$children.appendChild(actions);
+
+  const advanced = gui.addFolder('Advanced');
+  advanced.domElement.classList.add('lsp-advanced');
+  folders.push(advanced);
+  const advHead = el('div', 'lsp-adv-head');
+  const search = el('input', 'lsp-search', { type: 'search', placeholder: 'Search all settings', 'aria-label': 'Search settings', spellcheck: 'false' });
+  const advButtons = el('div', 'lsp-buttons lsp-adv-buttons');
+  addButton(advButtons, 'export', 'Export', 'Download all settings and the view as JSON');
+  addButton(advButtons, 'import', 'Import', 'Load settings from a JSON file');
+  const importInput = el('input', null, { type: 'file', accept: '.json,application/json' });
+  importInput.hidden = true;
   const overridesBox = el('details', 'lsp-overrides');
-  const overridesSummary = el('summary', null, { text: 'Overrides (0)' });
+  const overridesSummary = el('summary', null, { text: 'Changed settings (0)' });
   const overridesList = el('ul', 'lsp-ov-list');
   overridesBox.append(overridesSummary, overridesList);
   const legend = el('div', 'lsp-legend', {
-    text: 'Amber names differ from the preset (double-click a name to revert). \u21bb rebuilds a pass when changed.',
+    text: 'Amber names differ from the look and quality (double-click a name to revert). Dimmed settings have no effect with the current values; hover a name to see why. \u21bb rebuilds a pass when changed.',
   });
-  header.append(presetRow, description, status, search, buttons, importInput, note, messageBox, overridesBox, legend);
-  gui.domElement.insertBefore(header, gui.$children);
-  // lil-gui's root stops keydown/keyup propagation, so keys typed anywhere in the panel
-  // (header included) never reach the app's shortcuts.
+  advHead.append(search, advButtons, importInput, overridesBox, legend);
+  advanced.$children.appendChild(advHead);
 
   // Value proxy: lil-gui reads and writes store values through it.
   const proxy = {};
@@ -618,10 +628,10 @@ export function createPanel(options = {}) {
     },
   };
 
-  // Folders and controllers
+  // Group folders inside Advanced, all closed until opened or searched.
   for (const groupId of groupOrder) {
     const groupLabel = groupLabels.get(groupId) ?? groupId;
-    const folder = gui.addFolder(groupLabel);
+    const folder = advanced.addFolder(groupLabel);
     folder.domElement.classList.add('lsp-group');
     folder.domElement.dataset.group = groupId;
     folders.push(folder);
@@ -643,10 +653,11 @@ export function createPanel(options = {}) {
     }
     const reset = folder.add({ reset: () => resetGroup(groupId) }, 'reset').name('Reset ' + groupLabel.toLowerCase());
     reset.domElement.classList.add('lsp-reset');
-    reset.domElement.title = 'Reset every ' + groupLabel.toLowerCase() + ' setting to the preset';
+    reset.domElement.title = 'Reset every ' + groupLabel.toLowerCase() + ' setting to the look and quality';
     resetButtons.push(reset);
-    if (!DEFAULT_OPEN_GROUPS.has(groupId)) folder.close();
+    folder.close();
   }
+  advanced.close();
 
   // Palette strip under the palette selector (terrain's pure palette module).
   const paletteController = controllers.get('color.palette');
@@ -705,7 +716,8 @@ export function createPanel(options = {}) {
     if (entry.rebuild !== 'none') {
       controller.$name.appendChild(el('span', 'lsp-tag lsp-tag-rebuild', { text: '\u21bb', title: REBUILD_CLASSES[entry.rebuild] }));
     }
-    controller.$name.title = tooltip(entry);
+    tooltips.set(entry.id, tooltip(entry));
+    controller.$name.title = tooltips.get(entry.id);
     controller.$name.addEventListener('dblclick', () => revert(entry.id));
     return controller;
   }
@@ -718,12 +730,13 @@ export function createPanel(options = {}) {
     }
     if (entry.rebuild !== 'none') lines.push(REBUILD_CLASSES[entry.rebuild]);
     if (entry.webgpu) lines.push('Needs WebGPU.');
-    if (entry.preset === false) lines.push('Personal preference: presets leave it alone.');
+    if (entry.preset === false) lines.push('Personal preference: looks and quality leave it alone.');
     if (!entry.url) lines.push('Not included in share links.');
-    lines.push(entry.id + ' \u00b7 double-click the name to revert to the preset');
+    lines.push(entry.id + ' \u00b7 double-click the name to revert');
     return lines.join('\n');
   }
 
+  /** Shows a message; undo is a settings snapshot (store.toJSON()) or a function. */
   function message(text, kind = 'info', undo = null) {
     messageBox.textContent = '';
     messageBox.className = 'lsp-message lsp-' + kind;
@@ -731,14 +744,26 @@ export function createPanel(options = {}) {
     if (undo) {
       const button = el('button', 'lsp-link', { type: 'button', text: 'Undo' });
       button.addEventListener('click', () => {
-        store.fromJSON(undo);
-        message('Restored the previous settings');
+        try {
+          if (typeof undo === 'function') undo();
+          else {
+            store.fromJSON(undo);
+            message('Restored the previous settings');
+          }
+        } catch (error) {
+          message(error.message, 'error');
+        }
       });
       messageBox.appendChild(button);
     }
     messageBox.hidden = false;
     clearTimeout(messageTimer);
     messageTimer = setTimeout(() => { messageBox.hidden = true; }, undo ? UNDO_MS : kind === 'error' ? 8000 : MESSAGE_MS);
+  }
+
+  function lookLabel() {
+    const user = store.userPreset(store.look);
+    return store.look + (user ? ' (saved)' : '') + (store.quality ? ' \u00b7 ' + store.quality : '');
   }
 
   function revert(id) {
@@ -750,7 +775,7 @@ export function createPanel(options = {}) {
   function resetGroup(groupId) {
     const snapshot = store.toJSON();
     store.reset(groupId);
-    message((groupLabels.get(groupId) ?? groupId) + ' reset to ' + store.basePreset, 'info', snapshot);
+    message((groupLabels.get(groupId) ?? groupId) + ' reset to ' + lookLabel(), 'info', snapshot);
   }
 
   function drawStrip() {
@@ -790,7 +815,7 @@ export function createPanel(options = {}) {
     backendPill.textContent = webgpu ? 'WebGPU' : 'WebGL2';
     backendPill.title = webgpu
       ? 'WebGPU backend' + (caps.timestamp === true ? ' with GPU timestamps' : caps.timestamp === false ? ' (no GPU timestamps)' : '')
-      : 'WebGL2 backend: compute features are off and presets stop at High';
+      : 'WebGL2 backend: compute features are off and quality stops at High';
     note.hidden = webgpu;
     note.textContent = webgpu ? '' : 'WebGL2 backend: settings marked WebGPU are disabled and Ultra and Extreme fall back to High.';
     for (const [id, controller] of controllers) {
@@ -805,49 +830,52 @@ export function createPanel(options = {}) {
         });
       }
     }
-    for (const option of presetSelect.options) {
-      const available = store.isPresetAvailable(option.value);
-      option.disabled = !available;
-      option.textContent = option.value + (available ? '' : ' (WebGPU only)');
+    quick.refresh();
+  }
+
+  /** Dims settings that have no effect with the current values and says why. */
+  function updateInert() {
+    const why = new Map();
+    for (const [id, controller] of controllers) {
+      const reason = typeof store.inert === 'function' ? store.inert(id) : null;
+      if (reason) why.set(id, reason.text);
+      controller.domElement.classList.toggle('lsp-inert', !!reason);
+      controller.$name.title = tooltips.get(id) + (reason ? '\nNo effect with ' + reason.text + '.' : '');
     }
+    return why;
   }
 
   function updateStatus() {
-    const base = store.basePreset;
-    const preset = store.preset;
+    const user = store.userPreset(store.look);
     const overrides = store.overrides();
     const ids = Object.keys(overrides);
     const governed = ids.filter((id) => entries.get(id).preset !== false).length;
-    const preferences = ids.length - governed;
-    presetSelect.value = base;
-    presetPill.textContent = preset === 'Custom' ? 'Custom' : base;
-    presetPill.classList.toggle('custom', preset === 'Custom');
-    presetPill.title = preset === 'Custom' ? base + ' with ' + governed + ' changed setting' + (governed === 1 ? '' : 's') : 'Exactly the ' + base + ' preset';
-    const parts = [];
-    if (preset === 'Custom') parts.push('Custom: ' + base + ' + ' + governed + ' override' + (governed === 1 ? '' : 's'));
-    else parts.push(base + ', no overrides');
-    if (preferences) parts.push(preferences + ' personal preference' + (preferences === 1 ? '' : 's') + ' changed');
-    status.textContent = parts.join(' \u00b7 ');
-    description.textContent = PRESET_INFO[base] ?? '';
-    overridesSummary.textContent = 'Overrides (' + ids.length + ')';
+    status.textContent = lookLabel() + (governed ? ' \u00b7 ' + governed + ' changed' : '');
+    status.title = (user ? 'Saved look \u201c' + user.name + '\u201d (based on ' + user.look + ')' : 'Look ' + store.look)
+      + ', quality ' + store.quality
+      + (governed ? '; ' + governed + ' setting' + (governed === 1 ? '' : 's') + ' changed by hand (see Advanced)' : '');
+    advanced.title(ids.length ? 'Advanced \u00b7 ' + ids.length + ' changed' : 'Advanced');
+    overridesSummary.textContent = 'Changed settings (' + ids.length + ')';
     overridesBox.hidden = ids.length === 0;
     overridesList.textContent = '';
-    const presetValues = store.presetValues(base);
+    const inert = updateInert();
+    const base = store.baseValues();
     for (const id of ids) {
       const entry = entries.get(id);
-      const item = el('li', 'lsp-ov-item');
+      const item = el('li', 'lsp-ov-item' + (inert.has(id) ? ' lsp-ov-inert' : ''));
       const context = entry.section ?? groupLabels.get(entry.group) ?? entry.group;
       const name = el('button', 'lsp-ov-name', {
         type: 'button',
-        title: 'Show ' + (groupLabels.get(entry.group) ?? entry.group) + (entry.section ? ' > ' + entry.section : '') + ' > ' + entry.label + ' (' + entry.id + ')',
+        title: 'Show ' + (groupLabels.get(entry.group) ?? entry.group) + (entry.section ? ' > ' + entry.section : '') + ' > ' + entry.label + ' (' + entry.id + ')'
+          + (inert.has(id) ? '\nNo effect with ' + inert.get(id) + '.' : ''),
       });
       name.append(el('span', 'lsp-ov-context', { text: context + ' \u203a ' }), entry.label);
       name.addEventListener('click', () => reveal(id));
       const value = el('span', 'lsp-ov-value', {
         text: formatValue(entry, overrides[id]),
-        title: (entry.preset === false ? 'Default ' : base + ' value ') + formatValue(entry, presetValues[id]),
+        title: (entry.preset === false ? 'Default ' : 'Look and quality value ') + formatValue(entry, base[id]),
       });
-      const undo = el('button', 'lsp-ov-revert', { type: 'button', text: '\u21ba', title: 'Revert to ' + formatValue(entry, presetValues[id]) });
+      const undo = el('button', 'lsp-ov-revert', { type: 'button', text: '\u21ba', title: 'Revert to ' + formatValue(entry, base[id]) });
       undo.addEventListener('click', () => revert(id));
       item.append(name, value, undo);
       overridesList.appendChild(item);
@@ -876,11 +904,14 @@ export function createPanel(options = {}) {
       if (match) matches++;
     }
     for (const reset of resetButtons) reset.show(!query);
+    // Results sit at the top while searching: the quick settings step aside.
+    quick.domElement.hidden = !!query;
+    actions.hidden = !!query;
     // Folders: visible when any descendant controller is; open matches while searching.
     for (const folder of [...folders].reverse()) {
       const visible = folder.controllersRecursive().some((c) => !c._hidden && !resetButtons.includes(c));
-      folder.show(visible || !query);
-      if (query && visible) folder.open();
+      folder.show(visible || !query || folder === advanced);
+      if (query && (visible || folder === advanced)) folder.open();
     }
     if (!query && filterActive) {
       for (const [folder, open] of savedOpen) folder.open(open);
@@ -921,7 +952,7 @@ export function createPanel(options = {}) {
       link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 2000);
     }
-    message('Exported ' + Object.keys(data.values ?? {}).length + ' settings (' + store.preset + ')');
+    message('Exported ' + Object.keys(data.values ?? {}).length + ' settings (' + lookLabel() + ')');
     return data;
   }
 
@@ -943,6 +974,7 @@ export function createPanel(options = {}) {
     }
     if (onImport) await onImport(data, report);
     const extra = [];
+    if (report.lookFallback) extra.push('look \u201c' + report.lookFallback + '\u201d is not saved here, so it shows as ' + report.look + ' with its values');
     if (report.ignored.length) extra.push(report.ignored.length + ' unknown ignored');
     if (report.invalid.length) extra.push(report.invalid.length + ' invalid skipped');
     message('Imported ' + report.applied.length + ' settings from ' + name + (extra.length ? ' (' + extra.join(', ') + ')' : ''), 'info', snapshot);
@@ -955,7 +987,7 @@ export function createPanel(options = {}) {
       : location.origin + location.pathname + location.search + '#' + store.mergeIntoHash(location.hash);
     try {
       await navigator.clipboard.writeText(url);
-      message('Link copied (' + store.preset + ')');
+      message('Link copied (' + lookLabel() + ')');
     } catch {
       messageBox.textContent = '';
       messageBox.className = 'lsp-message lsp-info';
@@ -979,12 +1011,6 @@ export function createPanel(options = {}) {
   }
 
   // Wiring
-  presetSelect.addEventListener('change', () => {
-    const name = presetSelect.value;
-    const snapshot = store.toJSON();
-    const applied = store.applyPreset(name);
-    message(applied === name ? 'Preset ' + name : name + ' needs WebGPU; applied ' + applied, 'info', snapshot);
-  });
   search.addEventListener('input', () => filter(search.value));
   search.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
@@ -995,7 +1021,7 @@ export function createPanel(options = {}) {
   actionButtons.reset.addEventListener('click', () => {
     const snapshot = store.toJSON();
     store.reset();
-    message('All settings reset to ' + store.basePreset, 'info', snapshot);
+    message('Back to ' + lookLabel(), 'info', snapshot);
   });
   actionButtons.export.addEventListener('click', () => { exportJSON().catch((error) => message(error.message, 'error')); });
   actionButtons.import.addEventListener('click', () => importInput.click());
@@ -1030,15 +1056,19 @@ export function createPanel(options = {}) {
     gui,
     domElement: gui.domElement,
     controllers,
+    quick,
+    advanced,
     open() {
       gui.show();
       gui.open();
+      if (typeof store.reloadUserPresets === 'function') store.reloadUserPresets();
     },
     close() { gui.close(); },
     toggle() {
       if (gui._hidden || gui._closed) {
         gui.show();
         gui.open();
+        if (typeof store.reloadUserPresets === 'function') store.reloadUserPresets();
       } else {
         gui.close();
       }
@@ -1057,6 +1087,7 @@ export function createPanel(options = {}) {
     dispose() {
       unsubscribe();
       offPreset();
+      quick.dispose();
       clearTimeout(messageTimer);
       for (const controller of controllers.values()) {
         if (controller instanceof GradientController) controller._endDrag();
@@ -1086,12 +1117,7 @@ const CSS = [
   '.lsp.closed>.lsp-header{display:none}',
   '.lsp .lsp-header{display:flex;flex-direction:column;gap:6px;padding:7px var(--padding) 8px;border-bottom:1px solid var(--widget-color);flex:0 0 auto;line-height:1.35}',
   '.lsp .lsp-hrow{display:flex;align-items:center;gap:6px}',
-  '.lsp .lsp-hlabel{color:var(--lsp-muted)}',
-  '.lsp select.lsp-preset{flex:1;min-width:0;height:var(--widget-height);background:var(--widget-color);color:var(--text-color);border:0;border-radius:var(--widget-border-radius);font:inherit;padding:0 4px;cursor:pointer}',
-  '.lsp select.lsp-preset:focus{background:var(--focus-color);outline:none}',
   '.lsp .lsp-pill{font-size:10px;line-height:16px;padding:0 7px;border-radius:8px;background:var(--widget-color);color:var(--lsp-muted);white-space:nowrap}',
-  '.lsp .lsp-pill.custom{background:rgba(255,181,71,.18);color:var(--lsp-accent)}',
-  '.lsp .lsp-desc{color:var(--lsp-muted);font-size:10.5px}',
   '.lsp .lsp-status{color:var(--text-color)}',
   '.lsp input.lsp-search{padding:0 6px}',
   '.lsp input.lsp-search::placeholder{color:var(--lsp-muted)}',
@@ -1145,4 +1171,45 @@ const CSS = [
   '.lsp .lsp-file-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--lsp-muted)}',
   '.lsp .lsp-strip-row{padding:0 var(--padding) var(--spacing) calc(var(--name-width) + var(--padding))}',
   '.lsp canvas.lsp-strip{display:block;width:100%;height:14px;border-radius:2px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}',
+  '.lsp .lsp-hrow .lsp-status{flex:1;min-width:0}',
+  '.lsp .lsp-actions{grid-template-columns:repeat(2,1fr);padding:2px var(--padding) 8px}',
+  '.lsp .lsp-adv-buttons{grid-template-columns:repeat(2,1fr)}',
+  '.lsp .lsp-adv-head{display:flex;flex-direction:column;gap:6px;padding:6px var(--padding) 8px;line-height:1.35}',
+  '.lsp .lsp-advanced>.title{color:var(--lsp-muted)}',
+  '.lsp .controller.lsp-inert>.name .lsp-label,.lsp .controller.lsp-inert>.widget{opacity:.45}',
+  '.lsp .lsp-ov-item.lsp-ov-inert .lsp-ov-name,.lsp .lsp-ov-item.lsp-ov-inert .lsp-ov-value{opacity:.5}',
+  '.lsp .lsq{display:flex;flex-direction:column;padding:0 var(--padding) 6px;line-height:1.35}',
+  '.lsp .lsq[hidden],.lsp .lsp-actions[hidden],.lsp .lsq-saveform[hidden],.lsp .lsq-mixed[hidden],.lsp .lsq button[hidden]{display:none}',
+  '.lsp .lsq-h{margin:10px 0 3px;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--lsp-muted)}',
+  '.lsp .lsq-sec:first-child .lsq-h{margin-top:6px}',
+  '.lsp .lsq-row{display:grid;grid-template-columns:36% minmax(0,1fr);align-items:center;column-gap:8px;row-gap:3px;padding:3px 0}',
+  '.lsp .lsq-row.lsq-stack{grid-template-columns:minmax(0,1fr)}',
+  '.lsp .lsq-row.lsq-inert>*{opacity:.45}',
+  '.lsp .lsq-head{display:flex;align-items:center;gap:6px;min-width:0}',
+  '.lsp .lsq-label{color:var(--text-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+  '.lsp .lsq-tag{color:var(--lsp-muted);font-size:10px}',
+  '.lsp .lsq-mixed{font-size:10px;line-height:15px;padding:0 6px;border-radius:8px;background:rgba(255,181,71,.18);color:var(--lsp-accent);cursor:help}',
+  '.lsp .lsq-seg{display:flex;gap:2px;padding:2px;border-radius:4px;background:var(--widget-color)}',
+  '.lsp .lsq-seg button{flex:1 1 auto;width:auto;min-width:0;height:22px;line-height:20px;padding:0 5px;border:0;border-radius:3px;background:none;color:var(--text-color);font:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}',
+  '.lsp .lsq-seg button:hover:not(:disabled){background:var(--hover-color)}',
+  '.lsp .lsq-seg button[aria-pressed=true]{background:#3b4558;color:#fff;box-shadow:inset 0 -2px 0 var(--lsp-accent)}',
+  '.lsp .lsq-seg button:disabled{opacity:.35;cursor:default}',
+  '.lsp .lsq-seg button:focus-visible,.lsp .lsq-chips button:focus-visible,.lsp .lsq-btn:focus-visible{outline:1px solid var(--lsp-accent);outline-offset:-1px}',
+  '.lsp select.lsq-select{width:100%;min-width:0;height:var(--widget-height);background:var(--widget-color);color:var(--text-color);border:0;border-radius:var(--widget-border-radius);font:inherit;padding:0 4px;cursor:pointer}',
+  '.lsp select.lsq-select:focus{background:var(--focus-color);outline:none}',
+  '.lsp .lsq-look{grid-template-columns:36% minmax(0,1fr)}',
+  '.lsp .lsq-line{display:flex;gap:4px;min-width:0}',
+  '.lsp .lsq-line select{flex:1 1 auto}',
+  '.lsp button.lsq-btn{flex:0 0 auto;width:auto;height:var(--widget-height);line-height:calc(var(--widget-height) - 2px);padding:0 7px}',
+  '.lsp button.lsq-btn:hover{background:var(--hover-color)}',
+  '.lsp button.lsq-primary{background:rgba(255,181,71,.22);border-color:rgba(255,181,71,.35)}',
+  '.lsp .lsq-saveform{grid-column:1/-1;display:flex;gap:4px}',
+  '.lsp .lsq-saveform input{flex:1 1 auto;min-width:0;padding:0 6px}',
+  '.lsp .lsq-desc{grid-column:1/-1;margin:1px 0 2px;color:var(--lsp-muted);font-size:10.5px}',
+  '.lsp .lsq-range{display:flex;align-items:center;gap:6px;min-width:0}',
+  '.lsp .lsq-range input[type=range]{flex:1 1 auto;min-width:0;height:18px;padding:0;background:none;accent-color:var(--lsp-accent);cursor:pointer}',
+  '.lsp .lsq-range output{flex:0 0 38px;text-align:right;color:var(--number-color);font-family:var(--font-family-mono);font-size:10.5px}',
+  '.lsp .lsq-chips{display:flex;flex-wrap:wrap;gap:4px}',
+  '.lsp .lsq-chips button{width:auto;height:22px;line-height:20px;padding:0 9px;border-radius:11px;border:1px solid var(--widget-color);background:none;color:var(--lsp-muted);font:inherit;cursor:pointer}',
+  '.lsp .lsq-chips button[aria-pressed=true]{background:#3b4558;border-color:#3b4558;color:#fff}',
 ].join('\n');
