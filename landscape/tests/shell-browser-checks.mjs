@@ -832,6 +832,8 @@ const CHECKS = [
       const select = document.querySelector('#panel [data-quick="look"] select');
       out.ui.looks = Array.from(select.options).map((o) => o.value);
       out.ui.qualities = Array.from(document.querySelectorAll('#panel [data-quick="quality"] [data-option]')).map((b) => b.dataset.option);
+      // The startup quality: High locally, Balanced or Performance on a first visit online.
+      out.ui.quality = S.quality;
       out.ui.status = document.querySelector('#panel .lsp-status').textContent;
       out.ui.advancedClosed = L.panel.advanced._closed;
       // Every option of every choice and toggle, clicked in the panel, selects itself.
@@ -882,7 +884,7 @@ const CHECKS = [
     expect: (v) => [
       ['the look select lists the seven looks', v.ui.looks.join() === 'Landscape,Film,Daylight,Golden hour,Neon night,Whales,Pulse'],
       ['five quality buttons', v.ui.qualities.join() === 'Performance,Balanced,High,Ultra,Extreme'],
-      ['status reads the look and quality; Advanced starts closed', v.ui.status === 'Landscape \u00b7 High' && v.ui.advancedClosed === true],
+      ['status reads the look and quality; Advanced starts closed (' + v.ui.status + ')', v.ui.status === 'Landscape \u00b7 ' + v.ui.quality && v.ui.advancedClosed === true],
       ['every option of every quick control selects itself (' + v.clicks.length + ' options' + (v.bad.length ? '; failed ' + v.bad.join(', ') : '') + ')', v.clicks.length >= 30 && v.bad.length === 0],
       ['the look select and quality buttons drive the store (' + v.ui.statusAfter + ')', v.ui.lookAfterSelect === 'Golden hour' && v.ui.qualityAfterClick === 'Balanced' && v.ui.statusAfter === 'Golden hour \u00b7 Balanced'],
       ...Object.entries(v.effects).map(([k, e]) => [k + ' changes the picture (mean RGB difference ' + e.diff + ' at the ' + e.pose + ' camera)', e.diff >= 10]),
@@ -928,6 +930,7 @@ const CHECKS = [
     timeout: 120000,
     script: `await idle(); await sleep(500);
       const S = L.settings; const out = {};
+      out.quality = S.quality; // saved looks keep the quality they were saved at
       localStorage.removeItem('utxo-landscape-presets-v1');
       await openPanel();
       const row = document.querySelector('#panel [data-quick="look"]');
@@ -971,10 +974,10 @@ const CHECKS = [
       localStorage.removeItem('utxo-landscape-presets-v1');
       return out;`,
     expect: (v) => [
-      ['changing quick settings marks the look changed (' + v.before.status + ')', v.before.look === 'Daylight' && v.before.modified && v.before.status === 'Daylight \u00b7 High \u00b7 6 changed'],
+      ['changing quick settings marks the look changed (' + v.before.status + ')', v.before.look === 'Daylight' && v.before.modified && v.before.status === 'Daylight \u00b7 ' + v.quality + ' \u00b7 6 changed'],
       ['Save\u2026 opens a focused name field', v.formOpen],
-      ['Enter saves it as the active look (' + v.saved.status + ')', v.saved.look === 'Check hazy noon' && !v.saved.modified && v.saved.listed.join() === 'Check hazy noon' && v.saved.status === 'Check hazy noon (saved) \u00b7 High'],
-      ['stored in this browser: base look, quality and the changed settings', JSON.stringify(v.stored) === JSON.stringify([['Check hazy noon', 'Daylight', 'High', 'fx.bloom,fx.bloomRadius,fx.bloomStrength,fx.bloomThreshold,light.fogDensity,light.fogHeightFalloff']])],
+      ['Enter saves it as the active look (' + v.saved.status + ')', v.saved.look === 'Check hazy noon' && !v.saved.modified && v.saved.listed.join() === 'Check hazy noon' && v.saved.status === 'Check hazy noon (saved) \u00b7 ' + v.quality],
+      ['stored in this browser: base look, quality and the changed settings', JSON.stringify(v.stored) === JSON.stringify([['Check hazy noon', 'Daylight', v.quality, 'fx.bloom,fx.bloomRadius,fx.bloomStrength,fx.bloomThreshold,light.fogDensity,light.fogHeightFalloff']])],
       ['a fresh store on the same storage reproduces it', v.freshMatches],
       ['choosing it again restores its values', v.away.look === 'Landscape' && v.back.look === 'Check hazy noon' && v.back.fog === 0.008 && !v.back.modified],
       ['Delete removes it and keeps the values on Daylight; Undo brings it back', v.deleted.look === 'Daylight' && v.deleted.listed === 0 && v.deleted.stored === 0 && v.undone.look === 'Check hazy noon' && v.undone.stored === 1],
@@ -999,11 +1002,13 @@ const CHECKS = [
       S.set('light.shadows', true); await sleep(100);
       out.advancedTitle = L.panel.advanced.$title.textContent;
       out.changedList = Array.from(document.querySelectorAll('#panel .lsp-ov-item')).length;
+      // Online, a first visit also turns on auto scale (personal preferences): those may be listed.
+      out.governedChanged = Object.keys(S.overrides()).filter((id) => S.entry(id).preset !== false).length;
       S.setLook('Film'); await sleep(100);
       const shadowRow = document.querySelector('#panel [data-quick="shadows"]');
       out.film = { shadowsInert: shadowRow.classList.contains('lsq-inert'), shadowsTitle: shadowRow.querySelector('.lsq-label').title.split('\\n').pop(),
         todInert: document.querySelector('#panel [data-quick="timeOfDay"]').classList.contains('lsq-inert'),
-        sunInert: settingRow('light.sunElevation').classList.contains('lsp-inert'), status: document.querySelector('#panel .lsp-status').textContent };
+        sunInert: settingRow('light.sunElevation').classList.contains('lsp-inert'), status: document.querySelector('#panel .lsp-status').textContent, quality: S.quality };
       S.setLook('Landscape'); S.set('light.fogDensity', 0.003); await sleep(100);
       out.mixed = !document.querySelector('#panel [data-quick="haze"] .lsq-mixed').hidden;
       out.matches = L.panel.filter('bloom');
@@ -1016,8 +1021,8 @@ const CHECKS = [
       ['reveal opens Advanced', v.advancedOpen],
       ['bloom off dims the bloom settings and says why (' + v.bloomTitle + ')', !v.bloomOnInert && v.bloomOffInert && v.bloomTitle === 'No effect with Bloom off.'],
       ['shadows off dims the cascade setting (' + v.cascades.title + ')', v.cascades.inert && v.cascades.title === 'No effect with Shadows off.'],
-      ['Advanced counts the changed settings (' + v.advancedTitle + ', ' + v.changedList + ' listed)', v.advancedTitle === 'Advanced' && v.changedList === 0],
-      ['Film dims Shadows and the sun direction, not Time of day (' + v.film.shadowsTitle + ')', v.film.shadowsInert && v.film.sunInert && !v.film.todInert && v.film.shadowsTitle === 'No effect with Sun intensity 0.' && v.film.status === 'Film \u00b7 High'],
+      ['Advanced counts the changed settings (' + v.advancedTitle + ', ' + v.changedList + ' listed, ' + v.governedChanged + ' of them look or quality)', v.advancedTitle === (v.changedList ? 'Advanced \u00b7 ' + v.changedList + ' changed' : 'Advanced') && v.governedChanged === 0],
+      ['Film dims Shadows and the sun direction, not Time of day (' + v.film.shadowsTitle + ')', v.film.shadowsInert && v.film.sunInert && !v.film.todInert && v.film.shadowsTitle === 'No effect with Sun intensity 0.' && v.film.status === 'Film \u00b7 ' + v.film.quality],
       ['a hand-set fog density shows Haze as mixed', v.mixed],
       ['search finds the bloom settings and steps the quick settings aside', v.matches >= 5 && v.searching.quickHidden && v.searching.advancedOpen && !v.afterSearch.quickHidden],
     ],
