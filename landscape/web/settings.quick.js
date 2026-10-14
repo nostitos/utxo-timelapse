@@ -81,7 +81,7 @@ export const QUICK = deepFreeze([
   { id: 'perfNow', section: 'Performance', label: 'Now', type: 'readout',
     help: 'This frame\u2019s cost: GPU time (or frame time where the browser does not report GPU time), frames per second, and the columns drawn against Column cap. When the cells within Column distance need more columns than the cap, the column area shrinks and this says so.' },
   { id: 'distance', section: 'Performance', label: 'Every distance', type: 'toggle', rebuild: 'terrain',
-    help: 'Adaptive draws round columns near the camera, a surface farther out and finer detail where it is close. Same draws the whole landscape one way and at one detail level (Uniform detail), so nothing changes as you move: Columns and Boxes become flat-topped steps everywhere, Smooth stays smooth. Far cells may shimmer, and the finest level needs more loaded tiles than a full view allows.',
+    help: 'Adaptive draws columns near the camera, a surface farther out and finer detail where it is close. Same draws the whole landscape one way and at one detail level (Uniform detail), so nothing changes as you move: Columns and Boxes become flat-topped steps everywhere, Smooth stays smooth. Far cells may shimmer, and the finest level needs more loaded tiles than a full view allows.',
     options: [
       option('adaptive', 'Adaptive', { 'geo.uniform': false }),
       option('same', 'Same', { 'geo.uniform': true }),
@@ -173,7 +173,7 @@ export const QUICK = deepFreeze([
       option('towering', 'Towering', BIG_COINS.towering),
     ] },
   { id: 'cellShape', section: 'Data', label: 'Cell shape', type: 'choice', rebuild: 'terrain',
-    help: 'How cells are drawn near the camera: a smooth surface, round columns, square boxes, or flat-topped steps everywhere.',
+    help: 'How cells are drawn near the camera: a smooth surface, rounded columns that fill their cells, square boxes, or flat-topped steps everywhere.',
     options: [
       option('smooth', 'Smooth', CELL_SHAPES.smooth),
       option('columns', 'Columns', CELL_SHAPES.columns, only(CELL_SHAPES.columns, ['geo.columns', 'geo.columnShape']), { webgpu: true }),

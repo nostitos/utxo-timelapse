@@ -1,5 +1,6 @@
-// Column cells (WebGPU): near the camera every occupied L0 cell is its own column, a plain
-// cylinder by default (geo.columnShape 'cylinder'), an oval cylinder that fills the cell, or a
+// Column cells (WebGPU): near the camera every occupied L0 cell is its own column, by default
+// an oval cylinder that fills the cell (geo.columnShape 'oval'), or a round cylinder as wide as
+// the cell's 64 blocks ('cylinder', leaving the ground visible between amount rows), or a
 // box. index.js decides the disc that gets columns (cells at least geo.columnPixels wide on
 // screen, around the camera, or moved ahead of it in plane mode); the heightfield hides
 // itself inside the disc and draws the rest.
@@ -8,11 +9,12 @@
 // counter and writes the indirect draw arguments; the vertex stage reads heights live from
 // the atlas, so playback needs no CPU work. Columns come in two levels of detail drawn from
 // one instance buffer: cells wider than NEAR_PX on screen (measured from the eye, the ground
-// under the camera) use geo.cylinderSides, smaller ones a 4-sided prism with the circle's
-// area or the cheaper far style of geo.farColumns (near list from the start of the buffer,
-// far list from the end). When the occupied cells exceed geo.instanceBudget, the disc shrinks
-// (measured by an asynchronous read of the counter) so the heightfield never shows holes, and
-// it grows back toward the budget while there is room.
+// under the camera) use geo.cylinderSides, smaller ones a 4-sided prism (the whole cell for the
+// oval, the circle's area for the round cylinder) or the cheaper far style of geo.farColumns
+// (near list from the start of the buffer, far list from the end). With geo.columnGap 0 the oval
+// and the box leave no ground between occupied cells. When the occupied cells exceed
+// geo.instanceBudget, the disc shrinks (measured by an asynchronous read of the counter) so the
+// heightfield never shows holes, and it grows back toward the budget while there is room.
 import {
   Group, InstancedBufferGeometry, BufferAttribute, Mesh, StorageBufferAttribute, IndirectStorageBufferAttribute,
   Vector2, DoubleSide, FrontSide,
@@ -156,6 +158,9 @@ export function farGeometry(style, shape, sides) {
   if (style === 'card') return cardGeometry(true);
   if (style === 'flat') return cardGeometry(false);
   if (style === 'cross') return crossGeometry();
+  // An oval fills its cell, so far away it becomes the whole cell, still shaded round: a
+  // prism of the oval's area would leave a seam around every cell where the ground shows.
+  if (shape === 'oval') return boxGeometry();
   return columnGeometry(shape, columnLevels(shape, sides).far);
 }
 
@@ -178,7 +183,7 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
   const uR2 = uniform(0);
   const uNear2 = uniform(0);
   const uBudget = uniform(0, 'uint');
-  const uGap = uniform(0.12);
+  const uGap = uniform(0);
 
   const tilesNode = storage(tilesAttr, 'vec4', MAX_COLUMN_TILES).toReadOnly();
   const counterAtomic = storage(counterAttr, 'uint', 3).toAtomic();
@@ -282,8 +287,8 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
     const slot = level === near ? instanceIndex : uint(budgetCap - 1).sub(instanceIndex);
     const ref = instRead.element(slot);
     const raw = atlas.readNode.element(int(ref.x));
-    // Footprint (world units): a round cylinder as wide as the cell (its narrower side, 64
-    // blocks), or an oval or a box filling the cell; geo.columnGap leaves a margin either way.
+    // Footprint (world units): an oval or a box filling the cell, or a round cylinder as wide as
+    // the cell (its narrower side, 64 blocks); geo.columnGap (0 by default) trims a margin.
     const w = float(1).sub(uGap);
     const sx = w.mul(COL_W);
     const sz = shape === 'cylinder' ? sx : w.mul(ROW_D);

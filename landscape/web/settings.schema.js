@@ -291,11 +291,11 @@ const ENTRIES = [
   // Geometry: columns (WebGPU compute)
   { id: 'geo.columns', section: 'Columns', label: 'Column cells', type: 'bool', default: true,
     webgpu: true, rebuild: 'terrain',
-    help: 'Near the view, every occupied level-0 cell (64 blocks x 1 amount row) is its own column, a cylinder by default (Cell shape); the heightfield continues beyond Column radius. Needs WebGPU compute; WebGL2 draws the heightfield only.' },
+    help: 'Near the view, every occupied level-0 cell (64 blocks x 1 amount row) is its own column, by default an oval cylinder that fills its cell (Cell shape); the heightfield continues beyond Column radius. Needs WebGPU compute; WebGL2 draws the heightfield only.' },
   { id: 'geo.columnShape', section: 'Columns', label: 'Cell shape', type: 'enum', options: ['cylinder', 'oval', 'box'],
-    optionLabels: { cylinder: 'Cylinder', oval: 'Oval (fills the cell)', box: 'Box' },
-    default: 'cylinder', webgpu: true, rebuild: 'material',
-    help: 'Shape of each column. Cylinder: a plain round column as wide as the cell (64 blocks), leaving room between amount rows. Oval: a cylinder stretched to fill the cell. Box: a square prism like Stepped cells.' },
+    optionLabels: { cylinder: 'Round (gaps between rows)', oval: 'Oval (fills the cell)', box: 'Box' },
+    default: 'oval', webgpu: true, rebuild: 'material',
+    help: 'Shape of each column. Oval: a cylinder stretched to fill its cell, so neighbouring columns touch; far columns fill the whole cell. Round: a round cylinder as wide as the cell (64 blocks) and only 64% of the row deep, so the ground shows between amount rows. Box: a square prism like Stepped cells.' },
   { id: 'geo.cylinderSides', section: 'Columns', label: 'Cylinder sides', type: 'enum', options: [6, 8, 12, 16, 24, 32],
     default: 12, webgpu: true, rebuild: 'material',
     help: 'Sides of each cylinder: rounder outlines up close, at 3 triangles per side per column.' },
@@ -310,8 +310,8 @@ const ENTRIES = [
     rebuild: 'terrain', capMax: 'maxInstances',
     help: 'Maximum columns drawn per frame (up to 8,000,000; quick setting Column cap). When the cells within Column distance need more, the column area shrinks to fit. On an Apple M4 Max at 2880x1800, each 100,000 far columns cost about 1.2 to 1.8 ms of GPU time with the Box far style and shadows.' },
   { id: 'geo.columnGap', section: 'Columns', label: 'Column gap', type: 'number',
-    min: 0, max: 0.9, step: 0.01, default: 0.12, webgpu: true,
-    help: 'Fraction of each cell footprint left empty between columns.' },
+    min: 0, max: 0.9, step: 0.01, default: 0, webgpu: true,
+    help: 'Fraction of each cell footprint left empty around its column. At 0 neighbouring columns touch and the ground shows only where a cell is empty.' },
   { id: 'geo.farColumns', section: 'Columns', label: 'Far columns', type: 'enum', options: ['prism', 'card', 'flat', 'cross'],
     optionLabels: { prism: 'Box', card: 'Card', flat: 'Flat card', cross: 'Cross' },
     default: 'prism', webgpu: true, rebuild: 'material',
@@ -706,7 +706,7 @@ export const BIG_COINS = deepFreeze({ normal: { 'amp.whale': 1 }, taller: { 'amp
 // Boxes also step the heightfield beyond the columns, so the far landscape matches them.
 export const CELL_SHAPES = deepFreeze({
   smooth: { 'geo.columns': false, 'geo.stepped': false },
-  columns: { 'geo.columns': true, 'geo.columnShape': 'cylinder', 'geo.stepped': false },
+  columns: { 'geo.columns': true, 'geo.columnShape': 'oval', 'geo.stepped': false },
   boxes: { 'geo.columns': true, 'geo.columnShape': 'box', 'geo.stepped': true },
   stepped: { 'geo.columns': false, 'geo.stepped': true },
 });
@@ -864,7 +864,7 @@ export const LOOK_PRESETS = deepFreeze({
   },
   'Neon night': {
     ...TIME_OF_DAY.night, ...SKY.off, 'light.stars': true, 'light.starDensity': 0.45,
-    ...HAZE.none, ...GLOW.strong, 'fx.bloomThreshold': 0.95, ...CELL_SHAPES.boxes, 'geo.columnGap': 0.25,
+    ...HAZE.none, ...GLOW.strong, 'fx.bloomThreshold': 0.95, ...CELL_SHAPES.boxes,
     ...FLASHES.strong, 'color.heat': '#ffffff',
     'color.background': '#0e0824', 'color.ground': '#07080f', 'color.palette': 'plasma', 'color.upper': 1500,
     'light.emissive': 0.9, 'light.albedo': 0.15, 'light.rim': 0.8, 'light.rimColor': '#ff5ad9',
