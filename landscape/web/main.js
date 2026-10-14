@@ -286,10 +286,11 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       axis, explorerBase, link2d: endpoints.link2d, local: endpoints.local,
       camera: view.camera, canvas, heightAt: (x, z) => view.heightAt(x, z),
     });
-    // What the pointer (the crosshair in flight mode) is aimed at, from local data only.
+    // What the pointer (the crosshair in flight mode) is aimed at, from local data only, in a
+    // card docked under the HUD.
     const hover = createHover({
       container: $('hover'), canvas, pick: (x, y) => view.pick(x, y), replay, grid, rows: replay.rows, blocktimes: replay.blocktimes,
-      mode: () => controls.mode, floor: () => $('timeline').getBoundingClientRect().top, enabled: !touchOnly,
+      mode: () => controls.mode, anchor: $('hud'), enabled: !touchOnly,
     });
     const placesMenu = createPlacesMenu({
       container: $('places'), tip, blocktimes: replay.blocktimes, rows: replay.rows,

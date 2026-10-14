@@ -144,7 +144,7 @@ const CHECKS = [
     ],
   },
   {
-    // ui/hover.js: the card beside the pointer names the picked cell from local data only.
+    // ui/hover.js: the card docked under the HUD names the picked cell from local data only.
     name: 'hover',
     shot: 'hover.png',
     script: `await L.flyTo(inData(314000)); await idle(); await sleep(1200);
@@ -162,12 +162,13 @@ const CHECKS = [
       const out = { found: !!at };
       if (at) {
         move(at.x, at.y); await settle();
-        const cur = L.ui.hover.current; const r = card.getBoundingClientRect();
+        const cur = L.ui.hover.current; const r = card.getBoundingClientRect(); const hud = document.getElementById('hud').getBoundingClientRect();
         const direct = await cell(cur.level, cur.col, cur.row, { load: false });
         out.sameCell = cur.level === (at.h.level || 0) && cur.col === at.h.col && cur.row === at.h.row;
         out.counts = !!(cur.cell && direct && ['countSmall', 'countLarge', 'satsSmall', 'satsLarge'].every((k) => cur.cell[k] === direct[k]));
         out.text = cur.text;
-        out.besidePointer = Math.abs(r.left - at.x) <= r.width + 24 && Math.abs(r.top - at.y) <= r.height + 28;
+        out.docked = Math.abs(r.left - hud.left) < 1 && Math.abs(r.width - hud.width) < 1 && r.top > hud.bottom && r.top - hud.bottom <= 16;
+        move(at.x + 40, at.y + 20); await settle(); const r2 = card.getBoundingClientRect(); out.staysPut = r2.left === r.left && r2.top === r.top;
         move(5, 5, 'pointerleave'); await frame(); await frame(); out.hidesOffCanvas = card.hidden;
         move(at.x, at.y); await settle(); canvas.classList.add('dragging'); await frame(); await frame();
         out.hidesWhileDragging = card.hidden; canvas.classList.remove('dragging');
@@ -179,9 +180,11 @@ const CHECKS = [
     expect: (v) => [
       ['found a cell with outputs to hover', v.found],
       ['the card names the cell the pointer picks', !!v.sameCell],
-      ['size, blocks and unspent shown (' + (v.text || '') + ')', /^Size.+Blocks[\d,]+\u2013[\d,]+.*Unspent[\d,]+ UTXOs? \u00b7 /.test(v.text || '')],
+      ['size, blocks, dates, unspent and value shown as ranges with "to" (' + (v.text || '').replace(/\s+/g, ' ') + ')',
+        /UNDER THE CURSOR\s+SIZE\s+[\d,.]+ to [\d,.]+ (BTC|sat)\s+BLOCKS\s+[\d,]+ to [\d,]+\s+MINED\s+\d{4}-\d{2}-\d{2}(?: to \d{4}-\d{2}-\d{2})?\s+UNSPENT OUTPUTS\s+[\d,]+\s+VALUE\s+[\d,.]+ (BTC|sat)/i.test(v.text || '')],
       ['unspent count and value equal the replay worker', !!v.counts],
-      ['card beside the pointer', !!v.besidePointer],
+      ['card docked under the HUD, same edge and width', !!v.docked],
+      ['card stays put while the pointer moves', !!v.staysPut],
       ['hidden off the canvas and while dragging', !!(v.hidesOffCanvas && v.hidesWhileDragging)],
       ['no requests: ' + v.fetches + ' fetches, ' + v.queries + ' worker queries all load: false', v.fetches === 0 && !!v.local],
     ],

@@ -1,19 +1,18 @@
-// Hover readout (landscape/SPEC.md §8): a small card beside the mouse pointer, or beside the
-// crosshair in flight mode, saying what it is aimed at: the amount band (UTXO size) and the
-// blocks and dates of the cell under it, and how many outputs there are still unspent at the
-// replayed block. The card describes the cell as drawn, so zoomed out it covers the merged cells
-// of that level and its count matches the height you see. Everything comes from data the page
-// already holds (rows.bin, the block times and the replay worker's resident tiles, asked with
-// load: false); hovering never sends a request. Plane mode has its own readout
-// (ui/plane-hud.js), and touch-only devices have no hover.
+// Hover readout (landscape/SPEC.md §8): a card docked under the HUD that says what the mouse
+// pointer is aimed at (the crosshair in flight mode): the amount band (UTXO size), the blocks
+// and the days they were mined, and how many outputs there are still unspent at the replayed
+// block, with their value. The card describes the cell as drawn, so zoomed out it covers the
+// merged cells of that level and its count matches the height you see. Everything comes from
+// data the page already holds (rows.bin, the block times and the replay worker's resident
+// tiles, asked with load: false); hovering never sends a request. Plane mode has its own
+// readout (ui/plane-hud.js), and touch-only devices have no hover.
 
 import { fmtInt, fmtBtc, fmtAmount, isoUtc } from './format.js';
 import { rowAmountRange } from '../data/axis.js';
 
 const PICK_MS = 100; // a still pointer is picked again this often: the camera or the ground may move
 const CELL_MS = 250; // while blocks change, the count refreshes at most 4 times a second
-const OFFSET = 16; // card distance from the pointer
-const MARGIN = 8; // card distance from the window edges
+const DOCK_GAP = 10; // space between the HUD and the card
 
 /**
  * Blocks, rows and amounts covered by cell (col, row) of a level: {level, col, row, columns, rows,
@@ -58,46 +57,49 @@ export function cardAmount(sat, dir = 0, inBtc = sat >= 1e6) {
   return v.toLocaleString('en-US', { maximumFractionDigits: digits }) + ' BTC';
 }
 
-/** "0.01–0.01012 BTC", "546–600 sat", "≥ 100,000 BTC"; one unit when both ends share it. */
+/** "0.01 to 0.01012 BTC", "546 to 600 sat", "100,000 BTC or more"; one unit when both ends share it. */
 export function amountText(a) {
   if (!a) return 'No whole amount';
-  if (a.max === Infinity) return '\u2265 ' + cardAmount(a.min, -1);
+  if (a.max === Infinity) return cardAmount(a.min, -1) + ' or more';
   if (a.min === a.max) return fmtAmount(a.min);
   const lo = cardAmount(a.min, -1, a.max >= 1e6);
   const hi = cardAmount(a.max, 1);
   const unit = (s) => s.slice(s.lastIndexOf(' '));
-  return unit(lo) === unit(hi) ? lo.slice(0, lo.lastIndexOf(' ')) + '\u2013' + hi : lo + ' \u2013 ' + hi;
+  return (unit(lo) === unit(hi) ? lo.slice(0, lo.lastIndexOf(' ')) : lo) + ' to ' + hi;
 }
 
-/** "812,544–812,607" and "2023-10-12" or "2023-10-12 → 2023-10-19" (UTC). */
+/** {blocks: "812,544 to 812,607", dates: "2023-10-12" or "2023-10-12 to 2023-10-19" (UTC)}. */
 export function blocksText(span, blocktimes) {
-  const blocks = fmtInt(span.first) + '\u2013' + fmtInt(span.last);
+  const blocks = fmtInt(span.first) + ' to ' + fmtInt(span.last);
   const day = (b) => (blocktimes && Number.isFinite(blocktimes[b]) ? isoUtc(blocktimes[b], { time: false }) : null);
   const a = day(span.first);
   const b = day(span.last);
-  return { blocks, dates: a ? (b && b !== a ? a + ' \u2192 ' + b : a) : '' };
+  return { blocks, dates: a ? (b && b !== a ? a + ' to ' + b : a) : '' };
 }
 
-/** The live line for a worker cell at a block: counts, or why there are none. */
+/**
+ * The live rows for a worker cell at a block: {outputs, value}, or null while the count is
+ * unknown (no replayed block yet, or the worker has not answered).
+ */
 export function liveText(span, cell, block) {
   if (!Number.isInteger(block)) return null;
-  if (span.first > block) return 'Not created yet at block ' + fmtInt(block);
+  if (span.first > block) return { outputs: 'Not created yet', value: '\u2014' };
   if (!cell) return null;
   const count = cell.countSmall + cell.countLarge;
-  if (count === 0) return 'None at block ' + fmtInt(cell.block ?? block);
   const sats = cell.satsSmall + cell.satsLarge;
-  return fmtInt(count) + (count === 1 ? ' UTXO' : ' UTXOs') + ' \u00b7 ' + fmtBtc(sats);
+  return { outputs: fmtInt(count), value: count === 0 ? '0 BTC' : fmtBtc(sats) };
 }
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+const row = (label, value, cls = '') => '<div' + (cls ? ' class="' + cls + '"' : '') + '><dt>' + label + '</dt><dd>' + esc(value) + '</dd></div>';
 
 /**
  * container: #hover; canvas: the view canvas; pick(clientX, clientY) → terrain hit (render/index.js);
  * replay: the replay client (block, cell()); mode() → 'map' | 'flight' | 'plane';
- * floor(): the lowest client y the card may reach (the top of the timeline).
+ * anchor: the element the card docks under, at the same left edge and width (the HUD).
  */
 export function createHover({
-  container, canvas, pick, replay, grid, rows, blocktimes, mode = () => 'map', floor = () => innerHeight, enabled = true,
+  container, canvas, pick, replay, grid, rows, blocktimes, mode = () => 'map', anchor = null, enabled = true,
 }) {
   const off = { update() {}, hide() {}, get current() { return null; } };
   if (!container || !canvas || !enabled) return off;
@@ -109,11 +111,12 @@ export function createHover({
   let key = '';
   let cell = null; // {key, value} from the replay worker; value null when it has no state there
   let waiting = false; // aimed at a new cell whose count has not arrived yet
-  let lastLive = ''; // the previous count, shown dimmed while waiting
+  let lastLive = null; // the previous rows, shown dimmed while waiting
   let seq = 0;
   let askedAt = -Infinity;
   let askedBlock = null;
   let html = '';
+  let dock = '';
   let current = null;
 
   const forget = () => {
@@ -162,52 +165,55 @@ export function createHover({
     }, () => {});
   }
 
-  function render(block) {
+  function render(block, m) {
     const s = span;
     const { blocks, dates } = blocksText(s, blocktimes);
     const mine = cell && cell.key === key ? cell.value : null;
-    const live = liveText(s, mine, block);
-    let shown = live;
+    let live = liveText(s, mine, block);
     let dim = false;
-    if (live !== null) lastLive = live;
+    if (live) lastLive = live;
     else if (waiting) {
-      // The previous cell's count stays, dimmed, until the worker answers (usually next frame).
-      shown = lastLive || '\u2026';
+      // The previous cell's rows stay, dimmed, until the worker answers (usually next frame).
+      live = lastLive || { outputs: '\u2026', value: '\u2026' };
       dim = true;
     } else {
-      shown = '\u2014'; // the worker holds no state for this cell
+      live = { outputs: '\u2014', value: '\u2014' }; // the worker holds no state for this cell
       dim = true;
     }
-    let out = '<dl><dt>Size</dt><dd class="hv-size">' + esc(amountText(s.amount)) + '</dd>' +
-      '<dt>Blocks</dt><dd>' + blocks + (dates ? '<small>' + dates + '</small>' : '') + '</dd>';
-    if (Number.isInteger(block)) out += '<dt>Unspent</dt><dd class="hv-live' + (dim ? ' stale' : '') + '">' + esc(shown) + '</dd>';
+    let out = '<span class="eyebrow">' + (m === 'flight' ? 'At the crosshair' : 'Under the cursor') + '</span><dl>' +
+      row('Size', amountText(s.amount)) + row('Blocks', blocks) + (dates ? row('Mined', dates) : '');
+    if (Number.isInteger(block)) {
+      const cls = 'hv-live' + (dim ? ' stale' : '');
+      out += row('Unspent outputs', live.outputs, cls) + row('Value', live.value, cls);
+    }
     out += '</dl>';
     if (s.level > 0) out += '<p>Zoomed out: ' + fmtInt(s.columns) + ' \u00d7 ' + fmtInt(s.rows) + ' cells drawn as one</p>';
     if (out !== html) {
       html = out;
       container.innerHTML = out;
     }
-    current = { level: s.level, col: s.col, row: s.row, first: s.first, last: s.last, rowMin: s.rowMin, rowMax: s.rowMax,
-      amount: s.amount, block, cell: mine, text: container.textContent };
+    current = { mode: m, level: s.level, col: s.col, row: s.row, first: s.first, last: s.last, rowMin: s.rowMin, rowMax: s.rowMax,
+      amount: s.amount, block, cell: mine };
   }
 
-  function place(a) {
-    const w = container.offsetWidth;
-    const h = container.offsetHeight;
-    const bottom = Math.min(innerHeight, floor()) - MARGIN;
-    let x = a.x + OFFSET;
-    let y = a.y + OFFSET + 4;
-    if (x + w > innerWidth - MARGIN) x = a.x - OFFSET - w;
-    if (y + h > bottom) y = a.y - OFFSET - h;
-    x = Math.max(MARGIN, Math.min(x, innerWidth - MARGIN - w));
-    y = Math.max(MARGIN, Math.min(y, bottom - h));
-    container.style.transform = 'translate(' + Math.round(x) + 'px, ' + Math.round(y) + 'px)';
+  // Same left edge and width as the anchor, just below it (its height changes with its content).
+  function place() {
+    if (!anchor) return;
+    const r = anchor.getBoundingClientRect();
+    if (!(r.width > 0)) return;
+    const d = Math.round(r.left) + ',' + Math.round(r.bottom + DOCK_GAP) + ',' + Math.round(r.width);
+    if (d === dock) return;
+    dock = d;
+    container.style.left = Math.round(r.left) + 'px';
+    container.style.top = Math.round(r.bottom + DOCK_GAP) + 'px';
+    container.style.width = Math.round(r.width) + 'px';
   }
 
   return {
     /** Once per frame: pick what the pointer (or the crosshair) is aimed at and refresh the card. */
     update(now = performance.now()) {
-      const a = aim(mode());
+      const m = mode();
+      const a = aim(m);
       if (!a) return hide();
       if (moved || now - lastPick >= PICK_MS) {
         moved = false;
@@ -231,14 +237,14 @@ export function createHover({
       } else if (block !== askedBlock && now - askedAt >= CELL_MS) {
         ask(now);
       }
-      render(block);
+      render(block, m);
+      place();
       container.hidden = false;
-      place(a);
     },
     hide,
     /** What the card shows (for checks): the cell, its ranges, the worker's counts and the text. */
     get current() {
-      return container.hidden ? null : current;
+      return container.hidden || !current ? null : { ...current, text: container.innerText };
     },
   };
 }

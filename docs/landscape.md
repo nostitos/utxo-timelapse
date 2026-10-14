@@ -80,7 +80,7 @@ Storing the dataset costs about 1.1 USD a month in R2 (75 GB); R2 charges nothin
 | Right-drag or Shift-drag | Orbit around the point under the cursor |
 | Wheel or trackpad pinch | Zoom toward the cursor |
 | Double-click | Fly to that point |
-| Point | A card beside the cursor (beside the crosshair in flight mode) shows the cell under it: its amount band, its blocks and dates, and its unspent outputs and BTC at the current block, updating live from data already in the browser. Zoomed out, it covers the merged cell drawn there |
+| Point | A card under the block panel shows the cell under the cursor (under the crosshair in flight mode): its amount band, its blocks and the days they were mined, and its unspent outputs and their value at the current block, updating live from data already in the browser. Ranges read "A to B". Zoomed out, it covers the merged cell drawn there |
 | Click or I | Inspect the cell under the cursor (the crosshair in flight mode, the nose circle in plane mode) |
 | Arrows, Q/E, PgUp/PgDn | Pan, rotate, tilt |
 | F or the Fly button | Flight mode: mouse look, WASD, E/Q up and down, Shift 4×, wheel sets speed; the button stays lit while it is on; Esc returns to map mode |
