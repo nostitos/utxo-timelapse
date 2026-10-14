@@ -7,7 +7,7 @@ import {
   selectTiles, fullPatchMask, childPatchMask, rootTiles, cellSize, boxVisible, frustumPlanes, PATCH_CELLS,
 } from '../web/render/terrain/lod.js';
 import { recomputePatchMax, bumpPatchMax, patchesOfCell } from '../web/render/terrain/patchmax.js';
-import { heightOfCpu, heightBoundCpu } from '../web/render/terrain/curve.js';
+import { heightOfCpu, heightBoundCpu, whaleFactorCpu } from '../web/render/terrain/curve.js';
 
 const GRIDS = [gridFromManifest({ numBlocks: 966828 }), gridFromManifest({ numBlocks: 330001 }), gridFromManifest({ numBlocks: 120001 })];
 function rng(seed) {
@@ -206,6 +206,26 @@ test('height curve: log, power, linear, whale rows, floor and empty cells', () =
   assert.ok(Math.abs(heightOfCpu(250, 700, { ...p, curve: 'linear', exposure: 7 }) - 5.05) < 1e-12);
   assert.ok(heightBoundCpu(300, p) >= heightOfCpu(300, 0, p));
   assert.ok(heightBoundCpu(300, { ...p, whale: 0.5 }) >= heightOfCpu(300, 900, { ...p, whale: 0.5 }));
+});
+
+test('whale multiplier eases in below the threshold instead of ending in a cliff', () => {
+  const p = { curve: 'log', exposure: 1, reference: 500, exponent: 0.5, exaggeration: 10, floor: 0, whale: 2, whiteRow: 600, whaleRampRow: 760 };
+  assert.equal(whaleFactorCpu(600, p), 2);
+  assert.equal(whaleFactorCpu(680, p), 1.5);
+  assert.equal(whaleFactorCpu(760, p), 1);
+  assert.equal(whaleFactorCpu(900, p), 1);
+  // Equal values: height falls monotonically from the whale rows to the ramp end, and no two
+  // adjacent rows differ by more than 1% of the whale-row height (the old step was 50%).
+  let prev = heightOfCpu(500, 0, p);
+  let largest = 0;
+  for (let r = 1; r <= 900; r++) {
+    const h = heightOfCpu(500, r, p);
+    assert.ok(h <= prev, 'row ' + r);
+    largest = Math.max(largest, prev - h);
+    prev = h;
+  }
+  assert.ok(largest < 0.01 * heightOfCpu(500, 0, p), 'largest step ' + largest);
+  assert.ok(heightBoundCpu(500, p) >= heightOfCpu(500, 700, p));
 });
 
 test('mustRefine brings level 0 under a region at any distance, before other refinement', () => {

@@ -430,8 +430,12 @@ the page (WebGPU, Chrome 155, Apple M4 Max, 2026-10-13); the cause is open.
 Height curve (on the area-normalised value `v`, with `e = amp.exposure`,
 `R = amp.reference`): log: `log(1 + e*v) / log(1 + e*R)`; power:
 `(e*v / (e*R))^amp.exponent`; linear: `e*v / (e*R)`. Height =
-`amp.exaggeration * curve`, times `amp.whale` on rows at/above the white-hot row, plus
-`amp.floor` for occupied cells; empty cells have height 0.
+`amp.exaggeration * curve`, times the whale factor, plus `amp.floor` for occupied cells;
+empty cells have height 0. The whale factor is `amp.whale` on rows at/above the white-hot
+row `W` and eases back to 1 across the rows down to `E = row(color.whiteHotBTC / 10 × 1e8)`
+(one decade of amounts, `WHALE_RAMP_DECADES`): `1 + (amp.whale − 1) · s(t)` with
+`t = clamp((E − row) / (E − W), 0, 1)` and `s(t) = t²(3 − 2t)`, so the taller rows have
+no cliff at the threshold (`curve.js` `whaleFactorCpu`; the shader mirrors it).
 
 Colour transfer (on the colour value `v`): `v ≤ 0` → `color.ground`; otherwise
 `t = clamp((ln(v + o) − ln(1 + o)) / (ln(U + o) − ln(1 + o)), 0, 1)^color.gamma`, palette

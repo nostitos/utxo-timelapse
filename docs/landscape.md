@@ -189,7 +189,7 @@ The settings combine two independent choices. A **look** sets the appearance: pa
 | Daylight | Midday: a high white sun in a pale blue sky, crisp shadows and the viridis palette with no glow, so the relief reads like a map |
 | Golden hour | Sunset from the tip side: a low orange sun, long shadows, thick warm haze, light shafts toward the sun and the inferno palette |
 | Neon night | A deep violet night full of stars, glowing boxes in the plasma palette with pink rims, strong bloom and bright white spend flashes |
-| Whales | Sunrise over the BTC held in each cell: height and colour show value instead of the number of outputs, with the rows of 10 BTC and above twice as tall, so the large holdings tower over the dust in the magma palette |
+| Whales | Sunrise over the BTC held in each cell: height and colour show value instead of the number of outputs, with the rows of 10 BTC and above twice as tall, so the large holdings tower over the dust in the magma palette. The extra height eases in from 1 BTC, so the surface rises toward 10 BTC instead of meeting a cliff |
 | Pulse | A dim grey landscape on a near-black background with the sky off, where spends flash amber and their glow fades over about 300 blocks; made to watch during playback |
 
 | Quality | What it turns on |
@@ -261,7 +261,7 @@ G or the Settings button opens the panel. Its header shows the look and the qual
 | Height shows | Weighted density, Output count, BTC value | Amplification > Measure; colour follows it unless set otherwise |
 | Colours | Film, Turbo, Viridis, Inferno, Magma, Plasma, Cividis, Grey | Colour > Palette; the custom gradient is edited in Advanced |
 | Height | 0–40 | Amplification > Exaggeration (Advanced allows up to 200) |
-| Big coins | Slider, Normal to Towering | Height multiplier 1 to 4 for the rows at or above the whale threshold (10 BTC) |
+| Big coins | Slider, Normal to Towering | Height multiplier 1 to 4 for the rows at or above the whale threshold (10 BTC), easing in from 1 BTC |
 | Cell shape | Smooth, Columns, Boxes, Stepped | Column cells, their shape and stepped cells; Boxes also steps the landscape beyond the columns. Columns and Boxes need WebGPU |
 | Flashes | Slider, Off to Strong | Heat gain and flash size of spends |
 | Flash trail | Slider, Short to Long | Heat half-life from 10 to 300 blocks, applied when the slider is released (the replay worker recomputes heat) |
@@ -355,7 +355,7 @@ The tables below are generated from `landscape/web/settings.schema.js` by `node 
 | Reference value <br><code>amp.reference</code> | 0.001–10,000,000 (log) | 500 | Whales 50,000 | Value R at which the curve reaches 1, i.e. Exaggeration world units of height. |
 | Exaggeration <br><code>amp.exaggeration</code> | 0–200 world units | 10 | Whales 16 | Height at curve value 1. The landscape is 966.8 units wide (block / 1000) and 207.2 deep (row / 10). |
 | Floor height <br><code>amp.floor</code> | 0–5 world units | 0.05 | — | Minimum height added to every occupied cell so sparse cells stay visible; empty cells stay at 0. |
-| Whale multiplier <br><code>amp.whale</code> | 0–10 x | 1 | Whales 2 | Height multiplier for rows at or above Colour > Whale threshold. |
+| Whale multiplier <br><code>amp.whale</code> | 0–10 x | 1 | Whales 2 | Height multiplier for rows at or above Colour > Whale threshold. It eases in over the decade of amounts below the threshold (from 1 BTC at the default 10 BTC), so the taller rows rise gradually instead of starting at a cliff. |
 | Heat half-life (blocks) <br><code>amp.heatHalfLife</code> | 0.5–100,000 (log) blocks | 30 | Pulse 300 | rebuilds worker. A spend flash fades to half every this many blocks (30 blocks = 0.5 s at 1x, about 5 hours of chain time). Has an effect with Heat gain above 0 or Flash size above 0. |
 | Flash floor <br><code>amp.heatFloor</code> | 0–1 | 0.35 | Pulse 0.5 | Brightness every spend reaches at its block, whatever its amount (as every spent output flashes in the film); 0 makes brightness depend only on the BTC moved. Has an effect with Heat gain above 0. |
 | Full flash at (BTC) <br><code>amp.heatReference</code> | 0.001–100,000 (log) BTC | 100 | — | BTC moved from one cell (summed with its recent spends) that reaches full flash brightness; smaller spends scale down logarithmically to the floor. Has an effect with Heat gain above 0 or Flash size above 0. |

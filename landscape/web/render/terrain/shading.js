@@ -7,7 +7,7 @@ import {
 } from 'three/tsl';
 import { paletteRGB, transferThresholds, whiteHotRow, parseColor } from './palette.js';
 import { rowOfAmount } from '../../data/axis.js';
-import { CURVES, heightOfCpu, HEAT_H0, heatIntensityCpu } from './curve.js';
+import { CURVES, heightOfCpu, HEAT_H0, heatIntensityCpu, WHALE_RAMP_DECADES } from './curve.js';
 
 export { CURVES, heightOfCpu, HEAT_H0, heatIntensityCpu };
 
@@ -29,6 +29,7 @@ export function createShading({ rows }) {
     floor: uniform(0.05),
     whale: uniform(1),
     whiteRow: uniform(-1), // last L0 row (graph row) at/above the white-hot threshold, -1 none
+    whaleRampRow: uniform(-1), // L0 row where the whale multiplier has eased back to 1, -1 none
     whitePalette: uniform(1), // 1 when color.whiteHot uses the white-hot palette on those rows
     ground: uniform(new Color(0, 0, 0)),
     heatColor: uniform(new Color(1, 0.55, 0.2)),
@@ -79,7 +80,7 @@ export function createShading({ rows }) {
     palette: 'film', gradient: null, reverse: false, whiteHot: true, whiteHotBTC: 10,
     offset: 30, upper: 500, gamma: 1,
     curve: 'log', exposure: 1, reference: 500, exponent: 0.5, exaggeration: 10, floor: 0.05, whale: 1,
-    whiteRow: -1,
+    whiteRow: -1, whaleRampRow: -1,
   };
 
   function updateLut() {
@@ -110,6 +111,11 @@ export function createShading({ rows }) {
     const r = rows && rows.length ? whiteHotRow(rows, state.whiteHotBTC) : -1;
     state.whiteRow = r;
     u.whiteRow.value = r;
+    // The whale multiplier eases in over WHALE_RAMP_DECADES below the threshold (curve.js);
+    // a ramp end below 1 sat runs to the last row.
+    const below = r >= 0 ? whiteHotRow(rows, state.whiteHotBTC / 10 ** WHALE_RAMP_DECADES) : -1;
+    state.whaleRampRow = r < 0 ? -1 : below < 0 ? rows.length - 1 : Math.max(r, below);
+    u.whaleRampRow.value = state.whaleRampRow;
   }
 
   function updateCurve() {
@@ -142,6 +148,14 @@ export function createShading({ rows }) {
 
   // ---- TSL functions ---------------------------------------------------------------------
 
+  /** Whale multiplier of an L0 row; mirrors whaleFactorCpu in curve.js. */
+  const whaleFactor = (l0row) => {
+    const span = max(u.whaleRampRow.sub(u.whiteRow), 1);
+    const t = clamp(u.whaleRampRow.sub(l0row).div(span), 0, 1);
+    const eased = float(1).add(u.whale.sub(1).mul(t.mul(t).mul(float(3).sub(t.mul(2)))));
+    return select(l0row.lessThanEqual(u.whiteRow), u.whale, eased);
+  };
+
   /** Height of a cell from its area-normalised height value and its first L0 row. */
   const heightOf = (v, l0row) => {
     const ev = max(v, 0).mul(u.exposure);
@@ -151,7 +165,7 @@ export function createShading({ rows }) {
     const cLin = ev.div(eR);
     const c = select(u.curve.equal(0), cLog, select(u.curve.equal(1), cPow, cLin));
     const h = c.mul(u.exaggeration);
-    const hw = select(l0row.lessThanEqual(u.whiteRow), h.mul(u.whale), h);
+    const hw = h.mul(whaleFactor(l0row));
     return select(v.greaterThan(0), hw.add(u.floor), float(0));
   };
 
@@ -270,7 +284,8 @@ export function createShading({ rows }) {
   /** CPU mirror of the height parameters for picking and bounds. */
   function heightParams() {
     return { curve: state.curve, exposure: state.exposure, reference: state.reference, exponent: state.exponent,
-      exaggeration: state.exaggeration, floor: state.floor, whale: state.whale, whiteRow: state.whiteRow };
+      exaggeration: state.exaggeration, floor: state.floor, whale: state.whale, whiteRow: state.whiteRow,
+      whaleRampRow: state.whaleRampRow };
   }
 
   return {

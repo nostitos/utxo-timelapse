@@ -235,7 +235,7 @@ const ENTRIES = [
     help: 'Minimum height added to every occupied cell so sparse cells stay visible; empty cells stay at 0.' },
   { id: 'amp.whale', section: 'Height', label: 'Whale multiplier', type: 'number',
     min: 0, max: 10, step: 0.01, default: 1, unit: 'x',
-    help: 'Height multiplier for rows at or above Colour > Whale threshold.' },
+    help: 'Height multiplier for rows at or above Colour > Whale threshold. It eases in over the decade of amounts below the threshold (from 1 BTC at the default 10 BTC), so the taller rows rise gradually instead of starting at a cliff.' },
 
   // Amplification: activity
   { id: 'amp.heatHalfLife', section: 'Activity', label: 'Heat half-life (blocks)', type: 'number',

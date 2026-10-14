@@ -1,9 +1,29 @@
 // Height curve on the CPU (pure; no three.js). Mirrors the shader in shading.js exactly
 // (landscape/SPEC.md §6): log: log(1 + e v) / log(1 + e R); power: (e v / (e R))^exponent;
-// linear: e v / (e R). Height = exaggeration * curve, times whale on rows at/above the
-// white-hot row, plus floor for occupied cells; empty cells have height 0.
+// linear: e v / (e R). Height = exaggeration * curve, times the whale factor (whaleFactorCpu),
+// plus floor for occupied cells; empty cells have height 0.
 
 export const CURVES = Object.freeze({ log: 0, power: 1, linear: 2 });
+
+/**
+ * Decades of amounts below the whale threshold over which the whale multiplier eases in:
+ * with the default 10 BTC threshold it is 1 at 1 BTC and reaches amp.whale at 10 BTC.
+ */
+export const WHALE_RAMP_DECADES = 1;
+
+/**
+ * Height multiplier of L0 row l0row (row 0 = largest amounts): p.whale on rows at/above the
+ * white-hot row p.whiteRow, easing back to 1 with a smoothstep across the rows down to
+ * p.whaleRampRow, so the taller whale rows do not end in a cliff at the threshold. Without
+ * whaleRampRow (or with it at whiteRow) the multiplier stops at the threshold.
+ */
+export function whaleFactorCpu(l0row, p) {
+  if (l0row <= p.whiteRow) return p.whale;
+  const end = p.whaleRampRow ?? p.whiteRow;
+  if (!(end > p.whiteRow) || l0row >= end) return 1;
+  const t = (end - l0row) / (end - p.whiteRow);
+  return 1 + (p.whale - 1) * t * t * (3 - 2 * t);
+}
 
 /** Height of a cell with area-normalised value v whose first L0 row is l0row. */
 export function heightOfCpu(v, l0row, p) {
@@ -14,9 +34,7 @@ export function heightOfCpu(v, l0row, p) {
   if (p.curve === 'power') c = Math.pow((e * v) / (e * R), p.exponent);
   else if (p.curve === 'linear') c = (e * v) / (e * R);
   else c = Math.log(1 + e * v) / Math.log(1 + e * R);
-  let h = c * p.exaggeration;
-  if (l0row <= p.whiteRow) h *= p.whale;
-  return h + p.floor;
+  return c * p.exaggeration * whaleFactorCpu(l0row, p) + p.floor;
 }
 
 /** Upper bound of the height of any cell whose value is at most maxV (any row). */

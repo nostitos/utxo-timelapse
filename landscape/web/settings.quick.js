@@ -149,7 +149,7 @@ export const QUICK = deepFreeze([
   { id: 'height', section: 'Data', label: 'Height', type: 'slider', setting: 'amp.exaggeration', min: 0, max: 40, step: 0.5,
     help: 'How tall the landscape is (Advanced allows up to 200).' },
   { id: 'bigCoins', section: 'Data', label: 'Big coins', type: 'blend',
-    help: 'Extra height for the rows at or above the whale threshold (10 BTC by default).',
+    help: 'Extra height for the rows at or above the whale threshold (10 BTC by default), easing in from a tenth of it so there is no cliff.',
     options: [
       option('normal', 'Normal', BIG_COINS.normal),
       option('taller', 'Taller', BIG_COINS.taller),
