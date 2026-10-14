@@ -169,10 +169,21 @@ const CHECKS = [
         out.text = cur.text;
         out.docked = Math.abs(r.left - hud.left) < 1 && Math.abs(r.width - hud.width) < 1 && r.top > hud.bottom && r.top - hud.bottom <= 16;
         move(at.x + 40, at.y + 20); await settle(); const r2 = card.getBoundingClientRect(); out.staysPut = r2.left === r.left && r2.top === r.top;
-        move(5, 5, 'pointerleave'); await frame(); await frame(); out.hidesOffCanvas = card.hidden;
+        // Off the canvas the card lingers, dimmed, stays while the pointer is over it, then hides.
+        const onCard = (type) => card.dispatchEvent(new PointerEvent(type, { pointerId: 9, pointerType: 'mouse' }));
+        move(5, 5, 'pointerleave'); await frame(); await frame(); out.lingers = !card.hidden && card.classList.contains('linger');
+        onCard('pointerenter'); await sleep(1900); await frame(); out.staysOverCard = !card.hidden;
+        onCard('pointerleave'); await sleep(1900); await frame(); await frame(); out.hidesOffCanvas = card.hidden;
         move(at.x, at.y); await settle(); canvas.classList.add('dragging'); await frame(); await frame();
         out.hidesWhileDragging = card.hidden; canvas.classList.remove('dragging');
         move(at.x, at.y); await settle();
+        // Its × hides it until reload: moving over cells, out and back in does not bring it back.
+        out.shownBeforeClose = !card.hidden;
+        card.querySelector('.box-close').click(); await frame();
+        out.closeHides = card.hidden;
+        for (const [dx, dy] of [[0, 0], [40, 20], [-30, -12], [0, 0]]) { move(at.x + dx, at.y + dy); await settle(); }
+        move(5, 5, 'pointerleave'); await frame(); move(at.x, at.y); await settle();
+        out.staysClosed = card.hidden && L.ui.hover.current === null && L.ui.hover.dismissed;
       }
       out.fetches = fetches; out.queries = loads.length; out.local = loads.length > 0 && loads.every((v) => v === false);
       window.fetch = realFetch; L.replay.cell = cell;
@@ -185,7 +196,9 @@ const CHECKS = [
       ['unspent count and value equal the replay worker', !!v.counts],
       ['card docked under the HUD, same edge and width', !!v.docked],
       ['card stays put while the pointer moves', !!v.staysPut],
-      ['hidden off the canvas and while dragging', !!(v.hidesOffCanvas && v.hidesWhileDragging)],
+      ['off the canvas it lingers dimmed, stays while pointed at, then hides', !!(v.lingers && v.staysOverCard && v.hidesOffCanvas)],
+      ['hidden while dragging', !!v.hidesWhileDragging],
+      ['the \u00d7 hides it, and moving over cells, out and back in keeps it hidden', !!(v.shownBeforeClose && v.closeHides && v.staysClosed)],
       ['no requests: ' + v.fetches + ' fetches, ' + v.queries + ' worker queries all load: false', v.fetches === 0 && !!v.local],
     ],
   },

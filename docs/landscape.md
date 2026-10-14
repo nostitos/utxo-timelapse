@@ -80,7 +80,7 @@ Storing the dataset costs about 1.1 USD a month in R2 (75 GB); R2 charges nothin
 | Right-drag or Shift-drag | Orbit around the point under the cursor |
 | Wheel or trackpad pinch | Zoom toward the cursor |
 | Double-click | Fly to that point |
-| Point | A card under the block panel shows the cell under the cursor (under the crosshair in flight mode): its amount band, its blocks and the days they were mined, and its unspent outputs and their value at the current block, updating live from data already in the browser. Ranges read "A to B". Zoomed out, it covers the merged cell drawn there |
+| Point | A card under the block panel shows the cell under the cursor (under the crosshair in flight mode): its amount band, its blocks and the days they were mined, and its unspent outputs and their value at the current block, updating live from data already in the browser. Ranges read "A to B". Zoomed out, it covers the merged cell drawn there. Pointing at nothing leaves the last reading dimmed for a moment, and it stays while the pointer is on the card; its × hides the card until the page reloads |
 | Click or I | Inspect the cell under the cursor (the crosshair in flight mode, the nose circle in plane mode) |
 | Arrows, Q/E, PgUp/PgDn | Pan, rotate, tilt |
 | F or the Fly button | Flight mode: mouse look, WASD, E/Q up and down, Shift 4×, wheel sets speed; the button stays lit while it is on; Esc returns to map mode |
@@ -270,7 +270,7 @@ G or the Settings button opens the panel. Its header shows the look and the qual
 | Flashes | Slider, Off to Strong | Heat gain and flash size of spends |
 | Flash trail | Slider, Short to Long | Heat half-life from 10 to 300 blocks, applied when the slider is released (the replay worker recomputes heat) |
 | Field of view | 15–110° | Camera > Field of view |
-| Show | Grid, Labels, Legend, Minimap, HUD | The overlays. The × on the legend and on the overview hides that box until the page reloads, and leaves these settings unchanged |
+| Show | Grid, Labels, Legend, Minimap, HUD | The overlays. The × on the legend, the overview or the cursor card hides that box until the page reloads, and leaves these settings unchanged |
 
 The Performance section gathers what sets the GPU's work, with a live readout of its cost; the quality tier sets all of them, and the sliders adjust from there. Settings that come in degrees are sliders: the named options sit under the slider as stops, a click jumps to one, and between stops the values blend (colours mix, numbers interpolate). A quick setting shows the option or slider position the current values match, or a dash when they were set by hand in Advanced. Every built-in look reads as one option in each of them; Film's time of day is the exception, because Film turns the sun off (choosing a time of day turns it back on). Quick settings and Advanced settings that have no effect with the current values are dimmed, and their tooltip says why: the bloom settings with Bloom off, Shadows and the sun direction with Film (it has no sun), Flash trail with Flashes off, the cylinder settings with Column cells off. The conditions are `NEEDS` in `landscape/web/settings.schema.js`; a condition on a setting that itself has no effect counts as unmet, and the tooltip names the root cause.
 

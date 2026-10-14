@@ -640,8 +640,12 @@ rounded outward, so the band shown contains the exact one), Blocks (first to las
 UTC dates), Unspent outputs and Value (at the replayed block, from `replay.cell(level, col, row,
 { load: false })`, refreshed at most 4 times a second while blocks change). Every range reads
 "A to B". Zoomed out, the drawn cell merges 2^l columns and 2^rowShift rows; the card covers all
-of them and says so. It never sends a request; it hides while dragging, off the canvas, in plane
-mode (whose top-centre line does the same job) and on touch-only devices. Picking runs at most
+of them and says so. It never sends a request. When the pointer leaves the canvas or aims at
+nothing, the card keeps its last reading, dimmed (`.linger`), for 1.5 s (`LINGER_MS`) and for as
+long as the pointer is over the card, so the pointer can reach its ×; it hides at once while
+dragging, in plane mode (whose top-centre line does the same job), on blur, and on touch-only
+devices. Its × hides it until the page reloads (`hover.dismiss()`, `hover.dismissed`): no pointer
+move, cell change or mode change shows it again, and nothing is saved. Picking runs at most
 once a frame on pointer moves and every 100 ms for a still pointer, so camera moves and playback
 keep it current.
 
@@ -717,8 +721,8 @@ Enter Stack sats (plane mode), Esc exits flight or plane mode/closes the drawer 
 50 BTC coinbase row, ≥10 BTC, 1 BTC, 10,000 sat, 546 sat, 1–100 sat (fly to that row).
 Minimap from the always-resident L6 tile. Inspection drawer: exact worker state for the
 cell, the explorer cell API lifecycle data, and the 2D explorer link.
-The legend and minimap headers each end in a × (`ui/dismiss.js`, `.box-close`) that hides the
-box for the current page load only: main.js keeps the dismissal in memory, so nothing reaches
+The legend and minimap headers each end in a × (`ui/dismiss.js`, `.box-close`, also used by the
+hover card) that hides the box for the current page load only: main.js keeps the dismissal in memory, so nothing reaches
 the settings store, localStorage or the URL hash, and a reload shows the box again. Changing
 `display.legend` or `display.minimap` clears that box's dismissal.
 

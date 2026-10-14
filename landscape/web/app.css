@@ -322,9 +322,11 @@ a { color: var(--mint); }
   -webkit-backdrop-filter: blur(16px) saturate(1.25);
   backdrop-filter: blur(16px) saturate(1.25);
   box-shadow: 0 10px 34px rgba(0, 0, 0, 0.38);
-  pointer-events: none;
 }
 #hover[hidden] { display: none; }
+/* Header with the × (ui/dismiss.js). Lingering (nothing under the pointer) dims the reading. */
+#hover .hv-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+#hover.linger .hv-body { opacity: 0.45; }
 #hover dl { margin: 10px 0 0; display: grid; gap: 5px; }
 #hover dl div { display: flex; justify-content: space-between; gap: 12px; }
 #hover dt { align-self: center; font: 10px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); white-space: nowrap; }
