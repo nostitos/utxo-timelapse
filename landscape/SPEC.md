@@ -576,7 +576,8 @@ gamma 1, unlit: albedo 0, emissive 1, no sun/ambient/rim/shadows/sky/stars/fog, 
 effect off, tone mapping none, exposure 1, neutral grade, AA none, black background and
 ground). **Daylight** (high white sun, viridis, no bloom), **Golden hour** (low sun from the
 tip side, thick haze, god rays, inferno), **Earth** (high white sun in a blue sky, light haze,
-smooth surface, water-blue empty cells under the `earth` palette, no white-hot rows),
+smooth surface, water-blue empty cells under the `earth` palette on a colour scale from 1 to
+25 (offset 1), no white-hot rows),
 **Neon night** (sky off with stars, plasma boxes, pink rim, strong bloom), **Whales** (height
 and colour by BTC value, magma, whale rows twice as tall) and **Pulse** (dim grey on a
 near-black background with the sky off, strong amber flashes with a 300-block trail) each

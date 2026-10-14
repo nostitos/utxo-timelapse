@@ -96,7 +96,7 @@ export const LOOK_INFO = Object.freeze({
   'BitcoinTimelapse.com': 'The film at bitcointimelapse.com: its unlit colours, weighted density through the film palette (white-hot whale rows at 10 BTC and above), stepped cells instead of cylinders, black background and ground; no grid, lighting, shadows, fog, sky, tone mapping or post effects. Matches the film colour at equal density. Heat glow and flashes still appear during playback, like the activity flashes in the film, and are zero right after a seek.',
   Daylight: 'Midday: a high white sun in a pale blue sky, crisp shadows and the viridis palette, with no glow, so the relief reads like a map.',
   'Golden hour': 'Sunset from the tip side: a low orange sun, long shadows, thick warm haze, light shafts toward the sun and the inferno palette.',
-  Earth: 'Midday over an atlas: water-blue empty cells, occupied cells rising from sand through earth to green at the top, blue sky, light haze, shadows and a smooth surface; whale rows stay green.',
+  Earth: 'Midday over an atlas: water-blue empty cells, and land from sand on the sparsest cells through brown earth (about 5 per cell) to green from about 10, the busiest quarter of the land; blue sky, light haze, shadows and a smooth surface; whale rows stay green.',
   'Neon night': 'A deep violet night full of stars, glowing boxes in the plasma palette with pink rims, strong bloom and bright white spend flashes.',
   Whales: 'Sunrise over the BTC held in each cell instead of the number of outputs: the large-amount rows tower over the dust, twice as tall, and the magma palette runs to white on the biggest holdings.',
   Pulse: 'A dim grey landscape where activity shows: spends flash amber and their glow lingers for hundreds of blocks. Press Play to watch the chain breathe.',
@@ -881,10 +881,14 @@ export const LOOK_PRESETS = deepFreeze({
     'color.palette': 'inferno', 'color.background': '#2a1a1a', 'color.ground': '#1a1210',
     'light.emissive': 0.25, 'light.albedo': 0.9, 'color.temperature': 0.25, 'fx.vignette': 0.25,
   },
-  // Empty cells are water; the palette starts at sand, so a cell with one output is land.
+  // Empty cells are water; the palette starts at sand, so a cell with one output is land. The
+  // colour scale runs from 1 to 25 (the film's runs to 500): at the tip half the land cells
+  // have a weighted density below 4 and a tenth above 17, so brown sits near 5 and green
+  // starts near 10.
   Earth: {
     ...TIME_OF_DAY.day, ...SKY.on, ...HAZE.light, ...SHADOWS.on, ...GLOW.off, ...CELL_SHAPES.smooth,
     'color.palette': 'earth', 'color.whiteHot': false, 'color.ground': '#1d5a98', 'color.background': '#7eabef',
+    'color.offset': 1, 'color.upper': 25,
     'color.toneMapping': 'neutral', 'light.emissive': 0.1, 'light.albedo': 0.95, 'light.roughness': 0.9, 'light.rim': 0,
     'light.shadowSoftness': 0.8, 'amp.nowPlane': 0.1,
   },
