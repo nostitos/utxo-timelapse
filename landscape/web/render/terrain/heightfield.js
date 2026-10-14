@@ -8,18 +8,42 @@
 // patch's first cell), optional subdivision 2/4 with nearest/bilinear/bicubic smoothing.
 // Stepped mode: two vertices per cell edge give flat cell tops joined by vertical walls.
 // Skirts hang from every patch edge to hide cracks between levels.
+// Whale band (geo.steppedWhales): a stepped mesh draws the whale rows and the smooth meshes
+// the rest; each keeps its side of the band edge (mode.band 'in' / 'out').
+// On the whale band, a cell narrower than WHALE_MIN_PX on screen is widened (up to
+// WHALE_MAX_GROW times its width), so a distant spike stays a solid line instead of breaking
+// into dots. Each shared cell boundary moves away from the taller of its two cells, so walls
+// stay vertical and the surface stays closed.
 import {
   InstancedBufferGeometry, InstancedBufferAttribute, BufferAttribute, Float32BufferAttribute,
   Mesh, MeshStandardNodeMaterial, DynamicDrawUsage,
 } from 'three/webgpu';
 import {
-  Fn, float, int, vec2, vec3, vec4, floor, min, max, clamp, select, normalize, varying, varyingProperty,
+  Fn, float, int, vec2, vec3, vec4, floor, ceil, min, max, clamp, select, normalize, length, varying, varyingProperty,
   positionGeometry, positionLocal, positionPrevious, instancedBufferAttribute, transformNormalToView,
   normalView, normalWorldGeometry, positionWorld,
 } from 'three/tsl';
 import { PATCH_CELLS } from './lod.js';
 
 export const MAX_PATCH_INSTANCES = 400 * 16;
+/** World depth of one level-0 amount row. */
+const ROW_Z = 0.1;
+/** The stepped side keeps fragments this far past the band edge, so the wall on the edge stays. */
+const BAND_EPS = 0.002;
+/** Minimum on-screen width (px) of an occupied whale cell. */
+export const WHALE_MIN_PX = 1.5;
+/** Largest widening of a whale cell (times its width). */
+export const WHALE_MAX_GROW = 3;
+
+/**
+ * World z where the whale band ends at a level: the far edge of the cell that holds the last
+ * whale row (L0 row whiteRow), so the edge falls on a cell boundary at every level.
+ * rowScale = 2^rowShift of the level; whiteRow < 0 gives 0 (no band).
+ */
+export function whaleBandEnd(whiteRow, rowScale) {
+  if (!(whiteRow >= 0)) return 0;
+  return Math.ceil((whiteRow + 1) / rowScale) * rowScale * ROW_Z;
+}
 
 /** Material that keeps velocity correct for displaced vertices (previous = current). */
 export class TerrainNodeMaterial extends MeshStandardNodeMaterial {
@@ -119,9 +143,12 @@ export function buildPatchGeometry({ sub = 1, stepped = false, cells = PATCH_CEL
 
 /**
  * Builds the terrain material for a mode.
- * mode: {stepped, sub, smoothing: 'none'|'bilinear'|'bicubic'}
+ * mode: {stepped, sub, smoothing: 'none'|'bilinear'|'bicubic', columns, band: null|'in'|'out'}
+ * band 'in' keeps the whale band (z up to whaleBandEnd), 'out' the rest.
+ * view: {eye (vec3 uniform), pxPerUnit (pixels per world unit at distance 1, or per world
+ * unit for an orthographic camera), perspective (1 or 0)}; used by the whale band's minimum width.
  */
-export function buildTerrainMaterial({ atlas, shading, instances, mode }) {
+export function buildTerrainMaterial({ atlas, shading, instances, mode, view = null }) {
   const U = shading.uniforms;
   const I0 = int(0);
   const I1 = int(1);
@@ -196,6 +223,25 @@ export function buildTerrainMaterial({ atlas, shading, instances, mode }) {
       px = tc0.add(lc0).add(bx).mul(cw);
       pz = tr0.add(lr0).add(bz).mul(ch);
       vCell.assign(vec2(lc0.add(bx), lr0.add(bz)));
+      if (mode.band === 'in' && view) {
+        // The boundary this vertex sits on separates its cell from the neighbour on side s
+        // (+1 for a right/front edge, -1 for a left/back edge). Ties go to the left/back cell.
+        const shift = (hN, s, nc, nr, size) => {
+          const selfTaller = height.greaterThan(hN).or(height.equal(hN).and(s.greaterThan(0)));
+          const wx = tc0.add(lc0).add(select(selfTaller, cx, nc)).add(0.5).mul(cw);
+          const wz = tr0.add(lr0).add(select(selfTaller, cz, nr)).add(0.5).mul(ch);
+          const dist = select(view.perspective.greaterThan(0.5), length(vec3(wx, 0, wz).sub(view.eye)), float(1)).max(1e-3);
+          const grow = clamp(dist.mul(WHALE_MIN_PX).div(view.pxPerUnit.mul(size)), 1, WHALE_MAX_GROW);
+          const amount = select(max(height, hN).greaterThan(0), grow.sub(1).mul(0.5).mul(size), float(0));
+          return select(selfTaller, s, s.negate()).mul(amount);
+        };
+        const sx = select(bx.greaterThan(cx), float(1), float(-1));
+        const sz = select(bz.greaterThan(cz), float(1), float(-1));
+        const hx = H(int(lc0.add(cx).add(sx)), int(lr0.add(cz)));
+        const hz = H(int(lc0.add(cx)), int(lr0.add(cz).add(sz)));
+        px = px.add(shift(hx, sx, cx.add(sx), cz, cw));
+        pz = pz.add(shift(hz, sz, cx, cz.add(sz), ch));
+      }
     } else {
       // Vertices beyond the grid edge collapse onto it (no ground strip past the landscape).
       const uu = min(lc0.add(gx.div(sub)), colsT.sub(0.5));
@@ -350,6 +396,11 @@ export function buildTerrainMaterial({ atlas, shading, instances, mode }) {
   material.emissiveNode = emissive;
   material.roughnessNode = U.roughness;
   material.metalnessNode = U.metalness;
+  let keep = null;
+  if (mode.band === 'in' || mode.band === 'out') {
+    const bandEnd = ceil(U.whiteRow.add(1).div(rowScaleF)).mul(rowScaleF).mul(ROW_Z);
+    keep = mode.band === 'in' ? wp.z.lessThanEqual(bandEnd.add(BAND_EPS)) : wp.z.greaterThan(bandEnd);
+  }
   if (mode.columns) {
     // Column mode: hide the heightfield where the columns stand (L0 cell centres inside the
     // focus circle, on resident L0 tiles). The same test selects the columns.
@@ -362,8 +413,10 @@ export function buildTerrainMaterial({ atlas, shading, instances, mode }) {
     const inside = dx.mul(dx).add(dz.mul(dz)).lessThan(cf.z.mul(cf.z));
     const tid = int(l0r).div(I256).mul(int(L0.tilesX)).add(int(l0c).div(I256)).add(int(L0.firstTile));
     const resident = atlas.page(tid).greaterThanEqual(0);
-    material.maskNode = inside.and(resident).not();
+    const outside = inside.and(resident).not();
+    keep = keep ? keep.and(outside) : outside;
   }
+  if (keep) material.maskNode = keep;
   material.userData.mode = { ...mode };
   return material;
 }

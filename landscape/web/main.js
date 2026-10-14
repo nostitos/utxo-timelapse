@@ -2,27 +2,37 @@
 //
 // Creates the settings store, the replay client and the view, wires worker frames to the
 // view, settings to their consumers, and runs the frame loop:
-//   controls -> playback -> view.update -> replay.setTiles (when desired tiles change) -> view.render
+//   follow tip -> controls -> playback -> view.update -> replay.setTiles (when desired tiles change) -> view.render
 // ?webgl=1 forces WebGL2, ?data=URL picks the dataset (default: the current dataset named by
 // /dataset/index.json online, /dataset/ locally), ?explorer=URL the cell API (default: the
 // native explorer on 127.0.0.1:12989 locally, this site online), ?explorer2d=URL the 2D link,
 // ?startup=adaptive|high the first-visit quality (ui/online.js). The URL hash keeps b, cam,
-// mode and the settings preset and overrides.
+// mode, follow and the settings preset and overrides.
 
 import { createPlayback, defaultStartBlock, SPEEDS, STEP_LARGE } from './ui/playback.js';
+import { createTipFollow } from './ui/follow.js';
 import { decodeHash, encodeHash } from './ui/hash.js';
 import { resolvePlace } from './ui/places.js';
 import { createControls, isTypingTarget } from './ui/controls.js';
+import { createPlaneHud } from './ui/plane-hud.js';
+import { createPlaneSound } from './ui/plane-sound.js';
+import { createPlaneModel } from './render/plane-model.js';
+import { CRAFTS, CRAFT_ORDER, craftSpec, nextCraft } from './ui/plane.js';
+import { createStackSats, startStackSats, stopStackSats, stepStackSats } from './ui/stack-sats.js';
+import { loadFun, saveFun, recordBest, bestOf } from './ui/fun-store.js';
+import { createFunMenu, createFunCard } from './ui/fun-menu.js';
+import { createCoins } from './render/coins.js';
 import { createHud } from './ui/hud.js';
 import { createTimeline } from './ui/timeline.js';
 import { createPlacesMenu } from './ui/places-menu.js';
 import { createLegend } from './ui/legend.js';
 import { createMinimap } from './ui/minimap.js';
 import { createInspector } from './ui/inspector.js';
+import { createHover } from './ui/hover.js';
 import { createHelp } from './ui/help.js';
 import { createToast } from './ui/toast.js';
 import { createLoading } from './ui/loading.js';
-import { fmtInt, escapeHtml } from './ui/format.js';
+import { fmtInt, fmtAmount, escapeHtml } from './ui/format.js';
 import { resolveEndpoints, resolveDataUrl, startupMode, chooseStartup, deviceTraits } from './ui/online.js';
 import { gridFromManifest, worldX, worldZ } from './data/grid.js';
 import { FILM_AXIS } from './data/axis.js';
@@ -141,33 +151,154 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
 
     // ---- UI --------------------------------------------------------------------
     const playback = createPlayback({ replay, tip, snapshots: replay.snapshotBlocks || [] });
+    // Follow tip: map and flight mode move along x with the delivered block (ui/follow.js).
+    const follow = createTipFollow();
     const crosshair = $('crosshair');
     let hashDirty = true;
+    // Plane mode needs a keyboard or mouse to steer; touch-only devices keep the map controls.
+    const touchOnly = deviceTraits().coarseOnly;
+    const MODE_NOTICES = {
+      map: 'Map mode',
+      flight: 'Flight: mouse to look, WASD to fly, E/Q up and down, Esc for map mode',
+    };
+    const planeSound = createPlaneSound();
+    // Plane mode draws cylinders farther out and moves that disc ahead of the camera, by the
+    // craft's detailReach and detailShift (the plane: 1.6x and 0.6 radii, so the sharp area
+    // reaches about 2.5x as far in front of it).
+    function applyDetail(mode) {
+      if (typeof view.setDetailAhead !== 'function') return;
+      if (mode === 'plane') {
+        const S = craftSpec(controls.craft);
+        view.setDetailAhead(S.detailShift, S.detailReach);
+      } else view.setDetailAhead(0, 1);
+    }
+    let timeline = null;
 
     const controls = createControls({
       view, canvas, settings: store,
       extent: { minX: 0, maxX: worldX(tip + 1), minZ: 0, maxZ: worldZ(grid.rows) },
+      canFly: !touchOnly,
       onInspect: (x, y) => inspectAt(x, y),
       onNotice: notice,
+      onPad: (action) => {
+        if (action === 'craft') cycleCraft();
+        else if (action === 'game') startRun();
+      },
       onModeChange: (mode) => {
+        // Plane mode marks the nose with its own circle; the centre crosshair is flight mode's.
         crosshair.hidden = mode !== 'flight';
         document.body.classList.toggle('flight', mode === 'flight');
+        document.body.classList.toggle('plane', mode === 'plane');
+        applyDetail(mode);
+        if (timeline) timeline.setFly(mode === 'flight');
+        // Called inside the key press or click that takes off, so the browser lets the sound start.
+        if (mode === 'plane') planeSound.start();
+        else planeSound.stop();
+        // Landing (or switching to flight mode) abandons a Stack sats run and closes its card.
+        if (mode !== 'plane') abandonRun();
         hashDirty = true;
-        notice(mode === 'flight' ? 'Flight: mouse to look, WASD to fly, E/Q up and down, Esc for map mode' : 'Map mode', 'info', 'mode');
+        const message = mode === 'plane' ? craftSpec(controls.craft).name + ' \u00b7 Enter stacks sats \u00b7 Esc to land' : MODE_NOTICES[mode] || 'Map mode';
+        notice(message, 'info', 'mode');
       },
     });
-    const hud = createHud($('hud'));
-    const touchOnly = deviceTraits().coarseOnly;
+    // The craft models and the coins need the real scene; dev pages with a stub view run without them.
+    const planeModel = view.scene ? createPlaneModel({ scene: view.scene }) : null;
+    const coinModels = view.scene ? createCoins({ scene: view.scene }) : null;
+    const planeHud = createPlaneHud({
+      container: $('planehud'), nose: $('plane-nose'), keys: $('planekeys'), pops: $('funpops'), camera: view.camera, canvas, grid,
+      rows: replay.rows, blocktimes: replay.blocktimes, settings: store, sound: planeSound,
+    });
+
+    // ---- Fun: crafts and Stack sats (ui/fun-menu.js, ui/stack-sats.js) ------------------------
+    const funData = loadFun();
+    controls.setCraft(funData.craft);
+    const game = createStackSats({ rows: replay.rows });
+    const groundExtent = { minX: 0, maxX: worldX(tip + 1), minZ: 0, maxZ: worldZ(grid.rows) };
+    const funMenu = createFunMenu({
+      container: $('fun'),
+      getCraft: () => controls.craft,
+      getBest: (craft) => bestOf(funData, 'stack-sats', craft),
+      onCraft: (id) => setCraft(id),
+      onPlay: (kind) => {
+        if (kind === 'stack-sats') startRun();
+        else if (controls.mode !== 'plane') controls.setMode('plane');
+      },
+    });
+    const funCard = createFunCard({
+      container: $('funcard'),
+      onAgain: () => startRun(),
+      onLand: () => controls.setMode('map'),
+    });
+
+    /** Choose the craft (remembered); in flight it changes at once. Not during a Stack sats run. */
+    function setCraft(id, { quiet = false } = {}) {
+      if (!CRAFTS[id] || touchOnly) return false;
+      if (game.running) {
+        if (!quiet) notice('Change craft after this run', 'info', 'craft');
+        return false;
+      }
+      controls.setCraft(id);
+      funData.craft = id;
+      saveFun(undefined, funData);
+      if (controls.mode === 'plane') applyDetail('plane');
+      funMenu.render();
+      if (!quiet) notice(craftSpec(id).name + (controls.mode === 'plane' ? '' : ' \u00b7 T takes off'), 'info', 'craft');
+      return true;
+    }
+    function cycleCraft() {
+      return setCraft(nextCraft(controls.craft));
+    }
+    /** Start (or restart) a Stack sats run, taking off first in map or flight mode. */
+    function startRun() {
+      if (touchOnly) return;
+      funCard.hide();
+      funMenu.close();
+      placesMenu.close();
+      if (controls.mode !== 'plane') controls.setMode('plane');
+      else controls.lock();
+      if (controls.mode !== 'plane') return;
+      startStackSats(game, controls.craft);
+      notice('Stack sats: 60 s \u00b7 follow the coin trails', 'info', 'mode');
+    }
+    /** The minute is up: record the best for the craft and show the end card with a free cursor. */
+    function finishRun() {
+      const result = { sats: game.score, coins: game.collected };
+      const r = recordBest(funData, 'stack-sats', game.craft, result);
+      if (r.isBest) saveFun(undefined, funData);
+      funMenu.render();
+      controls.releaseLock();
+      funCard.show({ ...result, seconds: game.duration, craft: game.craft, best: r.best, isBest: r.isBest });
+    }
+    function abandonRun() {
+      stopStackSats(game);
+      funCard.hide();
+    }
+
+    // Boxes closed with their × stay hidden until the page reloads; nothing is saved. Changing
+    // the box's Overlays setting clears it, so Settings can bring it back without a reload.
+    const dismissed = new Set();
+    const dismiss = (id) => {
+      dismissed.add(id);
+      applyDisplay();
+    };
+    const hud = createHud($('hud'), { onDismiss: () => dismiss('hud') });
     const help = createHelp($('help'), { touchFirst: touchOnly });
-    const legend = createLegend({ container: $('legend'), settings: store });
+    const legend = createLegend({ container: $('legend'), settings: store, onDismiss: () => dismiss('legend') });
     const minimap = createMinimap({
       container: $('minimap'), grid, rows: replay.rows, settings: store,
       onNavigate: (x, z, { dragging }) => moveViewTo(x, z, dragging),
+      onDismiss: () => dismiss('minimap'),
     });
     const inspector = createInspector({
       container: $('inspector'), marker: $('marker'), replay, grid, rows: replay.rows, blocktimes: replay.blocktimes,
       axis, explorerBase, link2d: endpoints.link2d, local: endpoints.local,
       camera: view.camera, canvas, heightAt: (x, z) => view.heightAt(x, z),
+    });
+    // What the pointer (the crosshair in flight mode) is aimed at, from local data only, in a
+    // card docked under the HUD.
+    const hover = createHover({
+      container: $('hover'), canvas, pick: (x, y) => view.pick(x, y), replay, grid, rows: replay.rows, blocktimes: replay.blocktimes,
+      mode: () => controls.mode, anchor: $('hud'), enabled: !touchOnly,
     });
     const placesMenu = createPlacesMenu({
       container: $('places'), tip, blocktimes: replay.blocktimes, rows: replay.rows,
@@ -178,15 +309,63 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       onExport: (json) => ({ ...json, view: viewState() }),
       onImport: (json) => restoreView(json && json.view),
       getShareURL: () => location.origin + location.pathname + location.search + currentHash(),
+      // The Performance section's live readout (ui/quick.js).
+      perf: () => {
+        const s = view.stats || {};
+        const uniform = !!store.get('geo.uniform');
+        const columnsOn = !uniform && view.backend === 'webgpu' && !!store.get('geo.columns');
+        return {
+          gpuMs: s.gpuMs, frameMs: s.frameMs, fps: s.fps,
+          columns: columnsOn ? { drawn: s.columns || 0, needed: s.columnNeeded || 0, budget: s.columnBudget || store.get('geo.instanceBudget'),
+            reach: s.columnRadius || 0, requested: s.columnRequested || 0 } : null,
+          uniform: uniform && Number.isInteger(s.uniformLevel)
+            ? { level: s.uniformLevel, short: (s.uniformDeferred || 0) > 0, coarser: s.uniformCoarser || 0 } : null,
+        };
+      },
     });
-    const timeline = createTimeline({
+    timeline = createTimeline({
       container: $('timeline'), tip, blocktimes: replay.blocktimes, playback,
       onSeek: (b) => playback.seek(b),
       onNotice: notice,
-      onPlaces: () => placesMenu.toggle(),
+      onPlaces: () => {
+        funMenu.close();
+        placesMenu.toggle();
+      },
       onSettings: () => togglePanel(),
       onHelp: () => help.toggle(),
+      onFollow: () => setFollow(!follow.active),
+      onFly: touchOnly ? null : () => controls.toggleFlight(),
+      onFun: touchOnly ? null : () => {
+        // The menu needs the cursor: land first, as G, P and H do.
+        if (controls.mode === 'plane') controls.setMode('map');
+        placesMenu.close();
+        funMenu.toggle();
+      },
     });
+
+    /** Turn Follow tip on or off; on, the camera stays put and moves on with the tip from here. */
+    function setFollow(on, { quiet = false } = {}) {
+      const want = !!on;
+      if (want === follow.active) return;
+      if (want) follow.enable(replay.block);
+      else follow.disable();
+      timeline.setFollow(want);
+      hashDirty = true;
+      if (!quiet) notice(want ? 'Following the tip' : 'Stopped following the tip', 'info', 'follow');
+    }
+
+    /**
+     * Seek for an action that places the camera itself (Places, links, imported views, startup):
+     * Follow tip starts again from the new block instead of moving the camera there. Every other
+     * seek (scrubber, block and date fields, steps) moves a following camera with the tip.
+     */
+    function seekPlacingCamera(block) {
+      follow.beginJump();
+      const p = playback.seek(block);
+      const done = () => follow.endJump(replay.block);
+      p.then(done, done);
+      return p;
+    }
 
     const panelOpen = () => !!(panel && typeof panel.isOpen === 'function' && panel.isOpen());
     // The panel is either open or fully hidden: a collapsed lil-gui title bar would sit on top
@@ -213,17 +392,30 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     }
 
     function applyDisplay() {
-      $('hud').hidden = !store.get('display.hud');
-      $('legend').hidden = !store.get('display.legend');
-      $('minimap').hidden = !store.get('display.minimap');
+      $('hud').hidden = !store.get('display.hud') || dismissed.has('hud');
+      $('legend').hidden = !store.get('display.legend') || dismissed.has('legend');
+      $('minimap').hidden = !store.get('display.minimap') || dismissed.has('minimap');
     }
     applyDisplay();
+
+    // Axis labels are light text for the usual dark ground; on a light one (Paper) they turn dark.
+    function applyLabelInk() {
+      const hex = /^#([0-9a-f]{6})$/i.exec(String(store.get('color.ground')));
+      const n = hex ? parseInt(hex[1], 16) : 0;
+      const luma = (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
+      $('labels').classList.toggle('lbl-on-light', luma > 0.6);
+    }
+    applyLabelInk();
 
     store.subscribe('*', (changes) => {
       const ids = new Set(changes.map((c) => c.id));
       if (ids.has('amp.measure') || ids.has('color.measure')) applyMeasures();
+      if (ids.has('color.ground')) applyLabelInk();
       if (ids.has('amp.heatHalfLife')) replay.setHeatHalfLife(store.get('amp.heatHalfLife'));
       if (ids.has('geo.tileBudget')) replay.setMaxResidentTiles(store.get('geo.tileBudget'));
+      if (ids.has('display.hud')) dismissed.delete('hud');
+      if (ids.has('display.legend')) dismissed.delete('legend');
+      if (ids.has('display.minimap')) dismissed.delete('minimap');
       if (ids.has('display.hud') || ids.has('display.legend') || ids.has('display.minimap')) applyDisplay();
       hashDirty = true;
     });
@@ -239,6 +431,11 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       minimap.applyFrame(frame);
       view.applyFrame(frame);
       view.setBlock(frame.block);
+      // Follow tip: every change of block moves a following camera. Plane mode holds it at every
+      // frame, so no tip motion while flying (not even a frame just before landing) moves the
+      // camera afterwards.
+      if (controls.mode === 'plane') follow.hold(frame.block);
+      else follow.frame(frame.block);
       if (!frame.partial && frame.block != null) gotData = true;
       hook.lastFrame = { seq: frame.seq, block: frame.block, reason: frame.reason, partial: frame.partial, full: (frame.full || []).length, deltas: frame.deltas && frame.deltas.ids ? frame.deltas.ids.length : 0, stats: frame.stats };
     });
@@ -259,8 +456,10 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     }
     function overviewPose() {
       // The whole chain on a diagonal: genesis far away at the upper left, recent eras close at
-      // the lower right, so the relief reads in 3D. Distance scales with the dataset length and
-      // is widened for narrow windows and narrow fields of view.
+      // the lower right, so the relief reads in 3D. The view is aimed past the middle so the tip
+      // edge and the amount scale beside it stay above the timeline and left of the screen edge.
+      // Distance scales with the dataset length and is widened for narrow windows and narrow
+      // fields of view.
       const w = worldX(tip + 1);
       const cam = view.camera;
       const vfov = ((cam.fov || 50) * Math.PI) / 180;
@@ -300,9 +499,9 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         const ahead = h / Math.tan(pitch);
         return controls.poseLookingAt({ x: w + back - ahead, y: 0, z: across / 2 }, { distance: h / Math.sin(pitch), yaw: 90, pitch: (-pitch * 180) / Math.PI });
       }
-      const target = { x: w * 0.58, y: 0, z: worldZ(grid.rows) * 0.5 };
+      const target = { x: w * 0.64, y: 0, z: worldZ(grid.rows) * 0.5 };
       const fit = Math.max(1, 16 / 9 / Math.max(0.2, aspect)) * (Math.tan((25 * Math.PI) / 180) / Math.tan(vfov / 2));
-      const distance = Math.max(40, w * 0.66 * fit);
+      const distance = Math.max(40, w * 0.69 * fit);
       return controls.poseLookingAt(target, { distance, yaw: 36, pitch: -31 });
     }
     function moveViewTo(x, z, immediate) {
@@ -317,14 +516,14 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     async function flyToPlace(place) {
       const p = resolvePlace(place, { tip, minAmt: replay.rows });
       if (!p) throw new Error('Unknown place: ' + place);
-      if (controls.mode === 'flight') controls.setMode('map');
+      if (controls.mode !== 'map') controls.setMode('map');
       if (p.kind === 'era') {
         const f = focus();
         const target = { x: worldX(p.block) - 9, y: 0, z: clamp(f.z, worldZ(300), worldZ(1900)) };
         target.y = ground(target.x, target.z);
         const pose = controls.poseLookingAt(target, { distance: 75, yaw: 28, pitch: -30 });
         notice(p.title + ' \u00b7 block ' + fmtInt(p.block), 'info', 'place');
-        await Promise.all([playback.seek(p.block), controls.flyTo(pose)]);
+        await Promise.all([seekPlacingCamera(p.block), controls.flyTo(pose)]);
       } else {
         const f = focus();
         const edge = worldX((replay.block ?? tip) + 1);
@@ -374,13 +573,16 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     }
 
     // ---- URL hash ---------------------------------------------------------------------
-    const currentHash = () => encodeHash({ block: replay.block, mode: controls.mode, cam: controls.getPose() }, store.toURL());
-    const viewState = () => ({ b: replay.block, cam: controls.getPose(), mode: controls.mode });
+    // Plane mode is not shared: a link made while flying opens in map mode at the camera.
+    const shareMode = () => (controls.mode === 'plane' ? 'map' : controls.mode);
+    const currentHash = () => encodeHash({ block: replay.block, mode: shareMode(), cam: controls.getPose(), follow: follow.active }, store.toURL());
+    const viewState = () => ({ b: replay.block, cam: controls.getPose(), mode: shareMode(), follow: follow.active });
     function restoreView(v) {
       if (!v) return;
       if (v.cam) controls.setPose(v.cam);
       if (v.mode === 'flight' || v.mode === 'map') controls.setMode(v.mode);
-      if (Number.isInteger(v.b)) playback.seek(clamp(v.b, 0, tip));
+      if (typeof v.follow === 'boolean') setFollow(v.follow, { quiet: true });
+      if (Number.isInteger(v.b)) seekPlacingCamera(clamp(v.b, 0, tip));
     }
     let written = location.hash;
     let lastHashCheck = 0;
@@ -407,7 +609,8 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       if (h.settings) store.fromURL(location.hash);
       if (h.cam) controls.flyTo({ position: h.cam, yaw: h.cam.yaw, pitch: h.cam.pitch });
       if (h.mode) controls.setMode(h.mode);
-      if (h.block != null && h.block !== replay.block) playback.seek(clamp(h.block, 0, tip));
+      setFollow(h.follow, { quiet: true });
+      if (h.block != null && h.block !== replay.block) seekPlacingCamera(clamp(h.block, 0, tip));
     });
 
     // ---- keyboard -------------------------------------------------------------------
@@ -438,28 +641,65 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
           break;
         }
         case 'KeyI': {
-          const p = controls.inspectPoint();
+          // In plane mode, inspect where the nose points (its circle), else as the controls say.
+          const p = (controls.mode === 'plane' && planeHud.noseClient()) || controls.inspectPoint();
           if (p) inspectAt(p.x, p.y);
           break;
         }
         case 'KeyF':
           controls.toggleFlight();
           break;
+        case 'KeyT':
+          if (!touchOnly) {
+            funMenu.close();
+            controls.togglePlane();
+          }
+          break;
+        case 'KeyC':
+          if (!touchOnly) cycleCraft();
+          break;
+        case 'Enter':
+        case 'NumpadEnter':
+          // A focused button (the end card's Again, a menu item) handles Enter itself.
+          if (e.target && e.target.closest && e.target.closest('button')) break;
+          if (!touchOnly && controls.mode === 'plane') {
+            e.preventDefault();
+            startRun();
+          }
+          break;
+        case 'KeyN':
+          setFollow(!follow.active);
+          break;
+        case 'KeyM':
+          notice(planeSound.toggleMuted() ? 'Plane sound off' : 'Plane sound on', 'info', 'sound');
+          break;
         case 'KeyG':
+          // Panels need the cursor: leave plane mode (and its pointer lock) first.
+          if (controls.mode === 'plane') controls.setMode('map');
+          funMenu.close();
           togglePanel();
           break;
         case 'KeyP':
+          if (controls.mode === 'plane') controls.setMode('map');
+          funMenu.close();
           placesMenu.toggle();
           break;
         case 'KeyH':
+          if (controls.mode === 'plane') controls.setMode('map');
+          funMenu.close();
           help.toggle();
           break;
         case 'Slash':
-          if (e.shiftKey) help.toggle();
+          if (e.shiftKey) {
+            if (controls.mode === 'plane') controls.setMode('map');
+            funMenu.close();
+            help.toggle();
+          }
           break;
         case 'Escape':
-          if (controls.mode === 'flight') controls.setMode('map');
+          if (controls.mode !== 'map') controls.setMode('map');
           else if (help.open) help.close();
+          else if (funMenu.open) funMenu.close();
           else if (placesMenu.open) placesMenu.close();
           else if (inspector.isOpen) inspector.close();
           else if (panelOpen()) togglePanel(false);
@@ -467,6 +707,9 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         default:
       }
     });
+    // Browsers may keep the sound suspended until a gesture; any key press or click retries.
+    window.addEventListener('keydown', () => planeSound.unlock(), true);
+    window.addEventListener('pointerdown', () => planeSound.unlock(), true);
     window.addEventListener('resize', () => {
       try {
         view.resize();
@@ -483,6 +726,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     }
     // Flight mode needs a keyboard to steer and to leave; touch-only devices open the link in map mode.
     if (initial.mode === 'flight' && !deviceTraits().coarseOnly) controls.setMode('flight');
+    if (initial.follow) setFollow(true, { quiet: true });
     controls.update(0);
     const first = view.update(0);
     if (first && first.desiredTiles) replay.setTiles(first.desiredTiles);
@@ -491,21 +735,88 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       : defaultStartBlock(tip, replay.snapshotBlocks || []);
     stage = 'seek';
     loading.set('Replaying to block ' + fmtInt(startBlock));
-    playback.seek(startBlock).catch((err) => {
+    seekPlacingCamera(startBlock).catch((err) => {
       hook.error = String(err && err.message ? err.message : err);
       notice('Seek failed: ' + hook.error, 'error');
     });
 
     Object.assign(hook, {
       settings: store, replay, view, controls, playback, panel, manifest, grid,
-      ui: { hud, timeline, legend, minimap, inspector, placesMenu, help, toast },
+      ui: { hud, timeline, legend, minimap, inspector, hover, placesMenu, help, toast, funMenu, funCard },
       seek: (b) => playback.seek(b),
       flyTo: (place) => flyToPlace(place),
       inspect: (x, y) => inspectAt(x, y),
       hash: () => currentHash(),
+      follow: {
+        get active() {
+          return follow.active;
+        },
+        /** Blocks the camera still has to glide behind the tip. */
+        get lag() {
+          return follow.lag;
+        },
+        toggle: () => setFollow(!follow.active),
+        set: (on) => setFollow(on),
+      },
+      plane: {
+        get active() {
+          return controls.mode === 'plane';
+        },
+        get takingOff() {
+          return controls.takingOff;
+        },
+        /** Live flight state (ui/plane.js; angles in radians). Checks may move it. */
+        get state() {
+          return controls.plane;
+        },
+        get pose() {
+          const p = controls.plane;
+          return p ? { x: p.x, y: p.y, z: p.z, yaw: (p.yaw * 180) / Math.PI, pitch: (p.pitch * 180) / Math.PI, bank: (p.bank * 180) / Math.PI, speed: p.speed, throttle: p.throttle, bumps: p.bumps } : null;
+        },
+        get model() {
+          return planeModel ? planeModel.object3d : null;
+        },
+        /** The craft plane mode flies; setCraft(id) chooses it (refused during a run). */
+        get craft() {
+          return controls.craft;
+        },
+        crafts: CRAFT_ORDER,
+        setCraft: (id) => setCraft(id, { quiet: true }),
+        get coins() {
+          return coinModels ? coinModels.object3d : null;
+        },
+        game: {
+          get active() {
+            return game.running;
+          },
+          /** Live ui/stack-sats.js state. Checks may move its coins. */
+          get state() {
+            return game;
+          },
+          start: () => startRun(),
+          /** End the run now as if the minute were up: records the best and opens the end card. */
+          stop: () => {
+            if (!game.running) return;
+            stopStackSats(game, { finished: true });
+            finishRun();
+          },
+        },
+        sound: planeSound,
+        takeoff: () => controls.setMode('plane'),
+        land: () => controls.setMode('map'),
+      },
+      fun: {
+        get open() {
+          return funMenu.open;
+        },
+        toggle: () => funMenu.toggle(),
+        get card() {
+          return funCard.open;
+        },
+      },
       state: () => ({
         ready: hook.ready, block: replay.block, busy: replay.busy, playback: playback.state,
-        mode: controls.mode, pose: controls.getPose(), backend: view.backend, preset: store.preset,
+        mode: controls.mode, follow: follow.active, pose: controls.getPose(), backend: view.backend, preset: store.preset,
         inspector: inspector.isOpen ? inspector.current : null, status: lastStatus,
       }),
       idle: () => !replay.busy && !playback.state.op && replay.block != null,
@@ -521,7 +832,26 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       const dt = clamp((now - last) / 1000, 0, 0.1);
       last = now;
       try {
+        // Follow tip before the controls, so their update draws the shifted camera. Plane mode
+        // holds it, so following resumes from wherever the camera lands.
+        if (controls.mode === 'plane') follow.hold(replay.block);
+        else {
+          const dx = follow.step(dt);
+          if (dx !== 0) controls.shiftX(dx);
+        }
         controls.update(dt);
+        // Stack sats steps once the craft has taken off; otherwise only the coin fades advance.
+        const flying = controls.mode === 'plane' && !controls.takingOff ? controls.plane : null;
+        const ev = stepStackSats(game, game.running ? flying : null, dt, { ground, extent: groundExtent });
+        for (const c of ev.collected) {
+          planeHud.pop('+' + fmtAmount(c.value));
+          planeSound.coin();
+        }
+        if (ev.ended) finishRun();
+        if (coinModels) coinModels.update(game);
+        if (planeModel) planeModel.update(controls.plane, dt);
+        planeHud.update(controls.plane, replay.block, game);
+        planeSound.update(controls.plane);
         playback.tick(dt);
         const u = view.update(dt);
         const desired = u && u.desiredTiles;
@@ -549,6 +879,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
           inspector.onBlock(block, { playing: pstate.playing });
         }
         inspector.updateMarker();
+        hover.update(now);
         syncPanel();
         if (!$('minimap').hidden) minimap.draw({ block, pose: controls.getPose(), footprint: controls.footprint() });
         syncHash(now);

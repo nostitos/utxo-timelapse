@@ -1,10 +1,12 @@
-// Settings store: validation, batching, presets, Custom detection, JSON/URL/localStorage.
+// Settings store: validation, batching, looks and quality, Custom detection, saved presets,
+// JSON/URL/localStorage and the reasons a setting has no effect.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SCHEMA, SCHEMA_BY_ID, PRESETS } from '../web/settings.schema.js';
 import {
   createSettingsStore, mergeHash, valuesEqual, sliderPosition, sliderValue, toSearchParams,
   SETTINGS_FORMAT, STORAGE_KEY, encodeURLValue, decodeURLValue, validateValue,
+  PRESETS_KEY, PRESETS_FORMAT, MAX_USER_PRESETS, unmetNeed,
 } from '../web/settings.js';
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -54,7 +56,9 @@ const EDITS = {
 
 test('starts at High with no overrides; get returns schema defaults', () => {
   const s = make();
-  assert.equal(s.basePreset, 'High');
+  assert.equal(s.quality, 'High');
+  assert.equal(s.look, 'Landscape');
+  assert.equal(s.modified, false);
   assert.equal(s.preset, 'High');
   assert.deepEqual(s.overrides(), {});
   for (const e of SCHEMA) assert.ok(valuesEqual(s.get(e.id), e.default), e.id);
@@ -118,7 +122,7 @@ test('subscribe batches per microtask, coalesces, filters and unsubscribes', asy
   s.set('fx.bloom', false);
   s.set('amp.floor', 0.5);
   s.set('amp.floor', 0.05); // back to the original: no notification
-  s.set('light.sunIntensity', 3); // unchanged: no notification
+  s.set('light.sunIntensity', 5); // unchanged: no notification
   assert.equal(all.length, 0, 'delivery is asynchronous');
   await tick();
   assert.equal(all.length, 1, 'one batch');
@@ -153,12 +157,13 @@ test('a throwing subscriber does not block the others', async () => {
   assert.equal(errors.length, 1);
 });
 
-test('presets apply, preferences survive, and Custom is detected', async () => {
+test('looks and quality: the look wins, quality keeps hand changes, preferences survive, Custom is detected', async () => {
   const s = make();
   const states = [];
   s.onPresetChange((state) => states.push(state));
   s.set('camera.fov', 80);
   assert.equal(s.applyPreset('Ultra'), 'Ultra');
+  assert.equal(s.quality, 'Ultra');
   assert.equal(s.get('light.volumetric'), true);
   assert.equal(s.get('light.shadowMapSize'), 4096);
   assert.equal(s.get('camera.fov'), 80, 'presets never change preferences');
@@ -166,19 +171,44 @@ test('presets apply, preferences survive, and Custom is detected', async () => {
   assert.deepEqual(s.overrides(), { 'camera.fov': 80 });
   s.set('color.palette', 'viridis');
   assert.equal(s.preset, 'Custom');
-  assert.equal(s.basePreset, 'Ultra');
+  assert.equal(s.modified, true);
   assert.deepEqual(s.overrides(), { 'color.palette': 'viridis', 'camera.fov': 80 });
-  s.set('color.palette', 'film');
-  assert.equal(s.preset, 'Ultra');
-  s.applyPreset('Film');
+  // Changing quality keeps the hand change and moves the rest to the new tier.
+  assert.equal(s.setQuality('High'), 'High');
+  assert.equal(s.get('color.palette'), 'viridis');
+  assert.equal(s.get('light.volumetric'), false);
+  assert.equal(s.get('light.shadowMapSize'), 2048);
+  // Choosing a look drops hand changes and keeps the quality.
+  assert.equal(s.applyPreset('BitcoinTimelapse.com'), 'BitcoinTimelapse.com');
+  assert.equal(s.look, 'BitcoinTimelapse.com');
+  assert.equal(s.quality, 'High');
+  assert.equal(s.get('color.palette'), 'film');
   assert.equal(s.get('light.albedo'), 0);
   assert.equal(s.get('color.toneMapping'), 'none');
-  s.applyPreset('High');
-  assert.equal(s.get('light.albedo'), 0.85, 'applying a preset restores defaults for ids it does not name');
+  assert.equal(s.preset, 'BitcoinTimelapse.com \u00b7 High');
+  // The look wins over the tier where both name a setting.
+  s.setQuality('Ultra');
+  assert.equal(s.preset, 'BitcoinTimelapse.com \u00b7 Ultra');
+  assert.equal(s.get('geo.smoothing'), 'none', 'BitcoinTimelapse.com over Ultra');
+  assert.equal(s.get('light.volumetric'), false, 'BitcoinTimelapse.com over Ultra');
+  assert.equal(s.get('light.shadowMapSize'), 4096, 'Ultra where BitcoinTimelapse.com says nothing');
+  s.setLook('Daylight');
+  s.setQuality('Performance');
+  assert.equal(s.get('light.shadows'), true, 'Daylight keeps its shadows at Performance');
+  assert.equal(s.get('display.scale'), 0.75, 'Performance still lowers the resolution');
+  s.setLook('Golden hour');
+  assert.equal(s.get('light.godRays'), true);
+  s.setLook('Landscape');
+  s.setQuality('High');
+  assert.equal(s.get('light.albedo'), 0.85, 'Landscape at High is the schema defaults');
   assert.equal(s.get('color.toneMapping'), 'agx');
+  assert.equal(s.preset, 'High');
   assert.throws(() => s.applyPreset('Ludicrous'), /Unknown preset/);
+  assert.throws(() => s.setLook('High'), /Unknown look/);
+  assert.throws(() => s.setQuality('BitcoinTimelapse.com'), /Unknown quality/);
+  assert.throws(() => s.setQuality('Film'), /Unknown quality/);
   await tick();
-  assert.deepEqual(states.at(-1), { preset: 'High', basePreset: 'High', overrides: 1, webgpu: true });
+  assert.deepEqual(states.at(-1), { preset: 'High', quality: 'High', look: 'Landscape', modified: false, overrides: 1, webgpu: true, userPresets: [] });
 });
 
 test('reset restores the base preset for a group, an id or everything', () => {
@@ -201,18 +231,22 @@ test('reset restores the base preset for a group, an id or everything', () => {
 test('JSON round trip restores every value, the base preset and the Custom state', () => {
   const a = make();
   a.applyPreset('Ultra');
+  a.setLook('Golden hour');
   a.setMany(EDITS);
   const text = JSON.stringify(a);
   const data = JSON.parse(text);
   assert.equal(data.format, SETTINGS_FORMAT);
   assert.equal(data.preset, 'Ultra');
+  assert.equal(data.quality, 'Ultra');
+  assert.equal(data.look, 'Golden hour');
   assert.equal(Object.keys(data.values).length, SCHEMA.length);
   const b = make();
   const report = b.fromJSON(text);
   assert.equal(report.applied.length, SCHEMA.length);
   assert.deepEqual(report.ignored, []);
   assert.deepEqual(report.invalid, []);
-  assert.equal(b.basePreset, 'Ultra');
+  assert.equal(b.quality, 'Ultra');
+  assert.equal(b.look, 'Golden hour');
   assert.equal(b.preset, 'Custom');
   for (const e of SCHEMA) assert.ok(valuesEqual(b.get(e.id), a.get(e.id)), e.id);
   assert.deepEqual(b.overrides(), a.overrides());
@@ -221,9 +255,94 @@ test('JSON round trip restores every value, the base preset and the Custom state
   assert.deepEqual(partial.applied, ['fx.bloom']);
   assert.deepEqual(partial.ignored, ['nope.id']);
   assert.deepEqual(partial.invalid, ['fx.ao']);
-  assert.equal(partial.preset, 'Film');
+  assert.equal(partial.look, 'BitcoinTimelapse.com', 'Film is the earlier name of BitcoinTimelapse.com');
+  assert.equal(partial.quality, 'High');
   assert.throws(() => make().fromJSON({ format: 'something-else', values: {} }), /Unsupported settings format/);
   assert.throws(() => make().fromJSON('[1,2]'), TypeError);
+});
+
+test('exports and links from before looks: Film loads as the BitcoinTimelapse.com look at High', () => {
+  // A single-axis export from the Film preset, as the earlier app wrote it.
+  const film = make();
+  assert.equal(film.setLook('Film'), 'BitcoinTimelapse.com', 'the earlier name still sets the look');
+  const values = film.toJSON().values;
+  const old = make();
+  const report = old.fromJSON({ format: SETTINGS_FORMAT, preset: 'Film', values });
+  assert.equal(old.look, 'BitcoinTimelapse.com');
+  assert.equal(old.quality, 'High');
+  assert.equal(old.modified, false);
+  assert.equal(old.preset, 'BitcoinTimelapse.com \u00b7 High');
+  assert.deepEqual(report.invalid, []);
+  // An earlier Balanced export: Landscape look at Balanced, nothing changed.
+  const balanced = make();
+  balanced.applyPreset('Balanced');
+  const b = make();
+  b.setLook('Pulse');
+  b.fromJSON({ format: SETTINGS_FORMAT, preset: 'Balanced', values: balanced.toJSON().values });
+  assert.equal(b.look, 'Landscape');
+  assert.equal(b.preset, 'Balanced');
+  // Links: preset=Film means the BitcoinTimelapse.com look; look= names a look; an unknown look is reported.
+  const l = make();
+  const r = l.fromURL('#b=1&preset=Film&color.gamma=2');
+  assert.equal(r.look, 'BitcoinTimelapse.com');
+  assert.equal(l.quality, 'High');
+  assert.equal(l.get('color.gamma'), 2);
+  assert.equal(l.get('light.albedo'), 0);
+  const g = make();
+  assert.equal(g.fromURL('preset=Ultra&look=Golden+hour').look, 'Golden hour');
+  assert.equal(g.preset, 'Golden hour \u00b7 Ultra');
+  assert.equal(g.toURL(), 'preset=Ultra&look=Golden+hour');
+  assert.deepEqual(make().fromURL('look=Moonbase').invalid, ['look']);
+  assert.equal(mergeHash('#b=5&look=Pulse&preset=High&fx.grain=1', 'preset=Ultra'), 'b=5&preset=Ultra');
+});
+
+test('the Film look is now BitcoinTimelapse.com: links, exports, stored settings and saved looks keep working', () => {
+  // A link from between looks and the rename (look=Film) opens the look; the share link uses the new name.
+  const u = make();
+  const r = u.fromURL('#b=5&preset=Ultra&look=Film&fx.grain=0.2');
+  assert.equal(r.look, 'BitcoinTimelapse.com');
+  assert.deepEqual(r.invalid, []);
+  assert.equal(u.preset, 'Custom');
+  assert.equal(u.get('light.albedo'), 0);
+  assert.equal(u.toURL(), 'preset=Ultra&look=BitcoinTimelapse.com&fx.grain=0.2');
+  assert.equal(make().fromURL(u.toURL()).look, 'BitcoinTimelapse.com', 'the new link round-trips');
+  // A JSON export of the Film look and a browser's stored settings (the same format) load it.
+  const exported = { format: SETTINGS_FORMAT, preset: 'Balanced', quality: 'Balanced', look: 'Film', baseLook: 'Film', values: {} };
+  const j = make();
+  const report = j.fromJSON(exported);
+  assert.equal(report.look, 'BitcoinTimelapse.com');
+  assert.equal(report.lookFallback, null);
+  assert.equal(j.preset, 'BitcoinTimelapse.com \u00b7 Balanced');
+  assert.equal(j.toJSON().look, 'BitcoinTimelapse.com');
+  assert.equal(j.toJSON().baseLook, 'BitcoinTimelapse.com');
+  const storage = memoryStorage();
+  storage.setItem(STORAGE_KEY, JSON.stringify({ ...exported, values: { 'color.gamma': 2 } }));
+  const stored = make({ storage, autosave: false });
+  assert.equal(stored.load(), true);
+  assert.equal(stored.look, 'BitcoinTimelapse.com');
+  assert.equal(stored.get('color.gamma'), 2);
+  // A saved look built on Film, from another browser's export or this browser's storage.
+  const elsewhere = make().fromJSON({ ...exported, look: 'Old film', baseLook: 'Film', values: { 'color.gamma': 3 } });
+  assert.equal(elsewhere.lookFallback, 'Old film');
+  assert.equal(elsewhere.look, 'BitcoinTimelapse.com');
+  storage.setItem(PRESETS_KEY, JSON.stringify({ format: PRESETS_FORMAT, presets: [
+    { name: 'Old film', savedAt: null, look: 'Film', quality: 'High', overrides: { 'color.gamma': 2.5 } },
+  ] }));
+  const saved = make({ storage, autosave: false });
+  assert.equal(saved.userPreset('Old film').look, 'BitcoinTimelapse.com');
+  assert.equal(saved.setLook('Old film'), 'Old film');
+  assert.equal(saved.baseLook, 'BitcoinTimelapse.com');
+  assert.equal(saved.get('light.albedo'), 0);
+  assert.equal(saved.get('color.gamma'), 2.5);
+  assert.match(saved.toURL(), /^preset=High&look=BitcoinTimelapse\.com&color\.gamma=2\.5$/);
+  // The earlier name is reserved, accepted wherever a look is named, and never a quality.
+  assert.throws(() => saved.saveUserPreset('Film'), /built-in name/);
+  assert.equal(saved.isLook('Film'), true);
+  assert.equal(saved.isPresetAvailable('Film'), true);
+  assert.equal(saved.canonicalLook('Film'), 'BitcoinTimelapse.com');
+  assert.equal(saved.canonicalLook('Paper'), 'Paper');
+  assert.deepEqual(saved.baseValues('Film', 'High'), saved.baseValues('BitcoinTimelapse.com', 'High'));
+  assert.equal(saved.looks.includes('Film'), false, 'the look list shows the current name only');
 });
 
 test('URL round trip: preset plus url ids that differ, foreign keys ignored', () => {
@@ -265,12 +384,12 @@ test('URL round trip: preset plus url ids that differ, foreign keys ignored', ()
   assert.equal(c.get('camera.fov'), 50);
   assert.equal(c.get('color.gamma'), 2);
   assert.equal(c.preset, 'Custom');
-  assert.equal(c.basePreset, 'Film');
+  assert.equal(c.look, 'BitcoinTimelapse.com');
 
   // No settings keys: nothing changes.
   const d = make();
   d.set('fx.grain', 0.4);
-  assert.deepEqual(d.fromURL('#b=1&cam=1,2,3&mode=fly'), { found: false, preset: null, applied: [], ignored: [], invalid: [] });
+  assert.deepEqual(d.fromURL('#b=1&cam=1,2,3&mode=fly'), { found: false, preset: null, quality: null, look: null, applied: [], ignored: [], invalid: [] });
   assert.equal(d.get('fx.grain'), 0.4);
 
   // Unknown preset, malformed values and unknown dotted keys are reported.
@@ -324,7 +443,7 @@ test('localStorage save/load, corrupted data and quota fallback', () => {
   const b = make({ storage, autosave: false });
   assert.equal(b.load(), true);
   for (const e of SCHEMA) assert.ok(valuesEqual(b.get(e.id), a.get(e.id)), e.id);
-  assert.equal(b.basePreset, 'Extreme');
+  assert.equal(b.quality, 'Extreme');
 
   storage.setItem(STORAGE_KEY, '{not json');
   assert.equal(make({ storage }).load(), false);
@@ -359,11 +478,17 @@ test('autosave writes shortly after changes', async () => {
 test('WebGL2 caps presets at High and keeps WebGPU-only features off', () => {
   const s = make({ capabilities: { backend: 'webgl2' } });
   assert.equal(s.webgpu, false);
-  assert.equal(s.basePreset, 'High');
+  assert.equal(s.quality, 'High');
   assert.equal(s.applyPreset('Ultra'), 'High');
   assert.equal(s.applyPreset('Extreme'), 'High');
   assert.equal(s.preset, 'High');
-  assert.equal(s.applyPreset('Film'), 'Film');
+  assert.equal(s.applyPreset('BitcoinTimelapse.com'), 'BitcoinTimelapse.com');
+  // The data looks' boxes need compute: on WebGL2 their far landscape stays stepped.
+  s.setLook('Outputs');
+  assert.equal(s.get('geo.columns'), false);
+  assert.equal(s.get('geo.stepped'), true);
+  assert.equal(s.modified, false);
+  s.setLook('BitcoinTimelapse.com');
   assert.equal(s.set('geo.columns', true), false);
   assert.equal(s.set('fx.ssgi', true), false);
   assert.equal(s.set('color.exposureMode', 'auto'), 'manual');
@@ -379,7 +504,7 @@ test('WebGL2 caps presets at High and keeps WebGPU-only features off', () => {
   assert.equal(s.get('light.cascades'), 4);
   const t = make({ capabilities: { webgpu: false } });
   const capped = t.fromJSON({ preset: 'Extreme', values: { 'geo.columns': true, 'fx.ssr': true, 'light.cascades': 4, 'color.palette': 'magma' } });
-  assert.equal(t.basePreset, 'High');
+  assert.equal(t.quality, 'High');
   assert.equal(t.get('geo.columns'), false);
   assert.equal(t.get('fx.ssr'), false, "Extreme's own values do not become overrides of High");
   assert.equal(t.get('light.cascades'), 3);
@@ -392,7 +517,7 @@ test('WebGL2 caps presets at High and keeps WebGPU-only features off', () => {
   ultra.setMany({ 'color.gamma': 1.4, 'camera.fov': 70 });
   const onWebGL2 = make({ capabilities: { backend: 'webgl2' } });
   onWebGL2.fromJSON(JSON.stringify(ultra));
-  assert.equal(onWebGL2.basePreset, 'High');
+  assert.equal(onWebGL2.quality, 'High');
   assert.deepEqual(onWebGL2.overrides(), { 'color.gamma': 1.4, 'camera.fov': 70 });
 });
 
@@ -405,7 +530,7 @@ test('setCapabilities after a late WebGPU failure caps the preset and keeps over
   const states = [];
   s.onPresetChange((state) => states.push(state));
   s.setCapabilities({ webgpu: false });
-  assert.equal(s.basePreset, 'High');
+  assert.equal(s.quality, 'High');
   assert.equal(s.get('geo.columns'), false);
   assert.equal(s.get('fx.ssr'), false);
   assert.equal(s.get('display.ssaa'), 1);
@@ -415,14 +540,14 @@ test('setCapabilities after a late WebGPU failure caps the preset and keeps over
   assert.equal(s.get('color.exposureMode'), 'manual');
   assert.deepEqual(s.overrides(), { 'color.palette': 'viridis', 'camera.fov': 65 });
   await tick();
-  assert.deepEqual(states.at(-1), { preset: 'Custom', basePreset: 'High', overrides: 2, webgpu: false });
+  assert.deepEqual(states.at(-1), { preset: 'Custom', quality: 'High', look: 'Landscape', modified: true, overrides: 2, webgpu: false, userPresets: [] });
   // A capability change alone (no value changes) still notifies preset listeners.
   const quiet = make();
   const seen = [];
   quiet.onPresetChange((state) => seen.push(state));
   quiet.setCapabilities({ backend: 'webgl2' });
   await tick();
-  assert.deepEqual(seen, [{ preset: 'High', basePreset: 'High', overrides: 0, webgpu: false }]);
+  assert.deepEqual(seen, [{ preset: 'High', quality: 'High', look: 'Landscape', modified: false, overrides: 0, webgpu: false, userPresets: [] }]);
   // backend information wins over earlier flags.
   const v = make({ capabilities: { backend: 'webgpu', compute: true } });
   v.setCapabilities({ webgpu: false });
@@ -438,7 +563,152 @@ test('capability limits lower capMax entries without making the preset Custom', 
   s.applyPreset('Extreme');
   assert.equal(s.get('geo.instanceBudget'), 1500000);
   assert.equal(s.preset, 'Extreme');
-  assert.equal(s.presetValues('Extreme')['geo.tileBudget'], 200);
+  assert.equal(s.baseValues('Landscape', 'Extreme')['geo.tileBudget'], 200);
+});
+
+test('saved presets: save, list, reload, overwrite, delete, name rules and storage errors', async () => {
+  const storage = memoryStorage();
+  const s = make({ storage, autosave: false });
+  s.setLook('Daylight');
+  s.setQuality('Ultra');
+  s.setMany({ 'light.fogDensity': 0.01, 'fx.grain': 0.2, 'camera.fov': 70 });
+  const { record, replaced } = s.saveUserPreset('  Foggy noon ');
+  assert.equal(replaced, null);
+  assert.equal(record.name, 'Foggy noon');
+  assert.equal(record.look, 'Daylight');
+  assert.equal(record.quality, 'Ultra');
+  assert.deepEqual(Object.keys(record.overrides).sort(), ['fx.grain', 'light.fogDensity'], 'preferences stay out');
+  assert.equal(s.look, 'Foggy noon');
+  assert.equal(s.baseLook, 'Daylight');
+  assert.equal(s.modified, false);
+  assert.equal(s.preset, 'Foggy noon \u00b7 Ultra');
+  const stored = JSON.parse(storage.map.get(PRESETS_KEY));
+  assert.equal(stored.format, PRESETS_FORMAT);
+  assert.equal(stored.presets.length, 1);
+
+  // Another store on the same storage lists it; choosing it brings its quality and values.
+  const t = make({ storage, autosave: false });
+  assert.deepEqual(t.userPresets.map((p) => p.name), ['Foggy noon']);
+  assert.equal(t.setLook('foggy NOON'), 'Foggy noon', 'names match in any case');
+  assert.equal(t.quality, 'Ultra');
+  assert.equal(t.get('light.fogDensity'), 0.01);
+  assert.equal(t.get('color.palette'), 'viridis');
+  assert.equal(t.get('camera.fov'), 50, 'preferences are not part of a saved look');
+  // Quality changes keep it; reset returns to it.
+  t.setQuality('Balanced');
+  assert.equal(t.get('light.fogDensity'), 0.01);
+  assert.equal(t.get('display.aa'), 'smaa');
+  t.set('fx.grain', 0.9);
+  assert.equal(t.preset, 'Custom');
+  t.reset();
+  assert.equal(t.get('fx.grain'), 0.2);
+  assert.equal(t.modified, false);
+
+  // A link from a saved look is self-contained: the built-in look plus explicit values.
+  const url = t.toURL();
+  assert.match(url, /^preset=Balanced&look=Daylight&/);
+  const elsewhere = make();
+  elsewhere.fromURL(url);
+  for (const e of SCHEMA) if (e.url) assert.ok(valuesEqual(elsewhere.get(e.id), t.get(e.id)), e.id);
+  // A JSON export names the saved look; a browser without it falls back to the built-in look.
+  const report = make().fromJSON(t.toJSON());
+  assert.equal(report.lookFallback, 'Foggy noon');
+  assert.equal(report.look, 'Daylight');
+
+  // Overwrite (any case) replaces the record and reports the previous one.
+  s.set('fx.grain', 0.5);
+  const again = s.saveUserPreset('FOGGY NOON');
+  assert.equal(again.replaced.overrides['fx.grain'], 0.2);
+  assert.equal(again.record.overrides['fx.grain'], 0.5);
+  assert.equal(s.userPresets.length, 1);
+  // Undo of the overwrite puts the earlier record back.
+  s.restoreUserPreset(again.replaced);
+  assert.equal(s.userPreset('foggy noon').overrides['fx.grain'], 0.2);
+  assert.equal(s.preset, 'Custom', 'the current values now differ from the restored record');
+
+  // Name rules.
+  for (const bad of ['', '   ', 'x'.repeat(41), 'High', 'film', 'bitcointimelapse.COM', 'Custom', 'golden HOUR', 'money MAP']) {
+    assert.throws(() => s.saveUserPreset(bad), Error, JSON.stringify(bad));
+  }
+  assert.equal(s.saveUserPreset('x'.repeat(40)).record.name.length, 40);
+
+  // Deleting the active one keeps the values on its built-in look.
+  s.setLook('Foggy noon');
+  const before = s.values();
+  const removed = s.deleteUserPreset('Foggy noon');
+  assert.equal(removed.name, 'Foggy noon');
+  assert.equal(s.look, 'Daylight');
+  assert.deepEqual(s.values(), before);
+  assert.equal(s.modified, true);
+  assert.throws(() => s.deleteUserPreset('Foggy noon'), /No saved preset/);
+  s.restoreUserPreset(removed, { activate: true });
+  assert.equal(s.look, 'Foggy noon');
+  assert.equal(s.modified, false);
+
+  // At most 50.
+  const full = make({ storage: memoryStorage(), autosave: false });
+  for (let i = 0; i < MAX_USER_PRESETS; i++) full.saveUserPreset('P' + i);
+  assert.throws(() => full.saveUserPreset('one more'), /50 saved presets/);
+  assert.equal(full.saveUserPreset('P7').replaced.name, 'P7', 'overwriting still works when full');
+
+  // Corrupt storage reads as no presets; a failed write throws; no storage cannot save.
+  const broken = memoryStorage();
+  broken.setItem(PRESETS_KEY, '{oops');
+  assert.deepEqual(make({ storage: broken }).userPresets, []);
+  broken.setItem(PRESETS_KEY, JSON.stringify({ format: PRESETS_FORMAT, presets: [{ name: 'ok', look: 'Nope', quality: 'Turbo', overrides: { 'fx.grain': 2, 'camera.fov': 99, 'nope.x': 1 } }, { name: 'High' }, 7] }));
+  const loaded = make({ storage: broken }).userPresets;
+  assert.deepEqual(loaded.map((p) => [p.name, p.look, p.quality, p.overrides]), [['ok', 'Landscape', 'High', { 'fx.grain': 1 }]]);
+  const tiny = memoryStorage(10);
+  assert.throws(() => make({ storage: tiny, autosave: false }).saveUserPreset('big'), /storage is full or blocked/);
+  assert.throws(() => make({ storage: null }).saveUserPreset('nowhere'), /presets cannot be saved/);
+
+  // Preset listeners hear about the list.
+  const u = make({ storage: memoryStorage(), autosave: false });
+  const states = [];
+  u.onPresetChange((state) => states.push(state));
+  u.saveUserPreset('Mine');
+  await tick();
+  assert.deepEqual(states.at(-1).userPresets, ['Mine']);
+  assert.equal(states.at(-1).look, 'Mine');
+});
+
+test('needs: a setting without effect names the root cause', () => {
+  const s = make();
+  assert.equal(s.inert('fx.bloomStrength'), null);
+  s.set('fx.bloom', false);
+  assert.equal(s.inert('fx.bloomStrength').text, 'Bloom off');
+  // Shadow settings while shadows are on but the sun is out: the sun is the cause.
+  s.set('light.sunIntensity', 0);
+  assert.equal(s.inert('light.shadowMapSize').text, 'Sun intensity 0');
+  s.set('light.sunIntensity', 3);
+  // The shadow filter also sets the volumetric light's shadow-map type.
+  s.set('light.shadows', false);
+  assert.equal(s.inert('light.shadowFilter').text, 'Shadows off and Volumetric light off');
+  s.set('light.volumetric', true);
+  assert.equal(s.inert('light.shadowFilter'), null);
+  s.setMany({ 'light.volumetric': false, 'light.shadows': true });
+  // With albedo 0 the sun still makes specular highlights; ambient light shows nowhere.
+  s.set('light.albedo', 0);
+  assert.equal(s.inert('light.sunElevation'), null);
+  assert.equal(s.inert('light.ambient').text, 'Albedo 0');
+  // Alternatives: the heat reference matters for the glow or the flash sprites.
+  s.set('color.heatGain', 0);
+  assert.equal(s.inert('amp.heatReference'), null, 'flash sprites still read it');
+  s.set('amp.flashSize', 0);
+  assert.equal(s.inert('amp.heatReference').text, 'Heat gain 0 and Flash size 0');
+  // BitcoinTimelapse.com: no sky, no sun, no fog, so the sun direction does nothing.
+  const f = make();
+  f.setLook('BitcoinTimelapse.com');
+  assert.equal(f.inert('light.sunElevation').text, 'Sun intensity 0, Sky off, Volumetric light off and God rays off');
+  assert.equal(f.inert('color.background'), null, 'the background shows when the sky is off');
+  assert.equal(f.inert('geo.subdivision').text, 'Stepped cells on');
+  f.set('geo.stepped', false);
+  assert.equal(f.inert('geo.smoothing').text, 'Subdivision 1x');
+  // The pure helper works on any getter.
+  const byId = new Map(SCHEMA.map((e) => [e.id, e]));
+  const values = { 'fx.dof': true, 'fx.dofAutoFocus': true };
+  assert.equal(unmetNeed(SCHEMA_BY_ID.get('fx.dofFocus').needs, (id) => values[id], byId).text, 'Auto focus on');
+  assert.equal(unmetNeed(undefined, () => 0, byId), null);
 });
 
 test('slider mapping: log entries are logarithmic, min-0 log entries reach 0', () => {

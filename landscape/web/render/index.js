@@ -162,6 +162,8 @@ export async function createLandscapeView({
     stats,
 
     setBlock(block) { if (terrain.setBlock) terrain.setBlock(block); },
+    /** Plane mode: column detail reach times farther, moved shift radii ahead (0, 1 = centred on the camera). */
+    setDetailAhead(shift, reach) { if (terrain.setDetailAhead) terrain.setDetailAhead(shift, reach); },
     applyFrame(frame) {
       if (frame && frame.stats) workerStats = frame.stats;
       if (terrain.applyFrame) terrain.applyFrame(frame);
@@ -216,6 +218,15 @@ export async function createLandscapeView({
       stats.drawCalls = info.drawCalls;
       const ts = terrain.stats || {};
       stats.instances = ts.instances || 0;
+      stats.columns = ts.columns || 0;
+      stats.columnRadius = ts.columnRadius || 0;
+      stats.columnRequested = ts.columnRequested || 0;
+      stats.columnNeeded = ts.columnNeeded || 0;
+      stats.columnBudget = ts.columnBudget || 0;
+      stats.uniformLevel = ts.uniformLevel ?? null;
+      stats.uniformDeferred = ts.uniformDeferred || 0;
+      stats.uniformCoarser = ts.uniformCoarser || 0;
+      stats.columnAhead = ts.columnAhead || 0;
       stats.tiles = ts.tiles ?? 0;
       stats.resident = ts.resident ?? 0;
       stats.terrainTriangles = ts.triangles;

@@ -92,7 +92,7 @@ const controls = new OrbitControls(camera, canvas);
 controls.target.set(cam[3], cam[4], cam[5]);
 controls.update();
 
-const isFilm = settings.preset === 'Film';
+const isFilm = settings.look === 'BitcoinTimelapse.com';
 if (!isFilm && q.get('lights') !== '0') {
   const sun = new THREE.DirectionalLight(0xffffff, 2.2);
   sun.position.set(-300, 400, 500);

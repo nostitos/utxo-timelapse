@@ -9,7 +9,7 @@ import {
 } from 'three/webgpu';
 import {
   Fn, uniform, vec2, vec3, vec4, float, int, positionWorld, positionWorldDirection, cameraPosition,
-  exp, mix, smoothstep, max, dot, pow, normalize, length, fog, select, abs, floor, fract, rand, step, clamp,
+  exp, mix, smoothstep, max, dot, pow, length, fog, select, abs, floor, rand, step, clamp,
   screenCoordinate, interleavedGradientNoise, texture, reference, renderGroup, vogelDiskSample,
   Loop, If,
 } from 'three/tsl';
@@ -117,7 +117,6 @@ export function createEnvironment({ renderer, scene, camera, capabilities }) {
     starRadius: uniform(0.15),
     volDensity: uniform(1),
     volAnisotropy: uniform(0.55),
-    volFrame: uniform(0),
     sunScreen: uniform(new Vector2(0.5, 0.5)),
     sunVisible: uniform(0),
   };
@@ -244,12 +243,19 @@ export function createEnvironment({ renderer, scene, camera, capabilities }) {
     material.name = 'volumetric-scattering';
     material.steps = 32;
     material.fog = false;
-    material.offsetNode = fract(interleavedGradientNoise(screenCoordinate).add(u.volFrame));
+    // A fixed per-pixel dither of the ray start; render/post.js blurs the half-resolution
+    // result. (A per-frame offset relied on TRAA to average and sparkled during any motion.)
+    material.offsetNode = interleavedGradientNoise(screenCoordinate);
     material.scatteringNode = Fn(({ positionRay }) => {
       const h = positionRay.y.max(0);
       const density = exp(h.mul(u.fogFalloff).negate()).mul(u.volDensity);
-      const view = normalize(positionRay.sub(cameraPosition));
-      const c = dot(view, u.sunDir);
+      // Cosine between the view ray and the sun. The march ends at the camera, so where the
+      // dither offset is close to 1 the last sample lies within a rounding error of it, and
+      // normalising that near-zero vector gave cosines far outside [-1, 1]: the phase
+      // function's clamped denominator then made single texels thousands of times brighter
+      // than the haze, white dots that flickered with the TRAA jitter at Ultra and Extreme.
+      const toSample = positionRay.sub(cameraPosition);
+      const c = dot(toSample, u.sunDir).div(length(toSample).max(0.01)).clamp(-1, 1);
       const g = u.volAnisotropy;
       const g2 = g.mul(g);
       const denom = g2.add(1).sub(g.mul(2).mul(c)).max(1e-4);
@@ -349,9 +355,7 @@ export function createEnvironment({ renderer, scene, camera, capabilities }) {
   const tmp = new Vector3();
   const fwd = new Vector3();
   let lastProjection = '';
-  let frame = 0;
   function update(cam, viewportHeightPx) {
-    frame++;
     // Sun target under the point the camera looks at (only the direction matters for CSM).
     cam.getWorldDirection(fwd);
     const t = fwd.y < -0.05 ? Math.min(4000, cam.position.y / -fwd.y) : 300;
@@ -383,7 +387,6 @@ export function createEnvironment({ renderer, scene, camera, capabilities }) {
       vol.light.shadow.camera.far = d + 2.5 * r;
       vol.light.target.updateMatrixWorld();
       vol.light.updateMatrixWorld();
-      u.volFrame.value = (frame * 0.618034) % 1;
     }
 
     // Sun position on screen for god rays, in post-pass uv (top-left origin, y down).

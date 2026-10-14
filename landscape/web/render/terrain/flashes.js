@@ -13,6 +13,7 @@ import {
   cameraPosition, modelWorldMatrix,
 } from 'three/tsl';
 import { flashLook } from './curve.js';
+import { noGBufferWrites } from '../gbuffer.js';
 
 export const FLASH_CAPACITY = 32768;
 export const FLASH_LIFE_MS = 1400;
@@ -49,6 +50,7 @@ export function createFlashes({ shading, capacity = FLASH_CAPACITY }) {
   material.depthWrite = false;
   material.blending = AdditiveBlending;
   material.fog = true;
+  noGBufferWrites(material); // the quad must not stamp the normal/SSR/velocity buffers
   const p = instancedBufferAttribute(posAttr);
   const v = instancedBufferAttribute(valAttr);
   const wp = modelWorldMatrix.mul(vec4(p.xyz, 1)).xyz;

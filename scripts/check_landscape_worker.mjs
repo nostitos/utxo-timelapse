@@ -19,7 +19,9 @@ if (rowsPath) rowsBytes = new Uint8Array(readFileSync(rowsPath));
 else {
   // Synthetic non-increasing table with some empty rows.
   const t = new Float64Array(ROWS);
-  for (let r = 0; r < ROWS; r++) t[r] = Math.max(1, Math.floor(1e13 / Math.pow(1.0155, r)) - (r % 97 === 5 ? 0 : 0));
+  // 1.012 per row keeps rows 0-1999 strictly decreasing and above the tail (about 435 sat at
+  // row 1999); a steeper decay reached 1 sat before row 2000 and broke the order there.
+  for (let r = 0; r < ROWS; r++) t[r] = Math.max(1, Math.floor(1e13 / Math.pow(1.012, r)));
   for (let r = 2000; r < ROWS; r++) t[r] = Math.max(1, ROWS - r);
   t[2001] = t[2000];
   rowsBytes = new Uint8Array(t.buffer);

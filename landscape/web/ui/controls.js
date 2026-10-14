@@ -1,4 +1,4 @@
-// Camera navigation (landscape/SPEC.md §8): map mode and flight mode.
+// Camera navigation (landscape/SPEC.md §8): map mode, flight mode and plane mode.
 //
 // The camera pose is a position plus yaw and pitch (no roll); yaw 0 looks toward -z,
 // pitch < 0 looks down. Map mode expresses every gesture as a rigid move of that pose:
@@ -14,9 +14,21 @@
 // WASD, E/Q up/down, Shift 4x, wheel sets speed, speed scales with height above the
 // terrain, and collision keeps the camera above the surface. On touch, one finger looks
 // and two fingers fly (spread to go forward, drag to slide or climb).
+// Plane mode (T or the Fun menu, desktop only): the chosen craft (plane, bird or jet; setCraft,
+// also in flight) flies on from the view centre (ui/plane.js) and flies like a plane: the
+// mouse is a stick that springs back to the centre, sideways banks and the bank turns, up
+// raises the nose (Invert Y: back; A/D and the left/right arrows bank, up/down pitch), W/S set
+// the throttle, Shift boosts, the wheel sets the chase distance (kept per craft). The chase
+// camera swings after the craft. Esc, losing the pointer lock or T again returns to map mode
+// where the camera is; releaseLock() frees the cursor without landing (the Stack sats end
+// card). A standard gamepad also works: left stick banks and pitches, RT/LT throttle, A boost,
+// Start takes off or lands, B lands, Y and X call onPad('craft') and onPad('game').
+// Follow tip (ui/follow.js) moves map and flight mode along x with shiftX, carrying the
+// points a gesture or animation in progress is anchored to.
 
 import { Vector3, Quaternion, Euler } from 'three';
 import { TAP_SLOP_PX, TAP_MAX_MS, DOUBLE_TAP_MS, pairOf, pairDelta, classifyTwoFinger, createTapTracker } from './touch.js';
+import { CRAFTS, craftSpec, createPlane, switchCraft, stepPlane, stickByMouse, chasePose, shakeOffset, gamepadInput } from './plane.js';
 
 const DEG = Math.PI / 180;
 const UP = new Vector3(0, 1, 0);
@@ -27,6 +39,7 @@ const MAX_DIST = 4000;
 const CLICK_PX = 5;
 const MOVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown',
   'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'ShiftLeft', 'ShiftRight']);
+const MODES = ['map', 'flight', 'plane'];
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 const capture = (el, id) => {
@@ -64,9 +77,11 @@ export function forwardOf(yaw, pitch, out = new Vector3()) {
 /**
  * extent ({minX, maxX, minZ, maxZ}, world units) is the landscape's ground rectangle. Points
  * that miss the terrain are kept within it, so gestures over empty background or the sky
- * move the camera at the landscape's scale.
+ * move the camera at the landscape's scale. canFly = false refuses plane mode (touch-only
+ * devices, which have no keys or mouse to steer it). onPad(action) receives the gamepad's
+ * 'craft' (Y) and, in plane mode, 'game' (X) presses.
  */
-export function createControls({ view, canvas, settings, onInspect, onModeChange, onNotice, bounds, extent } = {}) {
+export function createControls({ view, canvas, settings, onInspect, onModeChange, onNotice, onPad, bounds, extent, canFly = true } = {}) {
   const camera = view.camera;
   const lim = Object.assign({ minX: -400, maxX: 1400, minZ: -400, maxZ: 650, maxY: 4000 }, bounds || {});
   const pos = new Vector3(483, 260, 560);
@@ -92,6 +107,18 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
   let lastPick = null;
   let moving = 0;
   let zoom = null; // {point, pending}: wheel zoom glides toward the cursor point
+  let plane = null; // ui/plane.js state while in plane mode
+  let craft = 'plane'; // the craft plane mode takes off in
+  // Chase distance per craft: the wheel sets the flown craft's, and each starts at its default.
+  const chaseBy = Object.fromEntries(Object.values(CRAFTS).map((c) => [c.id, c.chaseDistance]));
+  let chase = chaseBy[craft];
+  const pad = { start: false, exit: false, craft: false, game: false, input: null };
+  let reduceMotion = null;
+  try {
+    reduceMotion = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  } catch {
+    reduceMotion = null;
+  }
   const euler = new Euler(0, 0, 0, 'YXZ');
   const tmpO = new Vector3();
   const tmpD = new Vector3();
@@ -237,7 +264,8 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
   function touched() {
     moving = performance.now();
     zoom = null;
-    if (anim) {
+    // In plane mode the only animation is the takeoff, which input does not interrupt.
+    if (anim && mode !== 'plane') {
       const a = anim;
       anim = null;
       a.resolve({ cancelled: true });
@@ -288,40 +316,138 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
 
   // ---- flight ----------------------------------------------------------------------
   function look(dx, dy) {
+    if (mode === 'plane') {
+      if (plane && !anim) stickByMouse(plane, dx, dy, { sensitivity: setting('camera.sensitivity', 1), invertY: !!setting('camera.invertY', false) });
+      return;
+    }
     const sens = setting('camera.sensitivity', 1) * 0.0022;
     const inv = setting('camera.invertY', false) ? -1 : 1;
     yaw = wrap(yaw - dx * sens);
     pitch = clamp(pitch - dy * sens * inv, -89 * DEG, 89 * DEG);
   }
 
-  function requestLock() {
+  function requestLock(message = 'Pointer lock unavailable: drag to look') {
     if (!canvas.requestPointerLock) return;
+    if (document.pointerLockElement === canvas) return;
     try {
       const p = canvas.requestPointerLock();
       if (p && typeof p.catch === 'function') {
-        p.catch(() => onNotice && onNotice('Pointer lock unavailable: drag to look', 'warn'));
+        p.catch(() => onNotice && onNotice(message, 'warn'));
       }
     } catch {
-      if (onNotice) onNotice('Pointer lock unavailable: drag to look', 'warn');
+      if (onNotice) onNotice(message, 'warn');
     }
   }
 
   function setMode(next) {
-    if (next !== 'map' && next !== 'flight') return;
+    if (!MODES.includes(next)) return;
+    if (next === 'plane' && !canFly) return;
     if (next === mode) return;
     touched();
+    if (anim) {
+      // Leaving plane mode during the takeoff: stop where the camera is.
+      const a = anim;
+      anim = null;
+      a.resolve({ cancelled: true });
+    }
     mode = next;
     vel.set(0, 0, 0);
     held.clear();
     keyOrbit.pivot = null;
+    plane = null;
     if (mode === 'flight') {
       speedMul = 1;
       requestLock();
+    } else if (mode === 'plane') {
+      takeOff();
+      requestLock('Pointer lock unavailable: drag to steer');
     } else if (document.pointerLockElement === canvas) {
       document.exitPointerLock();
     }
-    canvas.classList.toggle('flight', mode === 'flight');
+    canvas.classList.toggle('flight', mode !== 'map');
     if (onModeChange) onModeChange(mode);
+  }
+
+  // ---- plane -----------------------------------------------------------------------
+  /** Spawn the plane above the ground point at the view centre, heading along the view, and ease the camera behind it. */
+  function takeOff() {
+    const c = centerPoint();
+    const e = extent || lim;
+    const x = clamp(c.x, e.minX, e.maxX);
+    const z = clamp(c.z, e.minZ, e.maxZ);
+    const S = craftSpec(craft);
+    chase = chaseBy[S.id];
+    plane = createPlane({ craft: S.id, x, y: ground(x, z) + S.spawnHeight, z, yaw });
+    const cam = chasePose(plane, chase, ground);
+    const dist = pos.distanceTo(tmpV.set(cam.x, cam.y, cam.z));
+    api.flyTo({
+      position: { x: cam.x, y: cam.y, z: cam.z }, yaw: cam.yaw / DEG, pitch: cam.pitch / DEG,
+      duration: clamp(0.6 + Math.log10(1 + dist) * 0.2, 0.6, 1.2),
+    });
+  }
+
+  function updatePlane(dt) {
+    if (!plane) return;
+    const inv = setting('camera.invertY', false) ? -1 : 1;
+    const input = {
+      throttle: key('KeyW') - key('KeyS'),
+      roll: key('KeyD') + key('ArrowRight') - key('KeyA') - key('ArrowLeft'),
+      pitch: (key('ArrowUp') - key('ArrowDown')) * inv,
+      boost: !!(key('ShiftLeft') || key('ShiftRight')),
+    };
+    if (pad.input) {
+      input.roll += pad.input.roll;
+      input.pitch += pad.input.pitch;
+      input.throttle += pad.input.throttle;
+      input.boost = input.boost || pad.input.boost;
+    }
+    stepPlane(plane, input, dt, { ground, collision: !!setting('camera.collision', true), bounds: extent || lim });
+    placeChase();
+  }
+
+  /** Camera behind the plane (swinging after it), with the bump shake unless reduced motion is on. */
+  function placeChase() {
+    const c = chasePose(plane, chase, ground);
+    pos.set(c.x, c.y, c.z);
+    yaw = c.yaw;
+    pitch = c.pitch;
+    if (plane.shake > 0 && !(reduceMotion && reduceMotion.matches)) {
+      const s = shakeOffset(plane, chase);
+      pos.x += Math.cos(yaw) * s.x;
+      pos.z -= Math.sin(yaw) * s.x;
+      pos.y += s.y;
+    }
+    moving = performance.now();
+  }
+
+  /** First connected standard gamepad: Start takes off or lands, B lands, the rest steers. */
+  function pollGamepad() {
+    let gp = null;
+    try {
+      const list = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
+      for (const g of list || []) {
+        if (g && g.connected && g.mapping === 'standard') {
+          gp = g;
+          break;
+        }
+      }
+    } catch {
+      gp = null;
+    }
+    const input = gp ? gamepadInput(gp, { invertY: !!setting('camera.invertY', false) }) : null;
+    const start = !!(input && input.start);
+    const exit = !!(input && input.exit);
+    const craftBtn = !!(input && input.craft);
+    const gameBtn = !!(input && input.game);
+    if (start && !pad.start) setMode(mode === 'plane' ? 'map' : 'plane');
+    else if (exit && !pad.exit && mode === 'plane') setMode('map');
+    if (craftBtn && !pad.craft && onPad) onPad('craft');
+    if (gameBtn && !pad.game && mode === 'plane' && onPad) onPad('game');
+    pad.start = start;
+    pad.exit = exit;
+    pad.craft = craftBtn;
+    pad.game = gameBtn;
+    pad.input = mode === 'plane' ? input : null;
   }
 
   // ---- events ----------------------------------------------------------------------
@@ -332,7 +458,7 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
       touchDown(e);
       return;
     }
-    if (mode === 'flight') {
+    if (mode === 'flight' || mode === 'plane') {
       if (document.pointerLockElement !== canvas) {
         drag = { kind: 'look', id: e.pointerId, x0: e.clientX, y0: e.clientY, lx: e.clientX, ly: e.clientY, moved: false, t0: performance.now() };
         capture(canvas, e.pointerId);
@@ -438,11 +564,11 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
     const b = fingers.get(ids[1]);
     const pair = pairOf(a, b);
     tg = {
-      kind: mode === 'flight' ? 'fly' : 'two',
+      kind: mode === 'flight' ? 'fly' : mode === 'plane' ? 'ignore' : 'two',
       ids,
       start: [{ x: a.x, y: a.y }, { x: b.x, y: b.y }],
       prev: pair,
-      grab: mode === 'flight' ? null : anchorAt(pair.x, pair.y),
+      grab: mode === 'map' ? anchorAt(pair.x, pair.y) : null,
     };
     return pair;
   }
@@ -465,11 +591,11 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
       // A touch near a tap that just ended is the second tap of a double tap: the first tap
       // no longer inspects, and dragging this finger up or down zooms.
       const second = mode === 'map' && taps.pending(e.clientX, e.clientY);
-      if (second || mode === 'flight') {
+      if (second || mode !== 'map') {
         clearTimeout(tapTimer);
         tapTimer = 0;
       }
-      if (mode === 'flight') startLook(e.pointerId, e.clientX, e.clientY);
+      if (mode !== 'map') startLook(e.pointerId, e.clientX, e.clientY);
       else if (second) tg = { kind: 'tapzoom', id: e.pointerId, ly: e.clientY, anchor: anchorAt(e.clientX, e.clientY) };
       else startPan(e.pointerId, e.clientX, e.clientY);
     } else if (fingers.size === 2) {
@@ -496,8 +622,12 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
         // Drag the scene: moving the finger right turns the view left, down looks up.
         const k = 0.004 * setting('camera.sensitivity', 1);
         const inv = setting('camera.invertY', false) ? -1 : 1;
-        yaw = wrap(yaw + (f.x - tg.lx) * k);
-        pitch = clamp(pitch + (f.y - tg.ly) * k * inv, -89 * DEG, 89 * DEG);
+        if (mode === 'plane') {
+          if (plane && !anim) stickByMouse(plane, f.x - tg.lx, f.y - tg.ly, { sensitivity: setting('camera.sensitivity', 1), invertY: inv < 0 });
+        } else {
+          yaw = wrap(yaw + (f.x - tg.lx) * k);
+          pitch = clamp(pitch + (f.y - tg.ly) * k * inv, -89 * DEG, 89 * DEG);
+        }
         tg.lx = f.x;
         tg.ly = f.y;
       } else {
@@ -508,6 +638,7 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
       return;
     }
     if (!tg.ids.includes(e.pointerId)) return;
+    if (tg.kind === 'ignore') return;
     const a = fingers.get(tg.ids[0]);
     const b = fingers.get(tg.ids[1]);
     if (!a || !b) return;
@@ -551,7 +682,7 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
       if (fingers.size === 1) {
         // Carry on with the remaining finger, grabbing the ground under it afresh.
         const [id, r] = [...fingers.entries()][0];
-        if (mode === 'flight') startLook(id, r.x, r.y);
+        if (mode !== 'map') startLook(id, r.x, r.y);
         else startPan(id, r.x, r.y);
       } else if (tg && tg.ids && tg.ids.includes(e.pointerId)) {
         startTwo();
@@ -576,7 +707,7 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
     if (s.maxFingers !== 1) return;
     const x = e.clientX;
     const y = e.clientY;
-    if (mode === 'flight') {
+    if (mode !== 'map') {
       if (onInspect) onInspect(x, y);
       return;
     }
@@ -600,6 +731,13 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
   function onWheel(e) {
     e.preventDefault();
     let dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1);
+    if (mode === 'plane') {
+      // Wheel down moves the chase camera back, up brings it closer.
+      const S = craftSpec(craft);
+      chase = clamp(chase * Math.exp(clamp(dy, -400, 400) * 0.0015), S.chaseMin, S.chaseMax);
+      chaseBy[S.id] = chase;
+      return;
+    }
     if (mode === 'flight') {
       let next;
       if (settings && typeof settings.set === 'function') {
@@ -651,14 +789,14 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
     const locked = document.pointerLockElement === canvas;
     if (locked) {
       hadLock = true;
-    } else if (hadLock && mode === 'flight') {
+    } else if (hadLock && mode !== 'map') {
       hadLock = false;
       setMode('map');
     }
   }
 
   function onMouseMove(e) {
-    if (mode === 'flight' && document.pointerLockElement === canvas) {
+    if (mode !== 'map' && document.pointerLockElement === canvas) {
       touched();
       look(e.movementX || 0, e.movementY || 0);
     }
@@ -763,7 +901,7 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
       return mode;
     },
     get moving() {
-      return !!anim || !!drag || !!tg || held.size > 0 || vel.lengthSq() > 1e-8 || performance.now() - moving < 250;
+      return mode === 'plane' || !!anim || !!drag || !!tg || held.size > 0 || vel.lengthSq() > 1e-8 || performance.now() - moving < 250;
     },
     get pointer() {
       return lastPointer;
@@ -771,13 +909,51 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
     get speedMultiplier() {
       return speedMul;
     },
+    /** Live ui/plane.js state while in plane mode (null otherwise). */
+    get plane() {
+      return plane;
+    },
+    /** True while the plane is taking off (the camera is easing in behind it). */
+    get takingOff() {
+      return mode === 'plane' && !!anim;
+    },
+    get chaseDistance() {
+      return chase;
+    },
+    /** The craft plane mode flies (ui/plane.js CRAFTS id). */
+    get craft() {
+      return craft;
+    },
+    /** Choose the craft; in flight it changes at once (same pose and throttle). False for an unknown id. */
+    setCraft(id) {
+      if (!CRAFTS[id]) return false;
+      craft = id;
+      chase = chaseBy[id];
+      if (plane) switchCraft(plane, id);
+      return true;
+    },
+    /** Free the cursor (exit pointer lock) without leaving flight or plane mode. */
+    releaseLock() {
+      if (typeof document !== 'undefined' && document.pointerLockElement === canvas) {
+        hadLock = false;
+        document.exitPointerLock();
+      }
+    },
+    /** Ask for pointer lock again in flight or plane mode (call from a key press or click). */
+    lock() {
+      if (mode === 'plane') requestLock('Pointer lock unavailable: drag to steer');
+      else if (mode === 'flight') requestLock();
+    },
     setMode,
     toggleFlight() {
       setMode(mode === 'flight' ? 'map' : 'flight');
     },
-    /** Client point to inspect: the crosshair in flight, else the last pointer position. */
+    togglePlane() {
+      setMode(mode === 'plane' ? 'map' : 'plane');
+    },
+    /** Client point to inspect: the crosshair in flight and plane mode, else the last pointer position. */
     inspectPoint() {
-      if (mode === 'flight' || !lastPointer) return centerClient();
+      if (mode !== 'map' || !lastPointer) return centerClient();
       return lastPointer;
     },
     centerPoint,
@@ -785,7 +961,9 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
     ray,
     update(dt) {
       const step = Math.min(Math.max(dt, 0), 0.1);
+      pollGamepad();
       if (anim) updateAnim(step);
+      else if (mode === 'plane') updatePlane(step);
       else if (mode === 'flight') updateFlight(step);
       else updateMap(step);
       const fov = setting('camera.fov', camera.fov);
@@ -853,6 +1031,38 @@ export function createControls({ view, canvas, settings, onInspect, onModeChange
       sync();
       if (to.distanceToSquared(save) < 1e-10) return Promise.resolve({ cancelled: false });
       return api.flyTo({ position: to, duration });
+    },
+    /**
+     * Follow tip: move the camera dx along x (world units), keeping its direction, together
+     * with every point an animation or gesture in progress is anchored to, so they carry on
+     * in the moving frame. Cancels nothing; does nothing in plane mode.
+     */
+    shiftX(dx) {
+      if (!Number.isFinite(dx) || dx === 0 || mode === 'plane') return;
+      // A pan drag's grab and pivot can be the same point: shift each point once.
+      const points = new Set();
+      const add = (p) => {
+        if (p && Number.isFinite(p.x)) points.add(p);
+      };
+      if (anim) {
+        add(anim.from.pos);
+        add(anim.to.pos);
+      }
+      if (zoom) add(zoom.point);
+      add(keyOrbit.pivot);
+      if (drag) {
+        add(drag.grab);
+        add(drag.pivot);
+      }
+      if (tg) {
+        add(tg.grab);
+        add(tg.anchor);
+      }
+      for (const p of points) p.x += dx;
+      pos.x += dx;
+      if (mode === 'flight') flightLimits();
+      else constrain();
+      sync();
     },
     /** Ground footprint of the view as [x, z] corners (for the minimap). */
     footprint(maxDistance = 2500) {

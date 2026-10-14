@@ -8,7 +8,7 @@ import { dateToBlock, parseUtc, toDateTimeInput, blockTime } from '../web/ui/tim
 import { encodeHash, decodeHash, encodeCam, decodeCam } from '../web/ui/hash.js';
 import {
   createPlayback, planPlay, snapshotAtOrBelow, speedById, defaultStartBlock, SPEEDS, STEP_LARGE,
-  START_BEFORE_TIP,
+  START_BEFORE_TIP, speedHint, downloadPace,
 } from '../web/ui/playback.js';
 import { ERAS, BANDS, bandRows, resolvePlace, eraBlock } from '../web/ui/places.js';
 import { buildMinAmtTable, rowOfAmount } from '../web/data/axis.js';
@@ -116,7 +116,7 @@ test('hash round trip keeps settings untouched', () => {
   assert.deepEqual(d.cam, { x: 483.12, y: 96.4, z: 402, yaw: -12.35, pitch: -35 });
   assert.equal(d.settings, settings);
   // Without '#', with a leading '?' settings string, and with URLSearchParams.
-  assert.deepEqual(decodeHash('b=5&mode=map'), { block: 5, mode: 'map', cam: null, settings: '' });
+  assert.deepEqual(decodeHash('b=5&mode=map'), { block: 5, mode: 'map', cam: null, follow: false, settings: '' });
   assert.equal(encodeHash({ block: 7 }, '?preset=High'), '#b=7&preset=High');
   assert.equal(encodeHash({ block: 7 }, new URLSearchParams({ preset: 'Ultra' })), '#b=7&preset=Ultra');
   assert.equal(encodeHash({}), '');
@@ -127,6 +127,21 @@ test('hash round trip keeps settings untouched', () => {
   assert.equal(bad.cam, null);
   assert.equal(bad.settings, 'x=1&b2=4');
   assert.equal(decodeHash('#b=12.5').block, null);
+  // Follow tip: follow=1 after the mode; absent, 0 or any other value is off.
+  const followed = encodeHash({ block: 314000, mode: 'map', cam, follow: true }, 'preset=High');
+  assert.equal(followed, '#b=314000&mode=map&follow=1&cam=483.120,96.400,402.000,-12.35,-35.00&preset=High');
+  assert.equal(decodeHash(followed).follow, true);
+  assert.equal(decodeHash(followed).settings, 'preset=High');
+  // The look travels with the settings, untouched (spaces as '+').
+  const looked = encodeHash({ block: 5 }, 'preset=Ultra&look=Golden+hour&fx.grain=0.2');
+  assert.equal(looked, '#b=5&preset=Ultra&look=Golden+hour&fx.grain=0.2');
+  assert.equal(decodeHash(looked).settings, 'preset=Ultra&look=Golden+hour&fx.grain=0.2');
+  assert.equal(encodeHash({ block: 7, follow: false }), '#b=7');
+  assert.equal(encodeHash({ block: 7, follow: 1 }), '#b=7');
+  assert.equal(decodeHash('#b=7').follow, false);
+  assert.equal(decodeHash('#b=7&follow=0').follow, false);
+  assert.equal(decodeHash('#b=7&follow=yes').follow, false);
+  assert.equal(decodeHash('#follow').follow, false);
   // Yaw wraps into [-180, 180), pitch clamps, negative zero prints as 0.
   assert.deepEqual(decodeCam('0,1,2,190,-120'), { x: 0, y: 1, z: 2, yaw: -170, pitch: -89.9 });
   assert.equal(encodeCam({ x: -0.0001, y: 0, z: 0, yaw: -0.001, pitch: 0 }), '0.000,0.000,0.000,0.00,0.00');
@@ -136,9 +151,29 @@ test('hash round trip keeps settings untouched', () => {
 // Simulated worker: fixed exact-apply throughput (blocks/s of worker time) and a fixed
 // seek latency. advance resolves when the target is reached or its budget is used; a
 // seek supersedes a pending seek ({cancelled: true}) like the real client.
-function simWorker({ start, rate, seekMs = 60 }) {
+// Optional download model (net): the change log arrives in chunks of net.chunk blocks at
+// net.blocksPerSec while fewer than net.ahead chunks are downloaded past the replay block,
+// reported as buffer {frontier, blocksPerSec}. An advance that reaches the downloaded
+// frontier waits for the next chunk, like the real worker, and after a wait that used up its
+// budget still applies up to 8 blocks before it returns.
+function simWorker({ start, rate, seekMs = 60, net = null }) {
   // frac carries partial progress across jobs so throughput equals rate.
   const w = { block: start, calls: [], job: null, busyErrors: 0, frac: 0 };
+  const chunkEnd = (b) => (net ? (Math.floor(b / net.chunk) + 1) * net.chunk - 1 : Infinity);
+  if (net) {
+    w.frontier = chunkEnd(start + 1);
+    w.dl = 0;
+    Object.defineProperty(w, 'buffer', { get: () => ({ block: w.block, frontier: w.frontier, blocksPerSec: net.blocksPerSec }) });
+  }
+  const download = (ms) => {
+    if (!net) return;
+    w.dl += (net.blocksPerSec * ms) / 1000;
+    while (w.dl >= net.chunk && w.frontier - w.block < net.ahead * net.chunk) {
+      w.frontier += net.chunk;
+      w.dl -= net.chunk;
+    }
+    if (w.frontier - w.block >= net.ahead * net.chunk) w.dl = Math.min(w.dl, net.chunk); // idle while the window is full
+  };
   const resolveJob = (res) => {
     const j = w.job;
     w.job = null;
@@ -163,6 +198,7 @@ function simWorker({ start, rate, seekMs = 60 }) {
     w.job = { kind: 'seek', block, elapsed: 0, resolve };
   });
   w.run = async (ms) => {
+    download(ms);
     let left = ms;
     while (left > 1e-6 && w.job) {
       const j = w.job;
@@ -174,22 +210,32 @@ function simWorker({ start, rate, seekMs = 60 }) {
         }
         left -= need;
         w.block = j.block;
+        if (net) w.frontier = chunkEnd(j.block + 1);
         resolveJob({ block: j.block });
       } else {
         const remaining = Math.abs(j.target - w.block);
-        const tTarget = Math.max(0, ((remaining - w.frac) / rate) * 1000);
+        const avail = net && j.target > w.block ? w.frontier - w.block : remaining;
+        if (avail <= 0) {
+          // Waiting for the next chunk; the wait counts against the budget.
+          j.elapsed += left;
+          j.waited = true;
+          return;
+        }
+        const reach = Math.min(remaining, avail);
+        const tTarget = Math.max(0, ((reach - w.frac) / rate) * 1000);
         const tBudget = Math.max(0, j.budgetMs - j.elapsed);
         const t = Math.min(left, tTarget, tBudget);
         const total = w.frac + (rate * t) / 1000;
-        const n = Math.min(remaining, Math.floor(total + 1e-9));
-        w.frac = n === remaining ? 0 : total - n;
+        let n = Math.min(reach, Math.floor(total + 1e-9));
+        if (n === 0 && j.waited && tBudget === 0) n = Math.min(reach, 8);
+        w.frac = n === reach ? 0 : Math.max(0, total - n);
         w.block += Math.sign(j.target - w.block) * n;
         j.blocks += n;
         j.elapsed += t;
         left -= t;
         if (w.block === j.target || j.elapsed >= j.budgetMs - 1e-6) {
           resolveJob({ block: w.block, reached: w.block === j.target, blocks: j.blocks, ms: j.elapsed });
-        } else {
+        } else if (!(n === reach && reach < remaining)) {
           return;
         }
       }
@@ -199,23 +245,44 @@ function simWorker({ start, rate, seekMs = 60 }) {
   return w;
 }
 
-async function setup({ start, tip, rate, seekMs, snapshots = [], speed = '1' }) {
+async function setup({ start, tip, rate, seekMs, snapshots = [], speed = '1', net = null }) {
   const clock = { t: 0 };
-  const w = simWorker({ start, rate, seekMs });
+  const w = simWorker({ start, rate, seekMs, net });
   const pb = createPlayback({ replay: w, tip, snapshots, now: () => clock.t });
   const events = [];
   pb.onEvent((type, detail) => events.push({ type, detail }));
   pb.setSpeed(speed);
-  const run = async (seconds, fps = 60) => {
+  const run = async (seconds, fps = 60, each = null) => {
     const dt = 1 / fps;
     for (let i = 0; i < Math.round(seconds * fps); i++) {
       clock.t += dt * 1000;
       await w.run(dt * 1000);
       pb.tick(dt);
       await flush();
+      if (each) each(clock.t, w.block);
     }
   };
   return { clock, w, pb, events, run };
+}
+
+/** Visible motion from per-frame [ms, block] samples after fromMs: rate, longest still stretch, jumps. */
+function motion(samples, fromMs) {
+  const s = samples.filter(([t]) => t >= fromMs);
+  let still = 0;
+  let longestStillMs = 0;
+  const jumps = [];
+  for (let i = 1; i < s.length; i++) {
+    const db = s[i][1] - s[i - 1][1];
+    jumps.push(db);
+    if (db === 0) still += s[i][0] - s[i - 1][0];
+    else { longestStillMs = Math.max(longestStillMs, still); still = 0; }
+  }
+  longestStillMs = Math.max(longestStillMs, still);
+  return {
+    rate: ((s.at(-1)[1] - s[0][1]) * 1000) / (s.at(-1)[0] - s[0][0]),
+    longestStillMs,
+    maxJump: Math.max(...jumps),
+  };
 }
 
 test('1x plays 60 exact blocks per second', async () => {
@@ -233,52 +300,52 @@ test('1x plays 60 exact blocks per second', async () => {
   assert.deepEqual(events, []);
 });
 
-test('10x follows a slower worker exactly and reports it', async () => {
-  const { w, pb, run } = await setup({ start: 700000, tip: 966827, rate: 350, speed: '10' });
+test('2x plays 120 exact blocks per second', async () => {
+  const { w, pb, run } = await setup({ start: 300000, tip: 966827, rate: 5000, speed: '2' });
+  pb.play();
+  await run(5);
+  const advanced = w.block - 300000;
+  assert.ok(Math.abs(advanced - 600) <= 6, 'advanced ' + advanced);
+  assert.equal(w.calls.filter((c) => c.kind === 'seek').length, 0);
+  assert.ok(w.calls.every((c) => c.target > c.from), 'forward only');
+  const s = pb.state;
+  assert.ok(Math.abs(s.achieved - 120) < 6, 'achieved ' + s.achieved);
+  assert.equal(s.limited, false);
+  assert.equal(w.busyErrors, 0);
+});
+
+test('5x follows a slower worker exactly and reports it', async () => {
+  const { w, pb, run } = await setup({ start: 700000, tip: 966827, rate: 200, speed: '5' });
   pb.play();
   await run(10);
   const advanced = w.block - 700000;
-  assert.ok(advanced > 3300 && advanced <= 3510, 'advanced ' + advanced);
+  assert.ok(advanced > 1880 && advanced <= 2010, 'advanced ' + advanced);
   assert.equal(w.calls.filter((c) => c.kind === 'seek').length, 0);
   const s = pb.state;
   assert.equal(s.limited, true);
-  assert.ok(Math.abs(s.achieved - 350) < 35, 'achieved ' + s.achieved);
+  assert.ok(Math.abs(s.achieved - 200) < 20, 'achieved ' + s.achieved);
   assert.equal(w.busyErrors, 0);
 });
 
-test('10x keeps up with a fast worker', async () => {
-  const { w, pb, run } = await setup({ start: 150000, tip: 966827, rate: 5400, speed: '10' });
+test('5x keeps up with a fast worker', async () => {
+  const { w, pb, run } = await setup({ start: 150000, tip: 966827, rate: 5400, speed: '5' });
   pb.play();
   await run(5);
   const advanced = w.block - 150000;
-  assert.ok(Math.abs(advanced - 3000) <= 160, 'advanced ' + advanced);
+  assert.ok(Math.abs(advanced - 1500) <= 80, 'advanced ' + advanced);
   assert.equal(pb.state.limited, false);
 });
 
-test('100x steps snapshot to snapshot when the worker is slow', async () => {
+test('5x never seeks to a snapshot, even when the worker is far behind', async () => {
   const snapshots = Array.from({ length: 2200 }, (_, i) => i * 450);
-  const { w, pb, run } = await setup({ start: 700000, tip: 966827, rate: 350, seekMs: 80, snapshots, speed: '100' });
+  const { w, pb, run } = await setup({ start: 700000, tip: 966827, rate: 60, seekMs: 80, snapshots, speed: '5' });
   pb.play();
   await run(5);
   const advanced = w.block - 700000;
-  const seeks = w.calls.filter((c) => c.kind === 'seek');
-  assert.ok(seeks.length > 5, 'seeks ' + seeks.length);
-  assert.ok(advanced > 350 * 5 * 3, 'advanced ' + advanced);
-  assert.ok(advanced <= 6000 * 5 + 450, 'not faster than 6000 blocks/s: ' + advanced);
-  for (const s of seeks) {
-    assert.ok(snapshots.includes(s.block), 'seek to snapshot ' + s.block);
-    assert.ok(s.block > s.from, 'forward seek');
-  }
-  assert.equal(w.busyErrors, 0);
-});
-
-test('100x stays exact when the worker is fast enough', async () => {
-  const snapshots = Array.from({ length: 200 }, (_, i) => i * 5000);
-  const { w, pb, run } = await setup({ start: 100000, tip: 966827, rate: 60000, snapshots, speed: '100' });
-  pb.play();
-  await run(3);
   assert.equal(w.calls.filter((c) => c.kind === 'seek').length, 0);
-  assert.ok(Math.abs(w.block - 100000 - 18000) <= 200, 'advanced ' + (w.block - 100000));
+  assert.ok(advanced > 280 && advanced <= 305, 'followed the worker: ' + advanced);
+  assert.equal(pb.state.limited, true);
+  assert.equal(w.busyErrors, 0);
 });
 
 test('Max advances toward the tip with the frame budget and stops there', async () => {
@@ -294,6 +361,59 @@ test('Max advances toward the tip with the frame budget and stops there', async 
   assert.equal(events.filter((e) => e.type === 'end').length, 1);
   pb.play();
   assert.equal(pb.state.playing, false, 'cannot play past the tip');
+});
+
+// Near the tip a 4 MiB chunk holds about 115 blocks; online the download delivers roughly
+// 450 blocks/s while the worker replays 3,000. Unpaced, Max raced through each chunk and then
+// stood still until the next one arrived.
+const TIP_NET = { blocksPerSec: 450, chunk: 115, ahead: 8 };
+
+test('Max on a slower download moves every frame at the download rate instead of stalling and bursting', async () => {
+  const { w, pb, run } = await setup({ start: 840000, tip: 966827, rate: 3000, speed: 'max', net: TIP_NET });
+  const samples = [];
+  pb.play();
+  await run(14, 60, (t, b) => samples.push([t, b]));
+  const m = motion(samples, 6000);
+  assert.ok(m.longestStillMs <= 34, 'never stands still for more than two frames (' + m.longestStillMs.toFixed(0) + ' ms)');
+  assert.ok(m.maxJump <= 12, 'no catch-up bursts: at most 12 blocks in a frame at 450 blocks/s (' + m.maxJump + ')');
+  assert.ok(m.rate > 400 && m.rate <= 460, 'settles at the download rate (' + m.rate.toFixed(0) + ' blocks/s)');
+  assert.equal(w.calls.filter((c) => c.kind === 'seek').length, 0);
+  const s = pb.state;
+  assert.equal(s.paced, true);
+  assert.equal(s.netLimited, true, 'the HUD says the download sets the speed');
+  assert.ok(s.buffered > 0 && s.buffered < TIP_NET.ahead * TIP_NET.chunk, 'keeps a buffer (' + s.buffered + ' blocks)');
+  assert.equal(w.busyErrors, 0);
+});
+
+test('5x on a download slower than 300 blocks/s follows it smoothly and says so', async () => {
+  const { pb, run } = await setup({ start: 700000, tip: 966827, rate: 5000, speed: '5', net: { ...TIP_NET, blocksPerSec: 200 } });
+  const samples = [];
+  pb.play();
+  await run(14, 60, (t, b) => samples.push([t, b]));
+  const m = motion(samples, 6000);
+  assert.ok(m.longestStillMs <= 34, 'moves every frame (' + m.longestStillMs.toFixed(0) + ' ms still)');
+  assert.ok(m.maxJump <= 6, 'no bursts (' + m.maxJump + ' blocks in a frame)');
+  assert.ok(m.rate > 180 && m.rate <= 205, 'at the download rate (' + m.rate.toFixed(0) + ')');
+  assert.equal(pb.state.netLimited, true);
+});
+
+test('1x on a download that keeps up stays exact and unpaced', async () => {
+  const { w, pb, run } = await setup({ start: 840000, tip: 966827, rate: 3000, speed: '1', net: TIP_NET });
+  pb.play();
+  await run(10);
+  const advanced = w.block - 840000;
+  assert.ok(Math.abs(advanced - 600) <= 3, 'advanced ' + advanced);
+  assert.equal(pb.state.paced, false);
+  assert.equal(pb.state.netLimited, false);
+});
+
+test('downloadPace: the download rate plus the buffer, or null when it cannot limit', () => {
+  assert.equal(downloadPace(null, 10, 100), null);
+  assert.equal(downloadPace({ frontier: 100, blocksPerSec: 50 }, 10, 100), null, 'downloaded through the tip');
+  assert.equal(downloadPace({ frontier: 50, blocksPerSec: null }, 10, 100), null, 'no rate measured yet');
+  const p = downloadPace({ frontier: 400, blocksPerSec: 450 }, 100, 966827);
+  assert.equal(p.buffered, 300);
+  assert.ok(Math.abs(p.rate - (0.7 * 450 + 300 / 3)) < 1e-9);
 });
 
 test('steps: 1 block by exact advance, 1,008 by seek', async () => {
@@ -386,11 +506,14 @@ test('planPlay and snapshot lookup', () => {
   assert.equal(defaultStartBlock(500, [0, 450, 500]), 0);
   assert.equal(planPlay({ speed: '1', block: 10, target: 10.9, tip: 100, snapshots: snaps }), null);
   assert.deepEqual(planPlay({ speed: '1', block: 10, target: 11.2, tip: 100, snapshots: snaps, frameMs: 16.7 }), { kind: 'advance', target: 11, budgetMs: 17 });
-  assert.deepEqual(planPlay({ speed: '100', block: 0, target: 2000, tip: 5000, snapshots: snaps, exactRate: 300 }), { kind: 'seek', block: 900 });
-  assert.equal(planPlay({ speed: '100', block: 0, target: 2000, tip: 5000, snapshots: snaps, exactRate: 50000 }).kind, 'advance');
+  assert.deepEqual(planPlay({ speed: '2', block: 0, target: 2000, tip: 5000, snapshots: snaps }), { kind: 'advance', target: 2000, budgetMs: 16 });
+  assert.deepEqual(planPlay({ speed: '5', block: 0, target: 2000, tip: 5000, snapshots: snaps }), { kind: 'advance', target: 2000, budgetMs: 16 });
   assert.deepEqual(planPlay({ speed: 'max', block: 0, target: 0, tip: 5000, snapshots: snaps, frameMs: 100 }), { kind: 'advance', target: 5000, budgetMs: 50 });
   assert.equal(speedById('nope').id, '1');
-  assert.deepEqual(SPEEDS.map((s) => s.label), ['1\u00d7', '10\u00d7', '100\u00d7', 'Max']);
+  assert.deepEqual(SPEEDS.map((s) => s.label), ['1\u00d7', '2\u00d7', '5\u00d7', 'Max']);
+  assert.deepEqual(SPEEDS.map((s) => s.rate), [60, 120, 300, Infinity]);
+  assert.deepEqual(SPEEDS.map((s) => speedHint(s).match(/about ([\d.]+ \w+)|([\d,]+)\u00d7 real time/g)),
+    [['about 10 hours', '36,000\u00d7 real time'], ['about 20 hours', '72,000\u00d7 real time'], ['about 2.1 days', '180,000\u00d7 real time'], null]);
 });
 
 test('places resolve eras and amount bands on the film rows', () => {

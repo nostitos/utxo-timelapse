@@ -47,6 +47,8 @@ export async function createReplayClient(opts = {}) {
     meta: null,
     status: null,
     stats: null,
+    /** Download ahead of the replay block: {block, frontier, blocksPerSec, bytesPerSec, loading} or null. */
+    buffer: null,
     measures: { height: 'density', color: 'density' },
 
     setTiles(ids) {
@@ -173,10 +175,15 @@ export async function createReplayClient(opts = {}) {
         break;
       case 'seekDone':
         if (!m.cancelled && !m.error && m.block !== undefined) client.block = m.block;
+        if (m.buffer) client.buffer = m.buffer;
         settle(m, m.cancelled ? { cancelled: true } : { block: m.block, ms: m.ms, plan: m.plan });
         break;
       case 'advanceDone':
+        if (m.buffer) client.buffer = m.buffer;
         settle(m, m.cancelled ? { cancelled: true } : { block: m.block, reached: m.reached, blocks: m.blocks, ms: m.ms });
+        break;
+      case 'buffer':
+        client.buffer = m.buffer;
         break;
       case 'cellResult':
         settle(m, m.cell);

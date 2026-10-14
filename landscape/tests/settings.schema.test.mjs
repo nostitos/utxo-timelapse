@@ -1,12 +1,14 @@
-// Settings schema and presets (landscape/SPEC.md section 7).
+// Settings schema, looks, quality tiers and needs (landscape/SPEC.md section 7).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   SCHEMA, SCHEMA_BY_ID, PRESETS, PRESET_NAMES, PRESET_INFO, QUALITY_ORDER, STARTUP_PRESET,
-  WEBGL2_MAX_PRESET, GROUPS, TYPES, REBUILD_CLASSES, DEFAULT_GRADIENT,
+  WEBGL2_MAX_PRESET, GROUPS, TYPES, REBUILD_CLASSES, DEFAULT_GRADIENT, LOOKS, DEFAULT_LOOK, LOOK_INFO,
+  QUALITY_INFO, LOOK_PRESETS, QUALITY_PRESETS, NEEDS, TIME_OF_DAY, LOOK_ALIASES,
 } from '../web/settings.schema.js';
 import { createSettingsStore, validateValue, valuesEqual, normalizeGradient } from '../web/settings.js';
+import { PALETTE_NAMES } from '../web/render/terrain/palette.js';
 
 // Required ids, copied from SPEC section 7 (consumers use exactly these).
 const REQUIRED = {
@@ -16,9 +18,9 @@ const REQUIRED = {
     'autoExposureMin', 'autoExposureMax', 'autoExposureSpeed', 'lut', 'lutIntensity', 'p3'],
   amp: ['measure', 'curve', 'exponent', 'exposure', 'reference', 'exaggeration', 'floor', 'whale',
     'heatHalfLife', 'heatFloor', 'heatReference', 'heatEdge', 'heatEdgeBlocks', 'flashSize', 'flashThreshold', 'edgeGlow', 'edgeBlocks', 'nowPlane'],
-  geo: ['smoothing', 'stepped', 'subdivision', 'columns', 'columnShape', 'cylinderSides', 'coinEdges',
-    'coinThickness', 'columnRadius', 'columnPixels', 'instanceBudget', 'columnGap',
-    'lodBias', 'pixelsPerCell', 'tileBudget', 'skirts', 'wireframe'],
+  geo: ['smoothing', 'stepped', 'steppedWhales', 'subdivision', 'columns', 'columnShape', 'cylinderSides',
+    'columnRadius', 'columnPixels', 'instanceBudget', 'columnGap', 'farColumns', 'farShadows',
+    'lodBias', 'pixelsPerCell', 'tileBudget', 'uniform', 'uniformLevel', 'skirts', 'wireframe'],
   light: ['sunAzimuth', 'sunElevation', 'sunIntensity', 'sunColor', 'skyColor', 'groundColor', 'ambient',
     'emissive', 'albedo', 'rim', 'rimColor', 'roughness', 'metalness', 'shadows', 'cascades', 'shadowMapSize',
     'shadowFilter', 'shadowSoftness', 'shadowBias', 'fogDensity', 'fogHeightFalloff', 'volumetric',
@@ -39,7 +41,7 @@ const WEBGPU = { webgpu: true };
 function specRequiredIds() {
   const spec = readFileSync(new URL('../SPEC.md', import.meta.url), 'utf8');
   const start = spec.indexOf('Required ids');
-  const end = spec.indexOf('Preset intent', start);
+  const end = spec.indexOf('Look intent', start);
   assert.ok(start > 0 && end > start, 'SPEC.md section 7 required-id block not found');
   const ids = [];
   for (const m of spec.slice(start, end).matchAll(/\x60((?:color|amp|geo|light|fx|camera|display)\.[A-Za-z0-9]+)\x60/g)) {
@@ -59,7 +61,7 @@ test('schema ids: exactly the SPEC section 7 required ids, unique, grouped by pr
     assert.ok(groupIds.includes(e.group), e.id + ' group');
     assert.equal(SCHEMA_BY_ID.get(e.id), e);
   }
-  assert.equal(SCHEMA.length, 142);
+  assert.equal(SCHEMA.length, 145);
 });
 
 test('schema entries: types, labels, help, flags and ranges are well formed', () => {
@@ -123,9 +125,9 @@ test('schema entries: types, labels, help, flags and ranges are well formed', ()
 test('schema flags: compute-dependent entries need WebGPU; preferences stay out of presets', () => {
   const webgpuIds = SCHEMA.filter((e) => e.webgpu).map((e) => e.id).sort();
   assert.deepEqual(webgpuIds, ['color.autoExposureMax', 'color.autoExposureMin', 'color.autoExposureSpeed',
-    'fx.ssgi', 'fx.ssgiIntensity', 'fx.ssgiSamples', 'geo.coinEdges', 'geo.coinThickness', 'geo.columnGap',
+    'fx.ssgi', 'fx.ssgiIntensity', 'fx.ssgiSamples', 'geo.columnGap',
     'geo.columnPixels', 'geo.columnRadius', 'geo.columnShape', 'geo.columns', 'geo.cylinderSides',
-    'geo.instanceBudget']);
+    'geo.farColumns', 'geo.instanceBudget']);
   assert.deepEqual(SCHEMA_BY_ID.get('color.exposureMode').webgpuOptions, ['auto']);
   const preferences = SCHEMA.filter((e) => !e.preset).map((e) => e.id).sort();
   assert.deepEqual(preferences, ['camera.collision', 'camera.damping', 'camera.flySpeed', 'camera.fov',
@@ -152,6 +154,14 @@ test('schema flags: compute-dependent entries need WebGPU; preferences stay out 
 test('presets: names, metadata and every value valid without clamping', () => {
   assert.deepEqual(Object.keys(PRESETS), [...PRESET_NAMES]);
   assert.deepEqual(Object.keys(PRESET_INFO), [...PRESET_NAMES]);
+  assert.deepEqual([...PRESET_NAMES], [...LOOKS, ...QUALITY_ORDER]);
+  assert.deepEqual(Object.keys(LOOK_PRESETS), [...LOOKS]);
+  assert.deepEqual(Object.keys(QUALITY_PRESETS), [...QUALITY_ORDER]);
+  assert.deepEqual(Object.keys(LOOK_INFO), [...LOOKS]);
+  assert.deepEqual(Object.keys(QUALITY_INFO), [...QUALITY_ORDER]);
+  assert.deepEqual([...LOOKS], ['Landscape', 'BitcoinTimelapse.com', 'Daylight', 'Golden hour', 'Earth', 'Whales',
+    'Pulse', 'Outputs', 'Money map', 'Linear', 'Paper']);
+  assert.equal(DEFAULT_LOOK, 'Landscape');
   assert.equal(STARTUP_PRESET, 'High');
   assert.equal(WEBGL2_MAX_PRESET, 'High');
   assert.deepEqual([...QUALITY_ORDER], ['Performance', 'Balanced', 'High', 'Ultra', 'Extreme']);
@@ -166,14 +176,29 @@ test('presets: names, metadata and every value valid without clamping', () => {
     }
   }
   assert.deepEqual(PRESETS.High, {}, 'High is the schema defaults');
+  assert.deepEqual(PRESETS.Landscape, {}, 'Landscape is the schema defaults');
 });
 
+// Base values of one quality tier at the default look, or of one look at High.
 function resolved(name, capabilities = WEBGPU) {
-  return createSettingsStore(SCHEMA, PRESETS, { storage: null, capabilities }).presetValues(name);
+  const store = createSettingsStore(SCHEMA, PRESETS, { storage: null, capabilities });
+  return QUALITY_ORDER.includes(name) ? store.baseValues(DEFAULT_LOOK, name) : store.baseValues(name, 'High');
 }
 
-test('Film preset reproduces the film colours: unlit, film palette, every effect off', () => {
-  const f = resolved('Film');
+test('look aliases name a current look and are not looks themselves; palettes match the renderer', () => {
+  assert.deepEqual({ ...LOOK_ALIASES }, { Film: 'BitcoinTimelapse.com' });
+  for (const [old, now] of Object.entries(LOOK_ALIASES)) {
+    assert.ok(LOOKS.includes(now), old + ' -> ' + now);
+    assert.equal(LOOKS.includes(old), false, old + ' is an alias, not a look');
+    assert.equal(QUALITY_ORDER.includes(old), false, old + ' is not a quality');
+  }
+  // The palette options are the renderer's palettes, in the same order.
+  assert.deepEqual(SCHEMA_BY_ID.get('color.palette').options, [...PALETTE_NAMES]);
+  assert.equal(SCHEMA_BY_ID.get('color.palette').optionLabels.earth, 'Earth');
+});
+
+test('BitcoinTimelapse.com reproduces the film colours: unlit, film palette, every effect off', () => {
+  const f = resolved('BitcoinTimelapse.com');
   const expected = {
     'color.measure': 'density', 'color.palette': 'film', 'color.reverse': false,
     'color.whiteHot': true, 'color.whiteHotBTC': 10, 'color.offset': 30, 'color.upper': 500, 'color.gamma': 1,
@@ -191,14 +216,14 @@ test('Film preset reproduces the film colours: unlit, film palette, every effect
     'geo.stepped': true, 'geo.columns': false, 'geo.smoothing': 'none', 'amp.edgeGlow': 0, 'amp.nowPlane': 0,
     'display.grid': false,
   };
-  for (const [id, value] of Object.entries(expected)) assert.deepEqual(f[id], value, 'Film ' + id);
+  for (const [id, value] of Object.entries(expected)) assert.deepEqual(f[id], value, 'BitcoinTimelapse.com ' + id);
   // Heat glow and flashes stay on, like the film's activity flashes (both are zero after a seek).
   assert.equal(f['color.heatGain'], SCHEMA_BY_ID.get('color.heatGain').default);
   assert.ok(f['color.heatGain'] > 0);
   assert.equal(f['amp.flashSize'], SCHEMA_BY_ID.get('amp.flashSize').default);
   assert.ok(f['amp.flashSize'] > 0);
-  // Film is allowed on WebGL2 and resolves identically there.
-  assert.deepEqual(resolved('Film', { webgpu: false }), f);
+  // It is allowed on WebGL2 and resolves identically there.
+  assert.deepEqual(resolved('BitcoinTimelapse.com', { webgpu: false }), f);
 });
 
 test('quality presets scale up from Performance to Extreme', () => {
@@ -248,7 +273,7 @@ test('quality presets scale up from Performance to Extreme', () => {
   assert.equal(extreme['fx.motionBlur'], true);
   assert.ok(extreme['fx.aoSamples'] > ultra['fx.aoSamples']);
   assert.ok(extreme['light.volumetricSteps'] > ultra['light.volumetricSteps']);
-  // Look settings stay constant across quality tiers (Film alone turns the grid off).
+  // Look settings stay constant across quality tiers (the grid is a look setting too).
   for (const id of ['color.toneMapping', 'color.palette', 'light.albedo', 'light.emissive', 'fx.dof', 'display.grid']) {
     for (const t of tiers) assert.deepEqual(t[id], high[id], id + ' should not vary by quality tier');
   }
@@ -258,4 +283,54 @@ test('quality presets scale up from Performance to Extreme', () => {
 test('High preset equals the schema defaults', () => {
   const high = resolved('High');
   for (const e of SCHEMA) assert.ok(valuesEqual(high[e.id], e.default), e.id);
+});
+
+test('looks: each one changes the appearance in at least 8 settings and leaves cost to the quality tier', () => {
+  const landscape = resolved('Landscape');
+  for (const name of LOOKS) {
+    if (name === 'Landscape') continue;
+    const look = resolved(name);
+    const changed = SCHEMA.filter((e) => e.preset !== false && !valuesEqual(look[e.id], landscape[e.id])).map((e) => e.id);
+    assert.ok(changed.length >= 8, name + ' differs from Landscape in only ' + changed.length + ' settings');
+    assert.ok(LOOK_INFO[name].length > 40, name + ' description');
+  }
+  // Quality-only settings belong to the tiers (BitcoinTimelapse.com alone pins its resolution and anti-aliasing).
+  const costIds = ['geo.tileBudget', 'geo.pixelsPerCell', 'geo.columnPixels', 'geo.instanceBudget', 'light.cascades',
+    'light.shadowMapSize', 'fx.aoSamples', 'light.volumetricSteps'];
+  for (const name of LOOKS) {
+    for (const id of costIds) assert.equal(Object.hasOwn(LOOK_PRESETS[name], id), false, name + ' sets ' + id);
+  }
+  // Dusk, the Landscape look's time of day, is the schema defaults.
+  for (const [id, value] of Object.entries(TIME_OF_DAY.dusk)) assert.ok(valuesEqual(SCHEMA_BY_ID.get(id).default, value), 'dusk ' + id);
+  // Night sets the sun just below the horizon, so the stars show.
+  assert.ok(TIME_OF_DAY.night['light.sunElevation'] < 0 && TIME_OF_DAY.night['light.stars'] === true);
+});
+
+test('needs: every condition names a real setting with a valid value', () => {
+  const check = (cond, owner) => {
+    if (cond.any) {
+      assert.ok(Array.isArray(cond.any) && cond.any.length >= 2, owner + ' any');
+      for (const c of cond.any) check(c, owner);
+      return;
+    }
+    const target = SCHEMA_BY_ID.get(cond.id);
+    assert.ok(target, owner + ' needs unknown ' + cond.id);
+    assert.notEqual(cond.id, owner, owner + ' needs itself');
+    const kinds = ['is', 'ne', 'gt', 'notNull'].filter((k) => Object.hasOwn(cond, k));
+    assert.equal(kinds.length, 1, owner + ': one test per condition');
+    if ('is' in cond || 'ne' in cond) {
+      const v = 'is' in cond ? cond.is : cond.ne;
+      const r = validateValue(target, v, WEBGPU);
+      assert.ok(r.ok && valuesEqual(r.value, v), owner + ': ' + cond.id + ' value ' + v);
+    }
+    if ('gt' in cond) assert.ok(target.type === 'number' || target.type === 'int', owner + ': gt on a number');
+    if (cond.notNull) assert.equal(target.type, 'file', owner + ': notNull on a file');
+  };
+  for (const [id, list] of Object.entries(NEEDS)) {
+    const e = SCHEMA_BY_ID.get(id);
+    assert.ok(e, 'needs for unknown ' + id);
+    assert.equal(e.needs, list, id + ' carries its needs');
+    for (const cond of list) check(cond, id);
+  }
+  assert.equal(SCHEMA.filter((e) => e.needs).length, Object.keys(NEEDS).length);
 });

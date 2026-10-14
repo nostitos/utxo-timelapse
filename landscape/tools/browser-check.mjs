@@ -7,8 +7,10 @@
 //     [--eval 'expr']... [--script file.js] [--screenshot /tmp/x.png] \
 //     [--width 1920 --height 1080 --dpr 1] [--browser chrome|canary|brave] [--headed] \
 //     [--flag --some-chrome-flag]... [--fail-on-error] [--console-limit 200]
-//     [--fullscreen] [--no-emulation] [--net] [--mobile]
+//     [--fullscreen] [--no-emulation] [--net] [--mobile] [--audio]
 //
+// The browser is muted (--mute-audio) so checks never play the plane or coin sounds through the
+// speakers; --audio unmutes it. Pages still build and run their audio graph either way.
 // --fullscreen switches the (headed) window to native fullscreen on the display it opened on
 // (place it with --flag --window-position=X,Y); --no-emulation keeps the real viewport and
 // device pixel ratio instead of overriding them with --width/--height/--dpr.
@@ -68,6 +70,7 @@ function parseArgs(argv) {
       case '--no-emulation': o.noEmulation = true; break;
       case '--net': o.net = true; break;
       case '--mobile': o.mobile = true; break;
+      case '--audio': o.audio = true; break;
       default: throw new Error('unknown argument ' + a);
     }
   }
@@ -85,6 +88,7 @@ const args = [
   '--disable-background-timer-throttling', '--disable-renderer-backgrounding',
   '--disable-backgrounding-occluded-windows',
   '--window-size=' + opts.width + ',' + opts.height,
+  ...(opts.audio ? [] : ['--mute-audio']),
   ...(opts.headed ? [] : ['--headless=new']),
   ...opts.flags, 'about:blank',
 ];
@@ -296,5 +300,5 @@ try {
   try { rmSync(profile, { recursive: true, force: true }); } catch {}
 }
 if (opts.failOnError && (summary.exceptions.length || summary.console.some((c) => c.type === 'error'))) exitCode = exitCode || 5;
-console.log(JSON.stringify(summary, null, 2));
-process.exit(exitCode);
+// Exit once stdout has drained: through a pipe, exiting at once would cut a long report short.
+process.stdout.write(JSON.stringify(summary, null, 2) + '\n', () => process.exit(exitCode));

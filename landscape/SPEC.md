@@ -309,7 +309,7 @@ await replay.cell(level, col, row, {load} = {})  // raw (not area-normalised) {c
                                       // demand (≤ 4 pinned) unless {load: false}, which returns null instead
 replay.onFrame(cb); replay.onStatus(cb); replay.onError(cb)
 replay.meta             // {block, time, nTx, size, created, spent, totals:{countSmall,countLarge,satsSmall,satsLarge}}
-replay.snapshotBlocks   // sorted snapshot block heights (for scrubbing / 100× stepping)
+replay.snapshotBlocks   // sorted snapshot block heights (for scrubbing and seek planning)
 replay.grid; replay.status; replay.stats; replay.setChunkCacheMB(mb)
 // onFrame/onStatus/onError return unsubscribe functions; the top tile is grid.tiles - 1 (757 on the full grid)
 replay.dispose()
@@ -339,14 +339,24 @@ the rest. Seek planning picks the cheapest of: current resident state, nearest s
 at or below the target (forward replay), nearest snapshot above (backward replay).
 Tiles that become resident during playback load from a snapshot and replay to the current
 block before their first full frame. Chunk bytes are cached (LRU, `chunkCacheMB`) with
-read-ahead in the playback direction. Worker memory budget ≤ 1.5 GB.
+read-ahead in the playback direction: 2 chunks around seeks, 8 (32 MiB) during forward
+playback, at most 3 fetches in flight. The chunk store meters delivery (bytes per second of
+time with a fetch in flight, including verification) and the worker reports `buffer`
+{frontier, blocksPerSec} with every advance, seek and chunk load: the last block of the
+cached run of chunks ahead of the state block, and the blocks per second the download
+delivers for the chunks after it. Worker memory budget ≤ 1.5 GB.
 
-Playback (implemented by ui_shell on top of the client): 1× = 60 blocks/s exact; 10× =
-600 blocks/s exact, HUD shows achieved rate when the worker cannot keep up; 100× = target
-moves at 6000 blocks/s, using exact `advance` when the gap is small and seeking to the
-largest snapshot ≤ target when it is not; Max = exact advance with the whole frame budget;
-scrubbing seeks to the nearest snapshot at/below the scrub position while dragging, then
-an exact seek on release. `[`/`]` step 1 block, Shift+`[`/`]` step 1,008 (via seek).
+Playback (implemented by ui_shell on top of the client): 1× = 60 blocks/s exact; 2× = 120
+blocks/s exact; 5× = 300 blocks/s exact, HUD shows the achieved rate when the worker cannot
+keep up; Max = exact advance with the whole frame budget. When the download is slower than
+the playback speed (Max online; any speed on a slow connection) playback is paced to it:
+0.7 × the download rate plus the downloaded blocks ahead spread over 3 s, eased over 0.5 s,
+and never past the downloaded frontier, so it settles at the download rate with about 0.9 s
+of blocks in hand and moves every frame instead of racing through each chunk and then
+waiting for the next; the HUD says "download-limited". Every speed replays every block;
+only scrubbing seeks to snapshots: the nearest snapshot at/below the scrub position while
+dragging, then an exact seek on release. `[`/`]` step 1 block, Shift+`[`/`]` step 1,008
+(via seek).
 
 Local server: `node landscape/tools/serve.mjs --data "/Volumes/4T Data/buv_render/landscape_966827"
 [--port 12990] [--host 127.0.0.1]` serves `landscape/web/` at `/` and the data
@@ -399,58 +409,121 @@ camera, settings, manifest, rows, blocktimes, capabilities, labelsElement })` re
 pick(ray) → hit|null, heightAt(x,z), focusDistance(camera), stats, dispose }`.
 Terrain owns: GPU tile atlas (storage buffer on WebGPU, texture on WebGL2), page table,
 LOD selection (always drawing the deepest fully resident level so there are no holes or
-overlaps; L6 is always resident), heightfield mesh with skirts, stepped cells,
+overlaps; L6 is always resident), heightfield mesh with skirts, stepped cells (everywhere, or
+on the whale rows only, at least 1.5 px wide far away: `geo.steppedWhales`),
 smoothing, subdivision, instanced columns, palette LUTs and colour transfer, heat
 emissive and flash sprites, creation-edge glow, now plane, grid, axis labels
 (HTML positioned by projection into `labelsElement`), CPU tile copies for picking.
 Terrain materials are NodeMaterials (`MeshStandardNodeMaterial`) so lights, shadows
-and the MRT outputs used by AO/SSGI/SSR/TRAA/motion blur work.
+and the MRT outputs used by AO/SSGI/SSR/TRAA/motion blur work. Transparent quads (flash
+sprites, the now plane) write zero alpha to exactly the G-buffer attachments the scene pass
+has (`render/post.js` reports them to `setGBufferLayout` in `render/gbuffer.js`) and the scene pass
+alpha-blends them, so a sprite's rectangle never lands in the normal, roughness or velocity
+buffers (it used to: SSR drew a square around every flash). Outputs for attachments the pass
+lacks broke rendering: no G-buffer left an empty output struct (the now plane never compiled
+at Performance), and, because three r186 keys a pipeline by shader code plus the first colour
+format, identical zero outputs reused a pipeline across layouts and blacked out the frame
+(Extreme with motion blur off). Each output therefore writes its own constant (alpha 0).
+SSGI is left out while depth of field is on (`render/post-plan.js`): the two together froze
+the page (WebGPU, Chrome 155, Apple M4 Max, 2026-10-13); the cause is open.
 
 Height curve (on the area-normalised value `v`, with `e = amp.exposure`,
 `R = amp.reference`): log: `log(1 + e*v) / log(1 + e*R)`; power:
 `(e*v / (e*R))^amp.exponent`; linear: `e*v / (e*R)`. Height =
-`amp.exaggeration * curve`, times `amp.whale` on rows at/above the white-hot row, plus
-`amp.floor` for occupied cells; empty cells have height 0.
+`amp.exaggeration * curve`, times the whale factor, plus `amp.floor` for occupied cells;
+empty cells have height 0. The whale factor is `amp.whale` on rows at/above the white-hot
+row `W` and eases back to 1 across the rows down to `E = row(color.whiteHotBTC / 10 × 1e8)`
+(one decade of amounts, `WHALE_RAMP_DECADES`): `1 + (amp.whale − 1) · s(t)` with
+`t = clamp((E − row) / (E − W), 0, 1)` and `s(t) = t²(3 − 2t)`, so the taller rows have
+no cliff at the threshold (`curve.js` `whaleFactorCpu`; the shader mirrors it).
 
 Colour transfer (on the colour value `v`): `v ≤ 0` → `color.ground`; otherwise
 `t = clamp((ln(v + o) − ln(1 + o)) / (ln(U + o) − ln(1 + o)), 0, 1)^color.gamma`, palette
-index `floor(255 t)` (`o = color.offset`, `U = color.upper`). With the Film preset
+index `floor(255 t)` (`o = color.offset`, `U = color.upper`). With the BitcoinTimelapse.com look
 (`o = 30`, `U = 500`, gamma 1, palette `film` with the whale palette on rows at/above
 `row(color.whiteHotBTC × 1e8)`), the index equals `DensityToImage`'s exactly.
-Palettes: `film` = `site/assets/palettes.json` `base`, whale variant = `whale`.
+Palettes: `film` = `site/assets/palettes.json` `base`, whale variant = `whale`; `earth` is
+a gradient (`GRADIENT_PALETTES` in `palette.js`) from sand through brown earth to green.
 
 render_post owns everything else in the frame: renderer creation (WebGPU with raised
 `requiredLimits` and `trackTimestamp` when available; `forceWebGL` / missing
 `navigator.gpu` → WebGL2 backend, compute features off, presets capped at High), sun +
 cascaded shadows (CSMShadowNode), hemisphere ambient, sky, stars, fog, volumetric
-scattering, god rays, the RenderPipeline chain (AO → SSGI → SSR → volumetrics/god rays →
+scattering (half-resolution ray march with a fixed per-pixel dither, blurred with a small
+gaussian before compositing; a per-frame dither sparkled during motion), god rays, the
+RenderPipeline chain (AO → SSGI → SSR → volumetrics/god rays →
 bloom → DOF → motion blur → tone mapping → exposure → grade → LUT → grain/CA/vignette →
 AA/SSAA), resolution scale and auto scale, Display P3, perf overlay, GPU timing.
 
 ## 7. Settings
 
-`settings.schema.js` exports `SCHEMA` (array of entries) and `PRESETS`. Entry:
+`settings.schema.js` exports `SCHEMA` (array of entries) and the presets. Entry:
 `{ id, group, label, type: 'number'|'int'|'bool'|'enum'|'color'|'gradient'|'file',
 min, max, step, scale: 'linear'|'log', options, default, webgpu: bool, rebuild:
 'none'|'material'|'terrain'|'post'|'shadows'|'renderer'|'worker', url: bool, help }`.
 Extra entry fields (documented in the schema header): `section`, `optionLabels`, `unit`,
 `logMin`, `webgpuOptions`/`fallback`, `capMax` (capped by `view.capabilities.maxTileBudget` /
-`maxInstances`), `maxStops`, `accept`, `preset: false` (personal preferences presets never change).
-`PRESETS` maps preset name → partial `{id: value}` (Film, Performance, Balanced, High,
-Ultra, Extreme); unspecified ids use `default`. Startup preset: High (capped at High on
-WebGL2).
+`maxInstances`), `maxStops`, `accept`, `preset: false` (personal preferences that looks and quality
+never change), `needs` (conditions under which the setting changes the image, from `NEEDS`:
+`[{id, is | ne | gt | notNull}]` must all hold, `{any: [...]}` holds when one does; only the
+panel reads it).
+
+Presets have two axes. `LOOK_PRESETS` (`LOOKS`: Landscape, BitcoinTimelapse.com, Daylight, Golden
+hour, Earth, Whales, Pulse, Outputs, Money map, Linear, Paper; `LOOK_INFO`) set the
+appearance; `QUALITY_PRESETS` (`QUALITY_ORDER`:
+Performance, Balanced, High, Ultra, Extreme; `QUALITY_INFO`) set the cost. Both are partial
+`{id: value}` maps; a setting's base value is the look's value, else the quality tier's, else
+`default`. Landscape and High are empty (the schema defaults); startup is Landscape at High,
+and on WebGL2 quality stops at High. `PRESETS` merges both maps. Looks are built from value
+bundles shared with the quick settings (`TIME_OF_DAY`, `SKY`, `HAZE`, `SHADOWS`, `GLOW`, `BIG_COINS`,
+`CELL_SHAPES`, `FLASHES`, `FLASH_TRAIL`), so each built-in look reads as one option in every quick
+control (BitcoinTimelapse.com's time of day aside: it turns the sun off). `LOOK_ALIASES` maps
+earlier look names to current ones (`Film` → `BitcoinTimelapse.com`): the store accepts them
+wherever a look is named (`setLook`, `applyPreset`, `baseValues`, JSON, URLs, stored settings and
+saved looks), writes only the current name, and reserves them as saved-look names.
 
 `settings.js` exports `createSettingsStore(schema, presets, {capabilities, storage})`:
 `get(id)`, `set(id, v)`, `setMany(obj)`, `subscribe(filter, fn)` (filter: id, group
 name, or `'*'`; fn receives `[{id, value, previous, entry}]` batched per microtask),
-`applyPreset(name)`, `reset(group?)`, `preset` (name, `'Custom'` when overridden),
-`overrides()`, `toJSON()`, `fromJSON()`, `toURL()`, `fromURL()`, `load()`/`save()`
-(localStorage key `utxo-landscape-settings-v1`). Values are validated and clamped.
+`setLook(name)` (built-in or saved look; every look and quality setting to its base value,
+dropping changes made by hand), `setQuality(name)` (settings still at the old base value move to the
+new one; changed settings stay), `applyPreset(name)` (either, by name), `reset(group?)`, `look`,
+`quality`, `baseLook`, `modified`, `preset` (display label: `'Custom'` when modified, the quality for
+Landscape, else `'Look · Quality'`), `overrides()`, `baseValues(look?, quality?)`, `inert(id)` and
+`checkNeeds(needs)` (null, or `{text}` such as 'Bloom off' naming the root cause),
+`toJSON()` (`{format, quality, look, baseLook, values, preset: quality}`), `fromJSON()`, `toURL()`
+(`preset=<quality>`, `look=<built-in look>` unless Landscape, then the url settings that differ),
+`fromURL()` (a pre-look `preset=Film` opens BitcoinTimelapse.com at High), `canonicalLook(name)`,
+`load()`/`save()`
+(localStorage key `utxo-landscape-settings-v1`). Saved looks: `saveUserPreset(name)`,
+`deleteUserPreset(name)`, `restoreUserPreset(record, {activate})`, `userPresets`, `userPreset(name)`
+in localStorage key `utxo-landscape-presets-v1` (`{format: 'utxo-landscape-presets-1', presets: [{name,
+savedAt, look, quality, overrides}]}`; up to 50; names 1–40 characters, unique in any case, not a
+built-in or quality name or Custom). A record keeps its built-in look, its quality and the
+governed values that differ from them. Values are validated and clamped.
+
+`settings.quick.js` exports `QUICK`, the quick controls in five sections (Look, Quality; Performance: Now,
+Every distance, Uniform detail, Resolution, Column distance, Column cap, Far columns, Far shadows,
+Terrain detail, Loaded tiles;
+Time of day, Sky, Haze, Shadows, Glow, Height shows, Colours, Height, Big coins,
+Cell shape, Flashes, Flash trail, Field of view, Show), and `quickOption`, `quickState`,
+`quickPatch`, `quickIds`, `blendPatch`, `blendPosition`, `blendValue`, `blendIndex`. Choice,
+toggle and blend controls write a bundle (`set`) and recognise their option by a subset of it
+(`match`); none matching means set by hand. A blend control is a slider across its options:
+between two stops numbers interpolate (`log` ids in log space), colours mix in sRGB, a boolean
+is true if either stop has it, and a stop's `blendAs` gives values it blends from without
+writing them; `blendPosition` finds the point the current values lie on, or null. Time of
+day maps its stops to clock hours (`at`). Column distance and Terrain detail bind
+`geo.columnPixels` and `geo.pixelsPerCell` on inverted log sliders. Tiles under the column
+disc always refine to level 0 (`selectTiles` option `mustRefine`), so columns appear wherever
+Column distance reaches. `ui/quick.js` draws them at the top of the panel,
+with Save… and Delete for saved looks; the schema's settings sit in the panel's closed
+Advanced folder, dimmed while their `needs` fail.
 
 Required ids (consumers must use exactly these; ranges/defaults may be refined by
 ui_settings with the consumers):
 
-- Colour: `color.palette` (film, turbo, viridis, inferno, magma, plasma, cividis,
+- Colour: `color.palette` (film, turbo, viridis, inferno, magma, plasma, cividis, earth,
   grey, custom), `color.gradient` (≤16 stops `{t, color}`), `color.reverse`,
   `color.measure` (height, density, count, value), `color.offset` (30),
   `color.upper` (500), `color.gamma` (1), `color.whiteHot` (true),
@@ -466,12 +539,13 @@ ui_settings with the consumers):
   linear), `amp.exponent`, `amp.exposure`, `amp.reference`, `amp.exaggeration`,
   `amp.floor`, `amp.whale`, `amp.heatHalfLife` (blocks), `amp.heatFloor`, `amp.heatReference` (BTC), `amp.heatEdge`, `amp.heatEdgeBlocks`, `amp.flashSize`,
   `amp.flashThreshold` (BTC), `amp.edgeGlow`, `amp.edgeBlocks`, `amp.nowPlane`.
-- Geometry: `geo.smoothing` (none, bilinear, bicubic), `geo.stepped`,
+- Geometry: `geo.smoothing` (none, bilinear, bicubic), `geo.stepped`, `geo.steppedWhales`,
   `geo.subdivision` (1, 2, 4), `geo.columns`, `geo.columnShape` (cylinder, oval, box),
-  `geo.cylinderSides` (6–32), `geo.coinEdges`, `geo.coinThickness`,
+  `geo.cylinderSides` (6–32),
   `geo.columnRadius` (L0 cells), `geo.columnPixels` (px),
-  `geo.instanceBudget` (≤ 8,000,000), `geo.columnGap`, `geo.lodBias`,
-  `geo.pixelsPerCell`, `geo.tileBudget` (32–400), `geo.skirts`, `geo.wireframe`.
+  `geo.instanceBudget` (≤ 8,000,000), `geo.columnGap`, `geo.farColumns` (prism, card, flat,
+  cross), `geo.farShadows`, `geo.lodBias`,
+  `geo.pixelsPerCell`, `geo.tileBudget` (32–400), `geo.uniform`, `geo.uniformLevel` (0–4), `geo.skirts`, `geo.wireframe`.
 - Lighting: `light.sunAzimuth`, `light.sunElevation`, `light.sunIntensity`,
   `light.sunColor`, `light.skyColor`, `light.groundColor`, `light.ambient`,
   `light.emissive`, `light.albedo`, `light.rim`, `light.rimColor`,
@@ -495,18 +569,31 @@ ui_settings with the consumers):
   `display.ssaa` (1, 2, 4), `display.overlay`, `display.labels`, `display.grid`,
   `display.legend`, `display.minimap`, `display.hud`.
 
-Preset intent: **Film** reproduces the film's colours (density colour measure, film
-palette with whale rows ≥ 10 BTC, offset 30, upper 500, gamma 1, unlit: albedo 0,
-emissive 1, no sun/ambient/rim/shadows/sky/stars/fog, every post effect off, tone mapping
-none, exposure 1, neutral grade, AA none, black background and ground).
-**Performance → Balanced → High → Ultra → Extreme** scale quality up: Ultra targets
-≥ 60 fps at 3840×2160 on the M4 Max with the heightfield alone; with coin stacks (the
+Look intent: **Landscape** is the schema defaults. **BitcoinTimelapse.com** (named Film until
+October 2026) reproduces the film's colours
+(density colour measure, film palette with whale rows ≥ 10 BTC, offset 30, upper 500,
+gamma 1, unlit: albedo 0, emissive 1, no sun/ambient/rim/shadows/sky/stars/fog, every post
+effect off, tone mapping none, exposure 1, neutral grade, AA none, black background and
+ground). **Daylight** (high white sun, viridis, no bloom), **Golden hour** (low sun from the
+tip side, thick haze, god rays, inferno), **Earth** (high white sun in a blue sky, light haze,
+smooth surface, water-blue empty cells under the `earth` palette on a colour scale from 1 to
+25 (offset 1), no white-hot rows), **Whales** (height
+and colour by BTC value, magma, whale rows twice as tall) and **Pulse** (dim grey on a
+near-black background with the sky off, strong amber flashes with a 300-block trail) each
+change at least eight settings. The data looks share one plain stage (`STUDIO`: high white
+sun, sky, haze and bloom off, boxes, neutral tone mapping, grid, now plane 0.2, subtle
+flashes, background #1e2126, empty cells #15171b): **Outputs** (height and colour by output
+count, cividis), **Money map** (height by count, colour by BTC value from 1 to 20,000 BTC,
+plasma), **Linear** (linear height curve, reference 2,000, exaggeration 20, film palette) and
+**Paper** (reversed grey palette with gamma 0.7 on a white page, red flashes, exposure 0.8).
+Quality intent: **Performance → Balanced → High → Ultra → Extreme** scale quality up: Ultra targets
+≥ 60 fps at 3840×2160 on the M4 Max with the heightfield alone; with cylinder columns (the
 default since 2026-10-09) it measures about 35–40 fps in close and middle views and
 60 fps in the overview. Extreme deliberately exceeds the GPU (GPU-bound: 2× scale or SSAA,
 4 shadow cascades at 4096, high AO/SSGI/SSR/volumetric samples, columns with large
-budgets, subdivision 2). Coin-stack detail falls toward Performance: Column detail 4 px on
+budgets, subdivision 2). Cylinder detail falls toward Performance: Column detail 4 px on
 High and above, 6 px on Balanced, 12 px with 8 sides and at most 250,000 stacks on
-Performance; Film draws stepped cells without stacks.
+Performance; BitcoinTimelapse.com draws stepped cells without cylinders.
 
 Consumers: worker ← `amp.measure`, `color.measure`, `amp.heatHalfLife`,
 `geo.tileBudget` (via the client in main.js); terrain ← color.* transfer/palette/heat,
@@ -518,30 +605,148 @@ overlay; ui_shell ← camera.*, `display.legend/minimap/hud`.
 ## 8. App shell (ui_shell)
 
 `index.html` provides the import map, `<canvas id="view">`, and containers
-`#labels`, `#overlay`, `#hud`, `#timeline`, `#panel`, `#minimap`, `#inspector`,
-`#legend`, `#toast`. `main.js` creates the settings store, replay client and view,
+`#labels`, `#overlay`, `#hud`, `#timeline`, `#panel`, `#minimap`, `#inspector`, `#hover`,
+`#legend`, `#toast`, and for plane mode `#plane-nose`, `#planehud`, `#funpops`, `#planekeys`,
+`#fun` (the Fun menu) and `#funcard` (the Stack sats end card). `main.js` creates the settings store, replay client and view,
 wires frames → view, settings → consumers, and runs the rAF loop:
-controls → playback → `view.update` → (`replay.setTiles` when desired tiles change) →
+follow tip → controls → playback → `view.update` → (`replay.setTiles` when desired tiles change) →
 `view.render`. `?webgl=1` forces WebGL2. URL hash keeps
-`b` (block), `cam`, `mode`, `preset` and settings overrides.
+`b` (block), `cam`, `mode`, `follow=1` (Follow tip on), `preset` and settings overrides.
 Without `b`, the app opens at the latest snapshot at least 1,008 blocks (about a week)
 before the tip, so Play has blocks to play (`defaultStartBlock` in `ui/playback.js`).
 
 Navigation: map mode (left-drag pans keeping the grabbed point under the cursor;
 right-drag or Shift-drag orbits the point under the cursor; wheel/pinch zooms toward the
-cursor; double-click flies there; arrows pan, Q/E rotate, PageUp/PageDown tilt) and flight
-mode (F toggles; pointer lock, mouse look, WASD, E/Q up/down, Shift 4×, wheel sets speed,
-speed scales with height above terrain; collision keeps the camera above the surface).
+cursor; double-click flies there; arrows pan, Q/E rotate, PageUp/PageDown tilt), flight
+mode (F or the timeline's Fly button, `aria-pressed` while on; pointer lock, mouse look, WASD,
+E/Q up/down, Shift 4×, wheel sets speed, speed scales with height above terrain; collision
+keeps the camera above the surface) and plane mode (T or the timeline's Fun menu; neither the
+Fly nor the Fun button on touch-only devices). Plane mode flies one of three crafts, the plane,
+the bird or the jet (`CRAFTS` in `ui/plane.js`; models in `render/plane-model.js`), all with
+the same flight model and their own numbers (table below). The plane banks to
+turn: sideways stick rolls the plane (80°/s, bank up to 75°) and the bank turns it, at
+35°/s × tan(bank) × √(4 / speed) (at most 75°/s); centred, the bank holds and decays slowly
+(0.3/s). Nose-up stick raises the nose along the plane's own axis (35°/s), so nose-up stick in
+a bank tightens the turn; pitch is limited to ±70°. The mouse is a stick that springs back to
+the centre (160 px ÷ `camera.sensitivity` for full deflection, return 3/s); A/D and ←/→ bank,
+↑/↓ pitch (up for nose up with the mouse, the arrows and the gamepad stick; `camera.invertY`
+switches to the flight-sim convention, pull back for nose up), easing in over 0.25 s; the
+chase camera swings after the plane (4/s) and never rolls, so the bank shows. W/S throttle
+0.25–16 units/s on a logarithmic throttle (start 2; each quarter of the bar multiplies the
+speed by 2.83), Shift 3×, wheel sets the chase distance (0.8–40, default 2), M
+toggles the synthesized engine sound (`ui/plane-sound.js`, remembered in localStorage). A
+controls card stays visible while flying. With `view.setDetailAhead(0.6, 1.6)` the terrain
+draws cylinders down to `geo.columnPixels / 1.6` and moves their disc 0.6 radii ahead of
+the camera (near cylinders still measured from the camera; L0 tiles kept that far out).
+With `camera.collision` the plane keeps 0.15 above the
+surface, rides over rises up to 0.35 and bumps on taller columns (stops, half speed, nose
+pitched up). A top-centre line shows
+the column, date and row amount under the plane. Esc, T or a lost pointer lock returns to
+map mode at the camera; the URL hash records plane mode as `mode=map` and never records the
+craft or a game. Standard gamepads: left stick banks and pitches (up for nose up), RT/LT throttle, A boost,
+Start takes off or lands, B lands, Y next craft, X starts Stack sats.
+
+Hover readout (`ui/hover.js`, `#hover`): a card docked under the HUD (same left edge and width,
+10 px below it) names the cell as drawn under a mouse or pen pointer over the canvas ("Under the
+cursor"), or under the crosshair in flight mode ("At the crosshair"). Its rows, like the HUD's:
+Size (the amount band of its rows, `rowAmountRange` over rows.bin; BTC to 4 significant figures
+rounded outward, so the band shown contains the exact one), Blocks (first to last), Mined (their
+UTC dates), Unspent outputs and Value (at the replayed block, from `replay.cell(level, col, row,
+{ load: false })`, refreshed at most 4 times a second while blocks change). Every range reads
+"A to B". Zoomed out, the drawn cell merges 2^l columns and 2^rowShift rows; the card covers all
+of them and says so. It never sends a request. When the pointer leaves the canvas or aims at
+nothing, the card keeps its last reading, dimmed (`.linger`), for 1.5 s (`LINGER_MS`) and for as
+long as the pointer is over the card, so the pointer can reach its ×; it hides at once while
+dragging, in plane mode (whose top-centre line does the same job), on blur, and on touch-only
+devices. Its × hides it until the page reloads (`hover.dismiss()`, `hover.dismissed`): no pointer
+move, cell change or mode change shows it again, and nothing is saved. Picking runs at most
+once a frame on pointer moves and every 100 ms for a still pointer, so camera moves and playback
+keep it current.
+
+Fun (`ui/fun-menu.js`, timeline button `data-act="fun"`, `aria-haspopup`; it lands first in
+plane mode, as G/P/H do): a popover with a Craft column (Plane "Steady; banks to turn", Bird
+"Slow and nimble; flaps and hugs the ground", Jet "Fast and wide; afterburner"; `aria-pressed`,
+choosing keeps the menu open) and a Play column (Free flight, Stack sats with the craft's best
+stack). Play closes the menu and takes off inside the click. C cycles plane → bird → jet (in
+flight at the same pose, heading and throttle fraction, speed, bank and pitch clamped into the
+new craft's limits; refused during a run); the choice and the best runs are kept in
+localStorage `utxo-landscape-fun` (`ui/fun-store.js`, invalid data falls back to the
+defaults). Each craft keeps its own chase distance; the controls card is titled with the craft
+and lists C (next craft) and Enter.
+
+| Craft | Speed (u/s) | Start throttle, boost | Roll, max bank, stability | Pitch rate, max | turnAt45, turnSpeed, max turn | Clearance, stepUp, bump speed | Chase (min–max), spawn | Model scale | Detail ahead (shift, reach) | Coin reach |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Plane | 0.25–16 | 0.5, 3× | 80°/s, 75°, 0.3/s | 35°/s, 70° | 35°/s, 4, 75°/s | 0.15, 0.35, 0.5 | 2 (0.8–40), 3 | 0.5 | 0.6, 1.6 | 1 |
+| Bird | 0.1–4 | 0.5, 2× | 140°/s, 80°, 1/s | 60°/s, 75° | 70°/s, 1, 150°/s | 0.06, 0.5, 0.7 | 1 (0.4–20), 1.5 | 0.25 | 0.3, 1.2 | 0.8 |
+| Jet | 2–60 | 0.4, 1.6× | 180°/s, 85°, 0.15/s | 40°/s, 70° | 30°/s, 16, 60°/s | 0.3, 0.2, 0.4 | 4 (1.5–60), 5 | 0.6 | 0.8, 2.2 | 1.6 |
+
+The bird beats its hinged wings ±30° at `flapRate` = 2 + 4 × throttle Hz (+2 boosting) and
+glides with them raised 8° below 0.15 throttle; the jet's tail lamp glows 1 + 7 × throttle and
+an afterburner cone shows while boosting. Sound profiles (`engineTargets(state, volume,
+profile)`): the plane as above; the jet no oscillator engine (a pitched sawtooth sounded like
+a vacuum cleaner) but a turbine heard from behind: brown-noise rumble low-passed at 140–360 Hz
+(+120 on boost), a low-passed noise roar opening from 500 to 2,000 Hz with the throttle, slow
+turbulence (0.71 and 1.93 Hz) on both, a faint two-tone whine (1,500–2,800 Hz and × 1.5, gain
+0.016 falling with the throttle) and more rumble and roar on boost; the bird no engine, wind pulsed at the flap rate (depth
+0.6, none while gliding), half-strength bump. The airspeed is measured against each craft's
+full throttle with boost.
+
+Stack sats (`ui/stack-sats.js`, pure; coins drawn by `render/coins.js`): Enter in plane mode,
+gamepad X or the Fun menu starts (or restarts) a 60 s run in the current craft; it steps once
+the takeoff ends; randomness comes from a generator seeded per run. Trails: a chain of 10
+coins ahead along the heading, 0.45 s of flight apart (0.7–6 units), the first 1.5 s of flight
+ahead (1.5–40 units) and up to 25° off the heading; each coin's turn changes by up to 3°
+(at most 8° a coin) and its climb by up to 0.05 (at most 0.15 a coin), at the craft's height
+clamped between 0.5 and 8.5 above the highest ground within 0.15; at the landscape's edge a
+chain turns up to 30° a coin toward the middle (a chain that would start outside starts just
+inside, heading to the middle). A new trail, continuing from the last trail coin while that is
+still ahead, is laid whenever fewer than 8 trail coins are ahead (at most one a second).
+Bonus coins: up to 6, placed every 3 s: the ground is sampled on a square of side 2R
+(R = clamp(4 × speed, 5, 24)) centred 0.5R ahead of the craft at R/30 spacing; 3×3 local
+maxima at least 0.25 high, tallest first, at least 1.5 from other bonus coins and the craft,
+become coins 0.5 above the highest ground within 0.15. At most 60 coins are out. A coin is
+worth `rowAmountRange(rows, floor(z × 10)).min` satoshis and vanishes after 20 s or once it
+is more than 3 s of flight (at least 12 units) behind the craft; it is collected when this
+frame's path passes within the craft's coin reach horizontally and vertically. Coins: upright
+discs r 0.22, 0.05 thick, no shadow, Bitcoin orange with a ₿ face, spinning
+2 rad/s, bobbing ±0.05 at 1 Hz, growing in and shrinking out over 0.25 s. During a run the
+`#planehud` line starts with "Stack sats · m:ss · stack · n coins" and each coin pops "+amount"
+under it for 0.8 s. At 60 s the best for that craft is updated and `#funcard` shows the stack,
+the coins, "New best with the <craft>" or the best, and Again (Enter) / Land (Esc); it releases
+pointer lock without landing (`controls.releaseLock()`) and the craft flies on. Landing, Fly
+or Fun abandons a run without a score.
+
+Follow tip (N or the timeline's Follow button, `aria-pressed`; also on touch devices,
+`ui/follow.js`): turning it on leaves the camera where it is. Every replay frame that changes
+the block moves a target block: playback and the 1-block steps (advance frames) and the
+scrubber, block and date input and the 1,008-block steps (seek frames). Seeks that place the
+camera themselves (Places, links, imported views, startup) run between `beginJump()` and
+`endJump(block)`, and frames in between re-anchor instead. Each frame, before the controls, the
+camera's anchor eases toward the target (τ = 0.25 s, snapping within 0.01 blocks) and
+`controls.shiftX(dx)` moves the camera by the change in world x (block / 1000), together with
+every point a gesture or animation in progress is anchored to (each point once). So the camera
+keeps the tip's speed and direction, glides to the new tip after a seek, and its total shift
+equals the tip's. Map and flight mode follow; plane mode holds (re-anchors on every frame and replay
+frame), so landing never jumps.
 Keys everywhere (ignored while typing in inputs): Space play/pause, `[`/`]` ±1 block,
-Shift+`[`/`]` ±1,008, I inspect at cursor (crosshair in flight), Esc exits flight/closes
-the drawer. Places: eras at 50,000, 210,000, 314,000, 420,000, 500,000, 630,000,
+Shift+`[`/`]` ±1,008, N Follow tip, I inspect at cursor (crosshair in flight, nose circle in plane mode), C next craft,
+Enter Stack sats (plane mode), Esc exits flight or plane mode/closes the drawer or a menu. Places: eras at 50,000, 210,000, 314,000, 420,000, 500,000, 630,000,
 700,000, 840,000, 900,000 and the tip (seek + fly to that creation column); amount bands:
 50 BTC coinbase row, ≥10 BTC, 1 BTC, 10,000 sat, 546 sat, 1–100 sat (fly to that row).
 Minimap from the always-resident L6 tile. Inspection drawer: exact worker state for the
 cell, the explorer cell API lifecycle data, and the 2D explorer link.
+The HUD's brand row (not in the phone layout) and the legend and minimap headers each end in a ×
+(`ui/dismiss.js`, `.box-close`, also used by the hover card) that hides the box for the current
+page load only: main.js keeps the dismissal in memory, so nothing reaches
+the settings store, localStorage or the URL hash, and a reload shows the box again. Changing
+`display.hud`, `display.legend` or `display.minimap` clears that box's dismissal. With the HUD
+hidden, the hover card docks at the top left in its place (`#hover.undocked`).
 
 Test hook: main.js sets `window.__landscape = { ready, settings, replay, view, controls,
-playback, seek(block), flyTo(place), inspect(x, y) }` and sets `ready = true` after the
+playback, seek(block), flyTo(place), inspect(x, y), follow: { active, lag, toggle(), set(on) },
+plane: { active, takingOff, state, pose,
+model, craft, crafts, setCraft(id), coins, game: { active, state, start(), stop() }, sound, takeoff(), land() },
+fun: { open, toggle(), card } }` and sets `ready = true` after the
 first rendered frame that contains real data. Dev harness pages set `window.__ready` and
 expose their objects on `window.__dev`. browser-check scripts use these hooks.
 
@@ -573,7 +778,7 @@ A static browser app in `landscape/web/` renders the UTXO set as a 3D landscape:
 - New C++ task `landscape_verify`: every snapshot equals a fresh replay; 20 random backward replays equal the snapshot below; history-index pass reproduces every L0 cell at blocks 210,000, 630,000 and the tip; weighted density at 965,399 matches the renderer checkpoint within 1e-6 per cell; unit case `landscape_state` covers apply/undo round trip, same-block create+spend, zero amounts skipped, exact 5 BTC boundary, level sums, tile borders, snapshot round trip, row mapping at boundary amounts.
 - Worker `landscape/web/replay.worker.js` (plain JS, no WASM in v1): decodes BLK2 (LEB128, zigzag), applies changes to all loaded levels; backward steps negate a block. Satoshi sums stay exact in doubles (< 2^53). Only tiles the viewer has requested are allocated (sparse), with a 512 MB LRU of chunk bytes. Measured in Node on this Mac: 293–378 blocks/s apply in the busiest eras, about 5,400 in 2012, 33–37M changes/s decode, exact return to zero after forward+backward.
 - Seek: pick the cheapest of current state, nearest snapshot at or below the target, or the one above with backward replay; range-request only the loaded tiles' directory entries; load L4–L6 first so an exact coarse view appears immediately, then stream finer tiles; replay the gap. A tile that becomes visible mid-playback initialises from the nearest snapshot plus cached chunks. Latest seek wins.
-- Speeds: 1× = 60 blocks/s exact; 10× exact while the worker sustains ≥600 blocks/s, otherwise the HUD shows the achieved rate; 100× and scrubbing step snapshot to snapshot. Frame deltas go to the main thread as transferable buffers: per tile either full 258×258 values (per measure) + heat, or changed-cell lists.
+- Speeds: 1× = 60 blocks/s exact; 2× = 120 blocks/s exact; 5× exact while the worker sustains ≥300 blocks/s, otherwise the HUD shows the achieved rate; Max replays with the whole frame budget, paced to the download when that is slower; only scrubbing steps snapshot to snapshot. Frame deltas go to the main thread as transferable buffers: per tile either full 258×258 values (per measure) + heat, or changed-cell lists.
 - Activity heat: during forward playback each spend adds actual BTC moved to its cell's heat; decay half-life in blocks is a setting; seeks and backward steps clear heat.
 - Cell inspection: add `GET /api/landscape/cell?block&col&row` to `src/cpp/app/utxo_explorer.cpp` (heights `col*64 … col*64+63`, satoshi range from `rowSatoshiRange`, same JSON fields as `/api/pixel`, CORS for `127.0.0.1:12990`). Run a second explorer instance from `build_local/buv` on port 12989 with `configs/buv_explorer.json`; the installed copy under `~/.local/share/buv-explorer` is untouched.
 - Local serving: `landscape/tools/serve.mjs` (Node 20, no dependencies) serves `landscape/web/` and the data directory with HTTP Range support and correct MIME types on `127.0.0.1:12990`.

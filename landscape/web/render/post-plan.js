@@ -28,13 +28,13 @@ export const POST_DEFAULTS = Object.freeze({
   'color.lutIntensity': 1,
   'color.p3': false,
 
-  'light.sunAzimuth': 225,
-  'light.sunElevation': 35,
-  'light.sunIntensity': 3,
-  'light.sunColor': '#fff1dc',
-  'light.skyColor': '#9bb7ff',
-  'light.groundColor': '#2a2420',
-  'light.ambient': 0.6,
+  'light.sunAzimuth': 98,
+  'light.sunElevation': -1.5,
+  'light.sunIntensity': 5,
+  'light.sunColor': '#ffa58c',
+  'light.skyColor': '#9aaef0',
+  'light.groundColor': '#2a2430',
+  'light.ambient': 1.6,
   'light.shadows': true,
   'light.cascades': 3,
   'light.shadowMapSize': 2048,
@@ -138,8 +138,12 @@ export function planPipeline(s, caps = {}) {
   const compute = !!caps.compute;
   const ssaa = SSAA_LEVELS.includes(Number(s['display.ssaa'])) ? Number(s['display.ssaa']) : 1;
   const aa = AA_MODES.includes(s['display.aa']) ? s['display.aa'] : 'none';
-  // SSGI's shader uses bit operations (countOneBits) that GLSL ES 3.0 lacks.
-  const ssgi = !!s['fx.ssgi'] && webgpu;
+  const dof = !!s['fx.dof'] && Number(s['fx.dofMaxBlur']) > 0;
+  // SSGI's shader uses bit operations (countOneBits) that GLSL ES 3.0 lacks. SSGI together with
+  // depth of field froze the page (WebGPU, Chrome 155, Apple M4 Max, 2026-10-13: the main
+  // thread blocked once the pipeline held both), so depth of field wins and SSGI stays out;
+  // the panel dims SSGI with the reason (NEEDS in settings.schema.js).
+  const ssgi = !!s['fx.ssgi'] && webgpu && !dof;
   const aoMode = AO_MODES.includes(s['fx.ao']) ? s['fx.ao'] : 'off';
   // SSGI computes ambient occlusion as well; a separate AO pass would darken twice.
   const ao = ssgi ? 'off' : aoMode;
@@ -153,7 +157,6 @@ export function planPipeline(s, caps = {}) {
   const fxaa = aa === 'fxaa';
   const smaa = aa === 'smaa';
   const bloom = !!s['fx.bloom'] && Number(s['fx.bloomStrength']) > 0;
-  const dof = !!s['fx.dof'] && Number(s['fx.dofMaxBlur']) > 0;
   const motionBlur = !!s['fx.motionBlur'] && Number(s['fx.motionBlurAmount']) > 0;
   const toneMapping = TONE_MAPPINGS.includes(s['color.toneMapping']) ? s['color.toneMapping'] : 'none';
   const autoExposure = s['color.exposureMode'] === 'auto' && compute;

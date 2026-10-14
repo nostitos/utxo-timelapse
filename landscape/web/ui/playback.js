@@ -1,16 +1,30 @@
 // Playback on top of the replay client (landscape/SPEC.md §5 "Playback"). Pure module:
 // no DOM, no three.js; it only calls replay.advance / replay.seek and reads replay.block.
 //
-//   1x   = 60 blocks/s, exact (every block applied by replay.advance)
-//   10x  = 600 blocks/s, exact; when the worker is slower the playhead follows the
-//          worker and state.limited reports it (the HUD shows the achieved rate)
-//   100x = target moves at 6,000 blocks/s; exact advance while the gap is small, else a
-//          seek to the largest snapshot <= target (snapshot to snapshot)
-//   Max  = exact advance toward the tip with the whole frame budget
-// Scrubbing seeks to the snapshot at/below the scrub position while dragging, then
-// seeks exactly on release. Steps of 1 block use advance; 1,008-block steps use seek.
+//   1x  = 60 blocks/s, exact (every block applied by replay.advance)
+//   2x  = 120 blocks/s, exact
+//   5x  = 300 blocks/s, exact; when the worker is slower the playhead follows the
+//         worker and state.limited reports it (the HUD shows the achieved rate)
+//   Max = exact advance toward the tip with the whole frame budget
+// Every speed replays every block. Only scrubbing seeks to snapshots: the snapshot at/below
+// the scrub position while dragging, then an exact seek on release. Steps of 1 block use
+// advance; 1,008-block steps use seek.
+//
+// Download pacing: the change log streams in 4 MiB chunks. When the download cannot keep up
+// (always the case for Max online, and for any speed on a slow connection), the playhead
+// would replay each chunk at full CPU speed and then freeze until the next one arrived.
+// Instead playback runs at PACE_FLOOR x the measured download rate plus the blocks already
+// downloaded spread over PACE_HORIZON_S, and never asks for blocks past the downloaded
+// frontier (replay.buffer). That settles at the download rate with
+// (1 - PACE_FLOOR) x PACE_HORIZON_S, about 0.9 s, of blocks in hand.
+//
+// At Bitcoin's 10-minute target, 1x shows about 10 hours of the chain every second, 36,000
+// times real time (speedHint, shown as the speed buttons' tooltips).
+
+import { fmtInt } from './format.js';
 
 export const BASE_RATE = 60;
+export const BLOCK_MINUTES = 10; // Bitcoin's target block interval
 export const STEP_SMALL = 1;
 export const STEP_LARGE = 1008;
 // A link without a block opens at least this many blocks (about a week) before the tip, so
@@ -18,8 +32,8 @@ export const STEP_LARGE = 1008;
 export const START_BEFORE_TIP = 1008;
 export const SPEEDS = Object.freeze([
   Object.freeze({ id: '1', label: '1\u00d7', rate: 60, policy: 'exact' }),
-  Object.freeze({ id: '10', label: '10\u00d7', rate: 600, policy: 'exact' }),
-  Object.freeze({ id: '100', label: '100\u00d7', rate: 6000, policy: 'snapshot' }),
+  Object.freeze({ id: '2', label: '2\u00d7', rate: 120, policy: 'exact' }),
+  Object.freeze({ id: '5', label: '5\u00d7', rate: 300, policy: 'exact' }),
   Object.freeze({ id: 'max', label: 'Max', rate: Infinity, policy: 'max' }),
 ]);
 // While paused, gaps up to this size (steps, nudges) are covered by exact advance;
@@ -27,9 +41,26 @@ export const SPEEDS = Object.freeze([
 export const PAUSED_ADVANCE_LIMIT = 2016;
 const RATE_WINDOW_MS = 1500;
 const RATE_MIN_WINDOW_MS = 500;
+export const PACE_FLOOR = 0.7;      // share of the download rate played with an empty buffer
+export const PACE_HORIZON_S = 3;    // the downloaded blocks ahead are spread over this long
+const PACE_SMOOTH_S = 0.5;          // the paced rate eases toward its goal with this time constant
+const FRONTIER_WAIT_MS = 1000;      // a frontier that does not move for this long is ignored
 
 export function speedById(id) {
   return SPEEDS.find((s) => s.id === String(id)) || SPEEDS[0];
+}
+
+/**
+ * How a speed compares with real time, for tooltips: blocks a second and the chain time that
+ * passes every second at BLOCK_MINUTES per block (1x: 10 hours, 36,000 times real time).
+ */
+export function speedHint(spec) {
+  if (spec.policy === 'max') return 'Max: every block, as fast as this device and connection can replay them; the HUD shows the rate';
+  const minutes = spec.rate * BLOCK_MINUTES; // chain minutes per real second
+  const round = (x) => (Number.isInteger(x) ? String(x) : x.toFixed(1));
+  const span = minutes < 24 * 60 ? round(minutes / 60) + ' hours' : round(minutes / 1440) + ' days';
+  return spec.label + ': ' + fmtInt(spec.rate) + ' blocks a second, about ' + span + ' of Bitcoin every second (' +
+    fmtInt(minutes * 60) + '\u00d7 real time at 10 minutes a block)';
 }
 
 /** Largest snapshot block <= b in a sorted array, or null. */
@@ -65,34 +96,31 @@ export function frameBudgetMs(frameMs) {
 }
 
 /**
- * Next worker operation while playing. Pure: all inputs are plain values.
- * Returns {kind: 'advance', target, budgetMs} | {kind: 'seek', block} | null.
+ * Download pacing from the worker's buffer report: {inflow (blocks/s the download delivers),
+ * buffered (blocks downloaded past 'block'), rate (blocks/s playback can sustain)}, or null when
+ * the download does not limit playback (no report or rate yet, or downloaded through the tip).
  */
-export function planPlay({ speed, block, target, tip, snapshots, exactRate = 0, frameMs = 16 }) {
-  const spec = speedById(speed);
-  const budgetMs = frameBudgetMs(frameMs);
-  if (spec.policy === 'max') return block < tip ? { kind: 'advance', target: tip, budgetMs } : null;
-  const goal = Math.min(tip, Math.floor(target));
-  if (!(goal > block)) return null;
-  if (spec.policy === 'exact') return { kind: 'advance', target: goal, budgetMs };
-  // 100x: exact when the worker can close the gap quickly, else snapshot to snapshot.
-  const small = Math.max(spec.rate / BASE_RATE, (exactRate || 0) * 0.25);
-  if (goal - block <= small) return { kind: 'advance', target: goal, budgetMs };
-  const s = snapshotAtOrBelow(snapshots, goal);
-  if (s !== null && s - block > small) return { kind: 'seek', block: s };
-  return { kind: 'advance', target: goal, budgetMs };
+export function downloadPace(buffer, block, tip) {
+  if (!buffer || block == null || !Number.isFinite(buffer.frontier) || buffer.frontier >= tip) return null;
+  const inflow = Number(buffer.blocksPerSec);
+  if (!(inflow > 0) || !Number.isFinite(inflow)) return null;
+  const buffered = Math.max(0, buffer.frontier - block);
+  return { inflow, buffered, rate: PACE_FLOOR * inflow + buffered / PACE_HORIZON_S };
 }
 
 /**
- * Lead the playhead target may have over the delivered block. Exact speeds keep a
- * quarter second of lead so a slow worker is followed rather than skipped; 100x allows
- * one second so snapshot seeks always have somewhere to go.
+ * Next worker operation while playing. Pure: all inputs are plain values.
+ * paced: Max follows the target like an exact speed (download pacing) instead of running
+ * to the tip with the frame budget.
+ * Returns {kind: 'advance', target, budgetMs} | null.
  */
-export function maxLead(speed) {
+export function planPlay({ speed, block, target, tip, frameMs = 16, paced = false }) {
   const spec = speedById(speed);
-  if (spec.policy === 'exact') return Math.max(1, spec.rate * 0.25);
-  if (spec.policy === 'snapshot') return spec.rate;
-  return Infinity;
+  const budgetMs = frameBudgetMs(frameMs);
+  if (spec.policy === 'max' && !paced) return block < tip ? { kind: 'advance', target: tip, budgetMs } : null;
+  const goal = Math.min(tip, Math.floor(target));
+  if (!(goal > block)) return null;
+  return { kind: 'advance', target: goal, budgetMs };
 }
 
 export function createPlayback({ replay, tip, snapshots = [], now = () => performance.now() } = {}) {
@@ -109,6 +137,9 @@ export function createPlayback({ replay, tip, snapshots = [], now = () => perfor
   let exactRate = 0;
   let samples = [];
   let lastIssued = null;
+  let paced = false; // download pacing active (see downloadPace)
+  let paceRate = null; // eased paced rate, blocks/s
+  let waitSince = null; // when the playhead reached the downloaded frontier
   const changeFns = new Set();
   const eventFns = new Set();
 
@@ -117,6 +148,9 @@ export function createPlayback({ replay, tip, snapshots = [], now = () => perfor
 
   function resetRate() {
     samples = [];
+    paced = false;
+    paceRate = null;
+    waitSince = null;
   }
 
   function sampleRate(t) {
@@ -199,10 +233,9 @@ export function createPlayback({ replay, tip, snapshots = [], now = () => perfor
     const block = replay.block;
     if (block == null) return;
     if (playing) {
-      const plan = planPlay({ speed, block, target: target ?? block, tip: tipBlock, snapshots: snaps, exactRate, frameMs });
+      const plan = planPlay({ speed, block, target: target ?? block, tip: tipBlock, frameMs, paced });
       if (!plan) return;
-      if (plan.kind === 'seek') issueSeek(plan.block);
-      else issueAdvance(plan.target, plan.budgetMs);
+      issueAdvance(plan.target, plan.budgetMs);
       return;
     }
     if (requested == null || requested === block) return;
@@ -214,6 +247,11 @@ export function createPlayback({ replay, tip, snapshots = [], now = () => perfor
     get state() {
       const spec = speedById(speed);
       const achieved = achievedRate();
+      const pace = downloadPace(replay.buffer, replay.block, tipBlock);
+      // The download, not the worker, sets the speed: Max paced below the decode rate, or an
+      // exact speed paced below its nominal rate.
+      const netLimited = playing && paced && paceRate !== null &&
+        (spec.policy === 'max' ? !(exactRate > 0) || paceRate < exactRate * 0.9 : paceRate < spec.rate * 0.95);
       return {
         playing,
         speed,
@@ -225,6 +263,11 @@ export function createPlayback({ replay, tip, snapshots = [], now = () => perfor
         achieved,
         exactRate,
         limited: playing && spec.policy === 'exact' && achieved != null && achieved < spec.rate * 0.9,
+        netLimited,
+        paced: playing && paced,
+        paceRate: playing && paced ? paceRate : null,
+        downloadRate: pace ? pace.inflow : null,
+        buffered: pace ? pace.buffered : null,
         op: op ? op.kind : null,
         scrubbing: !!scrub,
         tip: tipBlock,
@@ -335,12 +378,37 @@ export function createPlayback({ replay, tip, snapshots = [], now = () => perfor
       if (block == null || scrub) return;
       if (playing) {
         const spec = speedById(speed);
-        if (spec.policy !== 'max') {
-          // While a seek is pending the state will continue from the seek block, so the
-          // playhead moves on from there (a stale block would cap it behind the jump).
-          const base = op && op.kind === 'seek' ? op.block : block;
+        // While a seek is pending the state will continue from the seek block, so the
+        // playhead moves on from there (a stale block would cap it behind the jump).
+        const base = op && op.kind === 'seek' ? op.block : block;
+        const step = Number.isFinite(dt) && dt > 0 ? Math.min(dt, 0.25) : 0;
+        const want = spec.policy === 'max' ? Infinity : spec.rate;
+        const pace = op && op.kind === 'seek' ? null : downloadPace(replay.buffer, base, tipBlock);
+        // Max always follows the download; an exact speed only when the download is slower.
+        if (pace && (spec.policy === 'max' || pace.inflow < want)) {
+          const goal = Math.min(want, pace.rate);
+          paceRate = paceRate === null ? goal : paceRate + (goal - paceRate) * (1 - Math.exp(-step / PACE_SMOOTH_S));
+          paced = true;
+        } else {
+          paced = false;
+          paceRate = null;
+        }
+        if (spec.policy !== 'max' || paced) {
+          const rate = paced ? paceRate : spec.rate;
           const from = Math.max(target ?? base, base);
-          target = Math.min(from + spec.rate * Math.min(dt, 0.25), base + maxLead(speed), tipBlock);
+          let next = Math.min(from + rate * step, base + Math.max(1, rate * 0.25), tipBlock);
+          if (paced) {
+            // Stay inside the downloaded blocks: past them the worker would wait for the next
+            // chunk and then race through it. A frontier that stops moving is ignored after
+            // FRONTIER_WAIT_MS, so a stale report cannot hold playback.
+            const frontier = replay.buffer.frontier;
+            if (block >= frontier) waitSince = waitSince ?? t;
+            else waitSince = null;
+            if (waitSince === null || t - waitSince < FRONTIER_WAIT_MS) next = Math.min(next, Math.max(base, frontier));
+          } else {
+            waitSince = null;
+          }
+          target = next;
         }
         if (block >= tipBlock && !op && !advancing) {
           playing = false;

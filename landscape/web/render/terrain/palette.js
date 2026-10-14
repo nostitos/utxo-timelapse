@@ -11,6 +11,9 @@
 //                Within one level of "film" in every channel; "film" is the film's exact table.
 //   viridis, inferno, magma, plasma (CC0, Smith and van der Walt) and cividis (Nunez,
 //                Anderton and Renslow), from matplotlib 3.9.2 _cm_listed.py, round(255 * x).
+// Gradient palettes (GRADIENT_PALETTES below), interpolated like a custom gradient:
+//   earth        sand, brown earth and green, for the Earth look. Its empty cells are water
+//                blue, so the palette starts on land: a cell with one output reads as sand.
 // Tests: landscape/tests/terrain-palette.test.mjs compares film/whale with
 // site/assets/palettes.json and the transfer with the C++ DensityToImage code.
 
@@ -153,7 +156,7 @@ const TABLES = {
     'f0d846f1d945f2da44f3db42f5dc41f6dd3ff7de3ef8df3cf9e03afbe138fce236fde334fee434fee535fee636fee838',
 };
 
-export const PALETTE_NAMES = Object.freeze(['film', 'turbo', 'viridis', 'inferno', 'magma', 'plasma', 'cividis', 'grey', 'custom']);
+export const PALETTE_NAMES = Object.freeze(['film', 'turbo', 'viridis', 'inferno', 'magma', 'plasma', 'cividis', 'earth', 'grey', 'custom']);
 export const WHITE_HOT_START_INDEX = 180; // buv::ColorMap::WHITE_HOT_START_INDEX
 export const FILM_TRANSFER = Object.freeze({ offset: 30, upper: 500, gamma: 1 });
 export const FILM_WHITE_HOT_BTC = 10; // whiteHotTailMinSatoshi 1,000,000,000 in configs/buv_explorer.json
@@ -164,6 +167,17 @@ export const DEFAULT_GRADIENT = Object.freeze([
   Object.freeze({ t: 0.7, color: '#f2b84b' }),
   Object.freeze({ t: 1, color: '#fff6e0' }),
 ]);
+// Named palettes defined by stops, low to high values.
+export const GRADIENT_PALETTES = Object.freeze({
+  earth: Object.freeze([
+    Object.freeze({ t: 0, color: '#e6d8a8' }),
+    Object.freeze({ t: 0.18, color: '#cdae70' }),
+    Object.freeze({ t: 0.4, color: '#a4794a' }),
+    Object.freeze({ t: 0.58, color: '#7e6a3c' }),
+    Object.freeze({ t: 0.78, color: '#5f9140' }),
+    Object.freeze({ t: 1, color: '#2e7a31' }),
+  ]),
+});
 
 const decoded = new Map();
 function table(name) {
@@ -195,6 +209,7 @@ export function paletteRGB(name, { gradient = null, reverse = false, whiteHot = 
   let rgb;
   if (name === 'film' && whiteHot && !reverse) return table('whale');
   if (name === 'custom') rgb = gradientRGB(gradient);
+  else if (Object.prototype.hasOwnProperty.call(GRADIENT_PALETTES, name)) rgb = gradientRGB(GRADIENT_PALETTES[name]);
   else if (name === 'grey' || name === 'gray') {
     rgb = new Uint8Array(768);
     for (let i = 0; i < 256; i++) rgb[i * 3] = rgb[i * 3 + 1] = rgb[i * 3 + 2] = i;

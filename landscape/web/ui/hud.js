@@ -4,6 +4,7 @@
 // (hidden on larger screens) or a tap on the card shows the totals and the renderer line.
 
 import { fmtInt, fmtBtcTotal, isoUtc, fmtRate, fmtCompact } from './format.js';
+import { dismissButton } from './dismiss.js';
 
 const PHASES = { init: 'Starting the replay worker', seek: 'Seeking', tiles: 'Loading tiles', advance: '', idle: '' };
 
@@ -11,7 +12,7 @@ function mb(bytes) {
   return Number.isFinite(bytes) && bytes > 0 ? Math.round(bytes / 1048576).toLocaleString('en-US') + ' MB' : null;
 }
 
-export function createHud(container) {
+export function createHud(container, { onDismiss = null } = {}) {
   container.innerHTML =
     '<div class="brand"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>' +
     '<span>UTXO Timelapse <em>Landscape</em></span></div>' +
@@ -28,6 +29,8 @@ export function createHud(container) {
     '<button type="button" class="hud-more" aria-expanded="false" aria-label="Show details" title="Details">' +
     '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>';
   const el = {};
+  // The × at the end of the brand row hides the card until reload (main.js; not on phones).
+  if (onDismiss) container.querySelector('.brand').appendChild(dismissButton('the block panel', onDismiss));
   container.querySelectorAll('[data-k]').forEach((n) => {
     el[n.dataset.k] = n;
   });
@@ -66,11 +69,13 @@ export function createHud(container) {
         else if (playback.playing) {
           const rate = playback.achieved;
           play = '\u25b6 ' + playback.label + (rate != null ? ' \u00b7 ' + fmtRate(Math.max(0, rate)) : '');
-          if (playback.limited) {
+          if (playback.netLimited) {
+            play += ' \u00b7 download-limited';
+            limited = true;
+          } else if (playback.limited) {
             play += ' \u00b7 worker-limited';
             limited = true;
-          } else if (playback.policy === 'snapshot') play += ' \u00b7 snapshot steps';
-          else if (playback.policy === 'exact') play += ' \u00b7 exact';
+          } else if (playback.policy === 'exact') play += ' \u00b7 exact';
         } else play = 'Paused \u00b7 ' + playback.label;
       }
       set('play', play);

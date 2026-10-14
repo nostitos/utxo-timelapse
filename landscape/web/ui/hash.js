@@ -1,12 +1,13 @@
 // URL hash for the shareable view (landscape/SPEC.md §8). Pure module.
 //
-//   #b=314000&mode=map&cam=483.120,96.400,402.000,0.00,-35.00&<settings store toURL()>
+//   #b=314000&mode=map&follow=1&cam=483.120,96.400,402.000,0.00,-35.00&<settings store toURL()>
 //
-// b is the exact block, mode is map | flight, cam is x,y,z (world units) followed by yaw
-// and pitch in degrees (yaw 0 looks toward -z, pitch < 0 looks down). Every other key
-// belongs to the settings store (preset and overrides) and is passed through untouched.
+// b is the exact block, mode is map | flight, follow=1 turns Follow tip on (absent or any
+// other value: off), cam is x,y,z (world units) followed by yaw and pitch in degrees (yaw 0
+// looks toward -z, pitch < 0 looks down). Every other key belongs to the settings store
+// (preset and overrides) and is passed through untouched.
 
-const SHELL_KEYS = new Set(['b', 'mode', 'cam']);
+const SHELL_KEYS = new Set(['b', 'mode', 'follow', 'cam']);
 export const MODES = Object.freeze(['map', 'flight']);
 
 function num(v, digits) {
@@ -41,10 +42,11 @@ function stripLead(s) {
  * Build the hash. settingsQuery is the settings store's toURL() output (a
  * URLSearchParams-style string); it is appended as-is after the shell keys.
  */
-export function encodeHash({ block = null, mode = null, cam = null } = {}, settingsQuery = '') {
+export function encodeHash({ block = null, mode = null, cam = null, follow = false } = {}, settingsQuery = '') {
   const parts = [];
   if (Number.isInteger(block) && block >= 0) parts.push('b=' + block);
   if (MODES.includes(mode)) parts.push('mode=' + mode);
+  if (follow === true) parts.push('follow=1');
   const c = encodeCam(cam);
   if (c) parts.push('cam=' + c);
   const rest = stripLead(settingsQuery instanceof URLSearchParams ? settingsQuery.toString() : settingsQuery);
@@ -54,7 +56,7 @@ export function encodeHash({ block = null, mode = null, cam = null } = {}, setti
 
 /** Parse a hash (with or without '#'). Unknown or invalid shell values become null. */
 export function decodeHash(hash) {
-  const out = { block: null, mode: null, cam: null, settings: '' };
+  const out = { block: null, mode: null, cam: null, follow: false, settings: '' };
   const body = stripLead(hash);
   if (!body) return out;
   const rest = [];
@@ -79,6 +81,8 @@ export function decodeHash(hash) {
       out.block = /^\d+$/.test(value) && Number.isSafeInteger(b) ? b : null;
     } else if (key === 'mode') {
       out.mode = MODES.includes(value) ? value : null;
+    } else if (key === 'follow') {
+      out.follow = value === '1';
     } else if (key === 'cam') {
       out.cam = decodeCam(value);
     }
