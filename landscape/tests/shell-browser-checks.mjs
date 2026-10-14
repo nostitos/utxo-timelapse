@@ -874,14 +874,14 @@ const CHECKS = [
       await openPanel();
       out.ultraOff = quickButton('quality', 'Ultra').disabled && quickButton('quality', 'Extreme').disabled;
       out.boxesOff = quickButton('cellShape', 'boxes').disabled && quickButton('cellShape', 'columns').disabled;
-      L.settings.setLook('Neon night'); await sleep(600);
-      out.neon = { columns: L.settings.get('geo.columns'), stepped: L.settings.get('geo.stepped'), frameError: L.frameError || null };
+      L.settings.setLook('Outputs'); await sleep(600);
+      out.boxes = { columns: L.settings.get('geo.columns'), stepped: L.settings.get('geo.stepped'), frameError: L.frameError || null };
       return out;`,
     expect: (v) => [
       ['?webgl=1 uses WebGL2', v.backend === 'webgl2'],
       ['quality capped at High', v.quality === 'High'],
       ['the panel disables Ultra, Extreme, Columns and Boxes', v.ultraOff && v.boxesOff],
-      ['Neon night falls back to stepped cells without errors', v.neon.columns === false && v.neon.stepped === true && !v.neon.frameError],
+      ['Outputs (boxes) falls back to stepped cells without errors', v.boxes.columns === false && v.boxes.stepped === true && !v.boxes.frameError],
       ['renders (ready, no frame errors)', v.ready && !v.frameError],
     ],
   },
@@ -947,7 +947,7 @@ const CHECKS = [
       out.frameError = L.frameError || null;
       return out;`,
     expect: (v) => [
-      ['the look select lists the twelve looks (' + v.ui.looks.length + ')', v.ui.looks.join() === 'Landscape,BitcoinTimelapse.com,Daylight,Golden hour,Earth,Neon night,Whales,Pulse,Outputs,Money map,Linear,Paper'],
+      ['the look select lists the eleven looks (' + v.ui.looks.length + ')', v.ui.looks.join() === 'Landscape,BitcoinTimelapse.com,Daylight,Golden hour,Earth,Whales,Pulse,Outputs,Money map,Linear,Paper'],
       ['five quality buttons', v.ui.qualities.join() === 'Performance,Balanced,High,Ultra,Extreme'],
       ['status reads the look and quality; Advanced starts closed (' + v.ui.status + ')', v.ui.status === 'Landscape \u00b7 ' + v.ui.quality && v.ui.advancedClosed === true],
       ['every option of every quick control selects itself (' + v.clicks.length + ' options' + (v.bad.length ? '; failed ' + v.bad.join(', ') : '') + ')', v.clicks.length >= 30 && v.bad.length === 0],

@@ -159,8 +159,8 @@ test('presets: names, metadata and every value valid without clamping', () => {
   assert.deepEqual(Object.keys(QUALITY_PRESETS), [...QUALITY_ORDER]);
   assert.deepEqual(Object.keys(LOOK_INFO), [...LOOKS]);
   assert.deepEqual(Object.keys(QUALITY_INFO), [...QUALITY_ORDER]);
-  assert.deepEqual([...LOOKS], ['Landscape', 'BitcoinTimelapse.com', 'Daylight', 'Golden hour', 'Earth', 'Neon night',
-    'Whales', 'Pulse', 'Outputs', 'Money map', 'Linear', 'Paper']);
+  assert.deepEqual([...LOOKS], ['Landscape', 'BitcoinTimelapse.com', 'Daylight', 'Golden hour', 'Earth', 'Whales',
+    'Pulse', 'Outputs', 'Money map', 'Linear', 'Paper']);
   assert.equal(DEFAULT_LOOK, 'Landscape');
   assert.equal(STARTUP_PRESET, 'High');
   assert.equal(WEBGL2_MAX_PRESET, 'High');

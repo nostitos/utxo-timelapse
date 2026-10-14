@@ -62,14 +62,14 @@ test('every built-in look reads one option in every quick control', () => {
   const read = Object.fromEntries(choices.map((c) => [c.id, quickOption(c, s.get)]));
   assert.deepEqual(read, { timeOfDay: 'dusk', sky: 'on', haze: 'light', shadows: 'on', glow: 'normal', bigCoins: 'normal',
     cellShape: 'columns', flashes: 'normal', flashTrail: 'normal', farColumns: 'prism', farShadows: 'on', distance: 'adaptive' });
-  // On WebGL2 Neon night's boxes become stepped cells, still one definite option.
+  // On WebGL2 the data looks' boxes become stepped cells, still one definite option.
   const w = make({ webgpu: false });
-  w.setLook('Neon night');
+  w.setLook('Outputs');
   assert.equal(quickOption(QUICK_BY_ID.get('cellShape'), w.get), 'stepped');
 });
 
 test('each option selects itself and leaves the other controls alone', () => {
-  for (const look of ['Landscape', 'BitcoinTimelapse.com', 'Neon night', 'Earth', 'Paper']) {
+  for (const look of ['Landscape', 'BitcoinTimelapse.com', 'Pulse', 'Earth', 'Paper']) {
     const s = make();
     s.setLook(look);
     for (const c of choices) {
@@ -119,7 +119,7 @@ test('values set by hand read as mixed; state, patch and needs', () => {
 });
 
 test('blend sliders: stops read exactly, points between read back and leave the other controls', () => {
-  for (const look of ['Landscape', 'Daylight', 'Neon night']) {
+  for (const look of ['Landscape', 'Daylight', 'Pulse']) {
     const s = make();
     s.setLook(look);
     for (const c of blends) {

@@ -469,7 +469,7 @@ never change), `needs` (conditions under which the setting changes the image, fr
 panel reads it).
 
 Presets have two axes. `LOOK_PRESETS` (`LOOKS`: Landscape, BitcoinTimelapse.com, Daylight, Golden
-hour, Earth, Neon night, Whales, Pulse, Outputs, Money map, Linear, Paper; `LOOK_INFO`) set the
+hour, Earth, Whales, Pulse, Outputs, Money map, Linear, Paper; `LOOK_INFO`) set the
 appearance; `QUALITY_PRESETS` (`QUALITY_ORDER`:
 Performance, Balanced, High, Ultra, Extreme; `QUALITY_INFO`) set the cost. Both are partial
 `{id: value}` maps; a setting's base value is the look's value, else the quality tier's, else
@@ -577,8 +577,7 @@ effect off, tone mapping none, exposure 1, neutral grade, AA none, black backgro
 ground). **Daylight** (high white sun, viridis, no bloom), **Golden hour** (low sun from the
 tip side, thick haze, god rays, inferno), **Earth** (high white sun in a blue sky, light haze,
 smooth surface, water-blue empty cells under the `earth` palette on a colour scale from 1 to
-25 (offset 1), no white-hot rows),
-**Neon night** (sky off with stars, plasma boxes, pink rim, strong bloom), **Whales** (height
+25 (offset 1), no white-hot rows), **Whales** (height
 and colour by BTC value, magma, whale rows twice as tall) and **Pulse** (dim grey on a
 near-black background with the sky off, strong amber flashes with a 300-block trail) each
 change at least eight settings. The data looks share one plain stage (`STUDIO`: high white

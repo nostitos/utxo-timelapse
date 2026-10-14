@@ -277,7 +277,7 @@ test('exports and links from before looks: Film loads as the BitcoinTimelapse.co
   const balanced = make();
   balanced.applyPreset('Balanced');
   const b = make();
-  b.setLook('Neon night');
+  b.setLook('Pulse');
   b.fromJSON({ format: SETTINGS_FORMAT, preset: 'Balanced', values: balanced.toJSON().values });
   assert.equal(b.look, 'Landscape');
   assert.equal(b.preset, 'Balanced');
@@ -483,8 +483,8 @@ test('WebGL2 caps presets at High and keeps WebGPU-only features off', () => {
   assert.equal(s.applyPreset('Extreme'), 'High');
   assert.equal(s.preset, 'High');
   assert.equal(s.applyPreset('BitcoinTimelapse.com'), 'BitcoinTimelapse.com');
-  // Neon night's boxes need compute: on WebGL2 its far landscape stays stepped.
-  s.setLook('Neon night');
+  // The data looks' boxes need compute: on WebGL2 their far landscape stays stepped.
+  s.setLook('Outputs');
   assert.equal(s.get('geo.columns'), false);
   assert.equal(s.get('geo.stepped'), true);
   assert.equal(s.modified, false);

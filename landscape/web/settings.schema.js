@@ -75,8 +75,8 @@ export const REBUILD_CLASSES = Object.freeze({
 export const QUALITY_ORDER = Object.freeze(['Performance', 'Balanced', 'High', 'Ultra', 'Extreme']);
 export const STARTUP_PRESET = 'High';
 export const WEBGL2_MAX_PRESET = 'High';
-export const LOOKS = Object.freeze(['Landscape', 'BitcoinTimelapse.com', 'Daylight', 'Golden hour', 'Earth', 'Neon night',
-  'Whales', 'Pulse', 'Outputs', 'Money map', 'Linear', 'Paper']);
+export const LOOKS = Object.freeze(['Landscape', 'BitcoinTimelapse.com', 'Daylight', 'Golden hour', 'Earth', 'Whales',
+  'Pulse', 'Outputs', 'Money map', 'Linear', 'Paper']);
 // Earlier names of looks. Links, exports, saved settings and saved looks that use one open the
 // look it names now; the store writes only the current name.
 export const LOOK_ALIASES = Object.freeze({ Film: 'BitcoinTimelapse.com' });
@@ -97,7 +97,6 @@ export const LOOK_INFO = Object.freeze({
   Daylight: 'Midday: a high white sun in a pale blue sky, crisp shadows and the viridis palette, with no glow, so the relief reads like a map.',
   'Golden hour': 'Sunset from the tip side: a low orange sun, long shadows, thick warm haze, light shafts toward the sun and the inferno palette.',
   Earth: 'Midday over an atlas: water-blue empty cells, and land from sand on the sparsest cells through brown earth (about 5 per cell) to green from about 10, the busiest quarter of the land; blue sky, light haze, shadows and a smooth surface; whale rows stay green.',
-  'Neon night': 'A deep violet night full of stars, glowing boxes in the plasma palette with pink rims, strong bloom and bright white spend flashes.',
   Whales: 'Sunrise over the BTC held in each cell instead of the number of outputs: the large-amount rows tower over the dust, twice as tall, and the magma palette runs to white on the biggest holdings.',
   Pulse: 'A dim grey landscape where activity shows: spends flash amber and their glow lingers for hundreds of blocks. Press Play to watch the chain breathe.',
   Outputs: 'Height and colour by the number of outputs in each cell, cividis, square boxes under a white sun with no sky, haze or glow, so dust rows and large holdings are compared by count alone.',
@@ -891,14 +890,6 @@ export const LOOK_PRESETS = deepFreeze({
     'color.offset': 1, 'color.upper': 25,
     'color.toneMapping': 'neutral', 'light.emissive': 0.1, 'light.albedo': 0.95, 'light.roughness': 0.9, 'light.rim': 0,
     'light.shadowSoftness': 0.8, 'amp.nowPlane': 0.1,
-  },
-  'Neon night': {
-    ...TIME_OF_DAY.night, ...SKY.off, 'light.stars': true, 'light.starDensity': 0.45,
-    ...HAZE.none, ...GLOW.strong, 'fx.bloomThreshold': 0.95, ...CELL_SHAPES.boxes,
-    ...FLASHES.strong, 'color.heat': '#ffffff',
-    'color.background': '#0e0824', 'color.ground': '#07080f', 'color.palette': 'plasma', 'color.upper': 1500,
-    'light.emissive': 0.9, 'light.albedo': 0.15, 'light.rim': 0.8, 'light.rimColor': '#ff5ad9',
-    'color.exposure': 0.8, 'color.saturation': 1.25, 'fx.chromatic': 0.3, 'fx.vignette': 0.35,
   },
   Whales: {
     ...TIME_OF_DAY.sunrise, ...BIG_COINS.taller,
