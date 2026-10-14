@@ -294,6 +294,16 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       onExport: (json) => ({ ...json, view: viewState() }),
       onImport: (json) => restoreView(json && json.view),
       getShareURL: () => location.origin + location.pathname + location.search + currentHash(),
+      // The Performance section's live readout (ui/quick.js).
+      perf: () => {
+        const s = view.stats || {};
+        const columnsOn = view.backend === 'webgpu' && !!store.get('geo.columns');
+        return {
+          gpuMs: s.gpuMs, frameMs: s.frameMs, fps: s.fps,
+          columns: columnsOn ? { drawn: s.columns || 0, needed: s.columnNeeded || 0, budget: s.columnBudget || store.get('geo.instanceBudget'),
+            reach: s.columnRadius || 0, requested: s.columnRequested || 0 } : null,
+        };
+      },
     });
     timeline = createTimeline({
       container: $('timeline'), tip, blocktimes: replay.blocktimes, playback,

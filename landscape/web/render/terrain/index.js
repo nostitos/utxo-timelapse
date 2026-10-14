@@ -36,7 +36,7 @@ export const TERRAIN_DEFAULTS = Object.freeze({
   'amp.nowPlane': 0.15,
   'geo.smoothing': 'bilinear', 'geo.stepped': false, 'geo.steppedWhales': true, 'geo.subdivision': 1, 'geo.columns': true,
   'geo.columnRadius': 4096, 'geo.instanceBudget': 1000000, 'geo.columnGap': 0.12, 'geo.lodBias': 0,
-  'geo.columnShape': 'cylinder', 'geo.cylinderSides': 12,
+  'geo.columnShape': 'cylinder', 'geo.cylinderSides': 12, 'geo.farColumns': 'prism', 'geo.farShadows': true,
   'geo.columnPixels': 4,
   'geo.pixelsPerCell': 3, 'geo.tileBudget': 225, 'geo.skirts': true, 'geo.wireframe': false,
   'light.emissive': 0.4, 'light.albedo': 0.85, 'light.rim': 0.35, 'light.rimColor': '#99bbff',
@@ -478,6 +478,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
         enabled: true, focus: region.focus, eye: region.eye, radiusCells: region.radiusCells, nearCells: region.nearCells,
         budget: Math.round(get('geo.instanceBudget')), gap: get('geo.columnGap'), dataVersion: atlas.version,
         shape: get('geo.columnShape'), sides: Number(get('geo.cylinderSides')),
+        farStyle: get('geo.farColumns'), farShadows: !!get('geo.farShadows'),
       });
     } else if (columns) {
       columns.update({ enabled: false, gap: get('geo.columnGap') });
@@ -497,6 +498,10 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     stats.columns = columns && mode.columns ? columns.state.drawn : 0;
     stats.columnTiles = columns && mode.columns ? columns.state.tiles : 0;
     stats.columnRadius = columns && mode.columns ? columns.state.effectiveCells : 0;
+    // What the column disc asked for and how many columns it needed (the budget may cut it).
+    stats.columnRequested = columns && mode.columns ? columns.state.radiusCells : 0;
+    stats.columnNeeded = columns && mode.columns ? columns.state.needed : 0;
+    stats.columnBudget = columns && mode.columns ? columns.state.budget : 0;
     // How far the column disc sits ahead of the camera (world units; plane mode moves it).
     stats.columnAhead = region ? Math.hypot(region.focus[0] - region.eye[0], region.focus[1] - region.eye[1]) : 0;
     stats.instances = n + stats.columns;

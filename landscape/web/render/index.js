@@ -220,6 +220,9 @@ export async function createLandscapeView({
       stats.instances = ts.instances || 0;
       stats.columns = ts.columns || 0;
       stats.columnRadius = ts.columnRadius || 0;
+      stats.columnRequested = ts.columnRequested || 0;
+      stats.columnNeeded = ts.columnNeeded || 0;
+      stats.columnBudget = ts.columnBudget || 0;
       stats.columnAhead = ts.columnAhead || 0;
       stats.tiles = ts.tiles ?? 0;
       stats.resident = ts.resident ?? 0;

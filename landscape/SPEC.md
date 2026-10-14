@@ -492,8 +492,9 @@ savedAt, look, quality, overrides}]}`; up to 50; names 1–40 characters, unique
 built-in or quality name or Custom). A record keeps its built-in look, its quality and the
 governed values that differ from them. Values are validated and clamped.
 
-`settings.quick.js` exports `QUICK`, the eighteen quick controls (Look, Quality, Column distance,
-Terrain detail, Time of day, Sky, Haze, Shadows, Glow, Height shows, Colours, Height, Big coins,
+`settings.quick.js` exports `QUICK`, the quick controls in five sections (Look, Quality; Performance: Now,
+Resolution, Column distance, Column cap, Far columns, Far shadows, Terrain detail, Loaded tiles;
+Time of day, Sky, Haze, Shadows, Glow, Height shows, Colours, Height, Big coins,
 Cell shape, Flashes, Flash trail, Field of view, Show), and `quickOption`, `quickState`,
 `quickPatch`, `quickIds`, `blendPatch`, `blendPosition`, `blendValue`, `blendIndex`. Choice,
 toggle and blend controls write a bundle (`set`) and recognise their option by a subset of it
@@ -531,7 +532,8 @@ ui_settings with the consumers):
   `geo.subdivision` (1, 2, 4), `geo.columns`, `geo.columnShape` (cylinder, oval, box),
   `geo.cylinderSides` (6–32),
   `geo.columnRadius` (L0 cells), `geo.columnPixels` (px),
-  `geo.instanceBudget` (≤ 8,000,000), `geo.columnGap`, `geo.lodBias`,
+  `geo.instanceBudget` (≤ 8,000,000), `geo.columnGap`, `geo.farColumns` (prism, card, flat,
+  cross), `geo.farShadows`, `geo.lodBias`,
   `geo.pixelsPerCell`, `geo.tileBudget` (32–400), `geo.skirts`, `geo.wireframe`.
 - Lighting: `light.sunAzimuth`, `light.sunElevation`, `light.sunIntensity`,
   `light.sunColor`, `light.skyColor`, `light.groundColor`, `light.ambient`,

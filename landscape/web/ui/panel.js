@@ -547,7 +547,7 @@ export function createPanel(options = {}) {
   // reach the app's shortcuts.
 
   // Quick settings, then Reset and Copy link, then Advanced with every setting.
-  const quick = createQuickSettings({ store, message: (text, kind, undo) => message(text, kind, undo) });
+  const quick = createQuickSettings({ store, message: (text, kind, undo) => message(text, kind, undo), perf: options.perf || null });
   gui.$children.appendChild(quick.domElement);
   const actions = el('div', 'lsp-buttons lsp-actions');
   const actionButtons = {};
@@ -1225,6 +1225,10 @@ const CSS = [
   '.lsp .lsq-stops button{height:20px;line-height:18px;font-size:10.5px;text-align:center;color:var(--lsp-muted)}',
   '.lsp .lsq-stops button[aria-pressed=true]{color:#fff}',
   '.lsp .lsq-chips{display:flex;flex-wrap:wrap;gap:4px}',
+  '.lsp .lsq-now{display:flex;flex-direction:column;gap:1px;min-width:0;font-family:var(--font-family-mono);font-size:10.5px;color:var(--number-color)}',
+  '.lsp .lsq-now-cols{color:var(--lsp-muted)}',
+  '.lsp .lsq-now-cols.lsq-now-limit{color:var(--lsp-accent)}',
+  '.lsp .lsq-row[hidden]{display:none}',
   '.lsp .lsq-chips button{width:auto;height:22px;line-height:20px;padding:0 9px;border-radius:11px;border:1px solid var(--widget-color);background:none;color:var(--lsp-muted);font:inherit;cursor:pointer}',
   '.lsp .lsq-chips button[aria-pressed=true]{background:#3b4558;border-color:#3b4558;color:#fff}',
 ].join('\n');

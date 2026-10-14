@@ -9,17 +9,18 @@
 // the atlas, so playback needs no CPU work. Columns come in two levels of detail drawn from
 // one instance buffer: cells wider than NEAR_PX on screen (measured from the eye, the ground
 // under the camera) use geo.cylinderSides, smaller ones a 4-sided prism with the circle's
-// area (near list from the start of the buffer, far list from the end). When the occupied
-// cells exceed geo.instanceBudget, the disc shrinks
-// (measured by an asynchronous read of the counter) so the heightfield never shows holes.
+// area or the cheaper far style of geo.farColumns (near list from the start of the buffer,
+// far list from the end). When the occupied cells exceed geo.instanceBudget, the disc shrinks
+// (measured by an asynchronous read of the counter) so the heightfield never shows holes, and
+// it grows back toward the budget while there is room.
 import {
   Group, InstancedBufferGeometry, BufferAttribute, Mesh, StorageBufferAttribute, IndirectStorageBufferAttribute,
-  Vector2,
+  Vector2, DoubleSide, FrontSide,
 } from 'three/webgpu';
 import {
   Fn, uniform, int, uint, float, vec3, vec4, uvec2, storage, instanceIndex, atomicAdd, atomicLoad,
   Loop, If, max, mix, abs, smoothstep, select, normalize, length, round, positionGeometry, positionWorld,
-  varying, normalView, transformNormalToView, dFdx, dFdy,
+  varying, normalView, transformNormalToView, dFdx, dFdy, vec2, dot, clamp, sqrt, cameraPosition,
 } from 'three/tsl';
 import { tileInfo, SLOT, SLOT_CELLS } from '../../data/grid.js';
 import { TerrainNodeMaterial } from './heightfield.js';
@@ -33,6 +34,17 @@ export const COLUMN_SHAPES = Object.freeze(['cylinder', 'oval', 'box']);
  */
 export const NEAR_PX = 20;
 export const FAR_SIDES = 4;
+/**
+ * How the far level is drawn (geo.farColumns). prism: the 4-sided prism above (12 triangles);
+ * card: one rectangle turned about its axis to face the camera, with a flat top (4 triangles);
+ * flat: that rectangle alone (2 triangles); cross: two crossed rectangles that do not turn
+ * (4 triangles). The rectangles are shaded as if round, from the direction of the camera.
+ */
+export const FAR_STYLES = Object.freeze(['prism', 'card', 'flat', 'cross']);
+/** The disc grows back while fewer than GROW_BELOW of the budget's columns are drawn, aiming at FILL. */
+const FILL = 0.97;
+const GROW_BELOW = 0.93;
+const GROW_MAX = 1.25;
 /**
  * Spend flashes light the top of a cylinder: the cap and the top HEAT_TOP of the side at full
  * strength, fading to HEAT_SIDE further down. Whole glowing columns made busy areas near the
@@ -105,6 +117,46 @@ export function cylinderGeometry(sides = 12) {
 
 export function columnGeometry(shape = 'cylinder', sides = 12) {
   return shape === 'box' ? boxGeometry() : cylinderGeometry(sides);
+}
+
+/**
+ * A rectangle (and with cap a square top) in billboard coordinates: x across the column
+ * (0..1), y up (0..1), z along the direction to the camera (0..1; the rectangle at 0.5).
+ */
+export function cardGeometry(cap = true) {
+  const pos = [0, 0, 0.5, 1, 0, 0.5, 0, 1, 0.5, 1, 1, 0.5];
+  const index = [0, 1, 2, 2, 1, 3];
+  if (cap) {
+    pos.push(0, 1, 0, 1, 1, 0, 0, 1, 1, 1, 1, 1);
+    index.push(4, 6, 5, 5, 6, 7);
+  }
+  const out = new InstancedBufferGeometry();
+  out.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3));
+  out.setIndex(new BufferAttribute(new Uint32Array(index), 1));
+  out.userData = { shape: cap ? 'card' : 'flat', sides: 0, triangles: index.length / 3, vertices: pos.length / 3 };
+  return out;
+}
+
+/** Two crossed rectangles in the footprint coordinates of cylinderGeometry (x, z 0..1, y 0..1). */
+export function crossGeometry() {
+  const pos = new Float32Array([
+    0, 0, 0.5, 1, 0, 0.5, 0, 1, 0.5, 1, 1, 0.5,
+    0.5, 0, 0, 0.5, 0, 1, 0.5, 1, 0, 0.5, 1, 1,
+  ]);
+  const index = new Uint32Array([0, 1, 2, 2, 1, 3, 4, 5, 6, 6, 5, 7]);
+  const out = new InstancedBufferGeometry();
+  out.setAttribute('position', new BufferAttribute(pos, 3));
+  out.setIndex(new BufferAttribute(index, 1));
+  out.userData = { shape: 'cross', sides: 0, triangles: 4, vertices: 8 };
+  return out;
+}
+
+/** Geometry of the far level for a far style and the cell shape. */
+export function farGeometry(style, shape, sides) {
+  if (style === 'card') return cardGeometry(true);
+  if (style === 'flat') return cardGeometry(false);
+  if (style === 'cross') return crossGeometry();
+  return columnGeometry(shape, columnLevels(shape, sides).far);
 }
 
 /** Sides of the near and far levels of detail for a shape and the geo.cylinderSides setting. */
@@ -216,11 +268,16 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
   })().compute(1, [1]);
   finalize.name = 'terrainColumnsFinalize';
 
-  function buildMaterial(shape, level) {
+  function buildMaterial(shape, level, farStyle = 'prism') {
+    // The far level's rectangles (card, flat, cross) are drawn from both sides and shaded
+    // round from the camera; the prism and the near level keep their own faces.
+    const style = level === far && FAR_STYLES.includes(farStyle) ? farStyle : 'prism';
+    const billboard = style === 'card' || style === 'flat';
     const m = new TerrainNodeMaterial();
     m.name = 'TerrainColumns' + level.name;
     m.fog = true;
     m.flatShading = true;
+    m.side = style === 'prism' ? FrontSide : DoubleSide;
     // The far list fills the instance buffer from its end.
     const slot = level === near ? instanceIndex : uint(budgetCap - 1).sub(instanceIndex);
     const ref = instRead.element(slot);
@@ -236,9 +293,19 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
       const col = r.y.div(uint(4096));
       const row = r.y.mod(uint(4096));
       const h = shading.heightOf(v.x, float(row));
+      const p = positionGeometry;
+      if (billboard) {
+        // Turned about the column's axis to face the camera (in the shadow pass, the light).
+        const cxW = float(col).add(0.5).mul(COL_W);
+        const czW = float(row).add(0.5).mul(ROW_D);
+        const d = vec2(cameraPosition.x.sub(cxW), cameraPosition.z.sub(czW));
+        const t = d.div(max(length(d), 1e-4));
+        const a = p.x.sub(0.5).mul(sx);
+        const b = p.z.sub(0.5).mul(sx);
+        return vec3(cxW.add(t.y.mul(a)).add(t.x.mul(b)), p.y.mul(h), czW.sub(t.x.mul(a)).add(t.y.mul(b)));
+      }
       const x0 = float(col).add(0.5).mul(COL_W).sub(sx.mul(0.5));
       const z0 = float(row).add(0.5).mul(ROW_D).sub(sz.mul(0.5));
-      const p = positionGeometry;
       return vec3(x0.add(p.x.mul(sx)), p.y.mul(h), z0.add(p.z.mul(sz)));
     })();
     const fRaw = varying(raw, 'vColRaw');
@@ -258,7 +325,19 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
     const wp = positionWorld;
     const facet = dFdx(wp).cross(dFdy(wp));
     const side = select(abs(facet.y).lessThan(length(facet).mul(0.5)), float(1), float(0));
-    if (shape !== 'box') {
+    if (style !== 'prism') {
+      // Round shading on flat rectangles: the normal turns across the column as on a cylinder
+      // seen from the camera (u = -1 at its left edge, 0 in the middle, 1 at its right edge).
+      const cx = round(fCol).add(0.5).mul(COL_W);
+      const cz = round(fRow).add(0.5).mul(ROW_D);
+      const d = vec2(cameraPosition.x.sub(cx), cameraPosition.z.sub(cz));
+      const t = d.div(max(length(d), 1e-4));
+      const r = vec2(t.y, t.x.negate());
+      const u = clamp(dot(vec2(wp.x.sub(cx), wp.z.sub(cz)), r).div(sx.mul(0.5)), -1, 1);
+      const s = sqrt(max(float(1).sub(u.mul(u)), 0));
+      const round3 = normalize(vec3(r.x.mul(u).add(t.x.mul(s)), 0, r.y.mul(u).add(t.y.mul(s))));
+      m.normalNode = select(side.greaterThan(0.5), transformNormalToView(round3), normalView);
+    } else if (shape !== 'box') {
       // Smooth sides: the gradient of the (elliptic) cross-section at this point; the cap keeps
       // the flat facet normal.
       const cx = round(fCol).add(0.5).mul(COL_W);
@@ -280,34 +359,34 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
 
   const state = { tiles: 0, candidates: 0, key: '', needed: 0, drawn: 0, near: 0, far: 0, readPending: false,
     dispatches: 0, radiusCells: 0, effectiveCells: 0, budgetCells: Infinity, enabled: false, shape: 'cylinder',
-    sides: 12, farSides: FAR_SIDES, trianglesPerColumn: near.geometry.userData.triangles,
-    trianglesFar: far.geometry.userData.triangles };
-  let built = { shape: 'cylinder', near: 12, far: FAR_SIDES };
+    sides: 12, farSides: FAR_SIDES, farStyle: 'prism', farShadows: true, budget: 0,
+    trianglesPerColumn: near.geometry.userData.triangles, trianglesFar: far.geometry.userData.triangles };
+  let built = { shape: 'cylinder', near: 12, far: FAR_SIDES, farStyle: 'prism' };
 
   function setMaterials() {
     for (const level of [near, far]) {
       if (level.material) level.material.dispose();
-      level.material = buildMaterial(built.shape, level);
+      level.material = buildMaterial(built.shape, level, built.farStyle);
       level.mesh.material = level.material;
     }
   }
 
-  function ensureBuilt(shape, sides) {
+  function ensureBuilt(shape, sides, farStyle) {
     const want = columnLevels(shape, sides);
-    if (shape !== built.shape || want.near !== built.near || want.far !== built.far) {
+    if (shape !== built.shape || want.near !== built.near || want.far !== built.far || farStyle !== built.farStyle) {
       // Same instance list and indirect buffers; only the meshes and the materials change.
-      for (const [level, S] of [[near, want.near], [far, want.far]]) {
-        const g = columnGeometry(shape, S);
+      for (const [level, make] of [[near, () => columnGeometry(shape, want.near)], [far, () => farGeometry(farStyle, shape, sides)]]) {
+        const g = make();
         level.adopt(g);
         level.mesh.geometry = g;
         level.geometry.dispose();
         level.geometry = g;
       }
-      const shapeChanged = shape !== built.shape;
-      built = { shape, near: want.near, far: want.far };
-      Object.assign(state, { shape, sides: want.near, farSides: want.far, trianglesPerColumn: near.geometry.userData.triangles,
+      const materialsChanged = shape !== built.shape || farStyle !== built.farStyle;
+      built = { shape, near: want.near, far: want.far, farStyle };
+      Object.assign(state, { shape, sides: want.near, farSides: want.far, farStyle, trianglesPerColumn: near.geometry.userData.triangles,
         trianglesFar: far.geometry.userData.triangles, key: '' }); // key '' rewrites the indirect arguments
-      if (shapeChanged && append) setMaterials();
+      if (materialsChanged && append) setMaterials();
     }
     if (append === null || layout !== atlas.layoutVersion) {
       buildAppend();
@@ -320,10 +399,11 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
    * Rebuilds the instance list when needed. focus: [x, z] world (the disc centre, which may lie
    * outside the landscape); radiusCells: disc radius in L0 column widths (0 = no columns);
    * nearCells: radius of the full-detail cylinders around eye ([x, z], default focus); shape:
-   * 'cylinder' | 'oval' | 'box'; sides: cylinder sides.
+   * 'cylinder' | 'oval' | 'box'; sides: cylinder sides; farStyle: one of FAR_STYLES; farShadows:
+   * whether the far level casts shadows.
    */
   function update({ enabled, focus, eye = focus, radiusCells, nearCells = Infinity, budget, gap, dataVersion, shape = 'cylinder',
-    sides = 12 }) {
+    sides = 12, farStyle = 'prism', farShadows = true }) {
     uGap.value = gap;
     state.enabled = !!enabled;
     if (!enabled) {
@@ -332,7 +412,10 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
       state.key = '';
       return;
     }
-    ensureBuilt(COLUMN_SHAPES.includes(shape) ? shape : 'cylinder', sides);
+    ensureBuilt(COLUMN_SHAPES.includes(shape) ? shape : 'cylinder', sides, FAR_STYLES.includes(farStyle) ? farStyle : 'prism');
+    far.mesh.castShadow = farShadows !== false;
+    state.farShadows = far.mesh.castShadow;
+    state.budget = Math.min(budget, budgetCap);
     // The requested radius follows the camera; budgetCells is the radius the instance budget
     // allows, learned from the counter read back after each rebuild.
     state.radiusCells = Math.max(0, radiusCells);
@@ -404,6 +487,8 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
       state.readPending = true;
       const b = Math.min(budget, budgetCap);
       const asked = state.effectiveCells;
+      const requested = state.radiusCells;
+      const dispatch = state.dispatches;
       renderer.getArrayBufferAsync(counterAttr).then((buf) => {
         const c = new Uint32Array(buf);
         const needed = c[0];
@@ -415,12 +500,18 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
         near.mesh.geometry.instanceCount = Math.max(1, c[1]);
         far.mesh.geometry.instanceCount = Math.max(1, c[2]);
         state.drawn = Math.min(needed, b);
-        // Keep every masked cell covered: shrink when over budget, regrow while well under it.
-        if (needed > b) state.budgetCells = Math.max(8, asked * Math.sqrt(b / needed) * 0.95);
-        else if (needed < 0.8 * b && Number.isFinite(state.budgetCells)) {
-          state.budgetCells *= 1.1;
-          if (state.budgetCells > 1e6) state.budgetCells = Infinity;
+        // Keep every masked cell covered: shrink when over budget; while the budget limits the
+        // disc and leaves room, grow it back toward FILL of the budget. Columns are not spread
+        // evenly (the disc runs past the landscape's edges), so each step uses the measured count
+        // and growth is capped per step; the next rebuild measures again.
+        if (needed > b) {
+          state.budgetCells = Math.max(8, asked * Math.sqrt((FILL * b) / needed));
+        } else if (Number.isFinite(state.budgetCells) && asked >= state.budgetCells - 1e-6 && needed < GROW_BELOW * b) {
+          const next = asked * Math.min(GROW_MAX, Math.sqrt((FILL * b) / Math.max(1, needed)));
+          state.budgetCells = next >= requested ? Infinity : next;
         }
+        // Rebuilt while this count was read: rebuild once more so the latest disc is measured.
+        if (dispatch !== state.dispatches) state.key = '';
         state.readPending = false;
       }).catch(() => { state.readPending = false; });
     }

@@ -10,6 +10,7 @@
 
 import {
   QUICK, QUICK_SECTIONS, quickOption, quickPatch, blendPatch, blendPosition, blendValue,
+  countText,
 } from '../settings.quick.js';
 import { LOOK_INFO, QUALITY_INFO, REBUILD_CLASSES } from '../settings.schema.js';
 import { MAX_PRESET_NAME } from '../settings.js';
@@ -54,13 +55,16 @@ function savedOn(iso) {
  * @param {object} options.store settings store (settings.js)
  * @param {object[]} [options.controls] defaults to QUICK
  * @param {(text: string, kind?: string, undo?: object|Function) => void} [options.message]
+ * @param {() => object|null} [options.perf] live frame cost for the Now readout: {gpuMs, frameMs,
+ *   fps, columns: {drawn, needed, budget, reach, requested} | null}
  * @returns {{domElement: HTMLElement, refresh: () => void, row: (id: string) => HTMLElement|null,
  *   openSave: (name?: string) => void, dispose: () => void}}
  */
-export function createQuickSettings({ store, controls = QUICK, message = () => {} } = {}) {
+export function createQuickSettings({ store, controls = QUICK, message = () => {}, perf = null } = {}) {
   if (!store) throw new TypeError('createQuickSettings: store is required');
   const root = el('div', 'lsq');
   const built = [];
+  const timers = [];
 
   for (const section of QUICK_SECTIONS) {
     const list = controls.filter((control) => control.section === section);
@@ -86,6 +90,7 @@ export function createQuickSettings({ store, controls = QUICK, message = () => {
       case 'select': return buildSelect(control);
       case 'slider': return buildSlider(control);
       case 'toggles': return buildToggles(control);
+      case 'readout': return buildReadout(control);
       default: throw new Error('quick settings: unknown control type ' + control.type);
     }
   }
@@ -440,7 +445,9 @@ export function createQuickSettings({ store, controls = QUICK, message = () => {
   function buildSlider(control) {
     const entry = store.entry(control.setting);
     const min = control.min ?? entry.min;
-    const max = control.max ?? entry.max;
+    // A capability may lower the setting's maximum (Column cap, Loaded tiles).
+    const capped = entry.capMax && store.capabilities ? store.capabilities[entry.capMax] : undefined;
+    const max = Math.min(control.max ?? entry.max, typeof capped === 'number' && capped >= min ? capped : Infinity);
     const step = control.step ?? entry.step;
     const mapped = control.scale === 'log' || !!control.invert;
     const toValue = (pos) => {
@@ -493,6 +500,49 @@ export function createQuickSettings({ store, controls = QUICK, message = () => {
     return { control, row, update };
   }
 
+  // ---- Readout (live frame cost) --------------------------------------------------------------
+  function buildReadout(control) {
+    const row = el('div', 'lsq-row lsq-readout');
+    const label = labelFor(control);
+    label.title = control.help;
+    const out = el('div', 'lsq-now', { 'aria-live': 'off' });
+    const cost = el('div', 'lsq-now-cost');
+    const cols = el('div', 'lsq-now-cols');
+    out.append(cost, cols);
+    row.append(label, out);
+    row.hidden = typeof perf !== 'function';
+    const fmt = (v, d = 1) => (Number.isFinite(v) ? v.toFixed(d) : '\u2013');
+    function tick() {
+      if (row.hidden || !row.isConnected || row.offsetParent === null) return;
+      let s = null;
+      try {
+        s = perf();
+      } catch {
+        s = null;
+      }
+      if (!s) return;
+      cost.textContent = (Number.isFinite(s.gpuMs) ? 'GPU ' + fmt(s.gpuMs) + ' ms' : 'Frame ' + fmt(s.frameMs) + ' ms')
+        + ' \u00b7 ' + fmt(s.fps, 0) + ' fps';
+      const c = s.columns;
+      cols.classList.remove('lsq-now-limit');
+      if (!c) {
+        cols.textContent = 'Columns off';
+      } else if (!(c.drawn > 0)) {
+        cols.textContent = 'No columns at this distance';
+      } else {
+        const limited = c.needed > c.budget || (c.requested > 0 && c.reach < c.requested * 0.995);
+        cols.textContent = countText(c.drawn) + ' of ' + countText(c.budget) + ' columns'
+          + (limited ? ' \u00b7 cap reached, reach ' + Math.round((100 * c.reach) / Math.max(1e-6, c.requested)) + '%' : '');
+        cols.classList.toggle('lsq-now-limit', limited);
+      }
+    }
+    if (!row.hidden) timers.push(setInterval(tick, 500));
+    function update() {
+      tick();
+    }
+    return { control, row, update };
+  }
+
   // ---- Toggles (several boolean settings) -----------------------------------------------------
   function buildToggles(control) {
     const row = el('div', 'lsq-row lsq-stack');
@@ -538,6 +588,7 @@ export function createQuickSettings({ store, controls = QUICK, message = () => {
     dispose() {
       offValues();
       offPreset();
+      for (const t of timers) clearInterval(t);
     },
   };
 }
