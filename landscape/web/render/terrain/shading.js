@@ -231,7 +231,12 @@ export function createShading({ rows }) {
     const r = floor(worldZ.mul(10));
     const isRow = textureLoad(gridRows, ivec2(clamp(int(r), int(0), int(2071)), int(0))).x;
     const dz = abs(worldZ.sub(r.add(0.5).div(10)));
-    const lz = float(1).sub(smoothstep(0, fwidth(worldZ).mul(1.25), dz)).mul(isRow);
+    // Amount lines end 1.6 units past the tip edge, just short of the amount scale's labels
+    // (AMOUNT_EDGE_OFFSET = 2 in labels.js), so they lead into them instead of striking
+    // through them over the empty ground ahead of the tip.
+    const pastTip = worldX.sub(u.block.add(1).div(1000));
+    const beforeLabels = float(1).sub(smoothstep(float(1.6).sub(fwidth(worldX)), float(1.6), pastTip));
+    const lz = float(1).sub(smoothstep(0, fwidth(worldZ).mul(1.25), dz)).mul(isRow).mul(beforeLabels);
     return max(lx, lz).mul(u.grid).mul(u.gridOpacity);
   };
 

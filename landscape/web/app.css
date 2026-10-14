@@ -75,6 +75,19 @@ a { color: var(--mint); }
 #view.dragging { cursor: grabbing; }
 #view.flight { cursor: none; }
 #labels { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 1; }
+/* Axis labels: render/terrain/labels.js sets the base look inline on .lbl-layer. The amount
+   scale reads a little brighter than the block axis; 2x and 5x steps sit back; the replay
+   block's label is a small chip on the block axis. */
+#labels .lbl-amount { color: rgba(240, 244, 255, 0.92); }
+#labels .lbl-minor { color: rgba(235, 240, 255, 0.56); }
+#labels .lbl-tip {
+  padding: 1px 6px;
+  border: 1px solid rgba(168, 214, 179, 0.55);
+  border-radius: 4px;
+  background: rgba(8, 11, 14, 0.78);
+  color: var(--ink);
+  text-shadow: none;
+}
 #overlay { position: fixed; top: var(--gap); left: 50%; transform: translateX(-50%); z-index: 6; pointer-events: none; }
 #overlay > * { pointer-events: auto; }
 
@@ -157,11 +170,11 @@ a { color: var(--mint); }
 .mm-meta { font: 10px var(--mono); color: var(--muted); }
 .mm-canvas { display: block; width: 100%; border-radius: 3px; background: #05070a; cursor: crosshair; touch-action: none; }
 
-/* ---- legend (bottom right) --------------------------------------------------------- */
+/* ---- legend (top right, clear of the tip corner and its amount scale) -------------- */
 #legend {
   position: fixed;
   right: calc(var(--gap) + var(--panel-space) + var(--insp-space));
-  bottom: calc(var(--tl-h) + var(--gap));
+  top: calc(var(--gap) + var(--sat));
   width: var(--legend-w);
   padding: 12px 14px;
   border-radius: 8px;

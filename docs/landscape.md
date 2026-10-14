@@ -478,7 +478,7 @@ The tables below are generated from `landscape/web/settings.schema.js` by `node 
 | Anti-aliasing <br><code>display.aa</code> | none, fxaa, smaa, traa | traa | Film none; Performance fxaa; Balanced smaa | rebuilds post. Post-process anti-aliasing. Film: none. |
 | Supersampling <br><code>display.ssaa</code> | 1, 2, 4 | 1 | Extreme 2 | rebuilds post. Supersamples the scene pass only, at sqrt(N) times the resolution per axis (4 = 2x2), resolved by an exact box downsample. Effects run at output resolution; TRAA is skipped while supersampling is on. |
 | Performance overlay <br><code>display.overlay</code> | bool | off | — | personal preference. fps, CPU and GPU ms per pass, triangles, instances, tiles and worker rate. |
-| Axis labels <br><code>display.labels</code> | bool | on | — | personal preference. Block, date and amount labels in the scene. |
+| Axis labels <br><code>display.labels</code> | bool | on | — | personal preference. Block and date labels along the near edge with the replay block marked, and an amount scale beside the tip that moves with it (and at genesis when in view). Labels under a panel are hidden. |
 | Grid <br><code>display.grid</code> | bool | on | Film off; Pulse off | Reference grid lines on the ground. Film: off, because grid lines draw over palette colours. |
 | Legend <br><code>display.legend</code> | bool | on | — | personal preference. Colour and height legend. |
 | Minimap <br><code>display.minimap</code> | bool | on | — | personal preference. Overview map with the camera footprint. |

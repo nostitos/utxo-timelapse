@@ -2,12 +2,21 @@
 //
 // HTML labels are positioned by projecting world anchor points into the #labels overlay
 // (CSS pixels, pointer-events none). Block labels run along the long edge (z = 0 or
-// z = rows / 10) nearer the camera, 1.5 world units outside it; amount labels, one per
-// decade from 1 sat to 100,000 BTC, run along the nearer short edge (x = 0 or
-// x = numBlocks / 1000), 2 units outside it. Anchors are at y = 0. When the nearer edge
-// has nothing on screen the opposite edge is used. Labels behind the camera or off screen
-// are hidden, and crowded labels are dropped greedily: block anchors stay at least 80 px
-// apart, amount anchors at least 16 px apart, and estimated text boxes never overlap.
+// z = rows / 10) nearer the camera, 1.5 world units outside it, and the replay block (the
+// tip) gets its own highlighted label there with the block number and UTC date. When the
+// nearer long edge has nothing on screen the opposite one is used.
+//
+// The amount scale stands 2 units beyond the tip edge (x = (tip + 1) / 1000, over ground
+// that holds no outputs yet) and moves with the tip as the replay plays. It has one label
+// per decade from 1 sat to 100,000 BTC, plus the 2x and 5x steps (200 sat, 0.05 BTC ...)
+// between two shown decades that are far enough apart on screen. The genesis edge (x = 0)
+// carries a second scale when it is on screen (with at least three decades while the tip
+// scale shows); the tip scale wins where the two meet. The tip label extends from the tip
+// toward genesis, so it leaves the corner to the amount scale. Anchors are at
+// y = 0. Labels behind the camera, off screen or under an interface panel ("covers") are
+// hidden, and crowded labels are dropped greedily: block anchors stay at least 80 px apart,
+// decade anchors at least 16 px apart, 2x and 5x anchors 20 px from any amount anchor, and
+// estimated text boxes never overlap.
 //
 // A label is shown only when its anchor is in front of the camera and inside the viewport
 // (plus VIEW_MARGIN_PX) and its whole text box fits on screen, so no label is cut in half
@@ -28,12 +37,20 @@ export const BLOCK_TICK_TARGET = 8;
 export const BLOCK_LABEL_GAP_PX = 80;
 /** Minimum screen distance between amount label anchors (CSS px). */
 export const AMOUNT_LABEL_GAP_PX = 16;
+/** Minimum screen distance from a 2x or 5x amount anchor to any other amount anchor (CSS px). */
+export const AMOUNT_MINOR_GAP_PX = 20;
+/** The genesis scale is drawn beside a visible tip scale only with at least this many decades. */
+export const GENESIS_SCALE_MIN_DECADES = 3;
 /** Block label anchors sit this many world units outside the long edge. */
 export const BLOCK_EDGE_OFFSET = 1.5;
-/** Amount label anchors sit this many world units outside the short edge. */
+/** Amount label anchors sit this many world units outside the tip edge and the genesis edge. */
 export const AMOUNT_EDGE_OFFSET = 2;
 /** Anchors up to this far outside the viewport still count as visible (CSS px). */
 export const VIEW_MARGIN_PX = 16;
+/** A label's text box must stay this far from every cover rectangle (CSS px). */
+export const COVER_PAD_PX = 4;
+/** Cover rectangles (interface panels) are re-read at most this often (ms). */
+export const COVER_REFRESH_MS = 250;
 
 const AMOUNT_DECADES = 14;      // 10^0 .. 10^13 sat
 const EDGE_HYSTERESIS = 1;      // world units past the midline before the labelled edge switches
@@ -45,6 +62,8 @@ const DEFAULT_CHAR_W = 6.6;     // 11px IBM Plex Mono advance (0.6 em) until a p
 const DEFAULT_LINE_H = 14;
 const PROBE_TEXT = '0000000000';
 const DASH = '\u2014';
+const KINDS = ['block', 'amount', 'tip'];
+const DEFAULT_COVERS = '[data-label-cover]';
 const INT = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
 const BTC = new Intl.NumberFormat('en-US', { maximumFractionDigits: 8 });
 
@@ -106,17 +125,42 @@ export function amountTicks(minAmt) {
 }
 
 /**
+ * The steps between decades: [{row, sats, label, mantissa}] for sats = 2 x 10^k and
+ * 5 x 10^k, k = 0..12 (2 sat .. 50,000 BTC), ascending by amount.
+ */
+export function minorAmountTicks(minAmt) {
+  const out = [];
+  for (let k = 0; k < AMOUNT_DECADES - 1; k++) {
+    for (const mantissa of [2, 5]) {
+      const sats = mantissa * 10 ** k;
+      out.push({ row: rowOfAmount(minAmt, sats), sats, label: formatAmount(sats), mantissa });
+    }
+  }
+  return out;
+}
+
+/**
  * "420,000 \u00b7 2016-07": block number and the UTC year-month of its timestamp
  * (blocktimes holds unix seconds per height). Just the number when blocktimes is missing,
  * too short or has no time for that block.
  */
-export function formatBlockLabel(block, blocktimes) {
+export function formatBlockLabel(block, blocktimes, withDay = false) {
   const n = INT.format(block);
   const t = blocktimes && block >= 0 && block < blocktimes.length ? blocktimes[block] : 0;
   if (!(t > 0)) return n;
   const d = new Date(t * 1000);
   const month = d.getUTCMonth() + 1;
-  return n + ' \u00b7 ' + d.getUTCFullYear() + '-' + (month < 10 ? '0' : '') + month;
+  let s = n + ' \u00b7 ' + d.getUTCFullYear() + '-' + (month < 10 ? '0' : '') + month;
+  if (withDay) {
+    const day = d.getUTCDate();
+    s += '-' + (day < 10 ? '0' : '') + day;
+  }
+  return s;
+}
+
+/** Text of the tip label: "969,265 \u00b7 2026-09-30" (UTC date), or the number alone. */
+export function formatTipLabel(block, blocktimes) {
+  return formatBlockLabel(block, blocktimes, true);
 }
 
 function projectInto(out, m, x, y, z, width, height, margin) {
@@ -257,21 +301,61 @@ function sameValues(a, b) {
   return true;
 }
 
+function overlapsAny(c, boxes, pad) {
+  for (const b of boxes) if (boxesOverlap(c, b, pad)) return true;
+  return false;
+}
+
+// On-screen labels first, then the more important rank, then the nearer label.
+function byPriority(a, b) {
+  return b.visible - a.visible || a.rank - b.rank || a.depth - b.depth;
+}
+
+// Greedy thinning: each candidate in order joins kept unless its anchor lies within gap px
+// of a kept anchor, its box comes within pad px of a kept box, or its box comes within
+// fixedPad px of a box in fixed (labels placed earlier that must not be covered). Returns kept.
+function keepUncrowded(order, kept, gap, pad, fixed, fixedPad) {
+  for (const c of order) {
+    let ok = true;
+    for (const k of kept) {
+      if (tooClose(c, k, gap) || boxesOverlap(c, k, pad)) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok && fixed && overlapsAny(c, fixed, fixedPad)) ok = false;
+    if (ok) kept.push(c);
+  }
+  return kept;
+}
+
 /**
  * Pure label layout, used by createAxisLabels and the tests. update(viewProj,
- * cameraPosition, widthCss, heightCss) returns {blockStep, amountRows, blockEdgeZ,
- * amountEdgeX, blockRange, labels}. blockEdgeZ / amountEdgeX are the anchor lines used
- * (null when no label of that kind is on screen), blockRange the visible [b0, b1] along
- * the labelled long edge. Each label is {kind: 'block' | 'amount', key, text, x, y, ux,
- * uy, left, top, w, h, depth, block | row, sats}: (x, y) is the anchor in CSS px,
- * (ux, uy) the placement direction (outward offset plus edge normal, see candidate)
- * scaled so its larger component is +-1, and left/top/w/h the estimated text box placed
- * on that side of the anchor; CSS: translate(x, y) translate(50(ux-1)%, 50(uy-1)%).
+ * cameraPosition, widthCss, heightCss, {tipBlock, covers}) returns {blockStep, amountRows,
+ * blockEdgeZ, amountEdgeX, amountEdges, tipEdgeX, blockRange, labels}.
  *
- * amountRows (ascending, frozen, same instance while unchanged) lists the decade rows
- * that are not crowded out: rows of labels on screen, rows whose labels are off screen
- * but uncrowded, and rows whose anchors are behind the camera, so grid lines persist
- * while the labelled edge is out of view.
+ * tipBlock is the replay block (default: the last block of the dataset). The tip scale's
+ * anchors stand at tipEdgeX + AMOUNT_EDGE_OFFSET with tipEdgeX = worldX(tipBlock + 1), and
+ * only an explicit tipBlock adds the tip label on the block axis. covers lists rectangles
+ * {left, top, w, h} in CSS px (interface panels over the scene); a label whose text box
+ * comes within COVER_PAD_PX of one is hidden.
+ *
+ * blockEdgeZ is the anchor line of the block labels and amountEdges.tip / .genesis the
+ * anchor lines of the two amount scales (null when nothing of it is on screen). amountEdgeX
+ * is the anchor line of the scale that sets amountRows: the tip scale, unless only the
+ * genesis scale is on screen. blockRange is the visible [b0, b1] along the labelled long
+ * edge. Each label is {kind: 'block' | 'tip' | 'amount', key, cls, text, x, y, ux, uy,
+ * left, top, w, h, depth, block | (row, sats, side, minor)}: cls is the node's class list,
+ * (x, y) the anchor in CSS px, (ux, uy) the placement direction (outward offset plus edge
+ * normal, see candidate) scaled so its larger component is +-1, and left/top/w/h the
+ * estimated text box placed on that side of the anchor; CSS: translate(x, y)
+ * translate(50(ux-1)%, 50(uy-1)%). Amount labels have side 'tip' or 'genesis', and minor
+ * is true for the 2x and 5x steps.
+ *
+ * amountRows (ascending, frozen, same instance while unchanged) lists the decade rows of
+ * that scale which are not crowded out: rows of labels on screen, rows whose labels are
+ * off screen but uncrowded, and rows whose anchors are behind the camera, so grid lines
+ * persist while the scale is out of view. The 2x and 5x steps get no grid lines.
  */
 export function createAxisLayout({ grid, rows, blocktimes = null, maxTicks = BLOCK_TICK_TARGET, marginPx = VIEW_MARGIN_PX } = {}) {
   if (!grid || !Number.isInteger(grid.numBlocks) || grid.numBlocks < 1 || !(grid.rows > 0)) {
@@ -283,23 +367,27 @@ export function createAxisLayout({ grid, rows, blocktimes = null, maxTicks = BLO
   const W = worldX(numBlocks);
   const D = worldZ(grid.rows);
   const amounts = Object.freeze(amountTicks(rows).map((t, k) => Object.freeze({ ...t, k, key: 'a' + k, z: worldZ(t.row + 0.5) })));
+  const steps = Object.freeze(minorAmountTicks(rows).map((t) => Object.freeze({ ...t, key: 'm' + t.sats, z: worldZ(t.row + 0.5) })));
   const allRows = Object.freeze(sortedUnique(amounts.map((a) => a.row)));
   const metrics = {
     block: { charW: DEFAULT_CHAR_W, lineH: DEFAULT_LINE_H },
     amount: { charW: DEFAULT_CHAR_W, lineH: DEFAULT_LINE_H },
+    tip: { charW: DEFAULT_CHAR_W, lineH: DEFAULT_LINE_H },
   };
   const texts = new Map();
   const P = { x: NaN, y: NaN, depth: 0, visible: false };
   const Q = { x: NaN, y: NaN, depth: 0, visible: false };
   const T0 = { x: NaN, y: NaN, depth: 0, visible: false };
   const T1 = { x: NaN, y: NaN, depth: 0, visible: false };
+  const NO_COVERS = Object.freeze([]);
+  let covers = NO_COVERS;
   let longSide = null;  // 0: z = 0 edge (largest amounts), 1: z = D edge (1 sat)
-  let shortSide = null; // 0: x = 0 edge (genesis), 1: x = W edge (tip)
   let blockStep = niceStep(numBlocks, maxTicks);
   let amountRows = allRows;
+  let tipTextBlock = -1;
+  let tipTextValue = '';
 
   const blockAnchorZ = (s) => (s ? D + BLOCK_EDGE_OFFSET : -BLOCK_EDGE_OFFSET);
-  const amountAnchorX = (s) => (s ? W + AMOUNT_EDGE_OFFSET : -AMOUNT_EDGE_OFFSET);
 
   function blockText(b) {
     let s = texts.get(b);
@@ -311,14 +399,25 @@ export function createAxisLayout({ grid, rows, blocktimes = null, maxTicks = BLO
     return s;
   }
 
+  function tipText(b) {
+    if (b !== tipTextBlock) {
+      tipTextBlock = b;
+      tipTextValue = formatTipLabel(b, blocktimes);
+    }
+    return tipTextValue;
+  }
+
   // Projects an anchor (ax, 0, az) and the edge point (ex, 0, ez) it hangs from; (dx, dz)
   // is the edge direction in world space. The text box goes on the side given by the sum
   // of two unit screen vectors: edge point -> anchor, and the edge's screen normal turned
   // to the same side. The first keeps front-on labels in line with their grid lines; the
   // second keeps a label clear of its edge where the outward offset is foreshortened
-  // toward a vanishing point (edges near the horizon). Returns null when the anchor is
-  // behind the camera; visible requires the anchor on screen and the whole box inside.
-  function candidate(kind, key, text, m, ax, az, ex, ez, dx, dz, width, height, fallbackX, fallbackY) {
+  // toward a vanishing point (edges near the horizon). along = -1 (or +1) then puts the
+  // whole box on the side of the anchor toward lower (or higher) edge coordinates, ending at
+  // the anchor, along the screen axis nearer the edge's direction; the tip label uses -1.
+  // Returns null when the anchor is behind the camera; visible requires the anchor on
+  // screen, the whole box inside and the box clear of every cover.
+  function candidate(kind, key, text, m, ax, az, ex, ez, dx, dz, width, height, fallbackX, fallbackY, along = 0) {
     projectInto(P, m, ax, 0, az, width, height, marginPx);
     if (!(P.depth > W_EPS)) return null;
     let ox = 0;
@@ -333,11 +432,15 @@ export function createAxisLayout({ grid, rows, blocktimes = null, maxTicks = BLO
     }
     let nx = 0;
     let ny = 0;
+    let sx = 0;
+    let sy = 0;
     projectInto(T0, m, ex - dx, 0, ez - dz, width, height, marginPx);
     projectInto(T1, m, ex + dx, 0, ez + dz, width, height, marginPx);
     if (T0.depth > W_EPS && T1.depth > W_EPS && (ox !== 0 || oy !== 0)) {
       const len = Math.hypot(T1.x - T0.x, T1.y - T0.y);
       if (len > 1e-9) {
+        sx = (T1.x - T0.x) / len;
+        sy = (T1.y - T0.y) / len;
         nx = (T0.y - T1.y) / len;
         ny = (T1.x - T0.x) / len;
         if (nx * ox + ny * oy < 0) {
@@ -356,69 +459,103 @@ export function createAxisLayout({ grid, rows, blocktimes = null, maxTicks = BLO
       ux = fallbackX;
       uy = fallbackY;
     }
+    if (along && (sx !== 0 || sy !== 0)) {
+      if (Math.abs(sx) >= Math.abs(sy)) ux = along * Math.sign(sx);
+      else uy = along * Math.sign(sy);
+    }
     const mt = metrics[kind];
     const w = text.length * mt.charW;
     const h = mt.lineH;
     const left = P.x + (w * (ux - 1)) / 2;
     const top = P.y + (h * (uy - 1)) / 2;
-    const inside = left >= -BOX_SLACK && top >= -BOX_SLACK && left + w <= width + BOX_SLACK && top + h <= height + BOX_SLACK;
-    return {
-      kind, key, text, x: P.x, y: P.y, ux, uy, left, top, w, h,
-      depth: P.depth, visible: P.visible && inside, rank: 0,
+    const c = {
+      kind, key, cls: 'lbl lbl-' + kind, text, x: P.x, y: P.y, ux, uy, left, top, w, h,
+      depth: P.depth, visible: false, rank: 0,
     };
+    const inside = left >= -BOX_SLACK && top >= -BOX_SLACK && left + w <= width + BOX_SLACK && top + h <= height + BOX_SLACK;
+    c.visible = P.visible && inside && !overlapsAny(c, covers, COVER_PAD_PX);
+    return c;
   }
 
-  function amountCandidates(m, s, width, height) {
-    const ex = s ? W : 0;
-    const ax = amountAnchorX(s);
-    return amounts.map((a) => {
-      const c = candidate('amount', a.key, a.label, m, ax, a.z, ex, a.z, 0, 1, width, height, s ? 1 : -1, 0);
+  // Candidates of one amount scale for the ticks in list. 'tip': anchors AMOUNT_EDGE_OFFSET
+  // beyond the tip edge x = ex, text toward +x; 'genesis': anchors outside x = 0, text
+  // toward -x. Keys carry the side, so both scales can be on screen at once.
+  function amountCandidates(m, side, ex, list, width, height) {
+    const sign = side === 'tip' ? 1 : -1;
+    const ax = ex + sign * AMOUNT_EDGE_OFFSET;
+    const prefix = side === 'tip' ? 't' : 'g';
+    return list.map((a) => {
+      const c = candidate('amount', prefix + a.key, a.label, m, ax, a.z, ex, a.z, 0, 1, width, height, sign, 0);
       if (c) {
         c.row = a.row;
         c.sats = a.sats;
-        c.rank = a.k & 1; // even decades (1 sat, 100 sat, ..., 10,000 BTC) win when crowded
+        c.side = side;
+        c.minor = a.mantissa !== undefined;
+        if (c.minor) c.mantissa = a.mantissa;
+        // Even decades (1 sat, 100 sat, ..., 10,000 BTC) win when crowded, then odd decades,
+        // then the 5x steps, then the 2x steps.
+        c.rank = c.minor ? (a.mantissa === 5 ? 2 : 3) : a.k & 1;
+        if (c.minor) c.cls = 'lbl lbl-amount lbl-minor';
       }
       return c;
     });
   }
 
-  function update(viewProj, cameraPosition, widthCss, heightCss) {
-    const out = { blockStep, amountRows, blockEdgeZ: null, amountEdgeX: null, blockRange: null, labels: [] };
+  // One amount scale. Decades first, on-screen ones before off-screen ones so an unseen
+  // label never hides a seen one; the off-screen ones still compete so amountRows stays
+  // stable. Then the 2x and 5x steps that fit between two decades shown on screen. Nothing
+  // may overlap a box in fixed (labels already placed). Returns {list, kept, shown}: list
+  // holds the decade candidates (null behind the camera), kept the uncrowded decades, shown
+  // the labels to draw (decades and steps, ascending by row).
+  function placeScale(m, side, ex, width, height, fixed) {
+    const list = amountCandidates(m, side, ex, amounts, width, height);
+    const kept = keepUncrowded(list.filter(Boolean).sort(byPriority), [], AMOUNT_LABEL_GAP_PX, AMOUNT_BOX_PAD, fixed, AMOUNT_BOX_PAD);
+    const shown = kept.filter((c) => c.visible);
+    if (shown.length > 1) {
+      const decades = new Set(shown.map((c) => c.sats));
+      const between = amountCandidates(m, side, ex, steps, width, height)
+        .filter((c) => c && c.visible && decades.has(c.sats / c.mantissa) && decades.has((c.sats / c.mantissa) * 10))
+        .sort(byPriority);
+      const placed = keepUncrowded(between, shown.slice(), AMOUNT_MINOR_GAP_PX, AMOUNT_BOX_PAD, fixed, AMOUNT_BOX_PAD);
+      for (let i = shown.length; i < placed.length; i++) shown.push(placed[i]);
+      shown.sort((a, b) => a.row - b.row || b.sats - a.sats);
+    }
+    return { list, kept, shown };
+  }
+
+  function update(viewProj, cameraPosition, widthCss, heightCss, options) {
+    const opts = options || {};
+    const hasTip = Number.isFinite(opts.tipBlock);
+    const tipBlock = hasTip ? Math.min(tip, Math.max(0, Math.floor(opts.tipBlock))) : tip;
+    const tipEdgeX = worldX(tipBlock + 1);
+    covers = Array.isArray(opts.covers) && opts.covers.length ? opts.covers : NO_COVERS;
+    const out = {
+      blockStep, amountRows, blockEdgeZ: null, amountEdgeX: null, amountEdges: { tip: null, genesis: null },
+      tipEdgeX, blockRange: null, labels: [],
+    };
     if (!viewProj || !(widthCss > 0) || !(heightCss > 0)) return out;
     const m = viewProj;
     longSide = pickSide(longSide, cameraPosition ? cameraPosition.z : NaN, D / 2);
-    shortSide = pickSide(shortSide, cameraPosition ? cameraPosition.x : NaN, W / 2);
 
-    // Amount labels go first so they win collisions at the corners.
-    let aSide = shortSide;
-    let list = amountCandidates(m, aSide, widthCss, heightCss);
-    if (!list.some((c) => c && c.visible)) {
-      const other = amountCandidates(m, 1 - aSide, widthCss, heightCss);
-      if (other.some((c) => c && c.visible)) {
-        list = other;
-        aSide = 1 - aSide;
-      }
+    // Amount scales go first so they win collisions at the corners; the tip scale goes
+    // before the genesis scale so it wins where the two meet.
+    const tipScale = placeScale(m, 'tip', tipEdgeX, widthCss, heightCss, null);
+    const genesisScale = placeScale(m, 'genesis', 0, widthCss, heightCss, tipScale.shown);
+    // Beside the tip scale, a genesis scale of one or two labels reads as stray numbers.
+    if (tipScale.shown.length) {
+      let decades = 0;
+      for (const c of genesisScale.shown) if (!c.minor) decades++;
+      if (decades < GENESIS_SCALE_MIN_DECADES) genesisScale.shown = [];
     }
-    // On-screen labels are placed before off-screen ones, so an unseen label never hides
-    // a seen one; the off-screen ones still compete so amountRows stays stable.
-    const order = list.filter(Boolean).sort((a, b) => b.visible - a.visible || a.rank - b.rank || a.depth - b.depth);
-    const kept = [];
-    for (const c of order) {
-      let ok = true;
-      for (const k of kept) {
-        if (tooClose(c, k, AMOUNT_LABEL_GAP_PX) || boxesOverlap(c, k, AMOUNT_BOX_PAD)) {
-          ok = false;
-          break;
-        }
-      }
-      if (ok) kept.push(c);
-    }
-    const rowsNow = kept.map((c) => c.row);
-    for (let i = 0; i < list.length; i++) if (!list[i]) rowsNow.push(amounts[i].row);
+    const main = !tipScale.shown.length && genesisScale.shown.length ? genesisScale : tipScale;
+    const rowsNow = main.kept.map((c) => c.row);
+    for (let i = 0; i < main.list.length; i++) if (!main.list[i]) rowsNow.push(amounts[i].row);
     const sorted = sortedUnique(rowsNow);
     if (!sameValues(sorted, amountRows)) amountRows = Object.freeze(sorted);
-    const shownAmounts = kept.filter((c) => c.visible).sort((a, b) => a.row - b.row);
-    if (shownAmounts.length) out.amountEdgeX = amountAnchorX(aSide);
+    if (tipScale.shown.length) out.amountEdges.tip = tipEdgeX + AMOUNT_EDGE_OFFSET;
+    if (genesisScale.shown.length) out.amountEdges.genesis = -AMOUNT_EDGE_OFFSET;
+    out.amountEdgeX = main === tipScale ? out.amountEdges.tip : out.amountEdges.genesis;
+    const shownAmounts = tipScale.shown.concat(genesisScale.shown);
 
     // Block labels along the nearer long edge, or the other one when it shows nothing.
     let bSide = longSide;
@@ -438,6 +575,16 @@ export function createAxisLayout({ grid, rows, blocktimes = null, maxTicks = BLO
       blockStep = niceStep(b1 - b0, maxTicks);
       const az = blockAnchorZ(bSide);
       const ez = bSide ? D : 0;
+      // The tip label first: it marks the replay block, so regular block labels make way. It
+      // ends at the tip line, where the amount scale starts, so only true overlaps rule it out.
+      if (hasTip) {
+        const x = worldX(tipBlock);
+        const c = candidate('tip', 'tip', tipText(tipBlock), m, x, az, x, ez, 1, 0, widthCss, heightCss, -1, bSide ? 1 : -1, -1);
+        if (c && c.visible && !overlapsAny(c, shownAmounts, 0)) {
+          c.block = tipBlock;
+          shownBlocks.push(c);
+        }
+      }
       const cands = [];
       for (const b of blockTicks(Math.max(0, b0), Math.min(tip, b1), blockStep)) {
         const x = worldX(b);
@@ -448,24 +595,7 @@ export function createAxisLayout({ grid, rows, blocktimes = null, maxTicks = BLO
         cands.push(c);
       }
       cands.sort((a, b) => a.rank - b.rank || a.depth - b.depth);
-      for (const c of cands) {
-        let ok = true;
-        for (const k of shownBlocks) {
-          if (tooClose(c, k, BLOCK_LABEL_GAP_PX) || boxesOverlap(c, k, BLOCK_BOX_PAD)) {
-            ok = false;
-            break;
-          }
-        }
-        if (ok) {
-          for (const k of shownAmounts) {
-            if (boxesOverlap(c, k, AMOUNT_BOX_PAD)) {
-              ok = false;
-              break;
-            }
-          }
-        }
-        if (ok) shownBlocks.push(c);
-      }
+      keepUncrowded(cands, shownBlocks, BLOCK_LABEL_GAP_PX, BLOCK_BOX_PAD, shownAmounts, AMOUNT_BOX_PAD);
       shownBlocks.sort((a, b) => a.block - b.block);
       out.blockEdgeZ = az;
       out.blockRange = [b0, b1];
@@ -493,6 +623,7 @@ export function createAxisLayout({ grid, rows, blocktimes = null, maxTicks = BLO
     update,
     setMetrics,
     amounts,
+    steps,
     worldWidth: W,
     worldDepth: D,
     get metrics() { return metrics; },
@@ -506,19 +637,28 @@ function setStyle(el, props) {
 
 /**
  * HTML axis labels inside element (the #labels overlay). update(camera, widthCss,
- * heightCss) reads only camera.projectionMatrix.elements, camera.matrixWorldInverse.elements
- * and camera.position (assumed current) and returns {blockStep, amountRows}: the step of
- * the block labels and the ascending decade rows that are labelled, so the terrain can
- * draw grid lines at exactly those positions (see createAxisLayout for amountRows).
+ * heightCss, tipBlock) reads only camera.projectionMatrix.elements,
+ * camera.matrixWorldInverse.elements and camera.position (assumed current) and returns
+ * {blockStep, amountRows}: the step of the block labels and the ascending decade rows that
+ * are labelled, so the terrain can draw grid lines at exactly those positions (see
+ * createAxisLayout for amountRows). tipBlock is the replay block; the amount scale and the
+ * tip label follow it (omit it before the first block arrives).
  *
- * Labels are pooled divs with classes "lbl lbl-block" / "lbl lbl-amount" in one zero-size
- * layer (class "lbl-layer"); a node is written only when its text, position or visibility
- * changes. The default look (11px IBM Plex Mono, rgba(235,240,255,.78), dark text shadow)
- * is set inline on the layer and inherited, so "#labels .lbl" rules restyle the labels
- * without !important. Two hidden probes, measured by ResizeObserver, keep the overlap
- * estimate in step with restyling and font loading without forcing layout.
+ * Labels are pooled divs in one zero-size layer (class "lbl-layer") with classes
+ * "lbl lbl-block", "lbl lbl-tip" (the replay block), "lbl lbl-amount" (decades) and
+ * "lbl lbl-amount lbl-minor" (2x and 5x steps); a node is written only when its text,
+ * class, position or visibility changes. The default look (11px IBM Plex Mono,
+ * rgba(235,240,255,.78), dark text shadow) is set inline on the layer and inherited, so
+ * "#labels .lbl" rules restyle the labels without !important. One hidden probe per kind,
+ * measured by ResizeObserver, keeps the overlap estimate in step with restyling and font
+ * loading without forcing layout.
+ *
+ * covers selects the elements that hide labels beneath them (default: every element with a
+ * data-label-cover attribute); a function returning elements also works, and null turns
+ * covering off. Their rectangles are re-read at most every COVER_REFRESH_MS, and elements
+ * with no size (display: none, hidden) cover nothing.
  */
-export function createAxisLabels({ element, grid, rows, blocktimes = null } = {}) {
+export function createAxisLabels({ element, grid, rows, blocktimes = null, covers = DEFAULT_COVERS } = {}) {
   if (!element || typeof element.appendChild !== 'function') throw new TypeError('createAxisLabels: element is required');
   const doc = element.ownerDocument || globalThis.document;
   const win = doc.defaultView || globalThis;
@@ -553,7 +693,7 @@ export function createAxisLabels({ element, grid, rows, blocktimes = null } = {}
         if (kind && w > 0 && h > 0) layout.setMetrics(kind, w / PROBE_TEXT.length, h);
       }
     });
-    for (const kind of ['block', 'amount']) {
+    for (const kind of KINDS) {
       const el = doc.createElement('div');
       el.className = 'lbl lbl-' + kind + ' lbl-probe';
       setStyle(el, { position: 'absolute', left: '0', top: '0', whiteSpace: 'nowrap', visibility: 'hidden' });
@@ -566,8 +706,33 @@ export function createAxisLabels({ element, grid, rows, blocktimes = null } = {}
 
   let shown = new Map(); // key -> node displayed by the last applied update
   let next = new Map();
-  const free = { block: [], amount: [] };
+  const free = { block: [], amount: [], tip: [] };
   let nodeCount = 0;
+  let coverRects = [];
+  let coversRead = -Infinity;
+
+  // Rectangles of the covering elements in the layer's CSS px, re-read at most every
+  // COVER_REFRESH_MS (getBoundingClientRect may flush layout, so not every frame).
+  function readCovers(t) {
+    if (!covers || t - coversRead < COVER_REFRESH_MS) return coverRects;
+    coversRead = t;
+    let els = null;
+    if (typeof covers === 'function') els = covers();
+    else if (typeof doc.querySelectorAll === 'function') els = doc.querySelectorAll(covers);
+    const list = [];
+    if (els && els.length) {
+      const host = typeof element.getBoundingClientRect === 'function' ? element.getBoundingClientRect() : null;
+      const hx = host ? host.left : 0;
+      const hy = host ? host.top : 0;
+      for (const el of els) {
+        if (!el || typeof el.getBoundingClientRect !== 'function') continue;
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) list.push({ left: r.left - hx, top: r.top - hy, w: r.width, h: r.height });
+      }
+    }
+    coverRects = list;
+    return list;
+  }
 
   function createNode(kind) {
     const el = doc.createElement('div');
@@ -575,13 +740,17 @@ export function createAxisLabels({ element, grid, rows, blocktimes = null } = {}
     setStyle(el, { position: 'absolute', left: '0', top: '0', whiteSpace: 'nowrap', willChange: 'transform', display: 'none' });
     layer.appendChild(el);
     nodeCount++;
-    return { el, kind, text: '', transform: '', on: false };
+    return { el, kind, cls: el.className, text: '', transform: '', on: false };
   }
 
   function paint(node, l, dpr) {
     if (node.text !== l.text) {
       node.el.textContent = l.text;
       node.text = l.text;
+    }
+    if (node.cls !== l.cls) {
+      node.el.className = l.cls;
+      node.cls = l.cls;
     }
     const t = 'translate(' + Math.round(l.x * dpr) / dpr + 'px,' + Math.round(l.y * dpr) / dpr + 'px) translate('
       + Math.round(50 * (l.ux - 1)) + '%,' + Math.round(50 * (l.uy - 1)) + '%)';
@@ -617,7 +786,7 @@ export function createAxisLabels({ element, grid, rows, blocktimes = null } = {}
       next.set(l.key, node);
       paint(node, l, dpr);
     }
-    for (const kind of ['block', 'amount']) {
+    for (const kind of KINDS) {
       for (const node of free[kind]) {
         if (node.on) {
           node.el.style.display = 'none';
@@ -630,14 +799,14 @@ export function createAxisLabels({ element, grid, rows, blocktimes = null } = {}
     next = swap;
   }
 
-  function update(camera, widthCss, heightCss) {
+  function update(camera, widthCss, heightCss, tipBlock) {
     if (disposed) return result;
     const t0 = now();
     viewProjection(camera.projectionMatrix.elements, camera.matrixWorldInverse.elements, viewProj);
-    last = layout.update(viewProj, camera.position, widthCss, heightCss);
+    last = layout.update(viewProj, camera.position, widthCss, heightCss, { tipBlock, covers: readCovers(t0) });
     if (visible) apply(last.labels);
     let blocks = 0;
-    for (const l of last.labels) if (l.kind === 'block') blocks++;
+    for (const l of last.labels) if (l.kind !== 'amount') blocks++;
     stats.blockLabels = visible ? blocks : 0;
     stats.amountLabels = visible ? last.labels.length - blocks : 0;
     stats.labels = stats.blockLabels + stats.amountLabels;
@@ -661,8 +830,7 @@ export function createAxisLabels({ element, grid, rows, blocktimes = null } = {}
     if (layer.parentNode) layer.parentNode.removeChild(layer);
     shown.clear();
     next.clear();
-    free.block.length = 0;
-    free.amount.length = 0;
+    for (const kind of KINDS) free[kind].length = 0;
     stats.labels = stats.blockLabels = stats.amountLabels = stats.nodes = 0;
   }
 

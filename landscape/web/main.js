@@ -431,8 +431,10 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     }
     function overviewPose() {
       // The whole chain on a diagonal: genesis far away at the upper left, recent eras close at
-      // the lower right, so the relief reads in 3D. Distance scales with the dataset length and
-      // is widened for narrow windows and narrow fields of view.
+      // the lower right, so the relief reads in 3D. The view is aimed past the middle so the tip
+      // edge and the amount scale beside it stay above the timeline and left of the screen edge.
+      // Distance scales with the dataset length and is widened for narrow windows and narrow
+      // fields of view.
       const w = worldX(tip + 1);
       const cam = view.camera;
       const vfov = ((cam.fov || 50) * Math.PI) / 180;
@@ -472,9 +474,9 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         const ahead = h / Math.tan(pitch);
         return controls.poseLookingAt({ x: w + back - ahead, y: 0, z: across / 2 }, { distance: h / Math.sin(pitch), yaw: 90, pitch: (-pitch * 180) / Math.PI });
       }
-      const target = { x: w * 0.58, y: 0, z: worldZ(grid.rows) * 0.5 };
+      const target = { x: w * 0.64, y: 0, z: worldZ(grid.rows) * 0.5 };
       const fit = Math.max(1, 16 / 9 / Math.max(0.2, aspect)) * (Math.tan((25 * Math.PI) / 180) / Math.tan(vfov / 2));
-      const distance = Math.max(40, w * 0.66 * fit);
+      const distance = Math.max(40, w * 0.69 * fit);
       return controls.poseLookingAt(target, { distance, yaw: 36, pitch: -31 });
     }
     function moveViewTo(x, z, immediate) {

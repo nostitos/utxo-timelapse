@@ -519,7 +519,7 @@ const ENTRIES = [
   { id: 'display.overlay', section: 'Overlays', label: 'Performance overlay', type: 'bool', default: false,
     url: false, preset: false, help: 'fps, CPU and GPU ms per pass, triangles, instances, tiles and worker rate.' },
   { id: 'display.labels', section: 'Overlays', label: 'Axis labels', type: 'bool', default: true, preset: false,
-    help: 'Block, date and amount labels in the scene.' },
+    help: 'Block and date labels along the near edge with the replay block marked, and an amount scale beside the tip that moves with it (and at genesis when in view). Labels under a panel are hidden.' },
   { id: 'display.grid', section: 'Overlays', label: 'Grid', type: 'bool', default: true,
     help: 'Reference grid lines on the ground. Film: off, because grid lines draw over palette colours.' },
   { id: 'display.legend', section: 'Overlays', label: 'Legend', type: 'bool', default: true, url: false, preset: false,

@@ -96,10 +96,19 @@ function previousNice(step) {
 }
 
 const TICK_ROWS = L.amountTicks(table).map((t) => t.row);
+const STEP_ROWS = L.minorAmountTicks(table).map((t) => t.row);
+const isBlockKind = (l) => l.kind === 'block' || l.kind === 'tip';
 
-// Invariants every layout must satisfy.
-function checkLayout(out, cam, blocktimes = synthetic) {
+// Invariants every layout must satisfy. tipBlock and covers are what update received.
+function checkLayout(out, cam, { blocktimes = synthetic, tipBlock, covers = [] } = {}) {
   const margin = L.VIEW_MARGIN_PX;
+  const tip = tipBlock === undefined ? NUM_BLOCKS - 1 : tipBlock;
+  assert.equal(out.tipEdgeX, worldX(tip + 1), 'tip edge');
+  if (out.amountEdges.tip !== null) assert.equal(out.amountEdges.tip, out.tipEdgeX + L.AMOUNT_EDGE_OFFSET);
+  if (out.amountEdges.genesis !== null) assert.equal(out.amountEdges.genesis, -L.AMOUNT_EDGE_OFFSET);
+  const tipShown = out.labels.some((l) => l.kind === 'amount' && l.side === 'tip');
+  const mainSide = out.amountEdgeX === null ? null : out.amountEdgeX === out.amountEdges.tip ? 'tip' : 'genesis';
+  if (tipShown) assert.equal(mainSide, 'tip', 'a visible tip scale sets amountRows');
   assert.ok(out.blockStep >= L.MIN_BLOCK_STEP && isNice(out.blockStep), 'blockStep ' + out.blockStep);
   assert.ok(Object.isFrozen(out.amountRows), 'amountRows frozen');
   for (let i = 1; i < out.amountRows.length; i++) assert.ok(out.amountRows[i] > out.amountRows[i - 1], 'amountRows ascending');
@@ -109,21 +118,50 @@ function checkLayout(out, cam, blocktimes = synthetic) {
     assert.ok(l.x >= -margin && l.x <= cam.w + margin && l.y >= -margin && l.y <= cam.h + margin, l.text + ' on screen');
     assert.ok(l.left >= -1 && l.top >= -1 && l.left + l.w <= cam.w + 1 && l.top + l.h <= cam.h + 1, l.text + ' text box fits on screen');
     assert.ok(Math.abs(Math.max(Math.abs(l.ux), Math.abs(l.uy)) - 1) < 1e-9, l.text + ' outward direction normalised');
+    for (const r of covers) {
+      const pad = L.COVER_PAD_PX;
+      const hit = l.left < r.left + r.w + pad && r.left < l.left + l.w + pad && l.top < r.top + r.h + pad && r.top < l.top + l.h + pad;
+      assert.ok(!hit, l.text + ' is clear of every cover');
+    }
     let world;
     if (l.kind === 'block') {
       assert.equal(l.block % out.blockStep, 0, l.text + ' on a multiple of blockStep');
       assert.ok(l.block >= 0 && l.block < NUM_BLOCKS);
       assert.equal(l.text, L.formatBlockLabel(l.block, blocktimes));
+      assert.equal(l.cls, 'lbl lbl-block');
+      world = [worldX(l.block), 0, out.blockEdgeZ];
+    } else if (l.kind === 'tip') {
+      assert.notEqual(tipBlock, undefined, 'a tip label needs an explicit tipBlock');
+      assert.equal(l.block, tipBlock);
+      assert.equal(l.text, L.formatTipLabel(tipBlock, blocktimes));
+      assert.equal(l.cls, 'lbl lbl-tip');
       world = [worldX(l.block), 0, out.blockEdgeZ];
     } else {
       assert.equal(l.kind, 'amount');
       assert.equal(l.text, L.formatAmount(l.sats));
       assert.equal(l.row, rowOfAmount(table, l.sats));
-      assert.ok(out.amountRows.includes(l.row), 'shown amount row ' + l.row + ' is in amountRows');
-      world = [out.amountEdgeX, 0, worldZ(l.row + 0.5)];
+      assert.ok(l.side === 'tip' || l.side === 'genesis', 'side ' + l.side);
+      assert.notEqual(out.amountEdges[l.side], null, l.text + ': its scale is reported');
+      if (l.minor) {
+        assert.ok(STEP_ROWS.includes(l.row), l.text + ' is a 2x or 5x step');
+        assert.equal(l.cls, 'lbl lbl-amount lbl-minor');
+        const lower = l.sats / l.mantissa;
+        const sameScale = out.labels.filter((k) => k.kind === 'amount' && k.side === l.side && !k.minor);
+        assert.ok(sameScale.some((k) => k.sats === lower) && sameScale.some((k) => k.sats === lower * 10),
+          l.text + ' sits between two shown decades');
+      } else {
+        assert.ok(TICK_ROWS.includes(l.row), 'row ' + l.row + ' is a decade row');
+        assert.equal(l.cls, 'lbl lbl-amount');
+        if (l.side === mainSide) assert.ok(out.amountRows.includes(l.row), 'shown amount row ' + l.row + ' is in amountRows');
+      }
+      world = [out.amountEdges[l.side], 0, worldZ(l.row + 0.5)];
     }
     const p = L.projectToScreen(cam.viewProj, world[0], world[1], world[2], cam.w, cam.h);
     assert.ok(p.visible && Math.abs(p.x - l.x) < 1e-6 && Math.abs(p.y - l.y) < 1e-6, l.text + ' anchor is its projected world point');
+  }
+  if (tipShown) {
+    const genesisDecades = out.labels.filter((l) => l.kind === 'amount' && l.side === 'genesis' && !l.minor).length;
+    assert.ok(genesisDecades === 0 || genesisDecades >= L.GENESIS_SCALE_MIN_DECADES, genesisDecades + ' genesis decades beside the tip scale');
   }
   for (let i = 0; i < out.labels.length; i++) {
     for (let j = i + 1; j < out.labels.length; j++) {
@@ -132,8 +170,11 @@ function checkLayout(out, cam, blocktimes = synthetic) {
       const overlap = a.left < b.left + b.w && b.left < a.left + a.w && a.top < b.top + b.h && b.top < a.top + a.h;
       assert.ok(!overlap, 'boxes of ' + a.text + ' and ' + b.text + ' overlap');
       const dist = Math.hypot(a.x - b.x, a.y - b.y);
-      if (a.kind === 'block' && b.kind === 'block') assert.ok(dist >= L.BLOCK_LABEL_GAP_PX, a.text + ' / ' + b.text + ': ' + dist.toFixed(1) + ' px');
-      if (a.kind === 'amount' && b.kind === 'amount') assert.ok(dist >= L.AMOUNT_LABEL_GAP_PX, a.text + ' / ' + b.text + ': ' + dist.toFixed(1) + ' px');
+      if (isBlockKind(a) && isBlockKind(b)) assert.ok(dist >= L.BLOCK_LABEL_GAP_PX, a.text + ' / ' + b.text + ': ' + dist.toFixed(1) + ' px');
+      if (a.kind === 'amount' && b.kind === 'amount' && a.side === b.side) {
+        const gap = a.minor || b.minor ? L.AMOUNT_MINOR_GAP_PX : L.AMOUNT_LABEL_GAP_PX;
+        assert.ok(dist >= gap, a.text + ' / ' + b.text + ': ' + dist.toFixed(1) + ' px');
+      }
     }
   }
 }
@@ -241,6 +282,30 @@ test('formatBlockLabel adds the UTC year-month when blocktimes has the block', (
   assert.equal(L.formatBlockLabel(5, new Uint32Array(10)), '5', 'zero time means unknown');
 });
 
+test('formatTipLabel adds the UTC date of the block', () => {
+  const real = new Uint32Array(420001);
+  real[420000] = Date.UTC(2016, 6, 9, 16, 46, 13) / 1000;
+  assert.equal(L.formatTipLabel(420000, real), '420,000 \u00b7 2016-07-09');
+  real[3] = Date.UTC(2009, 0, 9, 23, 59, 59) / 1000;
+  assert.equal(L.formatTipLabel(3, real), '3 \u00b7 2009-01-09', 'UTC, zero-padded day');
+  assert.equal(L.formatTipLabel(420000), '420,000');
+});
+
+test('minorAmountTicks lists the 2x and 5x steps from 2 sat to 50,000 BTC', () => {
+  const steps = L.minorAmountTicks(table);
+  assert.equal(steps.length, 26);
+  assert.deepEqual(steps.slice(0, 4).map((t) => t.label), ['2 sat', '5 sat', '20 sat', '50 sat']);
+  assert.deepEqual(steps.slice(-4).map((t) => t.label), ['2,000 BTC', '5,000 BTC', '20,000 BTC', '50,000 BTC']);
+  assert.ok(steps.some((t) => t.label === '0.05 BTC' && t.mantissa === 5));
+  const decades = L.amountTicks(table);
+  steps.forEach((t, i) => {
+    assert.equal(t.row, rowOfAmount(table, t.sats));
+    const k = Math.floor(i / 2);
+    assert.ok(t.row <= decades[k].row && t.row >= decades[k + 1].row, t.label + ' lies between its decades');
+    if (i > 0) assert.ok(t.sats > steps[i - 1].sats, 'ascending');
+  });
+});
+
 test('projectToScreen matches hand-computed points, including points behind the camera', () => {
   const w = 800;
   const h = 400;
@@ -291,25 +356,32 @@ test('viewProjection is projection x view in column-major order', () => {
   assert.notDeepEqual(Array.from(swapped), Array.from(cam.viewProj), 'order matters');
 });
 
-test('front camera: block labels on the near long edge, amounts on the x = 0 edge', () => {
+test('front camera: block labels on the near long edge, amount scales at the tip and at genesis', () => {
   const layout = L.createAxisLayout({ grid, rows: table, blocktimes: synthetic });
   const cam = cameraAt(FRONT, CENTER);
   const out = layout.update(cam.viewProj, cam.position, VW, VH);
   checkLayout(out, cam);
   checkRange(out, cam);
   assert.equal(out.blockEdgeZ, NEAR_EDGE);
-  assert.equal(out.amountEdgeX, -L.AMOUNT_EDGE_OFFSET);
+  assert.equal(out.amountEdgeX, W + L.AMOUNT_EDGE_OFFSET, 'without a tipBlock the tip is the last block');
+  assert.equal(out.amountEdges.tip, W + L.AMOUNT_EDGE_OFFSET);
+  assert.equal(out.amountEdges.genesis, -L.AMOUNT_EDGE_OFFSET);
   assert.equal(out.blockStep, L.niceStep(out.blockRange[1] - out.blockRange[0], L.BLOCK_TICK_TARGET));
   const blocks = out.labels.filter((l) => l.kind === 'block');
-  const amounts = out.labels.filter((l) => l.kind === 'amount');
   assert.ok(blocks.length >= 3, blocks.length + ' block labels');
-  // The x = 0 edge is foreshortened to about 130 px here, so adjacent decades are 9-14 px
-  // apart and the 16 px rule keeps every other one; even decades win.
-  assert.ok(amounts.length >= 5, amounts.length + ' amount labels');
-  for (const l of amounts) assert.equal(Math.round(Math.log10(l.sats)) % 2, 0, l.text + ' is an even decade');
-  assert.ok(amounts.some((l) => l.text === '1 BTC'));
+  assert.ok(!out.labels.some((l) => l.kind === 'tip'), 'no tip label without a tipBlock');
+  const tipScale = out.labels.filter((l) => l.kind === 'amount' && l.side === 'tip');
+  const genesisScale = out.labels.filter((l) => l.kind === 'amount' && l.side === 'genesis');
+  // Both short edges are foreshortened to about 130 px here, so adjacent decades are 9-14 px
+  // apart and the 16 px rule keeps every other one; even decades win and no step fits.
+  for (const scale of [tipScale, genesisScale]) {
+    assert.ok(scale.length >= 5, scale.length + ' amount labels');
+    for (const l of scale) assert.equal(Math.round(Math.log10(l.sats)) % 2, 0, l.text + ' is an even decade');
+    assert.ok(scale.some((l) => l.text === '1 BTC'));
+  }
   for (const l of blocks) assert.ok(l.uy > 0.5, 'near-edge block labels hang below their anchors');
-  for (const l of amounts) assert.ok(l.ux < -0.5, 'left-edge amount labels extend to the left');
+  for (const l of tipScale) assert.ok(l.ux > 0.5, 'tip scale labels extend to the right');
+  for (const l of genesisScale) assert.ok(l.ux < -0.5, 'genesis scale labels extend to the left');
   const again = layout.update(cam.viewProj, cam.position, VW, VH);
   assert.equal(again.amountRows, out.amountRows, 'amountRows keeps its identity while unchanged');
 });
@@ -371,10 +443,10 @@ test('from far away crowded decades are thinned, in labels and in amountRows ali
   const cam = cameraAt([W / 2, 1500, D + 2500], CENTER);
   const out = layout.update(cam.viewProj, cam.position, VW, VH);
   checkLayout(out, cam);
-  const amounts = out.labels.filter((l) => l.kind === 'amount');
+  const amounts = out.labels.filter((l) => l.kind === 'amount' && l.side === 'tip' && !l.minor);
   assert.ok(amounts.length >= 2 && amounts.length < 14, amounts.length + ' amount labels');
   assert.ok(out.amountRows.length >= 2 && out.amountRows.length < 14, out.amountRows.length + ' amount rows');
-  assert.deepEqual(Array.from(out.amountRows), amounts.map((l) => l.row), 'every kept decade is labelled when the edge is on screen');
+  assert.deepEqual(Array.from(out.amountRows), amounts.map((l) => l.row), 'every kept decade is labelled when the scale is on screen');
 });
 
 test('zoomed into the middle: no labels on screen, grid step from the visible ground', () => {
@@ -386,6 +458,55 @@ test('zoomed into the middle: no labels on screen, grid step from the visible gr
   assert.equal(out.blockEdgeZ, null);
   assert.ok(out.blockStep >= 1000 && out.blockStep <= 50000, 'blockStep ' + out.blockStep);
   assert.ok(out.amountRows.length >= 1);
+});
+
+test('the amount scale and the tip label follow tipBlock', () => {
+  const layout = L.createAxisLayout({ grid, rows: table, blocktimes: synthetic });
+  const cam = cameraAt(FRONT, CENTER);
+  let previous = -Infinity;
+  for (const tipBlock of [210000, 420000, 630000, 840000]) {
+    const out = layout.update(cam.viewProj, cam.position, VW, VH, { tipBlock });
+    checkLayout(out, cam, { tipBlock });
+    assert.equal(out.amountEdges.tip, worldX(tipBlock + 1) + L.AMOUNT_EDGE_OFFSET);
+    assert.equal(out.amountEdgeX, out.amountEdges.tip);
+    const scale = out.labels.filter((l) => l.kind === 'amount' && l.side === 'tip');
+    assert.ok(scale.length >= 5, scale.length + ' tip scale labels at ' + tipBlock);
+    const oneBtc = scale.find((l) => l.text === '1 BTC');
+    assert.ok(oneBtc && oneBtc.x > previous + 50, 'the scale moves right with the tip');
+    previous = oneBtc.x;
+    const t = out.labels.find((l) => l.kind === 'tip');
+    assert.ok(t, 'tip label at ' + tipBlock);
+    assert.ok(t.left + t.w <= t.x + 1e-6, 'the tip label extends from the tip toward genesis');
+  }
+});
+
+test('covered labels are hidden; the genesis scale takes over when the tip scale is covered', () => {
+  const layout = L.createAxisLayout({ grid, rows: table, blocktimes: synthetic });
+  const cam = cameraAt(FRONT, CENTER);
+  const tipBlock = 840000;
+  const open = layout.update(cam.viewProj, cam.position, VW, VH, { tipBlock });
+  const scale = open.labels.filter((l) => l.kind === 'amount' && l.side === 'tip');
+  const left = Math.min(...scale.map((l) => l.left)) - 10;
+  const covers = [{ left, top: 0, w: VW - left, h: VH }];
+  const out = layout.update(cam.viewProj, cam.position, VW, VH, { tipBlock, covers });
+  checkLayout(out, cam, { tipBlock, covers });
+  assert.equal(out.amountEdges.tip, null, 'the tip scale is under the cover');
+  assert.equal(out.amountEdgeX, -L.AMOUNT_EDGE_OFFSET, 'the genesis scale sets amountRows');
+  assert.ok(out.labels.filter((l) => l.side === 'genesis').length >= 5);
+  assert.ok(out.labels.some((l) => l.kind === 'block'), 'block labels left of the cover remain');
+});
+
+test('close to the tip scale, 2x and 5x steps fill in between decades without grid lines', () => {
+  const layout = L.createAxisLayout({ grid, rows: table, blocktimes: synthetic });
+  const tipBlock = 700000;
+  const x = worldX(tipBlock + 1);
+  const cam = cameraAt([x + 45, 35, 170], [x, 0, 110]);
+  const out = layout.update(cam.viewProj, cam.position, VW, VH, { tipBlock });
+  checkLayout(out, cam, { tipBlock });
+  const steps = out.labels.filter((l) => l.minor);
+  assert.ok(steps.length >= 4, steps.length + ' steps');
+  assert.ok(steps.some((l) => l.mantissa === 2) && steps.some((l) => l.mantissa === 5));
+  for (const l of steps) assert.ok(!out.amountRows.includes(l.row), l.text + ' gets no grid line');
 });
 
 test('the labelled long edge switches with hysteresis around the midline', () => {
@@ -416,8 +537,10 @@ test('random cameras: labels stay on screen, in front, uncrowded and anchored to
     const w = 320 + Math.floor(r() * 3500);
     const h = 240 + Math.floor(r() * 2000);
     const cam = cameraAt(eye, target, { w, h, fov: 30 + r() * 60 });
-    const out = layout.update(cam.viewProj, cam.position, w, h);
-    checkLayout(out, cam);
+    const tipBlock = r() < 0.5 ? undefined : Math.floor(r() * NUM_BLOCKS);
+    const covers = r() < 0.3 ? [{ left: r() * w * 0.8, top: r() * h * 0.8, w: 40 + r() * w * 0.4, h: 40 + r() * h * 0.4 }] : [];
+    const out = layout.update(cam.viewProj, cam.position, w, h, { tipBlock, covers });
+    checkLayout(out, cam, { tipBlock, covers });
     if (out.blockRange && out.blockRange[1] - out.blockRange[0] > (2 * NUM_BLOCKS) / 4000) {
       checkRange(out, cam, 4000);
       ranges++;
@@ -516,9 +639,14 @@ test('createAxisLabels mirrors the layout in pooled nodes and rewrites nothing f
   assert.equal(shown.length, ref.labels.length);
   assert.equal(labels.stats.labels, ref.labels.length);
   for (const l of ref.labels) {
-    const node = shown.find((n) => n.textContent === l.text);
+    // Both amount scales can show the same text, so match the node by text and position.
+    const at = (n) => {
+      const m = /^translate\((-?[\d.]+)px,(-?[\d.]+)px\)/.exec(n.style.transform || '');
+      return m ? Math.hypot(Number(m[1]) - l.x, Number(m[2]) - l.y) : Infinity;
+    };
+    const node = shown.filter((n) => n.textContent === l.text).sort((a, b) => at(a) - at(b))[0];
     assert.ok(node, 'node for ' + l.text);
-    assert.equal(node.className, 'lbl lbl-' + l.kind);
+    assert.equal(node.className, l.cls);
     assert.equal(node.style.position, 'absolute');
     assert.equal(node.style.left, '0');
     assert.equal(node.style.top, '0');
@@ -535,18 +663,25 @@ test('createAxisLabels mirrors the layout in pooled nodes and rewrites nothing f
   assert.equal(doc.writes, writes, 'a still camera writes nothing');
   assert.equal(r2.amountRows, r.amountRows, 'same amountRows instance while unchanged');
 
-  let maxShown = 0;
+  // Each kind's pool grows only to the most labels of that kind on screen at once.
+  const maxByKind = { block: 0, amount: 0, tip: 0 };
   for (let i = 0; i < 400; i++) {
     const x = W / 2 + 350 * Math.sin(i / 25);
     const z = D + 0.55 * W - 300 * (0.5 + 0.5 * Math.sin(i / 40));
     const y = 0.35 * W * (0.4 + 0.3 * (1 + Math.cos(i / 30)));
-    labels.update(fakeCamera([x, y, z], [x, 0, D / 2]), VW, VH);
+    labels.update(fakeCamera([x, y, z], [x, 0, D / 2]), VW, VH, 300000 + 1500 * i);
     shown = shownNodes();
     assert.equal(shown.length, labels.stats.labels);
-    maxShown = Math.max(maxShown, shown.length);
+    for (const kind of Object.keys(maxByKind)) {
+      maxByKind[kind] = Math.max(maxByKind[kind], labels.last.labels.filter((l) => l.kind === kind).length);
+    }
+    for (const l of labels.last.labels) assert.ok(shown.some((n) => n.textContent === l.text && n.className === l.cls), l.text + ' has a node with class ' + l.cls);
   }
   assert.equal(labels.stats.nodes, layer.children.length);
-  assert.ok(layer.children.length <= 14 + 12, layer.children.length + ' pooled nodes for at most ' + maxShown + ' labels at once');
+  const probes = layer.children.filter((n) => n.className.includes('lbl-probe')).length;
+  const most = maxByKind.block + maxByKind.amount + maxByKind.tip;
+  assert.ok(maxByKind.tip === 1, 'the moving tip label was shown');
+  assert.ok(layer.children.length - probes <= most, (layer.children.length - probes) + ' pooled nodes for at most ' + most + ' labels per kind');
 
   labels.setVisible(false);
   assert.equal(layer.style.display, 'none');
@@ -565,6 +700,28 @@ test('createAxisLabels mirrors the layout in pooled nodes and rewrites nothing f
   assert.equal(root.children.length, 0);
   assert.equal(labels.stats.labels, 0);
   assert.equal(labels.update(front, VW, VH).blockStep, ref.blockStep, 'update after dispose is a no-op');
+});
+
+test('createAxisLabels hides labels under cover elements and follows the tip block', () => {
+  const doc = new FakeDocument();
+  const root = doc.createElement('div');
+  const panel = { getBoundingClientRect: () => ({ left: 0, top: 0, width: VW / 2, height: VH }) };
+  const hidden = { getBoundingClientRect: () => ({ left: 0, top: 0, width: 0, height: 0 }) };
+  let reads = 0;
+  const labels = L.createAxisLabels({ element: root, grid, rows: table, blocktimes: synthetic, covers: () => { reads++; return [panel, hidden]; } });
+  const front = fakeCamera(FRONT, CENTER);
+  labels.update(front, VW, VH, 840000);
+  assert.equal(reads, 1);
+  const out = labels.last;
+  assert.ok(out.labels.length > 0);
+  for (const l of out.labels) assert.ok(l.left >= VW / 2 + L.COVER_PAD_PX, l.text + ' is right of the panel');
+  assert.ok(!out.labels.some((l) => l.side === 'genesis'), 'the genesis scale is under the panel');
+  const tipNode = root.children[0].children.find((n) => n.className === 'lbl lbl-tip' && n.style.display !== 'none');
+  assert.equal(tipNode.textContent, L.formatTipLabel(840000, synthetic));
+  labels.update(front, VW, VH, 840001);
+  assert.equal(reads, 1, 'covers are not re-read within ' + L.COVER_REFRESH_MS + ' ms');
+  assert.equal(tipNode.textContent, L.formatTipLabel(840001, synthetic), 'the tip node keeps up with the block');
+  labels.dispose();
 });
 
 test('createAxisLayout and createAxisLabels reject missing inputs', () => {

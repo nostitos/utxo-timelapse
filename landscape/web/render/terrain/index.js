@@ -178,6 +178,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
 
   // ---- settings --------------------------------------------------------------------------
   let currentBlock = 0;
+  let blockKnown = false; // the axis labels follow currentBlock once a block has arrived
   // ---- labels and columns ----------------------------------------------------------------
   const labels = labelsElement ? createAxisLabels({ element: labelsElement, grid, rows, blocktimes }) : null;
   let lastAmountRows = null;
@@ -484,7 +485,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
       columns.update({ enabled: false, gap: get('geo.columnGap') });
     }
     if (labels && get('display.labels')) {
-      const r = labels.update(cam, labelsElement.clientWidth, labelsElement.clientHeight);
+      const r = labels.update(cam, labelsElement.clientWidth, labelsElement.clientHeight, blockKnown ? currentBlock : undefined);
       if (r && r.blockStep) U.gridBlockStep.value = r.blockStep;
       if (r && r.amountRows && r.amountRows !== lastAmountRows) {
         lastAmountRows = r.amountRows;
@@ -585,6 +586,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
 
   function setBlock(block) {
     currentBlock = block;
+    blockKnown = Number.isFinite(block);
     U.block.value = block;
     placeNowPlane();
   }
