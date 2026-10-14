@@ -1,6 +1,6 @@
 # UTXO Timelapse Landscape online
 
-**https://3d.bitcointimelapse.com/** serves the 3D landscape (`landscape/web`) to any WebGPU browser. This Worker, `utxo-landscape`, is separate from the 2D explorer's Worker (`../utxo-video-worker`); it reads the same private R2 bucket and reuses the explorer's history query code. See [`docs/landscape.md`](../../docs/landscape.md) for the app itself.
+**https://bitcoinlandscape.com/** serves the 3D landscape (`landscape/web`) to any WebGPU browser, also available at https://www.bitcoinlandscape.com/ and https://3d.bitcointimelapse.com/. This Worker, `utxo-landscape`, is separate from the 2D explorer's Worker (`../utxo-video-worker`); it reads the same private R2 bucket and reuses the explorer's history query code. See [`docs/landscape.md`](../../docs/landscape.md) for the app itself.
 
 ## What the Worker serves
 
@@ -17,6 +17,8 @@ Every response carries a Content Security Policy that allows the inline import m
 Cloudflare Web Analytics is switched on for the `bitcointimelapse.com` zone, so the edge injects its beacon (`static.cloudflareinsights.com/beacon.min.js`) into every HTML page, this site's and the 2D explorer's alike, and the beacon reports to `cloudflareinsights.com`. Both sites' policies allow exactly those two hosts, so visits to `3d.` appear in the zone's Web Analytics next to the 2D explorer and the guide. The beacon loads with CORS (`crossorigin` plus `Access-Control-Allow-Origin: *`), which cross-origin isolation requires.
 
 Hostnames: `https://utxo-landscape.nostisos.workers.dev` and the route `3d.bitcointimelapse.com/*` on the `bitcointimelapse.com` zone (added 2026-10-08, failure mode "fail closed"). The route is more specific than the 2D explorer's wildcard route on that zone, so it takes `3d.` requests while the apex and every other subdomain still reach `utxo-video-cdn`. The Workers token in `~/.config/utxo-r2/workers-token` cannot read or edit zone routes, so the route lives in the dashboard of the account that owns the zone (Workers & Pages → utxo-landscape → Domains) and `wrangler.toml` declares none: a deploy leaves it in place. Deleting the route there returns `3d.` to the 2D explorer.
+
+On 2026-10-12, the `bitcoinlandscape.com` zone was added to the same Cloudflare account with routes `bitcoinlandscape.com/*` and `www.bitcoinlandscape.com/*`, both to `utxo-landscape` with failure mode "fail closed". Registration stays at Porkbun; authoritative nameservers are `bjorn.ns.cloudflare.com` and `opal.ns.cloudflare.com`. The existing Porkbun MX and SPF records were imported. These routes are also managed in the dashboard and survive Wrangler deploys; the same deployed app and immutable R2 dataset serve all three public landscape hostnames.
 
 ## Deploy
 

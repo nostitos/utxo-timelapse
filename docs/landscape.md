@@ -2,7 +2,7 @@
 
 The landscape is a 3D view of the same UTXO set the film shows, explored in a browser, either online or on this machine. Creation block runs left to right on a linear axis, one column per 64 blocks. The film's 2,072 amount rows run front to back, with the largest amounts farthest from the default camera. Height and colour show a switchable measure — amount-weighted density, output count or BTC value — of the outputs still unspent at the current block.
 
-The browser rebuilds that state exactly. A Web Worker replays `changes.blk1` from tile-indexed snapshots, so every block you land on, by seeking, stepping or playing at 1×, is the exact UTXO set after that block. `landscape_build` writes the dataset once. Online, at **https://3d.bitcointimelapse.com/**, a Cloudflare Worker serves the app and the dataset from R2 and answers the inspector's cell lookups from the 2D explorer's history shards (see Online below). Locally, a dependency-free Node server serves the app and the dataset on `127.0.0.1:12990`, and an optional second native explorer answers cell lookups.
+The browser rebuilds that state exactly. A Web Worker replays `changes.blk1` from tile-indexed snapshots, so every block you land on, by seeking, stepping or playing at 1×, is the exact UTXO set after that block. `landscape_build` writes the dataset once. Online, at **https://bitcoinlandscape.com/**, a Cloudflare Worker serves the app and the dataset from R2 and answers the inspector's cell lookups from the 2D explorer's history shards (see Online below). Locally, a dependency-free Node server serves the app and the dataset on `127.0.0.1:12990`, and an optional second native explorer answers cell lookups.
 
 The implementation contract, with byte formats, the worker protocol and the rendering and settings interfaces, is [`landscape/SPEC.md`](../landscape/SPEC.md).
 
@@ -36,7 +36,7 @@ The inspector's history section reads the native explorer's cell API. Run a seco
 
 ## Online
 
-The landscape runs publicly at **https://3d.bitcointimelapse.com/**, also reachable at https://utxo-landscape.nostisos.workers.dev/. A separate Cloudflare Worker, `utxo-landscape`, serves the app from Workers Static Assets and the dataset from the 2D explorer's private R2 bucket under `landscape/d970658-20261009/` (blocks 0–970,658), and it answers the inspector's cell lookups from the explorer's history shards. [`cloudflare/utxo-landscape-worker/README.md`](../cloudflare/utxo-landscape-worker/README.md) covers deploying, publishing a dataset for a new tip and rolling back. The guide and the 2D explorer do not link to the landscape yet.
+The landscape runs publicly at **https://bitcoinlandscape.com/**, also reachable at https://www.bitcoinlandscape.com/, https://3d.bitcointimelapse.com/ and https://utxo-landscape.nostisos.workers.dev/. A separate Cloudflare Worker, `utxo-landscape`, serves the app from Workers Static Assets and the dataset from the 2D explorer's private R2 bucket under `landscape/d970658-20261009/` (blocks 0–970,658), and it answers the inspector's cell lookups from the explorer's history shards. [`cloudflare/utxo-landscape-worker/README.md`](../cloudflare/utxo-landscape-worker/README.md) covers deploying, publishing a dataset for a new tip and rolling back. The guide and the 2D explorer do not link to the landscape yet.
 
 Three things change online, all decided in `landscape/web/ui/online.js`:
 
