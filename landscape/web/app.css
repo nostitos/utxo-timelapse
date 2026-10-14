@@ -174,6 +174,7 @@ a { color: var(--mint); }
 @keyframes pulse { 50% { opacity: 0.25; transform: scale(0.7); } }
 .hud-foot { margin-top: 10px; font: 10px var(--mono); color: var(--dim); letter-spacing: 0.02em; }
 .hud-more { display: none; }
+#hud .brand .box-close { margin-left: auto; }
 
 /* ---- minimap (bottom left) ------------------------------------------------------ */
 #minimap {
@@ -324,6 +325,7 @@ a { color: var(--mint); }
   box-shadow: 0 10px 34px rgba(0, 0, 0, 0.38);
 }
 #hover[hidden] { display: none; }
+#hover.undocked { top: calc(var(--gap) + var(--sat)); }
 /* Header with the × (ui/dismiss.js). Lingering (nothing under the pointer) dims the reading. */
 #hover .hv-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 #hover.linger .hv-body { opacity: 0.45; }
@@ -730,6 +732,7 @@ kbd {
     align-items: end;
   }
   #hud .brand { grid-area: brand; display: none; }
+  #hud .box-close { display: none; }
   #hud .hud-block { grid-area: block; margin: 0; }
   #hud .hud-block strong { font-size: 32px; }
   #hud .hud-date { grid-area: date; margin: 0; font-size: 11px; line-height: 1.45; white-space: nowrap; }

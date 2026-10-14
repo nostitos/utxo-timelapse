@@ -721,10 +721,12 @@ Enter Stack sats (plane mode), Esc exits flight or plane mode/closes the drawer 
 50 BTC coinbase row, ≥10 BTC, 1 BTC, 10,000 sat, 546 sat, 1–100 sat (fly to that row).
 Minimap from the always-resident L6 tile. Inspection drawer: exact worker state for the
 cell, the explorer cell API lifecycle data, and the 2D explorer link.
-The legend and minimap headers each end in a × (`ui/dismiss.js`, `.box-close`, also used by the
-hover card) that hides the box for the current page load only: main.js keeps the dismissal in memory, so nothing reaches
+The HUD's brand row (not in the phone layout) and the legend and minimap headers each end in a ×
+(`ui/dismiss.js`, `.box-close`, also used by the hover card) that hides the box for the current
+page load only: main.js keeps the dismissal in memory, so nothing reaches
 the settings store, localStorage or the URL hash, and a reload shows the box again. Changing
-`display.legend` or `display.minimap` clears that box's dismissal.
+`display.hud`, `display.legend` or `display.minimap` clears that box's dismissal. With the HUD
+hidden, the hover card docks at the top left in its place (`#hover.undocked`).
 
 Test hook: main.js sets `window.__landscape = { ready, settings, replay, view, controls,
 playback, seek(block), flyTo(place), inspect(x, y), follow: { active, lag, toggle(), set(on) },

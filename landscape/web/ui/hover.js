@@ -246,14 +246,22 @@ export function createHover({
       amount: s.amount, block, cell: mine };
   }
 
-  // Same left edge and width as the anchor, just below it (its height changes with its content).
+  // Same left edge and width as the anchor, just below it (its height changes with its content);
+  // with the anchor hidden (the HUD closed or turned off), the card takes its place at the top.
   function place() {
     if (!anchor) return;
     const r = anchor.getBoundingClientRect();
-    if (!(r.width > 0)) return;
+    if (!(r.width > 0)) {
+      if (dock === 'top') return;
+      dock = 'top';
+      container.style.left = container.style.top = container.style.width = '';
+      container.classList.add('undocked');
+      return;
+    }
     const d = Math.round(r.left) + ',' + Math.round(r.bottom + DOCK_GAP) + ',' + Math.round(r.width);
     if (d === dock) return;
     dock = d;
+    container.classList.remove('undocked');
     container.style.left = Math.round(r.left) + 'px';
     container.style.top = Math.round(r.bottom + DOCK_GAP) + 'px';
     container.style.width = Math.round(r.width) + 'px';

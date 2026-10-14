@@ -274,8 +274,6 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       funCard.hide();
     }
 
-    const hud = createHud($('hud'));
-    const help = createHelp($('help'), { touchFirst: touchOnly });
     // Boxes closed with their × stay hidden until the page reloads; nothing is saved. Changing
     // the box's Overlays setting clears it, so Settings can bring it back without a reload.
     const dismissed = new Set();
@@ -283,6 +281,8 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       dismissed.add(id);
       applyDisplay();
     };
+    const hud = createHud($('hud'), { onDismiss: () => dismiss('hud') });
+    const help = createHelp($('help'), { touchFirst: touchOnly });
     const legend = createLegend({ container: $('legend'), settings: store, onDismiss: () => dismiss('legend') });
     const minimap = createMinimap({
       container: $('minimap'), grid, rows: replay.rows, settings: store,
@@ -392,7 +392,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     }
 
     function applyDisplay() {
-      $('hud').hidden = !store.get('display.hud');
+      $('hud').hidden = !store.get('display.hud') || dismissed.has('hud');
       $('legend').hidden = !store.get('display.legend') || dismissed.has('legend');
       $('minimap').hidden = !store.get('display.minimap') || dismissed.has('minimap');
     }
@@ -403,6 +403,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       if (ids.has('amp.measure') || ids.has('color.measure')) applyMeasures();
       if (ids.has('amp.heatHalfLife')) replay.setHeatHalfLife(store.get('amp.heatHalfLife'));
       if (ids.has('geo.tileBudget')) replay.setMaxResidentTiles(store.get('geo.tileBudget'));
+      if (ids.has('display.hud')) dismissed.delete('hud');
       if (ids.has('display.legend')) dismissed.delete('legend');
       if (ids.has('display.minimap')) dismissed.delete('minimap');
       if (ids.has('display.hud') || ids.has('display.legend') || ids.has('display.minimap')) applyDisplay();
