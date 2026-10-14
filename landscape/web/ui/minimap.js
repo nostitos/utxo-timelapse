@@ -5,9 +5,10 @@
 
 import { paletteRGB, whiteHotRow } from '../render/terrain/palette.js';
 import { SLOT, worldX } from '../data/grid.js';
+import { dismissButton } from './dismiss.js';
 import { fmtInt } from './format.js';
 
-export function createMinimap({ container, grid, rows, settings, onNavigate }) {
+export function createMinimap({ container, grid, rows, settings, onNavigate, onDismiss = null }) {
   const level = grid.levels[grid.levels.length - 1];
   const tileId = level.firstTile;
   const cols = level.columns;
@@ -25,6 +26,7 @@ export function createMinimap({ container, grid, rows, settings, onNavigate }) {
   container.innerHTML = '<div class="mm-head"><span class="eyebrow">Overview</span><span class="mm-meta"></span></div><canvas class="mm-canvas" aria-label="Overview map: click to move the view"></canvas>';
   const canvas = container.querySelector('canvas');
   const meta = container.querySelector('.mm-meta');
+  if (onDismiss) container.querySelector('.mm-head').appendChild(dismissButton('the overview', onDismiss));
   const base = document.createElement('canvas');
   base.width = cols;
   base.height = lrows;

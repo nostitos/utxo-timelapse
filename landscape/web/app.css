@@ -130,6 +130,25 @@ a { color: var(--mint); }
   line-height: 1;
 }
 .icon-btn:hover { color: var(--ink); border-color: var(--muted); }
+/* × in the header of a box that can be hidden until reload (ui/dismiss.js). The negative
+   margins keep the header height and put the glyph on the box's right content edge. */
+.box-close {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  align-self: center;
+  display: grid;
+  place-items: center;
+  margin: -4px -6px -4px 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+}
+.box-close:hover { color: var(--ink); background: rgba(255, 255, 255, 0.07); }
 
 /* ---- HUD (left) -------------------------------------------------------------- */
 #hud {
@@ -166,8 +185,8 @@ a { color: var(--mint); }
   border-radius: 8px;
   z-index: 5;
 }
-.mm-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
-.mm-meta { font: 10px var(--mono); color: var(--muted); }
+.mm-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.mm-meta { margin-left: auto; font: 10px var(--mono); color: var(--muted); }
 .mm-canvas { display: block; width: 100%; border-radius: 3px; background: #05070a; cursor: crosshair; touch-action: none; }
 
 /* ---- legend (top right, clear of the tip corner and its amount scale) -------------- */
@@ -182,7 +201,7 @@ a { color: var(--mint); }
   transition: right 0.25s ease;
 }
 .lg-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 8px; }
-.lg-measure { font-size: 12px; color: var(--ink); }
+.lg-measure { margin-left: auto; font-size: 12px; color: var(--ink); }
 .lg-strip { display: grid; grid-template-columns: 96px 1fr; align-items: center; gap: 10px; margin: 4px 0; font: 10px var(--mono); color: var(--muted); }
 .lg-strip canvas { display: block; width: 100%; height: 11px; border-radius: 2px; }
 .lg-ticks { position: relative; height: 15px; margin-left: 106px; font: 10px var(--mono); color: var(--muted); }

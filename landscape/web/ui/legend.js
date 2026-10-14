@@ -3,6 +3,7 @@
 // from render/terrain/palette.js, the module the terrain LUTs use.
 
 import { paletteRGB, parseColor } from '../render/terrain/palette.js';
+import { dismissButton } from './dismiss.js';
 import { fmtCompact } from './format.js';
 
 const MEASURE_LABELS = {
@@ -63,7 +64,7 @@ function stripCanvas(rgb) {
   return c;
 }
 
-export function createLegend({ container, settings }) {
+export function createLegend({ container, settings, onDismiss = null }) {
   const get = (id, fb) => {
     try {
       const v = settings.get(id);
@@ -73,6 +74,8 @@ export function createLegend({ container, settings }) {
     }
   };
   let pending = false;
+  // One button, moved into each re-rendered header.
+  const close = onDismiss ? dismissButton('the legend', onDismiss) : null;
 
   function render() {
     pending = false;
@@ -96,6 +99,7 @@ export function createLegend({ container, settings }) {
       '<div class="lg-row"><span class="eyebrow">Height</span><span>' + MEASURE_LABELS[heightMeasure] + ' \u00b7 ' + (CURVES[get('amp.curve', 'log')] || '') + ' \u00b7 \u00d7' + fmtCompact(get('amp.exaggeration', 1)) + '</span></div>' +
       '<div class="lg-row"><span class="eyebrow">Heat</span><span><i class="lg-swatch" style="background:rgb(' + heat.join(',') + ')"></i>Spent outputs flash, brighter for more BTC \u00b7 half-life ' + fmtCompact(halfLife) + ' blocks</span></div>' +
       '<p class="lg-foot">Each cell holds 64 blocks \u00d7 1 amount row. Every block has the same width, so early eras look sparse next to the film.</p>';
+    if (close) container.querySelector('.lg-head').appendChild(close);
     const strips = container.querySelector('.lg-strips');
     const rows = [[whiteHot ? 'Below ' + fmtCompact(whiteBtc) + ' BTC' : 'All rows', paletteRGB(palette, opts)]];
     if (whiteHot) rows.push([fmtCompact(whiteBtc) + ' BTC and up', paletteRGB(palette, { ...opts, whiteHot: true })]);

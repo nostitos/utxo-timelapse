@@ -276,10 +276,18 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
 
     const hud = createHud($('hud'));
     const help = createHelp($('help'), { touchFirst: touchOnly });
-    const legend = createLegend({ container: $('legend'), settings: store });
+    // Boxes closed with their × stay hidden until the page reloads; nothing is saved. Changing
+    // the box's Overlays setting clears it, so Settings can bring it back without a reload.
+    const dismissed = new Set();
+    const dismiss = (id) => {
+      dismissed.add(id);
+      applyDisplay();
+    };
+    const legend = createLegend({ container: $('legend'), settings: store, onDismiss: () => dismiss('legend') });
     const minimap = createMinimap({
       container: $('minimap'), grid, rows: replay.rows, settings: store,
       onNavigate: (x, z, { dragging }) => moveViewTo(x, z, dragging),
+      onDismiss: () => dismiss('minimap'),
     });
     const inspector = createInspector({
       container: $('inspector'), marker: $('marker'), replay, grid, rows: replay.rows, blocktimes: replay.blocktimes,
@@ -385,8 +393,8 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
 
     function applyDisplay() {
       $('hud').hidden = !store.get('display.hud');
-      $('legend').hidden = !store.get('display.legend');
-      $('minimap').hidden = !store.get('display.minimap');
+      $('legend').hidden = !store.get('display.legend') || dismissed.has('legend');
+      $('minimap').hidden = !store.get('display.minimap') || dismissed.has('minimap');
     }
     applyDisplay();
 
@@ -395,6 +403,8 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       if (ids.has('amp.measure') || ids.has('color.measure')) applyMeasures();
       if (ids.has('amp.heatHalfLife')) replay.setHeatHalfLife(store.get('amp.heatHalfLife'));
       if (ids.has('geo.tileBudget')) replay.setMaxResidentTiles(store.get('geo.tileBudget'));
+      if (ids.has('display.legend')) dismissed.delete('legend');
+      if (ids.has('display.minimap')) dismissed.delete('minimap');
       if (ids.has('display.hud') || ids.has('display.legend') || ids.has('display.minimap')) applyDisplay();
       hashDirty = true;
     });
