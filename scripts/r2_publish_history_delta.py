@@ -4,7 +4,7 @@ Old complete shards keep their original R2 objects. Small row-indexed overlays
 stamp only newly spent records. New/previously partial shards are replaced.
 Each overlay's reconstructed original shard must match the prior upload MD5.
 """
-import argparse,concurrent.futures,hashlib,json,os,struct,sys,threading,time
+import argparse,concurrent.futures,hashlib,json,threading,time
 from pathlib import Path
 import numpy as np
 import boto3
