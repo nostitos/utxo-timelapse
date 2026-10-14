@@ -39,6 +39,8 @@ node --experimental-default-type=module scripts/check_site_mapping.mjs
 
 A bare `buv` invocation can run zero cases on macOS because the broad legacy unit directory is excluded. Read the case count. Build Docker from the root, never ignored legacy `buv_deploy/` source copies. Start the encoder before the renderer. Test a short meaningful range before a full run.
 
+For a landscape change, run only the browser checks it touches (`landscape/tests/shell-browser-checks.mjs --only name,name`). Do not run the plane or Stack sats game checks unless the change is to that game; they need `--games`. The test browser is muted; never pass `--audio`.
+
 ## Correctness and data rules
 
 - Preserve unrelated dirty work and local artifacts.

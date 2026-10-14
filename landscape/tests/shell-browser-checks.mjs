@@ -5,7 +5,7 @@
 //   ~/.nvm/versions/node/v22.23.2/bin/node landscape/tests/shell-browser-checks.mjs \
 //     --url http://127.0.0.1:12990/ [--explorer http://127.0.0.1:12989] [--shots DIR] \
 //     [--browser chrome|canary|brave] [--width 1600 --height 900 --dpr 1] [--only name,name] \
-//     [--query startup=high] [--audit]
+//     [--query startup=high] [--audit] [--games]
 //
 // Each check runs landscape/tools/browser-check.mjs with a page script, then judges the
 // returned values. Prints one PASS/FAIL line per expectation and exits 1 on any failure.
@@ -16,6 +16,8 @@
 // condition broken to confirm the setting then has no effect. It writes settings-audit.json
 // to --shots (or the working directory). With --query auditlog=1 the page requests
 // /__audit?i=N&id=ID before each setting, so a server log shows its progress.
+// --games (or --only plane,fun) also runs the plane and Stack sats checks, which a normal run
+// skips. The browser is always muted (browser-check.mjs), so no check makes a sound.
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -39,6 +41,7 @@ const dpr = opt('dpr', '1');
 const only = opt('only', null);
 const extraQuery = new URLSearchParams(opt('query', ''));
 const audit = args.includes('--audit');
+const optIns = { audit, games: args.includes('--games') };
 if (shots) mkdirSync(shots, { recursive: true });
 const tmp = mkdtempSync(join(tmpdir(), 'shell-checks-'));
 // The online Worker names the current dataset in /dataset/index.json; serve.mjs has no index.
@@ -340,6 +343,7 @@ const CHECKS = [
   },
   {
     name: 'plane',
+    optIn: 'games',
     shot: 'plane.png',
     timeout: 90000,
     script: `const up = (code) => window.dispatchEvent(new KeyboardEvent('keyup', { code, bubbles: true }));
@@ -497,6 +501,7 @@ const CHECKS = [
   },
   {
     name: 'fun',
+    optIn: 'games',
     shot: 'fun.png',
     timeout: 120000,
     script: `const takeoffDone = async () => { const t = performance.now(); while (L.plane.takingOff && performance.now() - t < 4000) await sleep(30); };
@@ -1260,9 +1265,14 @@ const CHECKS = [
 
 let failures = 0;
 const results = {};
+const skipped = [];
 for (const check of CHECKS) {
-  if (only && !only.split(',').includes(check.name)) continue;
-  if (check.optIn === 'audit' && !audit && !(only && only.split(',').includes(check.name))) continue;
+  const named = !!only && only.split(',').includes(check.name);
+  if (only && !named) continue;
+  if (check.optIn && !optIns[check.optIn] && !named) {
+    skipped.push(check.name + ' (--' + check.optIn + ')');
+    continue;
+  }
   const query = new URLSearchParams(check.query || '');
   for (const [k, v] of extraQuery) query.set(k, v);
   let url = base.replace(/[?#].*$/, '') + (String(query) ? '?' + query : '');
@@ -1303,5 +1313,6 @@ for (const check of CHECKS) {
 }
 if (shots) writeFileSync(join(shots, 'results.json'), JSON.stringify(results, null, 1));
 rmSync(tmp, { recursive: true, force: true });
+if (skipped.length) console.log('skipped ' + skipped.join(', '));
 console.log(failures ? failures + ' failed' : 'all passed');
 process.exit(failures ? 1 : 0);
