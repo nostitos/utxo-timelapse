@@ -77,11 +77,11 @@ try {
     out.textContent = lines.join('\n');
     window.__benchResult = { mode: 'sweep', userAgent: navigator.userAgent, adapter: dev.view.capabilities.adapter, backend: dev.view.backend, rows };
   } else {
-    const presets = (params.get('presets') || 'Film,Performance,Balanced,High,Ultra,Extreme').split(',');
+    const presets = (params.get('presets') || 'BitcoinTimelapse.com,Performance,Balanced,High,Ultra,Extreme').split(',');
     const extra = params.get('extra') ? JSON.parse(params.get('extra')) : {};
     const rows = await dev.runBench({ presets, warmMs, measureMs, cam, extra });
-    const lines = ['preset        size        fps  frame ms  cpu ms  gpu ms'];
-    for (const r of rows) lines.push(r.preset.padEnd(12) + pad(r.width + '×' + r.height, 11) + pad(r.fps, 7) + pad(r.frameMs, 10) + pad(r.cpuMs, 8) + pad(r.gpuMs, 8));
+    const lines = ['preset                 size        fps  frame ms  cpu ms  gpu ms'];
+    for (const r of rows) lines.push(r.preset.padEnd(21) + pad(r.width + '×' + r.height, 11) + pad(r.fps, 7) + pad(r.frameMs, 10) + pad(r.cpuMs, 8) + pad(r.gpuMs, 8));
     out.textContent = lines.join('\n');
     window.__benchResult = { mode: 'presets', userAgent: navigator.userAgent, adapter: dev.view.capabilities.adapter, backend: dev.view.backend, rows };
   }

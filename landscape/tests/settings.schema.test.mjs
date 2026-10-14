@@ -5,9 +5,10 @@ import { readFileSync } from 'node:fs';
 import {
   SCHEMA, SCHEMA_BY_ID, PRESETS, PRESET_NAMES, PRESET_INFO, QUALITY_ORDER, STARTUP_PRESET,
   WEBGL2_MAX_PRESET, GROUPS, TYPES, REBUILD_CLASSES, DEFAULT_GRADIENT, LOOKS, DEFAULT_LOOK, LOOK_INFO,
-  QUALITY_INFO, LOOK_PRESETS, QUALITY_PRESETS, NEEDS, TIME_OF_DAY,
+  QUALITY_INFO, LOOK_PRESETS, QUALITY_PRESETS, NEEDS, TIME_OF_DAY, LOOK_ALIASES,
 } from '../web/settings.schema.js';
 import { createSettingsStore, validateValue, valuesEqual, normalizeGradient } from '../web/settings.js';
+import { PALETTE_NAMES } from '../web/render/terrain/palette.js';
 
 // Required ids, copied from SPEC section 7 (consumers use exactly these).
 const REQUIRED = {
@@ -158,7 +159,8 @@ test('presets: names, metadata and every value valid without clamping', () => {
   assert.deepEqual(Object.keys(QUALITY_PRESETS), [...QUALITY_ORDER]);
   assert.deepEqual(Object.keys(LOOK_INFO), [...LOOKS]);
   assert.deepEqual(Object.keys(QUALITY_INFO), [...QUALITY_ORDER]);
-  assert.deepEqual([...LOOKS], ['Landscape', 'Film', 'Daylight', 'Golden hour', 'Neon night', 'Whales', 'Pulse']);
+  assert.deepEqual([...LOOKS], ['Landscape', 'BitcoinTimelapse.com', 'Daylight', 'Golden hour', 'Earth', 'Neon night',
+    'Whales', 'Pulse', 'Outputs', 'Money map', 'Linear', 'Paper']);
   assert.equal(DEFAULT_LOOK, 'Landscape');
   assert.equal(STARTUP_PRESET, 'High');
   assert.equal(WEBGL2_MAX_PRESET, 'High');
@@ -183,8 +185,20 @@ function resolved(name, capabilities = WEBGPU) {
   return QUALITY_ORDER.includes(name) ? store.baseValues(DEFAULT_LOOK, name) : store.baseValues(name, 'High');
 }
 
-test('Film preset reproduces the film colours: unlit, film palette, every effect off', () => {
-  const f = resolved('Film');
+test('look aliases name a current look and are not looks themselves; palettes match the renderer', () => {
+  assert.deepEqual({ ...LOOK_ALIASES }, { Film: 'BitcoinTimelapse.com' });
+  for (const [old, now] of Object.entries(LOOK_ALIASES)) {
+    assert.ok(LOOKS.includes(now), old + ' -> ' + now);
+    assert.equal(LOOKS.includes(old), false, old + ' is an alias, not a look');
+    assert.equal(QUALITY_ORDER.includes(old), false, old + ' is not a quality');
+  }
+  // The palette options are the renderer's palettes, in the same order.
+  assert.deepEqual(SCHEMA_BY_ID.get('color.palette').options, [...PALETTE_NAMES]);
+  assert.equal(SCHEMA_BY_ID.get('color.palette').optionLabels.earth, 'Earth');
+});
+
+test('BitcoinTimelapse.com reproduces the film colours: unlit, film palette, every effect off', () => {
+  const f = resolved('BitcoinTimelapse.com');
   const expected = {
     'color.measure': 'density', 'color.palette': 'film', 'color.reverse': false,
     'color.whiteHot': true, 'color.whiteHotBTC': 10, 'color.offset': 30, 'color.upper': 500, 'color.gamma': 1,
@@ -202,14 +216,14 @@ test('Film preset reproduces the film colours: unlit, film palette, every effect
     'geo.stepped': true, 'geo.columns': false, 'geo.smoothing': 'none', 'amp.edgeGlow': 0, 'amp.nowPlane': 0,
     'display.grid': false,
   };
-  for (const [id, value] of Object.entries(expected)) assert.deepEqual(f[id], value, 'Film ' + id);
+  for (const [id, value] of Object.entries(expected)) assert.deepEqual(f[id], value, 'BitcoinTimelapse.com ' + id);
   // Heat glow and flashes stay on, like the film's activity flashes (both are zero after a seek).
   assert.equal(f['color.heatGain'], SCHEMA_BY_ID.get('color.heatGain').default);
   assert.ok(f['color.heatGain'] > 0);
   assert.equal(f['amp.flashSize'], SCHEMA_BY_ID.get('amp.flashSize').default);
   assert.ok(f['amp.flashSize'] > 0);
-  // Film is allowed on WebGL2 and resolves identically there.
-  assert.deepEqual(resolved('Film', { webgpu: false }), f);
+  // It is allowed on WebGL2 and resolves identically there.
+  assert.deepEqual(resolved('BitcoinTimelapse.com', { webgpu: false }), f);
 });
 
 test('quality presets scale up from Performance to Extreme', () => {
@@ -259,7 +273,7 @@ test('quality presets scale up from Performance to Extreme', () => {
   assert.equal(extreme['fx.motionBlur'], true);
   assert.ok(extreme['fx.aoSamples'] > ultra['fx.aoSamples']);
   assert.ok(extreme['light.volumetricSteps'] > ultra['light.volumetricSteps']);
-  // Look settings stay constant across quality tiers (Film alone turns the grid off).
+  // Look settings stay constant across quality tiers (the grid is a look setting too).
   for (const id of ['color.toneMapping', 'color.palette', 'light.albedo', 'light.emissive', 'fx.dof', 'display.grid']) {
     for (const t of tiers) assert.deepEqual(t[id], high[id], id + ' should not vary by quality tier');
   }
@@ -280,7 +294,7 @@ test('looks: each one changes the appearance in at least 8 settings and leaves c
     assert.ok(changed.length >= 8, name + ' differs from Landscape in only ' + changed.length + ' settings');
     assert.ok(LOOK_INFO[name].length > 40, name + ' description');
   }
-  // Quality-only settings belong to the tiers (Film alone pins its resolution and anti-aliasing).
+  // Quality-only settings belong to the tiers (BitcoinTimelapse.com alone pins its resolution and anti-aliasing).
   const costIds = ['geo.tileBudget', 'geo.pixelsPerCell', 'geo.columnPixels', 'geo.instanceBudget', 'light.cascades',
     'light.shadowMapSize', 'fx.aoSamples', 'light.volumetricSteps'];
   for (const name of LOOKS) {

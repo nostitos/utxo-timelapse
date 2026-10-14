@@ -398,9 +398,19 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     }
     applyDisplay();
 
+    // Axis labels are light text for the usual dark ground; on a light one (Paper) they turn dark.
+    function applyLabelInk() {
+      const hex = /^#([0-9a-f]{6})$/i.exec(String(store.get('color.ground')));
+      const n = hex ? parseInt(hex[1], 16) : 0;
+      const luma = (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
+      $('labels').classList.toggle('lbl-on-light', luma > 0.6);
+    }
+    applyLabelInk();
+
     store.subscribe('*', (changes) => {
       const ids = new Set(changes.map((c) => c.id));
       if (ids.has('amp.measure') || ids.has('color.measure')) applyMeasures();
+      if (ids.has('color.ground')) applyLabelInk();
       if (ids.has('amp.heatHalfLife')) replay.setHeatHalfLife(store.get('amp.heatHalfLife'));
       if (ids.has('geo.tileBudget')) replay.setMaxResidentTiles(store.get('geo.tileBudget'));
       if (ids.has('display.hud')) dismissed.delete('hud');

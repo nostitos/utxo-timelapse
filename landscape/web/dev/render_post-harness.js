@@ -23,7 +23,7 @@ function parseValue(text) {
 
 /**
  * Exactly one named preset, as benchmarks compare them: a quality tier at the default look,
- * or a look (Film) at High. Changes made by hand are dropped.
+ * or a look (BitcoinTimelapse.com) at High. Changes made by hand are dropped.
  */
 export function applyExactPreset(store, name) {
   if (store.isQuality(name)) {
@@ -155,7 +155,7 @@ export async function startHarness({ canvas, overlayElement = null, labelsElemen
    * Renders each preset in turn and measures it. Returns one row per preset with wall-clock
    * window bounds (epoch ms) so external GPU-utilisation samples can be matched.
    */
-  async function runBench({ presets = ['Film', 'Performance', 'Balanced', 'High', 'Ultra', 'Extreme'], warmMs = 2500, measureMs = 4000, cam = null, extra = {} } = {}) {
+  async function runBench({ presets = ['BitcoinTimelapse.com', 'Performance', 'Balanced', 'High', 'Ultra', 'Extreme'], warmMs = 2500, measureMs = 4000, cam = null, extra = {} } = {}) {
     if (cam) setCamera(view, cam, width);
     // Throwaway warm-up: tile streaming, shader compilation and caches settle first.
     await applyPreset('High', extra);

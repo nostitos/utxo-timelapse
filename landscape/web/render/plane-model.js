@@ -7,7 +7,7 @@
 // flown craft is visible. They face -z like the camera, are lit like the terrain (node
 // materials, so the post chain and shadows work on WebGPU and WebGL2) and cast a sun shadow
 // (faint on the default, mostly self-lit cylinders; clear with a lower Emissive strength). A
-// faint self-glow keeps them readable in the unlit Film preset. view.pick only tests the
+// faint self-glow keeps them readable in the unlit BitcoinTimelapse.com look. view.pick only tests the
 // terrain, so a craft never blocks a pick.
 
 import {

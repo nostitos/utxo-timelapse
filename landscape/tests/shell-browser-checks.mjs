@@ -75,8 +75,9 @@ const ptr = (type, x, y, o = {}) => canvas.dispatchEvent(new PointerEvent(type, 
 // Settings checks: camera poses, the next frame's pixels (read in the frame that drew them,
 // while the WebGPU canvas still holds them) and a mean absolute RGB difference.
 // back looks at the large-amount rows from behind the landscape (yaw 180 faces +z).
+// map looks straight down on the most recent 370,000 blocks, so the landscape fills the frame.
 const POSES = { close: { x: 845, y: 9, z: 214, yaw: -25, pitch: -16 }, low: { x: 700, y: 40, z: 260, yaw: -40, pitch: -8 },
-  back: { x: 640, y: 30, z: -45, yaw: 180, pitch: -20 } };
+  back: { x: 640, y: 30, z: -45, yaw: 180, pitch: -20 }, map: { x: 780, y: 225, z: 104, yaw: 0, pitch: -89 } };
 const frameImage = (w, h) => new Promise((resolve) => requestAnimationFrame(() => {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const ctx = c.getContext('2d', { willReadFrequently: true }); ctx.imageSmoothingQuality = 'high';
@@ -755,11 +756,11 @@ const CHECKS = [
       return out;`,
     expect: (v) => [
       ['link restores the block', v.block === v.want],
-      ['a link from before looks (preset=Film) opens the Film look at High', v.look === 'Film' && v.quality === 'High'],
+      ['a link from before looks (preset=Film) opens BitcoinTimelapse.com at High', v.look === 'BitcoinTimelapse.com' && v.quality === 'High'],
       ['link restores the camera', Math.abs(v.pose.x - 290) < 1e-3 && Math.abs(v.pose.yaw - 20) < 1e-3],
       ['export carries the view', !!(v.exportView && v.exportView.b === v.want)],
-      ['import restores block, look, quality and camera', v.after.block === v.want && v.after.look === 'Film' && v.after.quality === 'High' && Math.abs(v.after.x - 290) < 1e-3],
-      ['the share link names the look', /(^|&|#)look=Film(&|$)/.test(v.hash) && /(^|&|#)preset=High(&|$)/.test(v.hash)],
+      ['import restores block, look, quality and camera', v.after.block === v.want && v.after.look === 'BitcoinTimelapse.com' && v.after.quality === 'High' && Math.abs(v.after.x - 290) < 1e-3],
+      ['the share link names the look by its current name', /(^|&|#)look=BitcoinTimelapse\.com(&|$)/.test(v.hash) && /(^|&|#)preset=High(&|$)/.test(v.hash)],
       ['display.hud hides the HUD', v.hudHidden],
       ['amp.measure reaches the worker', v.measures && v.measures.height === 'count'],
     ],
@@ -946,7 +947,7 @@ const CHECKS = [
       out.frameError = L.frameError || null;
       return out;`,
     expect: (v) => [
-      ['the look select lists the seven looks', v.ui.looks.join() === 'Landscape,Film,Daylight,Golden hour,Neon night,Whales,Pulse'],
+      ['the look select lists the twelve looks (' + v.ui.looks.length + ')', v.ui.looks.join() === 'Landscape,BitcoinTimelapse.com,Daylight,Golden hour,Earth,Neon night,Whales,Pulse,Outputs,Money map,Linear,Paper'],
       ['five quality buttons', v.ui.qualities.join() === 'Performance,Balanced,High,Ultra,Extreme'],
       ['status reads the look and quality; Advanced starts closed (' + v.ui.status + ')', v.ui.status === 'Landscape \u00b7 ' + v.ui.quality && v.ui.advancedClosed === true],
       ['every option of every quick control selects itself (' + v.clicks.length + ' options' + (v.bad.length ? '; failed ' + v.bad.join(', ') : '') + ')', v.clicks.length >= 30 && v.bad.length === 0],
@@ -957,11 +958,11 @@ const CHECKS = [
   },
   {
     name: 'looks',
-    timeout: 240000,
+    timeout: 480000,
     script: `await idle(); await sleep(800);
       const S = L.settings; const start = L.controls.getPose();
-      const out = { cameras: {}, shots: [] };
-      for (const [cam, pose] of [['overview', start], ['close', POSES.close]]) {
+      const out = { cameras: {}, shots: [], count: S.looks.length };
+      for (const [cam, pose] of [['overview', start], ['map', POSES.map], ['close', POSES.close]]) {
         L.controls.setPose(pose);
         const grids = {};
         for (const look of S.looks) {
@@ -979,13 +980,26 @@ const CHECKS = [
       }
       S.setLook('Landscape');
       out.frameError = L.frameError || null;
+      const ink = () => document.getElementById('labels').classList.contains('lbl-on-light');
+      await sleep(100); out.labelInk = { landscape: ink() };
+      S.setLook('Paper'); await sleep(100); out.labelInk.paper = ink();
+      S.setLook('Landscape'); await sleep(100); out.labelInk.back = ink();
       return out;`,
     node: (v) => {
       if (shots) for (const [name, url] of v.shots) writeFileSync(join(shots, 'look-' + name.replace(/ /g, '-').toLowerCase() + '.jpg'), Buffer.from(url.split(',')[1], 'base64'));
       v.shots = v.shots.map(([name]) => name);
     },
+    // From the overview the landscape is a strip over about a quarter of the frame, and the data
+    // looks (Outputs, Money map, Linear) share one background, so the frame means of two of them
+    // differ by about 5 even where their strips look nothing alike: there a look only has to
+    // change the frame visibly (3; a look that failed to apply scores about 0). The map and close
+    // cameras, where the landscape fills the frame, need 10.
     expect: (v) => [
-      ...Object.entries(v.cameras).map(([cam, c]) => ['all seven looks differ at the ' + cam + ' camera (closest pair ' + c.min[0] + ': ' + c.min[1] + ')', c.min[1] >= 10]),
+      ...Object.entries(v.cameras).map(([cam, c]) => {
+        const need = cam === 'overview' ? 3 : 10;
+        return ['all ' + v.count + ' looks differ by ' + need + ' or more at the ' + cam + ' camera (closest pair ' + c.min[0] + ': ' + c.min[1] + ')', c.min[1] >= need];
+      }),
+      ['axis labels turn to dark ink on Paper\'s white ground and back', !v.labelInk.landscape && v.labelInk.paper && !v.labelInk.back],
       ['no frame errors', v.frameError === null],
     ],
   },
@@ -1068,7 +1082,7 @@ const CHECKS = [
       out.changedList = Array.from(document.querySelectorAll('#panel .lsp-ov-item')).length;
       // Online, a first visit also turns on auto scale (personal preferences): those may be listed.
       out.governedChanged = Object.keys(S.overrides()).filter((id) => S.entry(id).preset !== false).length;
-      S.setLook('Film'); await sleep(100);
+      S.setLook('BitcoinTimelapse.com'); await sleep(100);
       const shadowRow = document.querySelector('#panel [data-quick="shadows"]');
       out.film = { shadowsInert: shadowRow.classList.contains('lsq-inert'), shadowsTitle: shadowRow.querySelector('.lsq-label').title.split('\\n').pop(),
         todInert: document.querySelector('#panel [data-quick="timeOfDay"]').classList.contains('lsq-inert'),
@@ -1089,7 +1103,7 @@ const CHECKS = [
       ['bloom off dims the bloom settings and says why (' + v.bloomTitle + ')', !v.bloomOnInert && v.bloomOffInert && v.bloomTitle === 'No effect with Bloom off.'],
       ['shadows off dims the cascade setting (' + v.cascades.title + ')', v.cascades.inert && v.cascades.title === 'No effect with Shadows off.'],
       ['Advanced counts the changed settings (' + v.advancedTitle + ', ' + v.changedList + ' listed, ' + v.governedChanged + ' of them look or quality)', v.advancedTitle === (v.changedList ? 'Advanced \u00b7 ' + v.changedList + ' changed' : 'Advanced') && v.governedChanged === 0],
-      ['Film dims Shadows and the sun direction, not Time of day (' + v.film.shadowsTitle + ')', v.film.shadowsInert && v.film.sunInert && !v.film.todInert && v.film.shadowsTitle === 'No effect with Sun intensity 0.' && v.film.status === 'Film \u00b7 ' + v.film.quality],
+      ['BitcoinTimelapse.com dims Shadows and the sun direction, not Time of day (' + v.film.shadowsTitle + ')', v.film.shadowsInert && v.film.sunInert && !v.film.todInert && v.film.shadowsTitle === 'No effect with Sun intensity 0.' && v.film.status === 'BitcoinTimelapse.com \u00b7 ' + v.film.quality],
       ['a fog density between the Haze stops sits on its slider; one beyond Thick shows Haze as mixed', v.between && v.mixed],
       ['search finds the bloom settings and steps the quick settings aside', v.matches >= 5 && v.searching.quickHidden && v.searching.advancedOpen && !v.afterSearch.quickHidden],
     ],

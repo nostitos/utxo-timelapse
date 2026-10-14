@@ -143,10 +143,10 @@ export async function timing(d, { warmMs = 2500, ms = 4000 } = {}) {
 }
 
 /** Switches presets and structural settings at runtime, then disposes the terrain. */
-export async function runtimeSwitches(d, { names = ['Film', 'Performance', 'Balanced', 'High', 'Ultra', 'Extreme', 'High'] } = {}) {
+export async function runtimeSwitches(d, { names = ['BitcoinTimelapse.com', 'Performance', 'Balanced', 'High', 'Ultra', 'Extreme', 'High'] } = {}) {
   const log = [];
   for (const name of names) {
-    // Each preset exactly (a quality at the default look, or Film at High).
+    // Each preset exactly (a quality at the default look, or a look at High).
     if (d.settings.isQuality(name)) {
       d.settings.setQuality(name);
       d.settings.setLook(d.settings.defaultLook);

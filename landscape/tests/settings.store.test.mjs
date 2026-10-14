@@ -179,19 +179,19 @@ test('looks and quality: the look wins, quality keeps hand changes, preferences 
   assert.equal(s.get('light.volumetric'), false);
   assert.equal(s.get('light.shadowMapSize'), 2048);
   // Choosing a look drops hand changes and keeps the quality.
-  assert.equal(s.applyPreset('Film'), 'Film');
-  assert.equal(s.look, 'Film');
+  assert.equal(s.applyPreset('BitcoinTimelapse.com'), 'BitcoinTimelapse.com');
+  assert.equal(s.look, 'BitcoinTimelapse.com');
   assert.equal(s.quality, 'High');
   assert.equal(s.get('color.palette'), 'film');
   assert.equal(s.get('light.albedo'), 0);
   assert.equal(s.get('color.toneMapping'), 'none');
-  assert.equal(s.preset, 'Film \u00b7 High');
+  assert.equal(s.preset, 'BitcoinTimelapse.com \u00b7 High');
   // The look wins over the tier where both name a setting.
   s.setQuality('Ultra');
-  assert.equal(s.preset, 'Film \u00b7 Ultra');
-  assert.equal(s.get('geo.smoothing'), 'none', 'Film over Ultra');
-  assert.equal(s.get('light.volumetric'), false, 'Film over Ultra');
-  assert.equal(s.get('light.shadowMapSize'), 4096, 'Ultra where Film says nothing');
+  assert.equal(s.preset, 'BitcoinTimelapse.com \u00b7 Ultra');
+  assert.equal(s.get('geo.smoothing'), 'none', 'BitcoinTimelapse.com over Ultra');
+  assert.equal(s.get('light.volumetric'), false, 'BitcoinTimelapse.com over Ultra');
+  assert.equal(s.get('light.shadowMapSize'), 4096, 'Ultra where BitcoinTimelapse.com says nothing');
   s.setLook('Daylight');
   s.setQuality('Performance');
   assert.equal(s.get('light.shadows'), true, 'Daylight keeps its shadows at Performance');
@@ -205,6 +205,7 @@ test('looks and quality: the look wins, quality keeps hand changes, preferences 
   assert.equal(s.preset, 'High');
   assert.throws(() => s.applyPreset('Ludicrous'), /Unknown preset/);
   assert.throws(() => s.setLook('High'), /Unknown look/);
+  assert.throws(() => s.setQuality('BitcoinTimelapse.com'), /Unknown quality/);
   assert.throws(() => s.setQuality('Film'), /Unknown quality/);
   await tick();
   assert.deepEqual(states.at(-1), { preset: 'High', quality: 'High', look: 'Landscape', modified: false, overrides: 1, webgpu: true, userPresets: [] });
@@ -254,23 +255,23 @@ test('JSON round trip restores every value, the base preset and the Custom state
   assert.deepEqual(partial.applied, ['fx.bloom']);
   assert.deepEqual(partial.ignored, ['nope.id']);
   assert.deepEqual(partial.invalid, ['fx.ao']);
-  assert.equal(partial.look, 'Film');
+  assert.equal(partial.look, 'BitcoinTimelapse.com', 'Film is the earlier name of BitcoinTimelapse.com');
   assert.equal(partial.quality, 'High');
   assert.throws(() => make().fromJSON({ format: 'something-else', values: {} }), /Unsupported settings format/);
   assert.throws(() => make().fromJSON('[1,2]'), TypeError);
 });
 
-test('exports and links from before looks: Film loads as the Film look at High', () => {
+test('exports and links from before looks: Film loads as the BitcoinTimelapse.com look at High', () => {
   // A single-axis export from the Film preset, as the earlier app wrote it.
   const film = make();
-  film.setLook('Film');
+  assert.equal(film.setLook('Film'), 'BitcoinTimelapse.com', 'the earlier name still sets the look');
   const values = film.toJSON().values;
   const old = make();
   const report = old.fromJSON({ format: SETTINGS_FORMAT, preset: 'Film', values });
-  assert.equal(old.look, 'Film');
+  assert.equal(old.look, 'BitcoinTimelapse.com');
   assert.equal(old.quality, 'High');
   assert.equal(old.modified, false);
-  assert.equal(old.preset, 'Film \u00b7 High');
+  assert.equal(old.preset, 'BitcoinTimelapse.com \u00b7 High');
   assert.deepEqual(report.invalid, []);
   // An earlier Balanced export: Landscape look at Balanced, nothing changed.
   const balanced = make();
@@ -280,10 +281,10 @@ test('exports and links from before looks: Film loads as the Film look at High',
   b.fromJSON({ format: SETTINGS_FORMAT, preset: 'Balanced', values: balanced.toJSON().values });
   assert.equal(b.look, 'Landscape');
   assert.equal(b.preset, 'Balanced');
-  // Links: preset=Film means the Film look; look= names a look; an unknown look is reported.
+  // Links: preset=Film means the BitcoinTimelapse.com look; look= names a look; an unknown look is reported.
   const l = make();
   const r = l.fromURL('#b=1&preset=Film&color.gamma=2');
-  assert.equal(r.look, 'Film');
+  assert.equal(r.look, 'BitcoinTimelapse.com');
   assert.equal(l.quality, 'High');
   assert.equal(l.get('color.gamma'), 2);
   assert.equal(l.get('light.albedo'), 0);
@@ -293,6 +294,55 @@ test('exports and links from before looks: Film loads as the Film look at High',
   assert.equal(g.toURL(), 'preset=Ultra&look=Golden+hour');
   assert.deepEqual(make().fromURL('look=Moonbase').invalid, ['look']);
   assert.equal(mergeHash('#b=5&look=Pulse&preset=High&fx.grain=1', 'preset=Ultra'), 'b=5&preset=Ultra');
+});
+
+test('the Film look is now BitcoinTimelapse.com: links, exports, stored settings and saved looks keep working', () => {
+  // A link from between looks and the rename (look=Film) opens the look; the share link uses the new name.
+  const u = make();
+  const r = u.fromURL('#b=5&preset=Ultra&look=Film&fx.grain=0.2');
+  assert.equal(r.look, 'BitcoinTimelapse.com');
+  assert.deepEqual(r.invalid, []);
+  assert.equal(u.preset, 'Custom');
+  assert.equal(u.get('light.albedo'), 0);
+  assert.equal(u.toURL(), 'preset=Ultra&look=BitcoinTimelapse.com&fx.grain=0.2');
+  assert.equal(make().fromURL(u.toURL()).look, 'BitcoinTimelapse.com', 'the new link round-trips');
+  // A JSON export of the Film look and a browser's stored settings (the same format) load it.
+  const exported = { format: SETTINGS_FORMAT, preset: 'Balanced', quality: 'Balanced', look: 'Film', baseLook: 'Film', values: {} };
+  const j = make();
+  const report = j.fromJSON(exported);
+  assert.equal(report.look, 'BitcoinTimelapse.com');
+  assert.equal(report.lookFallback, null);
+  assert.equal(j.preset, 'BitcoinTimelapse.com \u00b7 Balanced');
+  assert.equal(j.toJSON().look, 'BitcoinTimelapse.com');
+  assert.equal(j.toJSON().baseLook, 'BitcoinTimelapse.com');
+  const storage = memoryStorage();
+  storage.setItem(STORAGE_KEY, JSON.stringify({ ...exported, values: { 'color.gamma': 2 } }));
+  const stored = make({ storage, autosave: false });
+  assert.equal(stored.load(), true);
+  assert.equal(stored.look, 'BitcoinTimelapse.com');
+  assert.equal(stored.get('color.gamma'), 2);
+  // A saved look built on Film, from another browser's export or this browser's storage.
+  const elsewhere = make().fromJSON({ ...exported, look: 'Old film', baseLook: 'Film', values: { 'color.gamma': 3 } });
+  assert.equal(elsewhere.lookFallback, 'Old film');
+  assert.equal(elsewhere.look, 'BitcoinTimelapse.com');
+  storage.setItem(PRESETS_KEY, JSON.stringify({ format: PRESETS_FORMAT, presets: [
+    { name: 'Old film', savedAt: null, look: 'Film', quality: 'High', overrides: { 'color.gamma': 2.5 } },
+  ] }));
+  const saved = make({ storage, autosave: false });
+  assert.equal(saved.userPreset('Old film').look, 'BitcoinTimelapse.com');
+  assert.equal(saved.setLook('Old film'), 'Old film');
+  assert.equal(saved.baseLook, 'BitcoinTimelapse.com');
+  assert.equal(saved.get('light.albedo'), 0);
+  assert.equal(saved.get('color.gamma'), 2.5);
+  assert.match(saved.toURL(), /^preset=High&look=BitcoinTimelapse\.com&color\.gamma=2\.5$/);
+  // The earlier name is reserved, accepted wherever a look is named, and never a quality.
+  assert.throws(() => saved.saveUserPreset('Film'), /built-in name/);
+  assert.equal(saved.isLook('Film'), true);
+  assert.equal(saved.isPresetAvailable('Film'), true);
+  assert.equal(saved.canonicalLook('Film'), 'BitcoinTimelapse.com');
+  assert.equal(saved.canonicalLook('Paper'), 'Paper');
+  assert.deepEqual(saved.baseValues('Film', 'High'), saved.baseValues('BitcoinTimelapse.com', 'High'));
+  assert.equal(saved.looks.includes('Film'), false, 'the look list shows the current name only');
 });
 
 test('URL round trip: preset plus url ids that differ, foreign keys ignored', () => {
@@ -334,7 +384,7 @@ test('URL round trip: preset plus url ids that differ, foreign keys ignored', ()
   assert.equal(c.get('camera.fov'), 50);
   assert.equal(c.get('color.gamma'), 2);
   assert.equal(c.preset, 'Custom');
-  assert.equal(c.look, 'Film');
+  assert.equal(c.look, 'BitcoinTimelapse.com');
 
   // No settings keys: nothing changes.
   const d = make();
@@ -432,13 +482,13 @@ test('WebGL2 caps presets at High and keeps WebGPU-only features off', () => {
   assert.equal(s.applyPreset('Ultra'), 'High');
   assert.equal(s.applyPreset('Extreme'), 'High');
   assert.equal(s.preset, 'High');
-  assert.equal(s.applyPreset('Film'), 'Film');
+  assert.equal(s.applyPreset('BitcoinTimelapse.com'), 'BitcoinTimelapse.com');
   // Neon night's boxes need compute: on WebGL2 its far landscape stays stepped.
   s.setLook('Neon night');
   assert.equal(s.get('geo.columns'), false);
   assert.equal(s.get('geo.stepped'), true);
   assert.equal(s.modified, false);
-  s.setLook('Film');
+  s.setLook('BitcoinTimelapse.com');
   assert.equal(s.set('geo.columns', true), false);
   assert.equal(s.set('fx.ssgi', true), false);
   assert.equal(s.set('color.exposureMode', 'auto'), 'manual');
@@ -577,7 +627,7 @@ test('saved presets: save, list, reload, overwrite, delete, name rules and stora
   assert.equal(s.preset, 'Custom', 'the current values now differ from the restored record');
 
   // Name rules.
-  for (const bad of ['', '   ', 'x'.repeat(41), 'High', 'film', 'Custom', 'golden HOUR']) {
+  for (const bad of ['', '   ', 'x'.repeat(41), 'High', 'film', 'bitcointimelapse.COM', 'Custom', 'golden HOUR', 'money MAP']) {
     assert.throws(() => s.saveUserPreset(bad), Error, JSON.stringify(bad));
   }
   assert.equal(s.saveUserPreset('x'.repeat(40)).record.name.length, 40);
@@ -646,9 +696,9 @@ test('needs: a setting without effect names the root cause', () => {
   assert.equal(s.inert('amp.heatReference'), null, 'flash sprites still read it');
   s.set('amp.flashSize', 0);
   assert.equal(s.inert('amp.heatReference').text, 'Heat gain 0 and Flash size 0');
-  // Film: no sky, no sun, no fog, so the sun direction does nothing.
+  // BitcoinTimelapse.com: no sky, no sun, no fog, so the sun direction does nothing.
   const f = make();
-  f.setLook('Film');
+  f.setLook('BitcoinTimelapse.com');
   assert.equal(f.inert('light.sunElevation').text, 'Sun intensity 0, Sky off, Volumetric light off and God rays off');
   assert.equal(f.inert('color.background'), null, 'the background shows when the sky is off');
   assert.equal(f.inert('geo.subdivision').text, 'Stepped cells on');

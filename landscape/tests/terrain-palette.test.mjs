@@ -76,6 +76,15 @@ test('every named palette has 256 RGB entries; reverse, grey and custom behave',
   assert.equal(P.parseColor('nope'), null);
 });
 
+test('earth runs from sand to green and ignores the custom gradient', () => {
+  const earth = P.paletteRGB('earth');
+  assert.deepEqual(Array.from(earth.slice(0, 3)), [0xe6, 0xd8, 0xa8], 'sand at the lowest value');
+  assert.deepEqual(Array.from(earth.slice(765)), [0x2e, 0x7a, 0x31], 'green at the top');
+  assert.deepEqual(earth, P.gradientRGB(P.GRADIENT_PALETTES.earth));
+  const custom = [{ t: 0, color: '#000000' }, { t: 1, color: '#ffffff' }];
+  assert.deepEqual(P.paletteRGB('earth', { gradient: custom }), earth);
+});
+
 // Densities: random log-uniform, integers, and the exact double boundaries of every index.
 function densitySamples() {
   const r = rng(7);

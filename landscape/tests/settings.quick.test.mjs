@@ -54,7 +54,7 @@ test('every built-in look reads one option in every quick control', () => {
   for (const look of LOOKS) {
     s.setLook(look);
     for (const c of choices) {
-      if (look === 'Film' && c.id === 'timeOfDay') continue; // Film turns the light off.
+      if (look === 'BitcoinTimelapse.com' && c.id === 'timeOfDay') continue; // The film's look turns the light off.
       assert.notEqual(quickOption(c, s.get), null, look + ': ' + c.id + ' is mixed');
     }
   }
@@ -69,7 +69,7 @@ test('every built-in look reads one option in every quick control', () => {
 });
 
 test('each option selects itself and leaves the other controls alone', () => {
-  for (const look of ['Landscape', 'Film', 'Neon night']) {
+  for (const look of ['Landscape', 'BitcoinTimelapse.com', 'Neon night', 'Earth', 'Paper']) {
     const s = make();
     s.setLook(look);
     for (const c of choices) {
@@ -108,10 +108,10 @@ test('values set by hand read as mixed; state, patch and needs', () => {
   patch['light.sky'] = true; // a fresh copy each time
   assert.equal(quickPatch(QUICK_BY_ID.get('sky'), 'off')['light.sky'], false);
   assert.throws(() => quickPatch(haze, 'soup'), /no option/);
-  // Shadows have no effect on Film (no sun); Flash trail none with flashes off.
-  s.setLook('Film');
+  // Shadows have no effect on BitcoinTimelapse.com (no sun); Flash trail none with flashes off.
+  s.setLook('BitcoinTimelapse.com');
   assert.equal(s.checkNeeds(QUICK_BY_ID.get('shadows').needs).text, 'Sun intensity 0');
-  assert.equal(s.checkNeeds(QUICK_BY_ID.get('timeOfDay').needs), null, 'time of day turns the sun on, even on Film');
+  assert.equal(s.checkNeeds(QUICK_BY_ID.get('timeOfDay').needs), null, 'time of day turns the sun on, even on BitcoinTimelapse.com');
   s.setLook('Landscape');
   assert.equal(s.checkNeeds(QUICK_BY_ID.get('shadows').needs), null);
   s.setMany(quickPatch(QUICK_BY_ID.get('flashes'), 'off'));

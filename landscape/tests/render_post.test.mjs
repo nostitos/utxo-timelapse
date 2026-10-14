@@ -106,14 +106,15 @@ test('render_post ids exist in the settings schema with compatible options', () 
 });
 
 function presetSettings(name) {
+  if (!PRESETS[name]) throw new Error('Unknown preset ' + name);
   const values = {};
   for (const e of SCHEMA) values[e.id] = e.default;
   Object.assign(values, PRESETS[name] || {});
   return readSettings({ get: (id) => values[id] });
 }
 
-test('Film preset plans an empty chain (exact palette colours)', () => {
-  const p = planPipeline(presetSettings('Film'), WEBGPU);
+test('BitcoinTimelapse.com plans an empty chain (exact palette colours)', () => {
+  const p = planPipeline(presetSettings('BitcoinTimelapse.com'), WEBGPU);
   assert.equal(p.ssaa, 1);
   for (const k of ['ssgi', 'ssr', 'volumetric', 'godRays', 'traa', 'fxaa', 'smaa', 'bloom', 'dof', 'motionBlur',
     'autoExposure', 'grade', 'lut', 'p3', 'chromatic', 'grain', 'vignette']) assert.equal(p[k], false, k);
@@ -121,7 +122,7 @@ test('Film preset plans an empty chain (exact palette colours)', () => {
   assert.equal(p.toneMapping, 'none');
   assert.deepEqual(p.mrt, { normal: false, metalrough: false, diffuse: false, velocity: false });
   assert.deepEqual(planStages(p), ['scene', 'exposure', 'sRGB']);
-  assert.equal(gradeIsNeutral(presetSettings('Film')), true);
+  assert.equal(gradeIsNeutral(presetSettings('BitcoinTimelapse.com')), true);
 });
 
 test('High, Ultra and Extreme plans', () => {

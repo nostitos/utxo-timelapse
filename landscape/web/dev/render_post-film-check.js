@@ -1,5 +1,6 @@
-// browser-check --script body (render_post): Film preset colour exactness through the full
-// createLandscapeView pipeline. Load render_post-view.html?terrain=real&preset=Film&overlay=0
+// browser-check --script body (render_post): colour exactness of the BitcoinTimelapse.com look
+// (the film's colours) through the full createLandscapeView pipeline. Load
+// render_post-view.html?terrain=real&preset=BitcoinTimelapse.com&overlay=0
 // first. Looks straight down, renders one frame, copies the canvas in the same task and
 // compares interior pixels of picked cells with palettes.json bytes (film / whale tables)
 // selected by render_terrain's exact film transfer.

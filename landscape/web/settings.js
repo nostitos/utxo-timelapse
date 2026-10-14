@@ -13,6 +13,7 @@ import {
   STARTUP_PRESET,
   WEBGL2_MAX_PRESET,
   DEFAULT_LOOK,
+  LOOK_ALIASES,
 } from './settings.schema.js';
 
 export const SETTINGS_FORMAT = 'utxo-landscape-settings-1';
@@ -388,6 +389,8 @@ export function unmetNeed(needs, get, byId, stack = new Set()) {
  * @param {boolean}  [options.autosave] save 250 ms after changes (default: when storage exists)
  * @param {string}   [options.startupPreset] startup quality (default 'High'), or a look name
  * @param {string}   [options.defaultLook] defaults to DEFAULT_LOOK ('Landscape')
+ * @param {object}   [options.lookAliases] earlier look names -> current names; defaults to
+ *                   LOOK_ALIASES. Every input accepts them; output uses the current name.
  */
 export function createSettingsStore(schema = SCHEMA, presets = PRESETS, options = {}) {
   const entries = Object.freeze(Array.from(schema));
@@ -398,6 +401,7 @@ export function createSettingsStore(schema = SCHEMA, presets = PRESETS, options 
   const qualityNames = Object.freeze((options.qualityOrder ?? QUALITY_ORDER).filter((name) => hasOwn(presets, name)));
   const defaultLook = options.defaultLook ?? DEFAULT_LOOK;
   const lookNames = Object.freeze([...new Set([defaultLook, ...presetNames.filter((name) => !qualityNames.includes(name))])]);
+  const lookAliases = options.lookAliases ?? LOOK_ALIASES;
   const webgl2MaxPreset = options.webgl2MaxPreset ?? WEBGL2_MAX_PRESET;
   const storageKey = options.storageKey ?? STORAGE_KEY;
   const presetsKey = options.presetsKey ?? PRESETS_KEY;
@@ -407,6 +411,9 @@ export function createSettingsStore(schema = SCHEMA, presets = PRESETS, options 
 
   const isQuality = (name) => typeof name === 'string' && qualityNames.includes(name);
   const isLook = (name) => typeof name === 'string' && lookNames.includes(name);
+  /** The current name of a look given by an earlier name (Film); any other name unchanged. */
+  const canonicalLook = (name) => (typeof name === 'string' && hasOwn(lookAliases, name) && isLook(lookAliases[name])
+    ? lookAliases[name] : name);
   const keyOf = (name) => String(name).trim().toLowerCase();
   const startupQuality = isQuality(options.startupPreset) ? options.startupPreset
     : isQuality(STARTUP_PRESET) ? STARTUP_PRESET : (qualityNames[0] ?? null);
@@ -421,7 +428,7 @@ export function createSettingsStore(schema = SCHEMA, presets = PRESETS, options 
   let users = []; // saved presets, sorted by name
   let usersByKey = new Map(); // lower-case name -> record
   let quality = capQuality(startupQuality);
-  let look = isLook(options.startupPreset) ? options.startupPreset : defaultLook;
+  let look = isLook(canonicalLook(options.startupPreset)) ? canonicalLook(options.startupPreset) : defaultLook;
   let lookBuiltin = look; // the built-in look under the active look (itself, or a saved preset's)
 
   loadUsers();
@@ -455,7 +462,8 @@ export function createSettingsStore(schema = SCHEMA, presets = PRESETS, options 
 
   function reservedName(name) {
     const key = keyOf(name);
-    return key === 'custom' || lookNames.some((n) => keyOf(n) === key) || qualityNames.some((n) => keyOf(n) === key);
+    return key === 'custom' || lookNames.some((n) => keyOf(n) === key) || qualityNames.some((n) => keyOf(n) === key)
+      || Object.keys(lookAliases).some((n) => keyOf(n) === key);
   }
 
   /** A stored record, validated: null when unusable. Overrides keep only valid governed values. */
@@ -476,7 +484,7 @@ export function createSettingsStore(schema = SCHEMA, presets = PRESETS, options 
     return Object.freeze({
       name,
       savedAt: typeof raw.savedAt === 'string' ? raw.savedAt : null,
-      look: isLook(raw.look) ? raw.look : defaultLook,
+      look: isLook(canonicalLook(raw.look)) ? canonicalLook(raw.look) : defaultLook,
       quality: isQuality(raw.quality) ? raw.quality : startupQuality,
       overrides: Object.freeze(overrides),
     });
@@ -770,8 +778,9 @@ export function createSettingsStore(schema = SCHEMA, presets = PRESETS, options 
    */
   function setLook(name) {
     const user = userRecord(name);
-    if (!user && !isLook(name)) throw new Error('Unknown look "' + name + '"');
-    setLookState(user ? user.name : name);
+    const builtin = canonicalLook(name);
+    if (!user && !isLook(builtin)) throw new Error('Unknown look "' + name + '"');
+    setLookState(user ? user.name : builtin);
     if (user && isQuality(user.quality)) quality = capQuality(user.quality);
     for (const entry of governed) write(entry, baseValue(entry));
     queueFlush();
@@ -800,7 +809,7 @@ export function createSettingsStore(schema = SCHEMA, presets = PRESETS, options 
   /** A quality name sets the quality (setQuality); a look or saved preset name sets the look. */
   function applyPreset(name) {
     if (isQuality(name)) return setQuality(name);
-    if (isLook(name) || userRecord(name)) return setLook(name);
+    if (isLook(canonicalLook(name)) || userRecord(name)) return setLook(name);
     throw new Error('Unknown preset "' + name + '"');
   }
 
@@ -817,7 +826,8 @@ export function createSettingsStore(schema = SCHEMA, presets = PRESETS, options 
   }
 
   /** Base value of every setting for a look (built-in or saved) and a quality tier. */
-  function baseValues(lk = look, q = quality) {
+  function baseValues(lookName = look, q = quality) {
+    const lk = canonicalLook(lookName); // saved looks never take an earlier look name
     if (!isLook(lk) && !userRecord(lk)) throw new Error('Unknown look "' + lk + '"');
     if (q !== null && !isQuality(q)) throw new Error('Unknown quality "' + q + '"');
     const out = {};
@@ -857,20 +867,20 @@ export function createSettingsStore(schema = SCHEMA, presets = PRESETS, options 
     }
     if (data.preset !== undefined && targetQuality === null) {
       if (isQuality(data.preset)) targetQuality = data.preset;
-      else if (isLook(data.preset)) {
-        // Before looks, Film was a preset of its own at High quality.
-        targetLook = data.preset;
+      else if (isLook(canonicalLook(data.preset))) {
+        // Before looks, Film (now BitcoinTimelapse.com) was a preset of its own at High quality.
+        targetLook = canonicalLook(data.preset);
         legacyLook = true;
       } else report.invalid.push('preset');
     }
     if (data.look !== undefined) {
       const user = userRecord(data.look);
       if (user) targetLook = user.name;
-      else if (isLook(data.look)) targetLook = data.look;
+      else if (isLook(canonicalLook(data.look))) targetLook = canonicalLook(data.look);
       else {
         // A saved preset of another browser: its values still arrive, on its built-in look.
         report.lookFallback = String(data.look);
-        targetLook = isLook(data.baseLook) ? data.baseLook : defaultLook;
+        targetLook = isLook(canonicalLook(data.baseLook)) ? canonicalLook(data.baseLook) : defaultLook;
       }
     }
     // When the quality is capped (Ultra or Extreme on WebGL2), values that merely repeat that
@@ -940,11 +950,11 @@ export function createSettingsStore(schema = SCHEMA, presets = PRESETS, options 
     let lk = defaultLook;
     if (presetParam !== null) {
       if (isQuality(presetParam)) wanted = presetParam;
-      else if (isLook(presetParam)) lk = presetParam; // links from before looks: preset=Film
+      else if (isLook(canonicalLook(presetParam))) lk = canonicalLook(presetParam); // links from before looks: preset=Film
       else report.invalid.push('preset');
     }
     if (lookParam !== null) {
-      if (isLook(lookParam)) lk = lookParam;
+      if (isLook(canonicalLook(lookParam))) lk = canonicalLook(lookParam); // look=Film: links from before the rename
       else report.invalid.push('look');
     }
     const effective = capQuality(wanted);
@@ -1055,7 +1065,7 @@ export function createSettingsStore(schema = SCHEMA, presets = PRESETS, options 
 
   function isPresetAvailable(name) {
     if (isQuality(name)) return capQuality(name) === name;
-    return isLook(name) || !!userRecord(name);
+    return isLook(canonicalLook(name)) || !!userRecord(name);
   }
 
   function dispose() {
@@ -1103,7 +1113,9 @@ export function createSettingsStore(schema = SCHEMA, presets = PRESETS, options 
     isAvailable,
     isPresetAvailable,
     isQuality,
-    isLook: (name) => isLook(name) || !!userRecord(name),
+    isLook: (name) => isLook(canonicalLook(name)) || !!userRecord(name),
+    /** The current name of a built-in look given by an earlier name; other names unchanged. */
+    canonicalLook,
     entry: (id) => byId.get(id) ?? null,
     values: () => Object.fromEntries(values),
     flush,

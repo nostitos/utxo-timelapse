@@ -439,10 +439,11 @@ no cliff at the threshold (`curve.js` `whaleFactorCpu`; the shader mirrors it).
 
 Colour transfer (on the colour value `v`): `v ≤ 0` → `color.ground`; otherwise
 `t = clamp((ln(v + o) − ln(1 + o)) / (ln(U + o) − ln(1 + o)), 0, 1)^color.gamma`, palette
-index `floor(255 t)` (`o = color.offset`, `U = color.upper`). With the Film preset
+index `floor(255 t)` (`o = color.offset`, `U = color.upper`). With the BitcoinTimelapse.com look
 (`o = 30`, `U = 500`, gamma 1, palette `film` with the whale palette on rows at/above
 `row(color.whiteHotBTC × 1e8)`), the index equals `DensityToImage`'s exactly.
-Palettes: `film` = `site/assets/palettes.json` `base`, whale variant = `whale`.
+Palettes: `film` = `site/assets/palettes.json` `base`, whale variant = `whale`; `earth` is
+a gradient (`GRADIENT_PALETTES` in `palette.js`) from sand through brown earth to green.
 
 render_post owns everything else in the frame: renderer creation (WebGPU with raised
 `requiredLimits` and `trackTimestamp` when available; `forceWebGL` / missing
@@ -467,15 +468,19 @@ never change), `needs` (conditions under which the setting changes the image, fr
 `[{id, is | ne | gt | notNull}]` must all hold, `{any: [...]}` holds when one does; only the
 panel reads it).
 
-Presets have two axes. `LOOK_PRESETS` (`LOOKS`: Landscape, Film, Daylight, Golden hour, Neon
-night, Whales, Pulse; `LOOK_INFO`) set the appearance; `QUALITY_PRESETS` (`QUALITY_ORDER`:
+Presets have two axes. `LOOK_PRESETS` (`LOOKS`: Landscape, BitcoinTimelapse.com, Daylight, Golden
+hour, Earth, Neon night, Whales, Pulse, Outputs, Money map, Linear, Paper; `LOOK_INFO`) set the
+appearance; `QUALITY_PRESETS` (`QUALITY_ORDER`:
 Performance, Balanced, High, Ultra, Extreme; `QUALITY_INFO`) set the cost. Both are partial
 `{id: value}` maps; a setting's base value is the look's value, else the quality tier's, else
 `default`. Landscape and High are empty (the schema defaults); startup is Landscape at High,
 and on WebGL2 quality stops at High. `PRESETS` merges both maps. Looks are built from value
 bundles shared with the quick settings (`TIME_OF_DAY`, `SKY`, `HAZE`, `SHADOWS`, `GLOW`, `BIG_COINS`,
 `CELL_SHAPES`, `FLASHES`, `FLASH_TRAIL`), so each built-in look reads as one option in every quick
-control (Film's time of day aside: Film turns the sun off).
+control (BitcoinTimelapse.com's time of day aside: it turns the sun off). `LOOK_ALIASES` maps
+earlier look names to current ones (`Film` → `BitcoinTimelapse.com`): the store accepts them
+wherever a look is named (`setLook`, `applyPreset`, `baseValues`, JSON, URLs, stored settings and
+saved looks), writes only the current name, and reserves them as saved-look names.
 
 `settings.js` exports `createSettingsStore(schema, presets, {capabilities, storage})`:
 `get(id)`, `set(id, v)`, `setMany(obj)`, `subscribe(filter, fn)` (filter: id, group
@@ -488,7 +493,8 @@ Landscape, else `'Look · Quality'`), `overrides()`, `baseValues(look?, quality?
 `checkNeeds(needs)` (null, or `{text}` such as 'Bloom off' naming the root cause),
 `toJSON()` (`{format, quality, look, baseLook, values, preset: quality}`), `fromJSON()`, `toURL()`
 (`preset=<quality>`, `look=<built-in look>` unless Landscape, then the url settings that differ),
-`fromURL()` (a pre-look `preset=Film` opens the Film look at High), `load()`/`save()`
+`fromURL()` (a pre-look `preset=Film` opens BitcoinTimelapse.com at High), `canonicalLook(name)`,
+`load()`/`save()`
 (localStorage key `utxo-landscape-settings-v1`). Saved looks: `saveUserPreset(name)`,
 `deleteUserPreset(name)`, `restoreUserPreset(record, {activate})`, `userPresets`, `userPreset(name)`
 in localStorage key `utxo-landscape-presets-v1` (`{format: 'utxo-landscape-presets-1', presets: [{name,
@@ -517,7 +523,7 @@ Advanced folder, dimmed while their `needs` fail.
 Required ids (consumers must use exactly these; ranges/defaults may be refined by
 ui_settings with the consumers):
 
-- Colour: `color.palette` (film, turbo, viridis, inferno, magma, plasma, cividis,
+- Colour: `color.palette` (film, turbo, viridis, inferno, magma, plasma, cividis, earth,
   grey, custom), `color.gradient` (≤16 stops `{t, color}`), `color.reverse`,
   `color.measure` (height, density, count, value), `color.offset` (30),
   `color.upper` (500), `color.gamma` (1), `color.whiteHot` (true),
@@ -563,15 +569,23 @@ ui_settings with the consumers):
   `display.ssaa` (1, 2, 4), `display.overlay`, `display.labels`, `display.grid`,
   `display.legend`, `display.minimap`, `display.hud`.
 
-Look intent: **Landscape** is the schema defaults. **Film** reproduces the film's colours
+Look intent: **Landscape** is the schema defaults. **BitcoinTimelapse.com** (named Film until
+October 2026) reproduces the film's colours
 (density colour measure, film palette with whale rows ≥ 10 BTC, offset 30, upper 500,
 gamma 1, unlit: albedo 0, emissive 1, no sun/ambient/rim/shadows/sky/stars/fog, every post
 effect off, tone mapping none, exposure 1, neutral grade, AA none, black background and
 ground). **Daylight** (high white sun, viridis, no bloom), **Golden hour** (low sun from the
-tip side, thick haze, god rays, inferno), **Neon night** (sky off with stars, plasma boxes,
-pink rim, strong bloom), **Whales** (height and colour by BTC value, magma, whale rows twice
-as tall) and **Pulse** (dim grey on a near-black background with the sky off, strong amber
-flashes with a 300-block trail) each change at least eight settings.
+tip side, thick haze, god rays, inferno), **Earth** (high white sun in a blue sky, light haze,
+smooth surface, water-blue empty cells under the `earth` palette, no white-hot rows),
+**Neon night** (sky off with stars, plasma boxes, pink rim, strong bloom), **Whales** (height
+and colour by BTC value, magma, whale rows twice as tall) and **Pulse** (dim grey on a
+near-black background with the sky off, strong amber flashes with a 300-block trail) each
+change at least eight settings. The data looks share one plain stage (`STUDIO`: high white
+sun, sky, haze and bloom off, boxes, neutral tone mapping, grid, now plane 0.2, subtle
+flashes, background #1e2126, empty cells #15171b): **Outputs** (height and colour by output
+count, cividis), **Money map** (height by count, colour by BTC value from 1 to 20,000 BTC,
+plasma), **Linear** (linear height curve, reference 2,000, exaggeration 20, film palette) and
+**Paper** (reversed grey palette with gamma 0.7 on a white page, red flashes, exposure 0.8).
 Quality intent: **Performance → Balanced → High → Ultra → Extreme** scale quality up: Ultra targets
 ≥ 60 fps at 3840×2160 on the M4 Max with the heightfield alone; with cylinder columns (the
 default since 2026-10-09) it measures about 35–40 fps in close and middle views and
@@ -579,7 +593,7 @@ default since 2026-10-09) it measures about 35–40 fps in close and middle view
 4 shadow cascades at 4096, high AO/SSGI/SSR/volumetric samples, columns with large
 budgets, subdivision 2). Cylinder detail falls toward Performance: Column detail 4 px on
 High and above, 6 px on Balanced, 12 px with 8 sides and at most 250,000 stacks on
-Performance; Film draws stepped cells without cylinders.
+Performance; BitcoinTimelapse.com draws stepped cells without cylinders.
 
 Consumers: worker ← `amp.measure`, `color.measure`, `amp.heatHalfLife`,
 `geo.tileBudget` (via the client in main.js); terrain ← color.* transfer/palette/heat,

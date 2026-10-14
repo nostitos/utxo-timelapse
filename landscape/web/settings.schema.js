@@ -75,7 +75,11 @@ export const REBUILD_CLASSES = Object.freeze({
 export const QUALITY_ORDER = Object.freeze(['Performance', 'Balanced', 'High', 'Ultra', 'Extreme']);
 export const STARTUP_PRESET = 'High';
 export const WEBGL2_MAX_PRESET = 'High';
-export const LOOKS = Object.freeze(['Landscape', 'Film', 'Daylight', 'Golden hour', 'Neon night', 'Whales', 'Pulse']);
+export const LOOKS = Object.freeze(['Landscape', 'BitcoinTimelapse.com', 'Daylight', 'Golden hour', 'Earth', 'Neon night',
+  'Whales', 'Pulse', 'Outputs', 'Money map', 'Linear', 'Paper']);
+// Earlier names of looks. Links, exports, saved settings and saved looks that use one open the
+// look it names now; the store writes only the current name.
+export const LOOK_ALIASES = Object.freeze({ Film: 'BitcoinTimelapse.com' });
 export const DEFAULT_LOOK = 'Landscape';
 export const PRESET_NAMES = Object.freeze([...LOOKS, ...QUALITY_ORDER]);
 
@@ -89,12 +93,17 @@ export const QUALITY_INFO = Object.freeze({
 
 export const LOOK_INFO = Object.freeze({
   Landscape: 'The default look: film palette colours in the blue hour just after sunset, the afterglow on the walls that face it and the first stars out, with light haze, shadows, bloom and cylinder columns near the camera.',
-  Film: 'Unlit film colours: weighted density through the film palette (white-hot whale rows at 10 BTC and above), stepped cells instead of cylinders, black background and ground; no grid, lighting, shadows, fog, sky, tone mapping or post effects. Matches the film colour at equal density. Heat glow and flashes still appear during playback, like the activity flashes in the film, and are zero right after a seek.',
+  'BitcoinTimelapse.com': 'The film at bitcointimelapse.com: its unlit colours, weighted density through the film palette (white-hot whale rows at 10 BTC and above), stepped cells instead of cylinders, black background and ground; no grid, lighting, shadows, fog, sky, tone mapping or post effects. Matches the film colour at equal density. Heat glow and flashes still appear during playback, like the activity flashes in the film, and are zero right after a seek.',
   Daylight: 'Midday: a high white sun in a pale blue sky, crisp shadows and the viridis palette, with no glow, so the relief reads like a map.',
   'Golden hour': 'Sunset from the tip side: a low orange sun, long shadows, thick warm haze, light shafts toward the sun and the inferno palette.',
+  Earth: 'Midday over an atlas: water-blue empty cells, occupied cells rising from sand through earth to green at the top, blue sky, light haze, shadows and a smooth surface; whale rows stay green.',
   'Neon night': 'A deep violet night full of stars, glowing boxes in the plasma palette with pink rims, strong bloom and bright white spend flashes.',
   Whales: 'Sunrise over the BTC held in each cell instead of the number of outputs: the large-amount rows tower over the dust, twice as tall, and the magma palette runs to white on the biggest holdings.',
   Pulse: 'A dim grey landscape where activity shows: spends flash amber and their glow lingers for hundreds of blocks. Press Play to watch the chain breathe.',
+  Outputs: 'Height and colour by the number of outputs in each cell, cividis, square boxes under a white sun with no sky, haze or glow, so dust rows and large holdings are compared by count alone.',
+  'Money map': 'Height by the number of outputs, colour by the BTC they hold (deep blue up to 1 BTC, yellow at 20,000 BTC): tall blue bars are many small outputs, short bright cells hold the money.',
+  Linear: 'Height in proportion to weighted density (2,000 stands 20 units tall, 20 stands 0.2), so proportions are true: nearly everything lies flat, the densest dust rows rise as walls far above it and the largest holdings as lone spikes; film colours still show density.',
+  Paper: 'A white page for figures: light grey to black ink by density, soft shadows, red spend flashes, grid and now plane, nothing else.',
 });
 
 export const PRESET_INFO = Object.freeze({ ...LOOK_INFO, ...QUALITY_INFO });
@@ -112,11 +121,11 @@ const MEASURE_LABELS = { density: 'Weighted density', count: 'Output count', val
 const ENTRIES = [
   // Colour: palette
   { id: 'color.palette', section: 'Palette', label: 'Palette', type: 'enum',
-    options: ['film', 'turbo', 'viridis', 'inferno', 'magma', 'plasma', 'cividis', 'grey', 'custom'],
+    options: ['film', 'turbo', 'viridis', 'inferno', 'magma', 'plasma', 'cividis', 'earth', 'grey', 'custom'],
     optionLabels: { film: 'Film', turbo: 'Turbo', viridis: 'Viridis', inferno: 'Inferno', magma: 'Magma',
-      plasma: 'Plasma', cividis: 'Cividis', grey: 'Grey', custom: 'Custom gradient' },
+      plasma: 'Plasma', cividis: 'Cividis', earth: 'Earth', grey: 'Grey', custom: 'Custom gradient' },
     default: 'film',
-    help: 'Colour map. Film is the film palette (site/assets/palettes.json base, with the white-hot variant on whale rows).' },
+    help: 'Colour map. Film is the film palette (site/assets/palettes.json base, with the white-hot variant on whale rows). Earth runs from sand through brown earth to green.' },
   { id: 'color.gradient', section: 'Palette', label: 'Custom gradient', type: 'gradient', maxStops: 16,
     default: DEFAULT_GRADIENT,
     help: 'Stops {t 0..1, colour} used when Palette is Custom gradient: 2 to 16 stops, sorted by t, interpolated in sRGB like the panel preview.' },
@@ -521,7 +530,7 @@ const ENTRIES = [
     optionLabels: { 1: 'Off', 2: '2x', 4: '4x' }, default: 1, rebuild: 'post',
     help: 'Supersamples the scene pass only, at sqrt(N) times the resolution per axis (4 = 2x2), resolved by an exact box downsample. Effects run at output resolution; TRAA is skipped while supersampling is on.' },
 
-  // Display: overlays (personal preferences, except Grid, which Film turns off)
+  // Display: overlays (personal preferences, except Grid, which BitcoinTimelapse.com turns off)
   { id: 'display.overlay', section: 'Overlays', label: 'Performance overlay', type: 'bool', default: false,
     url: false, preset: false, help: 'fps, CPU and GPU ms per pass, triangles, instances, tiles and worker rate.' },
   { id: 'display.labels', section: 'Overlays', label: 'Axis labels', type: 'bool', default: true, preset: false,
@@ -786,12 +795,22 @@ export const QUALITY_PRESETS = deepFreeze({
   },
 });
 
+// The data looks (Outputs, Money map, Linear, Paper) share one plain stage: a high white sun
+// over a flat background with no sky, haze or glow, square boxes, the grid and the now plane,
+// so what differs between them is the data they show and how.
+const STUDIO = deepFreeze({
+  ...TIME_OF_DAY.day, ...SKY.off, ...HAZE.none, ...SHADOWS.on, ...GLOW.off, ...CELL_SHAPES.boxes, ...FLASHES.subtle,
+  'color.background': '#1e2126', 'color.ground': '#15171b', 'color.toneMapping': 'neutral',
+  'light.emissive': 0.3, 'light.albedo': 0.9, 'light.rim': 0, 'amp.nowPlane': 0.2, 'display.grid': true,
+});
+
 // Looks are partial too and win over the quality tier for the ids they name, so a look may
 // switch on an effect that defines it (god rays in Golden hour). Landscape is the schema
-// defaults; Film is unchanged from when it was one of the single-axis presets.
+// defaults; BitcoinTimelapse.com (named Film until October 2026) is unchanged from when it was
+// one of the single-axis presets.
 export const LOOK_PRESETS = deepFreeze({
   Landscape: {},
-  Film: {
+  'BitcoinTimelapse.com': {
     'color.palette': 'film',
     'color.reverse': false,
     'color.measure': 'density',
@@ -862,6 +881,13 @@ export const LOOK_PRESETS = deepFreeze({
     'color.palette': 'inferno', 'color.background': '#2a1a1a', 'color.ground': '#1a1210',
     'light.emissive': 0.25, 'light.albedo': 0.9, 'color.temperature': 0.25, 'fx.vignette': 0.25,
   },
+  // Empty cells are water; the palette starts at sand, so a cell with one output is land.
+  Earth: {
+    ...TIME_OF_DAY.day, ...SKY.on, ...HAZE.light, ...SHADOWS.on, ...GLOW.off, ...CELL_SHAPES.smooth,
+    'color.palette': 'earth', 'color.whiteHot': false, 'color.ground': '#1d5a98', 'color.background': '#7eabef',
+    'color.toneMapping': 'neutral', 'light.emissive': 0.1, 'light.albedo': 0.95, 'light.roughness': 0.9, 'light.rim': 0,
+    'light.shadowSoftness': 0.8, 'amp.nowPlane': 0.1,
+  },
   'Neon night': {
     ...TIME_OF_DAY.night, ...SKY.off, 'light.stars': true, 'light.starDensity': 0.45,
     ...HAZE.none, ...GLOW.strong, 'fx.bloomThreshold': 0.95, ...CELL_SHAPES.boxes,
@@ -883,6 +909,19 @@ export const LOOK_PRESETS = deepFreeze({
     'light.emissive': 0.25, 'light.albedo': 0.5, 'light.rimColor': '#b8c0cc',
     'color.heat': '#ffd27a', 'amp.heatFloor': 0.5,
     'amp.edgeGlow': 0, 'amp.nowPlane': 0.25, 'display.grid': false,
+  },
+  Outputs: { ...STUDIO, 'amp.measure': 'count', 'color.palette': 'cividis', 'color.whiteHot': false },
+  // Colour by value: cells below 1 BTC take the darkest colour (the transfer starts at 1).
+  'Money map': {
+    ...STUDIO, 'amp.measure': 'count', 'color.measure': 'value', 'color.palette': 'plasma', 'color.whiteHot': false,
+    'color.offset': 2, 'color.upper': 20000,
+  },
+  // Height in proportion to weighted density: 2,000 (a 10,000 BTC output) is 20 units tall.
+  Linear: { ...STUDIO, 'amp.curve': 'linear', 'amp.reference': 2000, 'amp.exaggeration': 20, 'amp.floor': 0.1 },
+  Paper: {
+    ...STUDIO, 'color.palette': 'grey', 'color.reverse': true, 'color.gamma': 0.7, 'color.whiteHot': false,
+    'color.background': '#f4f3ee', 'color.ground': '#ffffff', 'color.heat': '#d8322a', 'color.exposure': 0.8,
+    'light.shadowSoftness': 1.5, 'light.roughness': 0.9,
   },
 });
 
