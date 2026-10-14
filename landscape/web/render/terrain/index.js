@@ -35,6 +35,7 @@ export const TERRAIN_DEFAULTS = Object.freeze({
   'amp.flashSize': 1, 'amp.flashThreshold': 0.0001, 'amp.edgeGlow': 0.25, 'amp.edgeBlocks': 1008,
   'amp.nowPlane': 0.15,
   'geo.smoothing': 'bilinear', 'geo.stepped': false, 'geo.steppedWhales': true, 'geo.subdivision': 1, 'geo.columns': true,
+  'geo.uniform': false, 'geo.uniformLevel': 1,
   'geo.columnRadius': 4096, 'geo.instanceBudget': 1000000, 'geo.columnGap': 0.12, 'geo.lodBias': 0,
   'geo.columnShape': 'cylinder', 'geo.cylinderSides': 12, 'geo.farColumns': 'prism', 'geo.farShadows': true,
   'geo.columnPixels': 4,
@@ -87,11 +88,14 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
   const viewU = { eye: uniform(new Vector3()), pxPerUnit: uniform(1000), perspective: uniform(1) };
   const instCapacity = Math.min(MAX_PATCH_INSTANCES, maxSlots * 16);
   function currentMode() {
-    const stepped = !!get('geo.stepped');
+    // Same at every distance (geo.uniform): one surface for the whole landscape, no columns and
+    // no stepped whale band; Columns and Boxes become steps everywhere, Smooth stays smooth.
+    const uniform = !!get('geo.uniform');
+    const stepped = !!get('geo.stepped') || (uniform && !!get('geo.columns'));
     return {
-      stepped, sub: stepped ? 1 : Number(get('geo.subdivision')) || 1, smoothing: get('geo.smoothing') || 'bilinear',
-      columns: backend === 'webgpu' && !!get('geo.columns'),
-      whaleSteps: !stepped && !!get('geo.steppedWhales'),
+      uniform, stepped, sub: stepped ? 1 : Number(get('geo.subdivision')) || 1, smoothing: get('geo.smoothing') || 'bilinear',
+      columns: !uniform && backend === 'webgpu' && !!get('geo.columns'),
+      whaleSteps: !uniform && !stepped && !!get('geo.steppedWhales'),
     };
   }
   function disposeLevels() {
@@ -241,7 +245,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
       return;
     }
     switch (id) {
-      case 'geo.smoothing': case 'geo.stepped': case 'geo.steppedWhales': case 'geo.subdivision': case 'geo.columns':
+      case 'geo.smoothing': case 'geo.stepped': case 'geo.steppedWhales': case 'geo.subdivision': case 'geo.columns': case 'geo.uniform':
         needs.rebuild = true;
         break;
       case 'display.labels': if (labels) labels.setVisible(!!value); break;
@@ -350,9 +354,10 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
         return dx * dx + dz * dz < colR * colR;
       }
       : null;
+    const fixedLevel = mode.uniform ? Math.max(0, Math.min(grid.levels.length - 1, Math.round(Number(get('geo.uniformLevel')) || 0))) : null;
     const sel = selectTiles(grid, { position: [pos.x, pos.y, pos.z], planes, projScale, orthographic }, {
       threshold, budget, previousSplit, isResident: (id) => atlas.isResident(id), isEmpty: (id) => atlas.isEmpty(id),
-      tileMaxHeight: tileMaxH, defaultMaxHeight: heightBound(globalMax * 4), mustRefine,
+      tileMaxHeight: tileMaxH, defaultMaxHeight: heightBound(globalMax * 4), mustRefine, fixedLevel,
     });
     previousSplit = sel.split;
 
@@ -423,7 +428,8 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
         if (inBand) list.push({ id, slot, px, py, d, key: 'stepped', t });
         if (!smooth) continue;
         let sub = 1;
-        if (maxSub > 1) {
+        if (maxSub > 1 && mode.uniform) sub = maxSub; // one subdivision everywhere
+        else if (maxSub > 1) {
           const cellPx = orthographic ? cellWorld * projScale : (cellWorld * projScale) / Math.max(d, 1e-3);
           while (sub < maxSub && cellPx / sub > SUB_TARGET_PX) sub *= 2;
         }
@@ -503,6 +509,11 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     stats.columnRequested = columns && mode.columns ? columns.state.radiusCells : 0;
     stats.columnNeeded = columns && mode.columns ? columns.state.needed : 0;
     stats.columnBudget = columns && mode.columns ? columns.state.budget : 0;
+    // Same at every distance: the level, how many refinements the tile budget refused (the
+    // farthest tiles stay coarser) and how many drawn tiles are still coarser (also while loading).
+    stats.uniformLevel = fixedLevel;
+    stats.uniformDeferred = fixedLevel === null ? 0 : sel.deferred;
+    stats.uniformCoarser = fixedLevel === null ? 0 : sel.draw.filter((d) => tileInfo(grid, d.id).level > fixedLevel).length;
     // How far the column disc sits ahead of the camera (world units; plane mode moves it).
     stats.columnAhead = region ? Math.hypot(region.focus[0] - region.eye[0], region.focus[1] - region.eye[1]) : 0;
     stats.instances = n + stats.columns;

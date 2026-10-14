@@ -15,7 +15,7 @@ const blends = QUICK.filter((c) => c.type === 'blend');
 test('quick controls: sections, ids, bundles and bound settings are valid', () => {
   assert.deepEqual([...QUICK_SECTIONS], ['Look', 'Performance', 'Scene', 'Data', 'View']);
   assert.equal(new Set(QUICK.map((c) => c.id)).size, QUICK.length);
-  assert.equal(QUICK.length, 24);
+  assert.equal(QUICK.length, 26);
   for (const c of QUICK) {
     assert.ok(QUICK_SECTIONS.includes(c.section), c.id + ' section');
     assert.ok(typeof c.label === 'string' && c.label && typeof c.help === 'string' && c.help.length > 10, c.id + ' text');
@@ -61,7 +61,7 @@ test('every built-in look reads one option in every quick control', () => {
   s.setLook('Landscape');
   const read = Object.fromEntries(choices.map((c) => [c.id, quickOption(c, s.get)]));
   assert.deepEqual(read, { timeOfDay: 'dusk', sky: 'on', haze: 'light', shadows: 'on', glow: 'normal', bigCoins: 'normal',
-    cellShape: 'columns', flashes: 'normal', flashTrail: 'normal', farColumns: 'prism', farShadows: 'on' });
+    cellShape: 'columns', flashes: 'normal', flashTrail: 'normal', farColumns: 'prism', farShadows: 'on', distance: 'adaptive' });
   // On WebGL2 Neon night's boxes become stepped cells, still one definite option.
   const w = make({ webgpu: false });
   w.setLook('Neon night');

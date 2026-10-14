@@ -23,7 +23,7 @@
 //                                  format to show the value (Time of day runs as a clock)
 //             'select' | 'slider'  bind one schema id (setting); a slider may narrow the range
 //                                  (min, max), use a log scale, run high to low (invert) and
-//                                  show its value through format
+//                                  show its value through format (describe: its tooltip)
 //             'toggles'            several boolean schema ids (settings)
 //             'readout'            live frame cost (GPU time, frame rate, columns drawn against
 //                                  the cap); no setting, drawn only when the panel gets a perf source
@@ -57,6 +57,12 @@ export function countText(value) {
 }
 const percent = (value) => Math.round(value * 100) + '%';
 const COLUMNS_ON = { id: 'geo.columns', is: true };
+const ADAPTIVE = { id: 'geo.uniform', is: false };
+/** Cell size of a detail level: [blocks, amount rows] (the row shift stops growing at level 4). */
+export function levelCell(level) {
+  const l = Math.max(0, Math.round(level));
+  return [64 * 2 ** l, 2 ** Math.min(l, 4)];
+}
 /** "18:15" for 18.25 hours, to the nearest five minutes. */
 export function clockTime(hours) {
   const minutes = Math.round((hours * 60) / 5) * 5;
@@ -74,17 +80,28 @@ export const QUICK = deepFreeze([
   // Performance: what the GPU draws. Quality tiers set these too, so the sliders fine-tune the tier.
   { id: 'perfNow', section: 'Performance', label: 'Now', type: 'readout',
     help: 'This frame\u2019s cost: GPU time (or frame time where the browser does not report GPU time), frames per second, and the columns drawn against Column cap. When the cells within Column distance need more columns than the cap, the column area shrinks and this says so.' },
+  { id: 'distance', section: 'Performance', label: 'Every distance', type: 'toggle', rebuild: 'terrain',
+    help: 'Adaptive draws round columns near the camera, a surface farther out and finer detail where it is close. Same draws the whole landscape one way and at one detail level (Uniform detail), so nothing changes as you move: Columns and Boxes become flat-topped steps everywhere, Smooth stays smooth. Far cells may shimmer, and the finest level needs more loaded tiles than a full view allows.',
+    options: [
+      option('adaptive', 'Adaptive', { 'geo.uniform': false }),
+      option('same', 'Same', { 'geo.uniform': true }),
+    ] },
+  { id: 'uniformDetail', section: 'Performance', label: 'Uniform detail', type: 'slider', setting: 'geo.uniformLevel',
+    invert: true, format: (value) => levelCell(value)[0] + ' blk',
+    describe: (value) => 'Level ' + Math.round(value) + ': one cell per ' + levelCell(value)[0] + ' blocks and ' + levelCell(value)[1] + ' amount row' + (levelCell(value)[1] === 1 ? '' : 's'),
+    ends: ['Coarse', 'Fine'], needs: [{ id: 'geo.uniform', is: true }],
+    help: 'The size of every cell with Every distance set to Same. 64 blocks is the finest, the size columns use; the whole landscape then needs 758 loaded tiles, more than the limit of 400, so it fits only when part of the landscape is in view. 128 blocks (the default) fits the whole landscape in 218 tiles. Coarser levels load faster and cost less.' },
   { id: 'resolution', section: 'Performance', label: 'Resolution', type: 'slider', setting: 'display.scale',
     min: 0.5, max: 2, format: percent, needs: [{ id: 'display.autoScale', is: false }],
     help: 'Render resolution relative to the screen\u2019s pixels. GPU time grows with the pixel count: 50% draws a quarter of the pixels, 200% four times as many.' },
   { id: 'columnDistance', section: 'Performance', label: 'Column distance', type: 'slider', setting: 'geo.columnPixels',
     min: 1, max: 16, scale: 'log', invert: true, format: relative(4), ends: ['Near', 'Far'],
-    needs: [COLUMNS_ON],
+    needs: [COLUMNS_ON, ADAPTIVE],
     help: 'How far from the camera cells stand as columns instead of the spiky surface. At \u00d71 (High) a cell becomes a column while it is at least 4 pixels wide on screen; \u00d72 reaches cells half that wide, about twice as far. Measured from the camera to the ground, so flying higher brings the columns in. Farther costs more GPU time.' },
   { id: 'columnCap', section: 'Performance', label: 'Column cap', type: 'slider', setting: 'geo.instanceBudget',
-    min: 100000, max: 8000000, scale: 'log', format: countText, needs: [COLUMNS_ON],
+    min: 100000, max: 8000000, scale: 'log', format: countText, needs: [COLUMNS_ON, ADAPTIVE],
     help: 'The most columns drawn in one frame (High: 1M). When the cells within Column distance need more, the column area shrinks to fit, so a higher cap lets columns reach farther. Each 100,000 far columns cost roughly 1.2 to 1.8 ms of GPU time on an M4 Max with Box columns and shadows.' },
-  { id: 'farColumns', section: 'Performance', label: 'Far columns', type: 'choice', rebuild: 'material', needs: [COLUMNS_ON],
+  { id: 'farColumns', section: 'Performance', label: 'Far columns', type: 'choice', rebuild: 'material', needs: [COLUMNS_ON, ADAPTIVE],
     help: 'How columns narrower than 20 px on screen are drawn. Box: a 4-sided box shaded round (12 triangles each). Card: one rectangle that turns to face you, with a flat top (4). Flat: the rectangle alone (2); seen from straight above it thins to nothing. Cross: two crossed rectangles that stay put (4).',
     options: [
       option('prism', 'Box', { 'geo.farColumns': 'prism' }, undefined, { webgpu: true }),
@@ -92,14 +109,14 @@ export const QUICK = deepFreeze([
       option('flat', 'Flat', { 'geo.farColumns': 'flat' }, undefined, { webgpu: true }),
       option('cross', 'Cross', { 'geo.farColumns': 'cross' }, undefined, { webgpu: true }),
     ] },
-  { id: 'farShadows', section: 'Performance', label: 'Far shadows', type: 'toggle', needs: [COLUMNS_ON, { id: 'light.shadows', is: true }],
+  { id: 'farShadows', section: 'Performance', label: 'Far shadows', type: 'toggle', needs: [COLUMNS_ON, { id: 'light.shadows', is: true }, ADAPTIVE],
     help: 'Whether far columns cast sun shadows. Off saves most of the shadow cost of the columns; near columns and the landscape beyond the columns keep their shadows.',
     options: [
       option('on', 'On', { 'geo.farShadows': true }, undefined, { webgpu: true }),
       option('off', 'Off', { 'geo.farShadows': false }, undefined, { webgpu: true }),
     ] },
   { id: 'terrainDetail', section: 'Performance', label: 'Terrain detail', type: 'slider', setting: 'geo.pixelsPerCell',
-    min: 1, max: 8, scale: 'log', invert: true, format: relative(3), ends: ['Coarse', 'Fine'],
+    min: 1, max: 8, scale: 'log', invert: true, format: relative(3), ends: ['Coarse', 'Fine'], needs: [ADAPTIVE],
     help: 'How fine the surface is beyond the columns: at \u00d71 (High) the surface is refined until a cell is at most 3 pixels wide on screen; \u00d72 halves that. Finer shows more detail in the distance and costs more.' },
   { id: 'loadedTiles', section: 'Performance', label: 'Loaded tiles', type: 'slider', setting: 'geo.tileBudget', rebuild: 'terrain',
     format: (value) => String(Math.round(value)),

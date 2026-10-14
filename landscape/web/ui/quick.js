@@ -56,7 +56,7 @@ function savedOn(iso) {
  * @param {object[]} [options.controls] defaults to QUICK
  * @param {(text: string, kind?: string, undo?: object|Function) => void} [options.message]
  * @param {() => object|null} [options.perf] live frame cost for the Now readout: {gpuMs, frameMs,
- *   fps, columns: {drawn, needed, budget, reach, requested} | null}
+ *   fps, columns: {drawn, needed, budget, reach, requested} | null, uniform: {level, short, coarser} | null}
  * @returns {{domElement: HTMLElement, refresh: () => void, row: (id: string) => HTMLElement|null,
  *   openSave: (name?: string) => void, dispose: () => void}}
  */
@@ -466,7 +466,9 @@ export function createQuickSettings({ store, controls = QUICK, message = () => {
     const id = nextId(control.id);
     const label = labelFor(control, id);
     const wrap = el('div', 'lsq-range');
-    const range = el('input', null, mapped ? { type: 'range', id, min: 0, max: 1000, step: 1 } : { type: 'range', id, min, max, step });
+    // A whole-number setting with few values snaps to them.
+    const snap = mapped && entry.type === 'int' && control.scale !== 'log' && max - min <= 50 ? 1000 / (max - min) : 1;
+    const range = el('input', null, mapped ? { type: 'range', id, min: 0, max: 1000, step: snap } : { type: 'range', id, min, max, step });
     const out = el('output', null, { for: id });
     wrap.append(range, out);
     row.append(label, wrap);
@@ -494,7 +496,7 @@ export function createQuickSettings({ store, controls = QUICK, message = () => {
       setFill(range, mapped ? Number(range.value) / 1000 : (Number(range.value) - min) / (max - min));
       out.textContent = control.format ? control.format(value) : formatNumber(value) + (control.unit || '');
       const exact = formatNumber(value) + (entry.unit ? ' ' + entry.unit : '');
-      out.title = value > max || value < min ? 'Set to ' + exact + ' in Advanced' : control.format ? exact : '';
+      out.title = value > max || value < min ? 'Set to ' + exact + ' in Advanced' : control.describe ? control.describe(value) : control.format ? exact : '';
       applyNeeds(control, row, label);
     }
     return { control, row, update };
@@ -525,7 +527,17 @@ export function createQuickSettings({ store, controls = QUICK, message = () => {
         + ' \u00b7 ' + fmt(s.fps, 0) + ' fps';
       const c = s.columns;
       cols.classList.remove('lsq-now-limit');
-      if (!c) {
+      const u = s.uniform;
+      if (u) {
+        // Same at every distance: say when tiles are still coarser (loading, or the tile budget).
+        const size = 64 * 2 ** u.level + ' blocks';
+        if (u.short) {
+          cols.textContent = 'Same: ' + size + ' \u00b7 too few loaded tiles, the farthest are coarser';
+          cols.classList.add('lsq-now-limit');
+        } else {
+          cols.textContent = 'Same: ' + size + ' everywhere' + (u.coarser > 0 ? ' \u00b7 loading' : '');
+        }
+      } else if (!c) {
         cols.textContent = 'Columns off';
       } else if (!(c.drawn > 0)) {
         cols.textContent = 'No columns at this distance';

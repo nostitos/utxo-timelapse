@@ -19,7 +19,7 @@ const REQUIRED = {
     'heatHalfLife', 'heatFloor', 'heatReference', 'heatEdge', 'heatEdgeBlocks', 'flashSize', 'flashThreshold', 'edgeGlow', 'edgeBlocks', 'nowPlane'],
   geo: ['smoothing', 'stepped', 'steppedWhales', 'subdivision', 'columns', 'columnShape', 'cylinderSides',
     'columnRadius', 'columnPixels', 'instanceBudget', 'columnGap', 'farColumns', 'farShadows',
-    'lodBias', 'pixelsPerCell', 'tileBudget', 'skirts', 'wireframe'],
+    'lodBias', 'pixelsPerCell', 'tileBudget', 'uniform', 'uniformLevel', 'skirts', 'wireframe'],
   light: ['sunAzimuth', 'sunElevation', 'sunIntensity', 'sunColor', 'skyColor', 'groundColor', 'ambient',
     'emissive', 'albedo', 'rim', 'rimColor', 'roughness', 'metalness', 'shadows', 'cascades', 'shadowMapSize',
     'shadowFilter', 'shadowSoftness', 'shadowBias', 'fogDensity', 'fogHeightFalloff', 'volumetric',
@@ -60,7 +60,7 @@ test('schema ids: exactly the SPEC section 7 required ids, unique, grouped by pr
     assert.ok(groupIds.includes(e.group), e.id + ' group');
     assert.equal(SCHEMA_BY_ID.get(e.id), e);
   }
-  assert.equal(SCHEMA.length, 143);
+  assert.equal(SCHEMA.length, 145);
 });
 
 test('schema entries: types, labels, help, flags and ranges are well formed', () => {

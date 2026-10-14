@@ -329,6 +329,12 @@ const ENTRIES = [
   { id: 'geo.tileBudget', section: 'Level of detail', label: 'Tile budget', type: 'int',
     min: 32, max: 400, step: 1, default: 225, rebuild: 'terrain', capMax: 'maxTileBudget',
     help: 'Maximum resident tiles in the worker and the GPU atlas (each costs about 1 MB of GPU memory and 2 MB in the worker).' },
+  { id: 'geo.uniform', section: 'Level of detail', label: 'Same at every distance', type: 'bool', default: false,
+    rebuild: 'terrain',
+    help: 'Draws the whole landscape one way, so nothing changes as the camera moves: no columns near the camera, no stepped whale rows, one subdivision, and every tile at Uniform level. With Cell shape Columns or Boxes every cell is a flat-topped step; with Smooth the surface is smooth everywhere. Far cells can be narrower than a pixel and shimmer, and more tiles must load: if the tile budget is too small, the farthest tiles stay coarser.' },
+  { id: 'geo.uniformLevel', section: 'Level of detail', label: 'Uniform level', type: 'int',
+    min: 0, max: 4, step: 1, default: 1,
+    help: 'Detail level of every tile with Same at every distance on. 0: a cell per 64 blocks and amount row, the finest; the whole landscape takes 758 tiles, more than the tile budget allows, so it fits only a partial view. 1: 128 blocks by 2 rows; the whole landscape takes 218 tiles and fits High. 2: 256 by 4 (68 tiles). 3: 512 by 8. 4: 1,024 by 16.' },
 
   // Lighting: sun
   { id: 'light.sunAzimuth', section: 'Sun', label: 'Sun azimuth', type: 'number',
@@ -566,6 +572,8 @@ function finalize(raw) {
 // shadow map uses too.
 const gt0 = (id) => ({ id, gt: 0 });
 const on = (id) => ({ id, is: true });
+const off = (id) => ({ id, is: false });
+const ADAPTIVE = off('geo.uniform');
 const LIT = gt0('light.albedo');
 const HEAT_OR_FLASH = { any: [gt0('color.heatGain'), gt0('amp.flashSize')] };
 const SUN_SEEN = { any: [gt0('light.sunIntensity'), on('light.sky'), on('light.volumetric'), on('light.godRays')] };
@@ -592,15 +600,18 @@ export const NEEDS = deepFreeze({
   'amp.edgeBlocks': [gt0('amp.edgeGlow')],
   'geo.smoothing': [{ id: 'geo.stepped', is: false }, { id: 'geo.subdivision', ne: 1 }],
   'geo.subdivision': [{ id: 'geo.stepped', is: false }],
-  'geo.steppedWhales': [{ id: 'geo.stepped', is: false }],
-  'geo.columnShape': [on('geo.columns')],
-  'geo.cylinderSides': [on('geo.columns'), { id: 'geo.columnShape', ne: 'box' }],
-  'geo.columnRadius': [on('geo.columns')],
-  'geo.columnPixels': [on('geo.columns')],
-  'geo.instanceBudget': [on('geo.columns')],
-  'geo.columnGap': [on('geo.columns')],
-  'geo.farColumns': [on('geo.columns')],
-  'geo.farShadows': [on('geo.columns'), on('light.shadows')],
+  'geo.steppedWhales': [{ id: 'geo.stepped', is: false }, ADAPTIVE],
+  'geo.columnShape': [on('geo.columns'), ADAPTIVE],
+  'geo.cylinderSides': [on('geo.columns'), { id: 'geo.columnShape', ne: 'box' }, ADAPTIVE],
+  'geo.columnRadius': [on('geo.columns'), ADAPTIVE],
+  'geo.columnPixels': [on('geo.columns'), ADAPTIVE],
+  'geo.instanceBudget': [on('geo.columns'), ADAPTIVE],
+  'geo.columnGap': [on('geo.columns'), ADAPTIVE],
+  'geo.farColumns': [on('geo.columns'), ADAPTIVE],
+  'geo.farShadows': [on('geo.columns'), on('light.shadows'), ADAPTIVE],
+  'geo.lodBias': [ADAPTIVE],
+  'geo.pixelsPerCell': [ADAPTIVE],
+  'geo.uniformLevel': [on('geo.uniform')],
   'light.sunAzimuth': [SUN_SEEN],
   'light.sunElevation': [SUN_SEEN],
   'light.sunColor': [SUN_SEEN],

@@ -260,3 +260,27 @@ test('mustRefine brings level 0 under a region at any distance, before other ref
   const tight = selectTiles(grid, { ...view, position: [500, 5, 120] }, { threshold: 0.5, budget: 60, mustRefine });
   assert.ok(tight.desired.filter((id) => tileInfo(grid, id).level === 0).length >= l0.length);
 });
+
+test('fixedLevel refines every visible tile to one level, nearest first, within the budget', () => {
+  const grid = GRIDS[0];
+  const view = { position: [500, 300, 120], planes: null, projScale: 1000 };
+  // Level 1 everywhere: every L1 tile plus its ancestors (1 + 2 + 4 + 16 + 45 + 150 = 218 here).
+  const all = selectTiles(grid, view, { threshold: 3, budget: 400, fixedLevel: 1 });
+  const levels = (sel) => sel.desired.map((id) => tileInfo(grid, id).level);
+  const L1 = grid.levels[1].tilesX * grid.levels[1].tilesY;
+  assert.equal(levels(all).filter((l) => l === 1).length, L1);
+  assert.ok(!levels(all).includes(0), 'nothing finer than the fixed level');
+  assert.equal(all.deferred, 0);
+  // The same camera without a fixed level refines nothing from this height.
+  assert.ok(selectTiles(grid, view, { threshold: 3, budget: 400 }).desired.length < all.desired.length);
+  // Too small a budget: the nearest L1 tiles first, and the refusals are counted.
+  const tight = selectTiles(grid, { ...view, position: [500, 5, 120] }, { threshold: 3, budget: 120, fixedLevel: 1 });
+  assert.ok(tight.deferred > 0 && tight.selected <= 120);
+  const near = tight.desired.filter((id) => tileInfo(grid, id).level === 1);
+  assert.ok(near.length > 0);
+  const dist = (id) => { const t = tileInfo(grid, id); const { cw, ch } = cellSize(grid, 1); return Math.hypot((t.col0 + t.cols / 2) * cw - 500, (t.row0 + t.rows / 2) * ch - 120); };
+  const kept = Math.max(...near.map(dist));
+  const allL1 = all.desired.filter((id) => tileInfo(grid, id).level === 1);
+  const missing = allL1.filter((id) => !near.includes(id));
+  assert.ok(missing.every((id) => dist(id) > kept * 0.5), 'the refused tiles are the far ones');
+});

@@ -497,7 +497,8 @@ built-in or quality name or Custom). A record keeps its built-in look, its quali
 governed values that differ from them. Values are validated and clamped.
 
 `settings.quick.js` exports `QUICK`, the quick controls in five sections (Look, Quality; Performance: Now,
-Resolution, Column distance, Column cap, Far columns, Far shadows, Terrain detail, Loaded tiles;
+Every distance, Uniform detail, Resolution, Column distance, Column cap, Far columns, Far shadows,
+Terrain detail, Loaded tiles;
 Time of day, Sky, Haze, Shadows, Glow, Height shows, Colours, Height, Big coins,
 Cell shape, Flashes, Flash trail, Field of view, Show), and `quickOption`, `quickState`,
 `quickPatch`, `quickIds`, `blendPatch`, `blendPosition`, `blendValue`, `blendIndex`. Choice,
@@ -538,7 +539,7 @@ ui_settings with the consumers):
   `geo.columnRadius` (L0 cells), `geo.columnPixels` (px),
   `geo.instanceBudget` (≤ 8,000,000), `geo.columnGap`, `geo.farColumns` (prism, card, flat,
   cross), `geo.farShadows`, `geo.lodBias`,
-  `geo.pixelsPerCell`, `geo.tileBudget` (32–400), `geo.skirts`, `geo.wireframe`.
+  `geo.pixelsPerCell`, `geo.tileBudget` (32–400), `geo.uniform`, `geo.uniformLevel` (0–4), `geo.skirts`, `geo.wireframe`.
 - Lighting: `light.sunAzimuth`, `light.sunElevation`, `light.sunIntensity`,
   `light.sunColor`, `light.skyColor`, `light.groundColor`, `light.ambient`,
   `light.emissive`, `light.albedo`, `light.rim`, `light.rimColor`,

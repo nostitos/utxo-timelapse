@@ -303,11 +303,14 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       // The Performance section's live readout (ui/quick.js).
       perf: () => {
         const s = view.stats || {};
-        const columnsOn = view.backend === 'webgpu' && !!store.get('geo.columns');
+        const uniform = !!store.get('geo.uniform');
+        const columnsOn = !uniform && view.backend === 'webgpu' && !!store.get('geo.columns');
         return {
           gpuMs: s.gpuMs, frameMs: s.frameMs, fps: s.fps,
           columns: columnsOn ? { drawn: s.columns || 0, needed: s.columnNeeded || 0, budget: s.columnBudget || store.get('geo.instanceBudget'),
             reach: s.columnRadius || 0, requested: s.columnRequested || 0 } : null,
+          uniform: uniform && Number.isInteger(s.uniformLevel)
+            ? { level: s.uniformLevel, short: (s.uniformDeferred || 0) > 0, coarser: s.uniformCoarser || 0 } : null,
         };
       },
     });
