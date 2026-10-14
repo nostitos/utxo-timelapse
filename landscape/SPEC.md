@@ -586,7 +586,7 @@ overlay; ui_shell ← camera.*, `display.legend/minimap/hud`.
 ## 8. App shell (ui_shell)
 
 `index.html` provides the import map, `<canvas id="view">`, and containers
-`#labels`, `#overlay`, `#hud`, `#timeline`, `#panel`, `#minimap`, `#inspector`,
+`#labels`, `#overlay`, `#hud`, `#timeline`, `#panel`, `#minimap`, `#inspector`, `#hover`,
 `#legend`, `#toast`, and for plane mode `#plane-nose`, `#planehud`, `#funpops`, `#planekeys`,
 `#fun` (the Fun menu) and `#funcard` (the Stack sats end card). `main.js` creates the settings store, replay client and view,
 wires frames → view, settings → consumers, and runs the rAF loop:
@@ -626,6 +626,16 @@ the column, date and row amount under the plane. Esc, T or a lost pointer lock r
 map mode at the camera; the URL hash records plane mode as `mode=map` and never records the
 craft or a game. Standard gamepads: left stick banks and pitches (up for nose up), RT/LT throttle, A boost,
 Start takes off or lands, B lands, Y next craft, X starts Stack sats.
+
+Hover readout (`ui/hover.js`, `#hover`): in map mode a card beside a mouse or pen pointer over
+the canvas, and in flight mode beside the crosshair, names the cell as drawn under it: Size (the
+amount band of its rows, `rowAmountRange` over rows.bin), Blocks (its first and last block and
+their UTC dates) and Unspent (count and BTC at the replayed block, from `replay.cell(level, col,
+row, { load: false })`, refreshed at most 4 times a second while blocks change). Zoomed out, the
+drawn cell merges 2^l columns and 2^rowShift rows, the card covers all of them and says so. It
+never sends a request; it hides while dragging, off the canvas, in plane mode (whose top-centre
+line does the same job) and on touch-only devices. Picking runs at most once a frame on pointer
+moves and every 100 ms for a still pointer, so camera moves and playback keep it current.
 
 Fun (`ui/fun-menu.js`, timeline button `data-act="fun"`, `aria-haspopup`; it lands first in
 plane mode, as G/P/H do): a popover with a Craft column (Plane "Steady; banks to turn", Bird

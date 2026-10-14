@@ -28,6 +28,7 @@ import { createPlacesMenu } from './ui/places-menu.js';
 import { createLegend } from './ui/legend.js';
 import { createMinimap } from './ui/minimap.js';
 import { createInspector } from './ui/inspector.js';
+import { createHover } from './ui/hover.js';
 import { createHelp } from './ui/help.js';
 import { createToast } from './ui/toast.js';
 import { createLoading } from './ui/loading.js';
@@ -284,6 +285,11 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       container: $('inspector'), marker: $('marker'), replay, grid, rows: replay.rows, blocktimes: replay.blocktimes,
       axis, explorerBase, link2d: endpoints.link2d, local: endpoints.local,
       camera: view.camera, canvas, heightAt: (x, z) => view.heightAt(x, z),
+    });
+    // What the pointer (the crosshair in flight mode) is aimed at, from local data only.
+    const hover = createHover({
+      container: $('hover'), canvas, pick: (x, y) => view.pick(x, y), replay, grid, rows: replay.rows, blocktimes: replay.blocktimes,
+      mode: () => controls.mode, floor: () => $('timeline').getBoundingClientRect().top, enabled: !touchOnly,
     });
     const placesMenu = createPlacesMenu({
       container: $('places'), tip, blocktimes: replay.blocktimes, rows: replay.rows,
@@ -709,7 +715,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
 
     Object.assign(hook, {
       settings: store, replay, view, controls, playback, panel, manifest, grid,
-      ui: { hud, timeline, legend, minimap, inspector, placesMenu, help, toast, funMenu, funCard },
+      ui: { hud, timeline, legend, minimap, inspector, hover, placesMenu, help, toast, funMenu, funCard },
       seek: (b) => playback.seek(b),
       flyTo: (place) => flyToPlace(place),
       inspect: (x, y) => inspectAt(x, y),
@@ -846,6 +852,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
           inspector.onBlock(block, { playing: pstate.playing });
         }
         inspector.updateMarker();
+        hover.update(now);
         syncPanel();
         if (!$('minimap').hidden) minimap.draw({ block, pose: controls.getPose(), footprint: controls.footprint() });
         syncHash(now);

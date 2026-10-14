@@ -276,6 +276,36 @@ a { color: var(--mint); }
 #crosshair::before { left: 11px; top: 0; width: 2px; height: 24px; }
 #crosshair::after { left: 0; top: 11px; width: 24px; height: 2px; }
 
+/* ---- hover readout: beside the pointer, or the crosshair in flight mode (ui/hover.js) ------- */
+#hover {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 8;
+  max-width: calc(100vw - 16px);
+  padding: 8px 11px 8px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: blur(16px) saturate(1.25);
+  backdrop-filter: blur(16px) saturate(1.25);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.42);
+  font: 11.5px/1.35 var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  pointer-events: none;
+  will-change: transform;
+}
+#hover[hidden] { display: none; }
+#hover dl { margin: 0; display: grid; grid-template-columns: auto auto; column-gap: 12px; row-gap: 3px; }
+#hover dt { padding-top: 1px; font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }
+#hover dd { margin: 0; white-space: nowrap; }
+#hover dd small { display: block; font-size: 10.5px; color: var(--muted); }
+#hover .hv-size { color: var(--amber); }
+#hover .hv-live { color: var(--mint); }
+#hover .hv-live.stale { opacity: 0.5; }
+#hover p { margin: 6px 0 0; padding-top: 6px; border-top: 1px solid var(--line); font-size: 10px; color: var(--dim); }
+
 /* ---- plane mode: nose circle and the readout at the top centre ----------------------------- */
 #plane-nose {
   position: fixed;

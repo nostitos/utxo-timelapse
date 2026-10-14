@@ -144,6 +144,49 @@ const CHECKS = [
     ],
   },
   {
+    // ui/hover.js: the card beside the pointer names the picked cell from local data only.
+    name: 'hover',
+    shot: 'hover.png',
+    script: `await L.flyTo(inData(314000)); await idle(); await sleep(1200);
+      const card = document.getElementById('hover');
+      const move = (x, y, type = 'pointermove') => canvas.dispatchEvent(new PointerEvent(type, { clientX: x, clientY: y, pointerId: 9, pointerType: 'mouse', bubbles: true, cancelable: true }));
+      const settle = async () => { for (let i = 0; i < 4; i++) await frame(); await sleep(120); await frame(); };
+      let fetches = 0; const realFetch = window.fetch; window.fetch = (...a) => { fetches++; return realFetch(...a); };
+      const cell = L.replay.cell.bind(L.replay); const loads = []; L.replay.cell = (l, c, r, o) => { loads.push(o && o.load); return cell(l, c, r, o); };
+      let at = null;
+      find: for (let y = 360; y <= 680; y += 24) for (let x = 420; x <= 1180; x += 30) {
+        const h = L.view.pick(x, y); if (!h) continue;
+        const c = await cell(h.level || 0, h.col, h.row, { load: false });
+        if (c && c.countSmall + c.countLarge > 0) { at = { x, y, h }; break find; }
+      }
+      const out = { found: !!at };
+      if (at) {
+        move(at.x, at.y); await settle();
+        const cur = L.ui.hover.current; const r = card.getBoundingClientRect();
+        const direct = await cell(cur.level, cur.col, cur.row, { load: false });
+        out.sameCell = cur.level === (at.h.level || 0) && cur.col === at.h.col && cur.row === at.h.row;
+        out.counts = !!(cur.cell && direct && ['countSmall', 'countLarge', 'satsSmall', 'satsLarge'].every((k) => cur.cell[k] === direct[k]));
+        out.text = cur.text;
+        out.besidePointer = Math.abs(r.left - at.x) <= r.width + 24 && Math.abs(r.top - at.y) <= r.height + 28;
+        move(5, 5, 'pointerleave'); await frame(); await frame(); out.hidesOffCanvas = card.hidden;
+        move(at.x, at.y); await settle(); canvas.classList.add('dragging'); await frame(); await frame();
+        out.hidesWhileDragging = card.hidden; canvas.classList.remove('dragging');
+        move(at.x, at.y); await settle();
+      }
+      out.fetches = fetches; out.queries = loads.length; out.local = loads.length > 0 && loads.every((v) => v === false);
+      window.fetch = realFetch; L.replay.cell = cell;
+      return out;`,
+    expect: (v) => [
+      ['found a cell with outputs to hover', v.found],
+      ['the card names the cell the pointer picks', !!v.sameCell],
+      ['size, blocks and unspent shown (' + (v.text || '') + ')', /^Size.+Blocks[\d,]+\u2013[\d,]+.*Unspent[\d,]+ UTXOs? \u00b7 /.test(v.text || '')],
+      ['unspent count and value equal the replay worker', !!v.counts],
+      ['card beside the pointer', !!v.besidePointer],
+      ['hidden off the canvas and while dragging', !!(v.hidesOffCanvas && v.hidesWhileDragging)],
+      ['no requests: ' + v.fetches + ' fetches, ' + v.queries + ' worker queries all load: false', v.fetches === 0 && !!v.local],
+    ],
+  },
+  {
     name: 'playback',
     timeout: 120000,
     script: `const out = {};
