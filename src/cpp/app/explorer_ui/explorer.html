@@ -926,6 +926,21 @@ function setPlayIcon(playing) {
   playBtn.setAttribute("aria-label", playing ? "Pause" : "Play");
   playBtn.title = (playing ? "Pause" : "Play") + " (Space)";
 }
+// A pause stops currentTime between two frames, and the browser may keep the
+// neighbouring frame on screen. Seek to the middle of the frame that is shown, as
+// every other seek does, so the block label, the HUD in the frame and pixel
+// lookups all name the block the viewer paused on.
+let presentedMediaTime = null;
+if (typeof vid.requestVideoFrameCallback === "function") {
+  const onPresentedFrame = (now, meta) => { presentedMediaTime = meta.mediaTime; vid.requestVideoFrameCallback(onPresentedFrame); };
+  vid.requestVideoFrameCallback(onPresentedFrame);
+}
+function snapPausedFrame() {
+  if (!info || vid.seeking) return;
+  const near = presentedMediaTime !== null && Math.abs(presentedMediaTime - vid.currentTime) < 2 / info.fps;
+  const shown = near ? info.videoStartBlock + Math.round(presentedMediaTime * info.fps) : curBlock();
+  vid.currentTime = blockToVideoTime(Math.max(info.videoStartBlock, Math.min(shown, info.videoEndBlock)));
+}
 playBtn.onclick = () => {
   if (vid.paused) {
     userWantsPlayback = true;
@@ -933,6 +948,7 @@ playBtn.onclick = () => {
   } else {
     userWantsPlayback = false;
     vid.pause();
+    snapPausedFrame();
   }
 };
 
