@@ -48,7 +48,7 @@ Datasets are immutable: each one gets a new prefix `landscape/d<tip>-<yyyymmdd>`
      "/Volumes/4T Data/buv_render/landscape_<old-tip>" --prefix landscape/<id> --old-prefix landscape/<old-id> \
      --state ~/.config/utxo-r2/landscape-<id>-publish.json --no-manifest
    ```
-   On October 9, 2026 it copied 4,382 chunks (18.3 GB) in about 3 minutes; the 1,101 snapshots still had to be uploaded (57.8 GB, 36 minutes at 27 MB/s), because their headers recorded the grid size of the dataset. Snapshots now describe their own grid: the first dataset built with that format uploads its snapshots once more, and later datasets copy every snapshot before the old tip. For a first publication, upload everything:
+   On October 9, 2026 it copied 4,382 chunks (18.3 GB) in about 3 minutes; the 1,101 snapshots still had to be uploaded (57.8 GB, 36 minutes at 27 MB/s), because their headers recorded the grid size of the dataset. Snapshots now describe their own grid: the first dataset built with that format, `d971587-20261015` on October 15, copied 4,416 chunks (18.5 GB) and uploaded its 1,103 snapshots once more with the new chunks (58.0 GB in 52 minutes at about 19 MB/s); later datasets copy every snapshot before the old tip. For a first publication, upload everything:
    ```sh
    export AWS_REQUEST_CHECKSUM_CALCULATION=when_required AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
    /tmp/landscape_r2_venv/bin/python scripts/r2_upload_tree_singlepart.py "/Volumes/4T Data/buv_render/landscape_<tip>" \
@@ -76,4 +76,4 @@ curl -fsS 'https://3d.bitcointimelapse.com/api/landscape/cell?block=314000&col=4
 
 The example cell returns 1 live output of 21,236 sat and 3 spent before block 314,000, the same as the native explorer. Check real playback in a browser; HTTP 200 alone does not prove the replay works.
 
-Storage is about 76 GB per dataset (1,101 snapshots and 4,417 chunks at block 970,658), roughly 1.1 USD a month in R2. Egress is free; browsers read with ranges, and the edge cache absorbs repeated ranges.
+Storage is about 76 GB per dataset (1,103 snapshots and 4,426 chunks at block 971,587), roughly 1.1 USD a month in R2. Egress is free; browsers read with ranges, and the edge cache absorbs repeated ranges.
