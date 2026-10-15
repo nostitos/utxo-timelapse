@@ -1,5 +1,6 @@
 import { RELEASE } from './release.js';
 import { navigationRoute, explorerCookie, fetchGuide } from './navigation.js';
+import { feedbackResponse } from './feedback.js';
 import { txidResponse } from "./bitcoin.js";
 import { dateResponse, pixelResponse, rangesResponse } from "./history.js";
 
@@ -210,6 +211,7 @@ tokenBucket.entries = new Map();
 
 async function handle(request, env, ctx) {
   const url = new URL(request.url);
+  if (url.pathname === '/api/feedback') return withHeaders(await feedbackResponse(request, env));
   if (request.method === "OPTIONS") {
     return withHeaders(new Response(null, {
       status: 204,
