@@ -1,5 +1,5 @@
 // ui_shell pure-logic tests: formatting, date <-> block, URL hash, playback policy,
-// places. Run: node --test landscape/tests/
+// places. Run: node --test landscape/tests/*.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
 

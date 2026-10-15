@@ -22,4 +22,4 @@ jobs:
           PYTHONPATH: scripts/tests
         run: python3 -m unittest test_compat_rendition test_fragment_publication test_replace_tail test_import_hls_catalog test_publication_commands -v
       - run: node scripts/check_explorer_quality.cjs
-      - run: node --experimental-default-type=module scripts/check_hls_routes.mjs
+      - run: node scripts/check_hls_routes.mjs

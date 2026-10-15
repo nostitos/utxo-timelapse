@@ -1,5 +1,5 @@
 // render_post unit tests: pure modules only (no browser, no three.js).
-// Run: node --test landscape/tests/
+// Run: node --test landscape/tests/*.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { AutoScaler, clampScale, quantizeScale, internalSize } from '../web/render/scale.js';

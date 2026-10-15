@@ -34,8 +34,11 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ./build/buv -ns '-tc=density_palette,epoch_transition_mapping,checkpoint_v3'
 python3 scripts/check_site.py
-node --experimental-default-type=module scripts/check_site_mapping.mjs
+node scripts/check_site_mapping.mjs
+node --test landscape/tests/*.test.mjs
 ```
+
+Use Node 22 (`.nvmrc`); the scripts and tests also run on Node 20 and 26. Pass the test files, not the directory: Node 22 and later reject `node --test landscape/tests/`, and Node 24 and later reject `--experimental-default-type`, which no script needs. Which `node` is first on PATH differs between shells here (v20 from nvm, v26 from Homebrew), so check `node --version` or call `~/.nvm/versions/node/v22.*/bin/node` directly.
 
 A bare `buv` invocation can run zero cases on macOS because the broad legacy unit directory is excluded. Read the case count. Build Docker from the root, never ignored legacy `buv_deploy/` source copies. Start the encoder before the renderer. Test a short meaningful range before a full run.
 

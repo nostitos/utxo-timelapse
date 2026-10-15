@@ -20,9 +20,10 @@ more specific, this file wins.
   datasets under `/tmp/landscape_dev*`.
 - C++ development uses private build directories (`build_landscape/`,
   `build_explorer/`); `build_local/` is rebuilt once by root at integration.
-- JavaScript: plain ES modules, no bundler, no npm runtime dependencies. Node 20 for
-  tests and the server. Tests live in `landscape/tests/*.test.mjs` and run with
-  `node --test landscape/tests/`. Browser code must not import Node modules; shared
+- JavaScript: plain ES modules, no bundler, no npm runtime dependencies. Node 22 (`.nvmrc`;
+  20 and 26 work too) for tests and the server. Tests live in `landscape/tests/*.test.mjs`
+  and run with `node --test landscape/tests/*.test.mjs` (Node 22 and later reject a
+  directory argument). Browser code must not import Node modules; shared
   pure modules (data/, replay/, settings) must not import three.js.
 - three.js 0.186.0 is vendored (unmodified) in `landscape/web/vendor/three/`; add more
   addons only by copying unmodified files from `/tmp/three_probe/package/examples/jsm/`
@@ -478,7 +479,8 @@ and on WebGL2 quality stops at High. `PRESETS` merges both maps. Looks are built
 bundles shared with the quick settings (`TIME_OF_DAY`, `SKY`, `HAZE`, `SHADOWS`, `GLOW`, `BIG_COINS`,
 `CELL_SHAPES`, `FLASHES`, `FLASH_TRAIL`), so each built-in look reads as one option in every quick
 control (BitcoinTimelapse.com's time of day aside: it turns the sun off). `LOOK_ALIASES` maps
-earlier look names to current ones (`Film` → `BitcoinTimelapse.com`): the store accepts them
+earlier look names to current ones (`Film` → `BitcoinTimelapse.com`, and the removed
+`Neon night` → `Pulse`): the store accepts them
 wherever a look is named (`setLook`, `applyPreset`, `baseValues`, JSON, URLs, stored settings and
 saved looks), writes only the current name, and reserves them as saved-look names.
 
@@ -585,8 +587,9 @@ near-black background with the sky off, strong amber flashes with a 300-block tr
 change at least eight settings. The data looks share one plain stage (`STUDIO`: high white
 sun, sky, haze and bloom off, boxes, neutral tone mapping, grid, now plane 0.2, subtle
 flashes, background #1e2126, empty cells #15171b): **Outputs** (height and colour by output
-count, cividis), **Money map** (height by count, colour by BTC value from 1 to 20,000 BTC,
-plasma), **Linear** (linear height curve, reference 2,000, exaggeration 20, film palette) and
+count, cividis), **Money map** (height by count, colour by BTC value from 1 to 2,000 BTC in
+the ember palette, whose grey low end leaves the cells below 1 BTC neutral), **Linear**
+(linear height curve, reference 100,000, exaggeration 40, film palette) and
 **Paper** (reversed grey palette with gamma 0.7 on a white page, red flashes, exposure 0.8).
 Quality intent: **Performance → Balanced → High → Ultra → Extreme** scale quality up: Ultra targets
 ≥ 60 fps at 3840×2160 on the M4 Max with the heightfield alone; with cylinder columns (the
@@ -757,7 +760,7 @@ expose their objects on `window.__dev`. browser-check scripts use these hooks.
 Note: doctest owns `-out=`/`-o=` (report file, truncated before the task runs), so the build takes `-outDir=`.
 
 ```sh
-node --test landscape/tests/
+node --test landscape/tests/*.test.mjs
 ./build_local/buv -ns -tc=landscape_state
 ./build_local/buv -ns -tc=landscape_build -cfg=configs/buv_explorer.json -outDir="/Volumes/4T Data/buv_render/landscape_966827"
 ./build_local/buv -ns -tc=landscape_verify -cfg=configs/buv_explorer.json -data="/Volumes/4T Data/buv_render/landscape_966827" -checkpoint="/Volumes/4T Data/buv_render/renderer_before_965400.bin"

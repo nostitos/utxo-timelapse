@@ -2,7 +2,7 @@
 
 The production explorer at **https://bitcointimelapse.com/explorer** runs independently of the rendering Mac and Bitcoin node. The legacy **https://utxo.aiception.ai/** address proxies to this Worker and remains an alias. The Worker serves the UI, APIs and video from private R2. The [illustrated guide](https://bitcointimelapse.com/guide/) is published by GitHub Pages and served through this Worker at the public domain.
 
-First-time visits to `/` show the guide. Entering `/explorer` sets the `btl_explorer` preference cookie for one year; subsequent visits to `/` redirect to `/explorer`. `/guide/` always opens the guide. Existing root `?block=…&x=…&y=…` links redirect straight to the explorer, preserving the query. Guide HTML is never shared from a cookie-dependent cache. Run `node --experimental-default-type=module scripts/check_explorer_navigation.mjs` from the repository root to verify routing and cache isolation.
+First-time visits to `/` show the guide. Entering `/explorer` sets the `btl_explorer` preference cookie for one year; subsequent visits to `/` redirect to `/explorer`. `/guide/` always opens the guide. Existing root `?block=…&x=…&y=…` links redirect straight to the explorer, preserving the query. Guide HTML is never shared from a cookie-dependent cache. Run `node scripts/check_explorer_navigation.mjs` from the repository root to verify routing and cache isolation.
 
 ## Current architecture
 
@@ -34,9 +34,10 @@ Deployment for the maintainer's configured installation:
 cd cloudflare/utxo-video-worker
 CLOUDFLARE_API_TOKEN="$(cat ~/.config/utxo-r2/workers-token)" npx wrangler deploy
 curl -fsS https://utxo-cdn.hat39.com/health
+cd ../.. && node scripts/check_live_release.mjs --wait 120
 ```
 
-Credentials remain outside Git. The bucket stays private; Worker routing allowlists objects. A deployment does not upload static objects automatically.
+Deploy from master after the release change has merged (`git switch master && git pull --ff-only`); a deploy from a branch that lacks another merged release rolls it back. `scripts/check_live_release.mjs` fails unless the checkout is `origin/master` and every hostname of both Workers serves the `version` in its `release.js`. Credentials remain outside Git. The bucket stays private; Worker routing allowlists objects. A deployment does not upload static objects automatically.
 
 ## Video and history updates
 

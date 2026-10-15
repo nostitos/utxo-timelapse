@@ -85,6 +85,13 @@ test('earth runs from sand to green and ignores the custom gradient', () => {
   assert.deepEqual(P.paletteRGB('earth', { gradient: custom }), earth);
 });
 
+test('ember runs from ash grey to pale yellow', () => {
+  const ember = P.paletteRGB('ember');
+  assert.deepEqual(Array.from(ember.slice(0, 3)), [0x5a, 0x60, 0x6b], 'grey at the lowest value');
+  assert.deepEqual(Array.from(ember.slice(765)), [0xff, 0xf2, 0xa8], 'pale yellow at the top');
+  assert.deepEqual(ember, P.gradientRGB(P.GRADIENT_PALETTES.ember));
+});
+
 // Densities: random log-uniform, integers, and the exact double boundaries of every index.
 function densitySamples() {
   const r = rng(7);

@@ -78,8 +78,9 @@ export const WEBGL2_MAX_PRESET = 'High';
 export const LOOKS = Object.freeze(['Landscape', 'BitcoinTimelapse.com', 'Daylight', 'Golden hour', 'Earth', 'Whales',
   'Pulse', 'Outputs', 'Money map', 'Linear', 'Paper']);
 // Earlier names of looks. Links, exports, saved settings and saved looks that use one open the
-// look it names now; the store writes only the current name.
-export const LOOK_ALIASES = Object.freeze({ Film: 'BitcoinTimelapse.com' });
+// look it names now; the store writes only the current name. Neon night (October 13 and 14,
+// 2026) was removed; its links open Pulse, the other night look.
+export const LOOK_ALIASES = Object.freeze({ Film: 'BitcoinTimelapse.com', 'Neon night': 'Pulse' });
 export const DEFAULT_LOOK = 'Landscape';
 export const PRESET_NAMES = Object.freeze([...LOOKS, ...QUALITY_ORDER]);
 
@@ -100,8 +101,8 @@ export const LOOK_INFO = Object.freeze({
   Whales: 'Sunrise over the BTC held in each cell instead of the number of outputs: the large-amount rows tower over the dust, twice as tall, and the magma palette runs to white on the biggest holdings.',
   Pulse: 'A dim grey landscape where activity shows: spends flash amber and their glow lingers for hundreds of blocks. Press Play to watch the chain breathe.',
   Outputs: 'Height and colour by the number of outputs in each cell, cividis, square boxes under a white sun with no sky, haze or glow, so dust rows and large holdings are compared by count alone.',
-  'Money map': 'Height by the number of outputs, colour by the BTC they hold (deep blue up to 1 BTC, yellow at 20,000 BTC): tall blue bars are many small outputs, short bright cells hold the money.',
-  Linear: 'Height in proportion to weighted density (2,000 stands 20 units tall, 20 stands 0.2), so proportions are true: nearly everything lies flat, the densest dust rows rise as walls far above it and the largest holdings as lone spikes; film colours still show density.',
+  'Money map': 'Height by the number of outputs, colour by the BTC they hold: grey below 1 BTC per cell, then violet, red and orange to pale yellow at 2,000 BTC. Tall grey bars are many small outputs; the colour shows where the money is.',
+  Linear: 'Height in proportion to weighted density (100,000 stands 40 units tall, 2,500 stands 1), so proportions are true: nearly everything lies flat, the densest dust cells (about 148,000 at the tip) rise as walls about 60 units high, and the largest holdings barely leave the floor; film colours still show density.',
   Paper: 'A white page for figures: light grey to black ink by density, soft shadows, red spend flashes, grid and now plane, nothing else.',
 });
 
@@ -120,11 +121,11 @@ const MEASURE_LABELS = { density: 'Weighted density', count: 'Output count', val
 const ENTRIES = [
   // Colour: palette
   { id: 'color.palette', section: 'Palette', label: 'Palette', type: 'enum',
-    options: ['film', 'turbo', 'viridis', 'inferno', 'magma', 'plasma', 'cividis', 'earth', 'grey', 'custom'],
+    options: ['film', 'turbo', 'viridis', 'inferno', 'magma', 'plasma', 'cividis', 'earth', 'ember', 'grey', 'custom'],
     optionLabels: { film: 'Film', turbo: 'Turbo', viridis: 'Viridis', inferno: 'Inferno', magma: 'Magma',
-      plasma: 'Plasma', cividis: 'Cividis', earth: 'Earth', grey: 'Grey', custom: 'Custom gradient' },
+      plasma: 'Plasma', cividis: 'Cividis', earth: 'Earth', ember: 'Ember', grey: 'Grey', custom: 'Custom gradient' },
     default: 'film',
-    help: 'Colour map. Film is the film palette (site/assets/palettes.json base, with the white-hot variant on whale rows). Earth runs from sand through brown earth to green.' },
+    help: 'Colour map. Film is the film palette (site/assets/palettes.json base, with the white-hot variant on whale rows). Earth runs from sand through brown earth to green. Ember runs from ash grey through violet and red to pale yellow, so the bottom of the scale stays neutral.' },
   { id: 'color.gradient', section: 'Palette', label: 'Custom gradient', type: 'gradient', maxStops: 16,
     default: DEFAULT_GRADIENT,
     help: 'Stops {t 0..1, colour} used when Palette is Custom gradient: 2 to 16 stops, sorted by t, interpolated in sRGB like the panel preview.' },
@@ -914,13 +915,16 @@ export const LOOK_PRESETS = deepFreeze({
     'amp.edgeGlow': 0, 'amp.nowPlane': 0.25, 'display.grid': false,
   },
   Outputs: { ...STUDIO, 'amp.measure': 'count', 'color.palette': 'cividis', 'color.whiteHot': false },
-  // Colour by value: cells below 1 BTC take the darkest colour (the transfer starts at 1).
+  // Colour by value: the transfer starts at 1 BTC, so the cells below it (most of them) take
+  // ember's grey and the colour marks where the money is; 2,000 BTC and more is pale yellow.
   'Money map': {
-    ...STUDIO, 'amp.measure': 'count', 'color.measure': 'value', 'color.palette': 'plasma', 'color.whiteHot': false,
-    'color.offset': 2, 'color.upper': 20000,
+    ...STUDIO, 'amp.measure': 'count', 'color.measure': 'value', 'color.palette': 'ember', 'color.whiteHot': false,
+    'color.offset': 1, 'color.upper': 2000,
   },
-  // Height in proportion to weighted density: 2,000 (a 10,000 BTC output) is 20 units tall.
-  Linear: { ...STUDIO, 'amp.curve': 'linear', 'amp.reference': 2000, 'amp.exaggeration': 20, 'amp.floor': 0.1 },
+  // Height in proportion to weighted density: 100,000 is 40 units tall. At the tip the densest
+  // level-0 cell (2023 dust) holds about 148,000, so it stands about 60 units high; coarser
+  // levels show the mean of their cells and stand lower from far away.
+  Linear: { ...STUDIO, 'amp.curve': 'linear', 'amp.reference': 100000, 'amp.exaggeration': 40, 'amp.floor': 0.1 },
   Paper: {
     ...STUDIO, 'color.palette': 'grey', 'color.reverse': true, 'color.gamma': 0.7, 'color.whiteHot': false,
     'color.background': '#f4f3ee', 'color.ground': '#ffffff', 'color.heat': '#d8322a', 'color.exposure': 0.8,
