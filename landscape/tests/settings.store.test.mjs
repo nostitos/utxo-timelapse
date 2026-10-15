@@ -345,6 +345,17 @@ test('the Film look is now BitcoinTimelapse.com: links, exports, stored settings
   assert.equal(saved.looks.includes('Film'), false, 'the look list shows the current name only');
 });
 
+test('links and saved settings from the removed Neon night look open Pulse', () => {
+  const n = make();
+  const r = n.fromURL('#b=5&look=Neon%20night');
+  assert.equal(r.look, 'Pulse');
+  assert.deepEqual(r.invalid, []);
+  assert.match(n.toURL(), /look=Pulse/);
+  assert.equal(make().fromJSON({ format: SETTINGS_FORMAT, look: 'Neon night', values: {} }).look, 'Pulse');
+  assert.throws(() => n.saveUserPreset('Neon night'), /built-in name/);
+  assert.equal(n.looks.includes('Neon night'), false);
+});
+
 test('URL round trip: preset plus url ids that differ, foreign keys ignored', () => {
   const a = make();
   a.applyPreset('Ultra');

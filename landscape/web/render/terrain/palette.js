@@ -14,6 +14,8 @@
 // Gradient palettes (GRADIENT_PALETTES below), interpolated like a custom gradient:
 //   earth        sand, brown earth and green, for the Earth look. Its empty cells are water
 //                blue, so the palette starts on land: a cell with one output reads as sand.
+//   ember        ash grey, violet, red, orange and pale yellow, for the Money map look: the
+//                bottom of the scale (below 1 BTC per cell) stays neutral so the money shows.
 // Tests: landscape/tests/terrain-palette.test.mjs compares film/whale with
 // site/assets/palettes.json and the transfer with the C++ DensityToImage code.
 
@@ -156,7 +158,7 @@ const TABLES = {
     'f0d846f1d945f2da44f3db42f5dc41f6dd3ff7de3ef8df3cf9e03afbe138fce236fde334fee434fee535fee636fee838',
 };
 
-export const PALETTE_NAMES = Object.freeze(['film', 'turbo', 'viridis', 'inferno', 'magma', 'plasma', 'cividis', 'earth', 'grey', 'custom']);
+export const PALETTE_NAMES = Object.freeze(['film', 'turbo', 'viridis', 'inferno', 'magma', 'plasma', 'cividis', 'earth', 'ember', 'grey', 'custom']);
 export const WHITE_HOT_START_INDEX = 180; // buv::ColorMap::WHITE_HOT_START_INDEX
 export const FILM_TRANSFER = Object.freeze({ offset: 30, upper: 500, gamma: 1 });
 export const FILM_WHITE_HOT_BTC = 10; // whiteHotTailMinSatoshi 1,000,000,000 in configs/buv_explorer.json
@@ -176,6 +178,14 @@ export const GRADIENT_PALETTES = Object.freeze({
     Object.freeze({ t: 0.58, color: '#7e6a3c' }),
     Object.freeze({ t: 0.78, color: '#5f9140' }),
     Object.freeze({ t: 1, color: '#2e7a31' }),
+  ]),
+  ember: Object.freeze([
+    Object.freeze({ t: 0, color: '#5a606b' }),
+    Object.freeze({ t: 0.15, color: '#6b4f8a' }),
+    Object.freeze({ t: 0.4, color: '#b13f6e' }),
+    Object.freeze({ t: 0.65, color: '#e8743b' }),
+    Object.freeze({ t: 0.85, color: '#f6b93b' }),
+    Object.freeze({ t: 1, color: '#fff2a8' }),
   ]),
 });
 

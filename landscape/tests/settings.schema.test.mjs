@@ -186,7 +186,7 @@ function resolved(name, capabilities = WEBGPU) {
 }
 
 test('look aliases name a current look and are not looks themselves; palettes match the renderer', () => {
-  assert.deepEqual({ ...LOOK_ALIASES }, { Film: 'BitcoinTimelapse.com' });
+  assert.deepEqual({ ...LOOK_ALIASES }, { Film: 'BitcoinTimelapse.com', 'Neon night': 'Pulse' });
   for (const [old, now] of Object.entries(LOOK_ALIASES)) {
     assert.ok(LOOKS.includes(now), old + ' -> ' + now);
     assert.equal(LOOKS.includes(old), false, old + ' is an alias, not a look');
@@ -195,6 +195,7 @@ test('look aliases name a current look and are not looks themselves; palettes ma
   // The palette options are the renderer's palettes, in the same order.
   assert.deepEqual(SCHEMA_BY_ID.get('color.palette').options, [...PALETTE_NAMES]);
   assert.equal(SCHEMA_BY_ID.get('color.palette').optionLabels.earth, 'Earth');
+  assert.equal(SCHEMA_BY_ID.get('color.palette').optionLabels.ember, 'Ember');
 });
 
 test('BitcoinTimelapse.com reproduces the film colours: unlit, film palette, every effect off', () => {
