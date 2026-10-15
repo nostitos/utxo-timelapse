@@ -545,7 +545,8 @@ ui_settings with the consumers):
   `geo.columnRadius` (L0 cells), `geo.columnPixels` (px),
   `geo.instanceBudget` (≤ 8,000,000), `geo.columnGap`, `geo.farColumns` (prism, card, flat,
   cross), `geo.farShadows`, `geo.lodBias`,
-  `geo.pixelsPerCell`, `geo.tileBudget` (32–400), `geo.uniform`, `geo.uniformLevel` (0–4), `geo.skirts`, `geo.wireframe`.
+  `geo.pixelsPerCell`, `geo.tileBudget` (32–400), `geo.uniform`, `geo.uniformLevel` (0–4), `geo.skirts`,
+  `geo.groundHorizon`, `geo.wireframe`.
 - Lighting: `light.sunAzimuth`, `light.sunElevation`, `light.sunIntensity`,
   `light.sunColor`, `light.skyColor`, `light.groundColor`, `light.ambient`,
   `light.emissive`, `light.albedo`, `light.rim`, `light.rimColor`,
@@ -575,9 +576,10 @@ October 2026) reproduces the film's colours
 gamma 1, unlit: albedo 0, emissive 1, no sun/ambient/rim/shadows/sky/stars/fog, every post
 effect off, tone mapping none, exposure 1, neutral grade, AA none, black background and
 ground). **Daylight** (high white sun, viridis, no bloom), **Golden hour** (low sun from the
-tip side, thick haze, god rays, inferno), **Earth** (high white sun in a blue sky, light haze,
-smooth surface, water-blue empty cells under the `earth` palette on a colour scale from 1 to
-25 (offset 1), no white-hot rows), **Whales** (height
+tip side, thick haze, god rays, inferno), **Earth** (the Morning time of day, Mist haze, soft glow,
+ground to the horizon, smooth surface, water-blue empty cells under the `earth` palette on a
+colour scale from 1 to 25 (offset 1), no white-hot rows, AO intensity 1.5, saturation 1.1 and
+contrast 1.05), **Whales** (height
 and colour by BTC value, magma, whale rows twice as tall) and **Pulse** (dim grey on a
 near-black background with the sky off, strong amber flashes with a 300-block trail) each
 change at least eight settings. The data looks share one plain stage (`STUDIO`: high white

@@ -46,7 +46,10 @@ export async function createLandscapeView({
   const terrain = await terrainFactory({ renderer, scene, camera, settings, manifest, rows, blocktimes, capabilities, labelsElement });
   if (terrain.object3d && !terrain.object3d.parent) scene.add(terrain.object3d);
 
-  const post = createPost({ renderer, scene, camera, env, capabilities });
+  // Ambient occlusion stops at the landscape's edge (the ground beyond it is flat).
+  const g = terrain.grid;
+  const aoBounds = g && g.numBlocks > 0 && g.rows > 0 ? [0, 0, g.numBlocks / 1000, g.rows / 10] : null;
+  const post = createPost({ renderer, scene, camera, env, capabilities, aoBounds });
   const timer = capabilities.timestamp ? createGpuTimer(renderer, { resolveLabel: (rt) => post.labelForTarget(rt) }) : null;
   const overlay = createOverlay(overlayElement, { capabilities });
   const scaler = new AutoScaler({

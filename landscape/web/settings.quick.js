@@ -123,11 +123,12 @@ export const QUICK = deepFreeze([
     help: 'How many tiles of 256 \u00d7 256 cells stay loaded (High: 225). Each costs about 1 MB of GPU memory and 2 MB in the replay worker. Too few and fine detail and columns stop short of what Terrain detail and Column distance ask for.' },
 
   { id: 'timeOfDay', section: 'Scene', label: 'Time of day', type: 'blend',
-    at: [6.5, 12, 17.5, 18.25, 21], format: clockTime,
+    at: [6.5, 9.5, 12, 17.5, 18.25, 21], format: clockTime,
     help: 'A clock from sunrise to night: the sun crosses the sky, low and warm at sunrise and sunset, high at noon; after sunset the sky turns blue, the stars come out and moonlight takes over. The sky, the haze and the ambient light follow.',
     options: [
       // Stars follow the time of day but do not decide it, so a look may keep its stars.
       option('sunrise', 'Sunrise', TIME_OF_DAY.sunrise, without(TIME_OF_DAY.sunrise, 'light.stars')),
+      option('morning', 'Morning', TIME_OF_DAY.morning, without(TIME_OF_DAY.morning, 'light.stars')),
       option('day', 'Day', TIME_OF_DAY.day, without(TIME_OF_DAY.day, 'light.stars')),
       option('sunset', 'Sunset', TIME_OF_DAY.sunset, without(TIME_OF_DAY.sunset, 'light.stars')),
       option('dusk', 'Dusk', TIME_OF_DAY.dusk, without(TIME_OF_DAY.dusk, 'light.stars')),
@@ -144,6 +145,7 @@ export const QUICK = deepFreeze([
     options: [
       option('none', 'None', HAZE.none),
       option('light', 'Light', HAZE.light, only(HAZE.light, ['light.fogDensity'])),
+      option('mist', 'Mist', HAZE.mist, only(HAZE.mist, ['light.fogDensity'])),
       option('thick', 'Thick', HAZE.thick, only(HAZE.thick, ['light.fogDensity'])),
     ] },
   { id: 'shadows', section: 'Scene', label: 'Shadows', type: 'toggle',

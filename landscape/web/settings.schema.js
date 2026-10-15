@@ -96,7 +96,7 @@ export const LOOK_INFO = Object.freeze({
   'BitcoinTimelapse.com': 'The film at bitcointimelapse.com: its unlit colours, weighted density through the film palette (white-hot whale rows at 10 BTC and above), stepped cells instead of cylinders, black background and ground; no grid, lighting, shadows, fog, sky, tone mapping or post effects. Matches the film colour at equal density. Heat glow and flashes still appear during playback, like the activity flashes in the film, and are zero right after a seek.',
   Daylight: 'Midday: a high white sun in a pale blue sky, crisp shadows and the viridis palette, with no glow, so the relief reads like a map.',
   'Golden hour': 'Sunset from the tip side: a low orange sun, long shadows, thick warm haze, light shafts toward the sun and the inferno palette.',
-  Earth: 'Midday over an atlas: water-blue empty cells, and land from sand on the sparsest cells through brown earth (about 5 per cell) to green from about 10, the busiest quarter of the land; blue sky, light haze, shadows and a smooth surface; whale rows stay green.',
+  Earth: 'A summer morning over an atlas: a low sun from the genesis side, mist that pales the distance, and a sea that runs to the horizon; land from sand on the sparsest cells through brown earth (about 5 per cell) to green from about 10, the busiest quarter of the land, on a smooth surface; whale rows stay green.',
   Whales: 'Sunrise over the BTC held in each cell instead of the number of outputs: the large-amount rows tower over the dust, twice as tall, and the magma palette runs to white on the biggest holdings.',
   Pulse: 'A dim grey landscape where activity shows: spends flash amber and their glow lingers for hundreds of blocks. Press Play to watch the chain breathe.',
   Outputs: 'Height and colour by the number of outputs in each cell, cividis, square boxes under a white sun with no sky, haze or glow, so dust rows and large holdings are compared by count alone.',
@@ -293,6 +293,8 @@ const ENTRIES = [
     help: 'Heightfield vertices per cell edge (more = smoother bicubic surfaces, more triangles).' },
   { id: 'geo.skirts', section: 'Surface', label: 'Skirts', type: 'bool', default: true, rebuild: 'terrain',
     help: 'Vertical skirts hide cracks between tiles of different levels.' },
+  { id: 'geo.groundHorizon', section: 'Surface', label: 'Ground to the horizon', type: 'bool', default: false,
+    help: 'Extends the ground under empty cells (Empty cells colour) to the horizon, where the haze blends it into the sky. Off, it ends 20 units past the landscape. The extension shows no data: hovering and picking still stop at the landscape.' },
   { id: 'geo.wireframe', section: 'Surface', label: 'Wireframe', type: 'bool', default: false, rebuild: 'material',
     preset: false, help: 'Draw the terrain as wireframe (diagnostic).' },
 
@@ -681,13 +683,16 @@ export const SCHEMA_BY_ID = new Map(SCHEMA.map((entry) => [entry.id, entry]));
 // Value bundles shared by the looks below and the quick settings (settings.quick.js). A look
 // built from them reads as one definite option in every quick control. The times of day lie
 // on one sun path, which the quick setting Time of day runs as a clock: sunrise at 6:30
-// (azimuth 290), noon (200, 62 degrees up), sunset at 17:30 (110), about 16 degrees an hour.
+// (azimuth 290), morning at 9:30 (241, 38 degrees up, a clear blue sky and pale haze), noon
+// (200, 62 degrees up), sunset at 17:30 (110), about 16 degrees an hour.
 // Dusk, the schema defaults (the Landscape look), is the blue hour at 18:15: the sun just below
 // the horizon on the same path, its afterglow on the walls that face it, stars coming out.
 // Night is moonlight from the other side, so the palette's own glow lights the landscape.
 export const TIME_OF_DAY = deepFreeze({
   sunrise: { 'light.sunAzimuth': 290, 'light.sunElevation': 9, 'light.sunIntensity': 4.5, 'light.sunColor': '#ffc78a',
     'light.skyColor': '#f6d6b8', 'light.groundColor': '#3a2e28', 'light.ambient': 0.5, 'light.stars': false, 'color.fog': '#5a3f3a' },
+  morning: { 'light.sunAzimuth': 241, 'light.sunElevation': 38, 'light.sunIntensity': 4.3, 'light.sunColor': '#fff1dc',
+    'light.skyColor': '#6f9fe8', 'light.groundColor': '#5b5a52', 'light.ambient': 0.9, 'light.stars': false, 'color.fog': '#c8d6e8' },
   day: { 'light.sunAzimuth': 200, 'light.sunElevation': 62, 'light.sunIntensity': 4, 'light.sunColor': '#ffffff',
     'light.skyColor': '#7eabef', 'light.groundColor': '#6b6e72', 'light.ambient': 1.1, 'light.stars': false, 'color.fog': '#bed3ee' },
   sunset: { 'light.sunAzimuth': 110, 'light.sunElevation': 6, 'light.sunIntensity': 6, 'light.sunColor': '#ff9a4a',
@@ -701,6 +706,7 @@ export const SKY = deepFreeze({ on: { 'light.sky': true }, off: { 'light.sky': f
 export const HAZE = deepFreeze({
   none: { 'light.fogDensity': 0 },
   light: { 'light.fogDensity': 0.002, 'light.fogHeightFalloff': 0.05 },
+  mist: { 'light.fogDensity': 0.004, 'light.fogHeightFalloff': 0.05 },
   thick: { 'light.fogDensity': 0.008, 'light.fogHeightFalloff': 0.02 },
 });
 export const SHADOWS = deepFreeze({ on: { 'light.shadows': true }, off: { 'light.shadows': false } });
@@ -883,13 +889,15 @@ export const LOOK_PRESETS = deepFreeze({
   // Empty cells are water; the palette starts at sand, so a cell with one output is land. The
   // colour scale runs from 1 to 25 (the film's runs to 500): at the tip half the land cells
   // have a weighted density below 4 and a tenth above 17, so brown sits near 5 and green
-  // starts near 10.
+  // starts near 10. Morning light from the genesis side, mist and a sea to the horizon give
+  // it depth; ambient occlusion darkens the creases and a light grade adds colour.
   Earth: {
-    ...TIME_OF_DAY.day, ...SKY.on, ...HAZE.light, ...SHADOWS.on, ...GLOW.off, ...CELL_SHAPES.smooth,
+    ...TIME_OF_DAY.morning, ...SKY.on, ...HAZE.mist, ...SHADOWS.on, ...GLOW.soft, ...CELL_SHAPES.smooth,
     'color.palette': 'earth', 'color.whiteHot': false, 'color.ground': '#1d5a98', 'color.background': '#7eabef',
     'color.offset': 1, 'color.upper': 25,
-    'color.toneMapping': 'neutral', 'light.emissive': 0.1, 'light.albedo': 0.95, 'light.roughness': 0.9, 'light.rim': 0,
-    'light.shadowSoftness': 0.8, 'amp.nowPlane': 0.1,
+    'color.toneMapping': 'neutral', 'color.saturation': 1.1, 'color.contrast': 1.05,
+    'light.emissive': 0.1, 'light.albedo': 0.95, 'light.roughness': 0.9, 'light.rim': 0,
+    'light.shadowSoftness': 0.8, 'fx.aoIntensity': 1.5, 'amp.nowPlane': 0.1, 'geo.groundHorizon': true,
   },
   Whales: {
     ...TIME_OF_DAY.sunrise, ...BIG_COINS.taller,

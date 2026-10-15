@@ -42,6 +42,7 @@ export const TERRAIN_DEFAULTS = Object.freeze({
   'geo.pixelsPerCell': 3, 'geo.tileBudget': 225, 'geo.skirts': true, 'geo.wireframe': false,
   'light.emissive': 0.4, 'light.albedo': 0.85, 'light.rim': 0.35, 'light.rimColor': '#99bbff',
   'light.roughness': 0.65, 'light.metalness': 0.05, 'light.floorReflection': 0,
+  'geo.groundHorizon': false,
   'display.labels': true, 'display.grid': false,
 });
 const CONSUMED_PREFIXES = ['color.', 'amp.', 'geo.', 'light.', 'display.'];
@@ -151,10 +152,23 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
   const floor = new Mesh(new PlaneGeometry(1, 1), floorMat);
   floor.name = 'TerrainFloor';
   floor.rotation.x = -Math.PI / 2;
-  floor.position.set(worldW / 2, -0.004, worldD / 2);
-  floor.scale.set(worldW + 40, worldD + 40, 1);
   floor.receiveShadow = true;
   object3d.add(floor);
+  // Ground to the horizon: the floor reaches past the camera's far plane in every direction
+  // and moves with the camera, so its edge never shows and the haze blends it into the sky.
+  // Off, it covers the landscape and 20 units around it. It is never picked either way.
+  let groundHorizon = false;
+  function placeFloor(cam) {
+    if (groundHorizon && cam) {
+      const size = 2.2 * (cam.far || 6000);
+      floor.scale.set(size, size, 1);
+      floor.position.set(cam.position.x, -0.004, cam.position.z);
+    } else {
+      floor.scale.set(worldW + 40, worldD + 40, 1);
+      floor.position.set(worldW / 2, -0.004, worldD / 2);
+    }
+  }
+  placeFloor(camera);
 
   const nowOpacity = uniform(0.15);
   const nowMat = new MeshBasicNodeMaterial();
@@ -254,6 +268,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
       case 'amp.nowPlane': nowOpacity.value = value; placeNowPlane(); break;
       case 'amp.flashSize': if (!(value > 0)) flashes.clear(); break;
       case 'light.floorReflection': floorReflection.value = value; break;
+      case 'geo.groundHorizon': groundHorizon = !!value; placeFloor(camera); break;
       default: break;
     }
   }
@@ -308,6 +323,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
 
   function update(cam = camera, viewportHeightPx = 1080) {
     const t0 = performance.now();
+    if (groundHorizon) placeFloor(cam);
     if (needs.capacity) {
       needs.capacity = false;
       if (atlas.ensureCapacity(budgetFromSettings())) needs.rebuild = true;
