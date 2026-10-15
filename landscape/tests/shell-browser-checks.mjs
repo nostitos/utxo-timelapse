@@ -984,6 +984,26 @@ const CHECKS = [
       await sleep(100); out.labelInk = { landscape: ink() };
       S.setLook('Paper'); await sleep(100); out.labelInk.paper = ink();
       S.setLook('Landscape'); await sleep(100); out.labelInk.back = ink();
+      // Earth's sea reaches the horizon: looking out past the front edge (z 207) shows water where
+      // other looks show the sky's ground colour, the floor moves with the camera, and picking
+      // there still finds no cell. Back on Landscape the floor covers the landscape only.
+      const floor = L.view.terrain.meshes.floor;
+      const seaward = { x: 600, y: 30, z: 260, yaw: 180, pitch: -25 };
+      const lowerHalf = async () => {
+        const d = (await frameImage(48, 27)).getContext('2d').getImageData(0, 14, 48, 13).data;
+        let r = 0, g = 0, b = 0;
+        for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+        const n = d.length / 4;
+        return [Math.round(r / n), Math.round(g / n), Math.round(b / n)];
+      };
+      S.setLook('Earth'); L.controls.setPose(seaward); await settled(800);
+      out.sea = { look: S.get('geo.groundHorizon'), size: floor.scale.x, offset: Math.abs(floor.position.x - L.view.camera.position.x),
+        colour: await lowerHalf(), pick: L.view.pick(innerWidth / 2, innerHeight * 0.75) };
+      L.controls.setPose({ ...seaward, x: 300 }); await settled(500);
+      out.sea.follows = Math.abs(floor.position.x - 300) < 1e-6;
+      S.setLook('Landscape'); await settled(800);
+      out.noSea = { size: floor.scale.x, colour: await lowerHalf() };
+      L.controls.setPose(start);
       return out;`,
     node: (v) => {
       if (shots) for (const [name, url] of v.shots) writeFileSync(join(shots, 'look-' + name.replace(/ /g, '-').toLowerCase() + '.jpg'), Buffer.from(url.split(',')[1], 'base64'));
@@ -1000,6 +1020,11 @@ const CHECKS = [
         return ['all ' + v.count + ' looks differ by ' + need + ' or more at the ' + cam + ' camera (closest pair ' + c.min[0] + ': ' + c.min[1] + ')', c.min[1] >= need];
       }),
       ['axis labels turn to dark ink on Paper\'s white ground and back', !v.labelInk.landscape && v.labelInk.paper && !v.labelInk.back],
+      ['Earth\'s sea reaches the horizon and follows the camera (floor ' + Math.round(v.sea.size) + ' units, lower half rgb ' + v.sea.colour.join(',') + ')',
+        v.sea.look === true && v.sea.size > 10000 && v.sea.offset < 1e-6 && v.sea.follows && v.sea.colour[2] > v.sea.colour[0] + 40],
+      ['the sea holds no data: picking past the landscape finds nothing', v.sea.pick === null],
+      ['other looks keep the floor to the landscape (' + Math.round(v.noSea.size) + ' units, lower half rgb ' + v.noSea.colour.join(',') + ')',
+        v.noSea.size < 1100 && Math.abs(v.noSea.colour[2] - v.noSea.colour[0]) < 40],
       ['no frame errors', v.frameError === null],
     ],
   },

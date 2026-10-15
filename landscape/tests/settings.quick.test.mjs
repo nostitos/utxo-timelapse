@@ -92,7 +92,7 @@ test('values set by hand read as mixed; state, patch and needs', () => {
   s.set('light.fogDensity', 0.003);
   // Haze decides the fog density only, so a hand-set density sits between two stops.
   const between = quickState(haze, s.get);
-  assert.ok(between.option === null && Math.abs(between.position - (1 + 1 / 6)) < 1e-9);
+  assert.ok(between.option === null && Math.abs(between.position - 1.5) < 1e-9, 'halfway from Light to Mist');
   s.set('light.fogDensity', 0.03);
   assert.deepEqual(quickState(haze, s.get), { option: null, position: null }, 'beyond Thick');
   s.set('light.fogDensity', 0.002);
@@ -160,12 +160,12 @@ test('blend details: Glow fades in from Off, Flash trail blends half-lives in lo
 
 test('time of day is a clock along one sun path', () => {
   const c = QUICK_BY_ID.get('timeOfDay');
-  assert.deepEqual(c.options.map((o) => clockTime(blendValue(c, c.options.indexOf(o)))), ['6:30', '12:00', '17:30', '18:15', '21:00']);
+  assert.deepEqual(c.options.map((o) => clockTime(blendValue(c, c.options.indexOf(o)))), ['6:30', '9:30', '12:00', '17:30', '18:15', '21:00']);
   assert.equal(blendIndex(c, blendValue(c, 2.4)).toFixed(6), '2.400000');
   // From sunrise to dusk the sun turns one way at a steady rate and rises then sets.
   const at = (h) => blendPatch(c, blendIndex(c, h));
   const rate = (h0, h1) => (at(h0)['light.sunAzimuth'] - at(h1)['light.sunAzimuth']) / (h1 - h0);
-  for (const [h0, h1] of [[6.5, 12], [12, 17.5], [17.5, 18.25]]) {
+  for (const [h0, h1] of [[6.5, 9.5], [9.5, 12], [12, 17.5], [17.5, 18.25]]) {
     assert.ok(rate(h0, h1) > 14 && rate(h0, h1) < 18, 'azimuth ' + rate(h0, h1).toFixed(1) + ' degrees an hour ' + h0 + '-' + h1);
   }
   let peak = 0;
