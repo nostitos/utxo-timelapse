@@ -320,7 +320,7 @@
       <label class="tog"><input id="loupeTog" type="checkbox" checked> magnifier</label>
       <a class="guideLink" href="https://bitcointimelapse.com/guide/" target="_blank" rel="noopener">Guide ↗</a>
       <button id="helpBtn" type="button" title="What is this? (?)" aria-label="About this explorer">?</button>
-      <a id="landscapeLink" href="https://3d.bitcointimelapse.com/" target="_blank" rel="noopener" title="3D landscape (preview)">3D</a>
+      <a id="landscapeLink" href="https://bitcoinlandscape.com/" target="_blank" rel="noopener" title="3D landscape (preview)">3D</a>
       <div class="extendedSteps" role="group" aria-label="Skip blocks"><button type="button" data-block-step="-20" aria-label="Back 20 blocks">‹‹ Back 20 blocks</button><button type="button" data-block-step="20" aria-label="Forward 20 blocks">Forward 20 blocks ››</button></div>
     </div>
     <span id="hint">pause &amp; click a pixel</span>
@@ -660,7 +660,7 @@ about.addEventListener("click", e => { if (e.target === about) hideAbout(); });
 // Link to the 3D landscape preview, opened at the current block.
 const landscapeLink = document.getElementById("landscapeLink");
 const LANDSCAPE_BASE = ["localhost", "127.0.0.1", "[::1]", "::1"].includes(location.hostname)
-  ? "http://127.0.0.1:12990/" : "https://3d.bitcointimelapse.com/";
+  ? "http://127.0.0.1:12990/" : "https://bitcoinlandscape.com/";
 function updateLandscapeLink() { landscapeLink.href = LANDSCAPE_BASE + (info ? "#b=" + curBlock() : ""); }
 for (const type of ["pointerenter", "click"]) landscapeLink.addEventListener(type, updateLandscapeLink);
 updateLandscapeLink();
