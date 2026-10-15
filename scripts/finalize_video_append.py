@@ -3,9 +3,9 @@
 No retained frame is decoded/re-encoded for the new master. Outpoint uses DTS,
 not PTS (FFmpeg concat demuxer specification). Stages are timed separately.
 """
-import argparse,hashlib,json,os,re,shutil,subprocess,sys,time
+import argparse,json,re,shutil,subprocess
 from pathlib import Path
-from update_video_append import ROOT,BASE,OLD,JOIN,FPS,save,step,event,probe,command
+from update_video_append import BASE,OLD,JOIN,FPS,save,step,event,probe,command
 
 def extra(path):
     s=json.loads(subprocess.check_output(['ffprobe','-v','error','-select_streams','v:0','-show_entries','stream=extradata','-show_data','-of','json',str(path)]))['streams'][0]['extradata']

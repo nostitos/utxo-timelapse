@@ -1,4 +1,3 @@
-import hashlib
 import json
 from pathlib import Path
 import shutil
@@ -9,7 +8,6 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import compat_rendition as cr
-import fragment_manifest as fm
 from publish_append import prepare
 
 

@@ -8,7 +8,6 @@ retained. Useful for hidden replay changes, including starts inside a slide.
 import argparse
 import hashlib
 import json
-import shutil
 import socket
 import struct
 import subprocess

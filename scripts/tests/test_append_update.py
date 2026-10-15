@@ -1,7 +1,6 @@
 """Pure boundary/manifest tests and tiny synthetic subprocesses; no real media."""
 import json
 from pathlib import Path
-import struct
 import sys
 import tempfile
 import unittest

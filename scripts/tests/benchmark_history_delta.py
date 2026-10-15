@@ -11,7 +11,7 @@ from r2_publish_history_delta import make_patch
 
 
 def main():
-    parser=p.argparse.ArgumentParser(description=__doc__)
+    parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--history',required=True);parser.add_argument('--output',required=True)
     parser.add_argument('--shard',type=int,default=1758)
     a=parser.parse_args();out=Path(a.output);out.mkdir(parents=True,exist_ok=False)

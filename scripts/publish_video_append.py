@@ -2,7 +2,7 @@
 """Stage only the appended HLS tail and matching site metadata in immutable R2 keys.
 The original 1,607 streaming segments remain reused. No deployment is performed.
 """
-import argparse,datetime,hashlib,json,os,re,struct,subprocess
+import argparse,datetime,hashlib,json,re,struct
 from pathlib import Path
 import boto3
 from botocore.config import Config

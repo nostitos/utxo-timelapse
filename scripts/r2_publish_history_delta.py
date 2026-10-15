@@ -4,7 +4,7 @@ Old complete shards keep their original R2 objects. Small row-indexed overlays
 stamp only newly spent records. New/previously partial shards are replaced.
 Each overlay's reconstructed original shard must match the prior upload MD5.
 """
-import argparse,concurrent.futures,hashlib,json,os,struct,sys,threading,time
+import argparse,concurrent.futures,hashlib,json,time
 from pathlib import Path
 import numpy as np
 import boto3
@@ -61,7 +61,6 @@ def main(run,workers=16):
     assert (state['sourceSize'],state['sourceMtimeNs'])==(hfile.stat().st_size,hfile.stat().st_mtime_ns)
     access,secret=load_credentials(Path.home()/'.config/utxo-r2/credentials')
     s3=boto3.client('s3',endpoint_url=ENDPOINT,aws_access_key_id=access,aws_secret_access_key=secret,region_name='auto',config=Config(retries={'max_attempts':8,'mode':'adaptive'},max_pool_connections=max(12,workers),connect_timeout=20,read_timeout=300))
-    lock=threading.Lock()
     def upload(key,body,content_type='application/octet-stream'):
         md5=hashlib.md5(body).hexdigest()
         try:
