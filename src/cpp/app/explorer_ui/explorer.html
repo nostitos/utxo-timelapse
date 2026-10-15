@@ -115,6 +115,9 @@
   }
   .guideLink { color:inherit; text-decoration:none; border:1px solid #2a3245; border-radius:4px; padding:4px 10px; font-size:12px; white-space:nowrap; }
   .guideLink:hover { color:#a8d6b3; border-color:#a8d6b3; }
+  /* Quiet link to the 3D landscape preview: hint-coloured text, no button chrome. */
+  #landscapeLink { color:#565f74; text-decoration:none; font-size:12px; padding:4px 2px; white-space:nowrap; flex-shrink:0; }
+  #landscapeLink:hover { color:#a8d6b3; }
 
   /* Transport keeps play between the two directions at every viewport size. */
   .transport { display:flex; align-items:center; gap:14px; flex-shrink:0; }
@@ -194,6 +197,7 @@
   #controlOptions .jumpControls>*, #controlOptions .dateControl>input,
   #controlOptions #shareView, #controlOptions .tog, #controls #fsBtn,
   #controlOptions .guideLink, #controlOptions #helpBtn { order:4; }
+  #controlOptions #landscapeLink { order:4; }
   #controls #hint { order:5; }
   @media (max-width:760px), (pointer:coarse), (max-height:500px) and (orientation:landscape) {
     #controls, body.fs #controls {
@@ -236,6 +240,7 @@
     #controlOptions .dateControl>span { display:block; }
     #controls #dateInput { width:100%; min-width:0; font-size:16px; }
     #controlOptions #shareView, #controlOptions .guideLink, #controlOptions #helpBtn { display:flex; align-items:center; justify-content:center; gap:3px; font-size:13px; padding:6px; }
+    #controlOptions #landscapeLink { display:flex; align-items:center; justify-content:center; min-height:44px; font-size:13px; }
     #controlOptions #shareView .share-long { display:inline; }
     #controlOptions .tog { display:flex; min-height:44px; font-size:13px; }
     #controlOptions .tog input { width:20px; min-height:20px; margin:0 4px 0 0; }
@@ -315,6 +320,7 @@
       <label class="tog"><input id="loupeTog" type="checkbox" checked> magnifier</label>
       <a class="guideLink" href="https://bitcointimelapse.com/guide/" target="_blank" rel="noopener">Guide ↗</a>
       <button id="helpBtn" type="button" title="What is this? (?)" aria-label="About this explorer">?</button>
+      <a id="landscapeLink" href="https://bitcoinlandscape.com/" target="_blank" rel="noopener" title="3D landscape (preview)">3D</a>
       <div class="extendedSteps" role="group" aria-label="Skip blocks"><button type="button" data-block-step="-20" aria-label="Back 20 blocks">‹‹ Back 20 blocks</button><button type="button" data-block-step="20" aria-label="Forward 20 blocks">Forward 20 blocks ››</button></div>
     </div>
     <span id="hint">pause &amp; click a pixel</span>
@@ -651,6 +657,14 @@ document.getElementById("aboutClose").onclick = hideAbout;
 about.addEventListener("click", e => { if (e.target === about) hideAbout(); });
 // Help remains available from [?]; keep the initial playback visible.
 
+// Link to the 3D landscape preview, opened at the current block.
+const landscapeLink = document.getElementById("landscapeLink");
+const LANDSCAPE_BASE = ["localhost", "127.0.0.1", "[::1]", "::1"].includes(location.hostname)
+  ? "http://127.0.0.1:12990/" : "https://bitcoinlandscape.com/";
+function updateLandscapeLink() { landscapeLink.href = LANDSCAPE_BASE + (info ? "#b=" + curBlock() : ""); }
+for (const type of ["pointerenter", "click"]) landscapeLink.addEventListener(type, updateLandscapeLink);
+updateLandscapeLink();
+
 // ---- fullscreen: hides the control bar; F toggles, Esc leaves (browser default) ----
 function toggleFullscreen() {
   const el = document.documentElement;
@@ -712,7 +726,7 @@ document.addEventListener("keydown", e => {
   });
 });
 controlOptions.addEventListener("click", e => {
-  if (e.target.closest("#shareView, #helpBtn, .guideLink")) closeControlOptions();
+  if (e.target.closest("#shareView, #helpBtn, .guideLink, #landscapeLink")) closeControlOptions();
 });
 compactControls.addEventListener("change", () => closeControlOptions());
 
