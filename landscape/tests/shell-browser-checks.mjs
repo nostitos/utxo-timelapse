@@ -1199,6 +1199,53 @@ const CHECKS = [
     ],
   },
   {
+    name: 'earth-horizon',
+    timeout: 180000,
+    script: `await idle(); await sleep(500);
+      // Earth's sea seen from high up (render/index.js horizonFar, render/env.js volume box).
+      const S = L.settings; const start = L.controls.getPose(); const startQuality = S.quality;
+      const bands = async () => {
+        const d = (await frameImage(48, 27)).getContext('2d').getImageData(0, 0, 48, 27).data;
+        const out = [];
+        for (let band = 0; band < 9; band++) {
+          let r = 0, g = 0, b = 0;
+          for (let i = band * 3 * 48 * 4; i < (band + 1) * 3 * 48 * 4; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+          out.push([r, g, b].map((c) => Math.round(c / 144)));
+        }
+        return out;
+      };
+      const out = { backend: L.view.backend };
+      S.setQuality('High'); S.setLook('Earth');
+      // From the height ceiling, 30 degrees down: below the top band of sky every band is sea. The
+      // 6,000-unit far plane cut the sea a few degrees below the horizon and left a brown band
+      // (the sky beneath the horizon) between the sea and the sky.
+      L.controls.setPose({ x: 480, y: 4000, z: 640, yaw: 0, pitch: -30 }); await settled(1200);
+      out.top = { far: Math.round(L.view.camera.far), floor: Math.round(L.view.terrain.meshes.floor.scale.x), bands: await bands() };
+      // Ultra's volumetric light 1,500 units up: next to no haze lies under the camera, so the frame
+      // stays High's. With the camera above the volume box the sky leaked into the volumetric pass
+      // and washed the sea out around a dark square under the camera.
+      const high = { x: 480, y: 1500, z: 1400, yaw: 0, pitch: -40 };
+      L.controls.setPose(high); const gHigh = await settled(1200);
+      out.volumetric = { quality: S.setQuality('Ultra') };
+      const gUltra = await settled(1500);
+      out.volumetric.on = !!L.view.env.volumetricOn;
+      out.volumetric.diff = Math.round(gridDiff(gHigh, gUltra) * 100) / 100;
+      // Other looks keep the 6,000-unit far plane.
+      S.setQuality('High'); S.setLook('Landscape'); await settled(600);
+      out.otherFar = L.view.camera.far;
+      S.setQuality(startQuality); L.controls.setPose(start);
+      out.frameError = L.frameError || null;
+      return out;`,
+    expect: (v) => [
+      ['from 4,000 units up Earth\'s sea reaches the horizon: far plane ' + v.top.far + ', bands below the sky ' + v.top.bands.slice(1).map((c) => c.join(',')).join(' '),
+        v.top.far > 100000 && v.top.floor >= 2.2 * v.top.far - 1 && v.top.bands.slice(1).every(([r, , b]) => b > r + 40)],
+      ['Ultra\'s volumetric light leaves the sea under a high camera as High shows it (mean RGB difference ' + v.volumetric.diff + ')',
+        v.backend !== 'webgpu' || (v.volumetric.on && v.volumetric.diff < 3)],
+      ['other looks keep the 6,000-unit far plane (' + v.otherFar + ')', v.otherFar === 6000],
+      ['no frame errors', v.frameError === null],
+    ],
+  },
+  {
     name: 'settings-audit',
     optIn: 'audit',
     timeout: 3600000,
