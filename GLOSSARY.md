@@ -67,7 +67,7 @@ X coordinates are clamped then truncated to integer pixels. Positions stay stabl
 
 | Term / identifier | Meaning |
 |---|---|
-| Landscape | Browser explorer, run locally or online at [3d.bitcointimelapse.com](https://3d.bitcointimelapse.com/), that shows the UTXO set as terrain: creation block left to right (linear, 64 blocks per column), film amount rows front to back, a switchable measure as height and colour. See [landscape guide](docs/landscape.md). |
+| Landscape | Browser explorer, run locally or online at [bitcoinlandscape.com](https://bitcoinlandscape.com/) (also 3d.bitcointimelapse.com), that shows the UTXO set as terrain: creation block left to right (linear, 64 blocks per column), film amount rows front to back, a switchable measure as height and colour. See [landscape guide](docs/landscape.md). |
 | Landscape cell | 64 consecutive creation blocks × one film amount row at level 0. It holds four exact integers: count and satoshi sum of outputs up to 5 BTC and above 5 BTC. Coarser levels (1–6) sum blocks two by two and rows up to 16 at a time. |
 | Coin stack | The default near-camera drawing of a landscape cell with WebGPU: one cylinder per occupied level-0 cell, coloured by its exact palette value, with decorative coin lines whose spacing does not count outputs. The heightfield draws the cells beyond them. Setting `geo.columns`. |
 | Landscape tile | 256 × 256 cells of one level; the unit of snapshot storage, browser residency and GPU atlas slots. 758 tiles cover the seven levels. |
