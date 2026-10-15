@@ -173,6 +173,10 @@ docker stats --no-stream   # when using Docker
 ```
 
 Stop nonessential workloads or move generation to a machine with more memory.
+The updater only needs Bitcoin Core's REST port, the BLK file and the checkpoint,
+so another machine can resume from a copy of the checkpoint beside a copy of the
+matching BLK, reaching REST through an SSH tunnel; the October 15, 2026 update did
+this on the Mac ([report](history/site-update-2026-10-15.md)).
 Deleting a checkpoint forces a genesis replay and should only be done after
 backing it up.
 

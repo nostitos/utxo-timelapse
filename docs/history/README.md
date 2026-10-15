@@ -8,6 +8,7 @@ These dated records preserve prior decisions and cleanup evidence. Paths, render
 - [September 13 journal append](video-update-2026-09-13-journal.md)
 - [September 18 1440p compatibility release](compat-rendition-2026-09-18.md)
 - [October 9 site update and node timing estimate](site-update-2026-10-09.md)
+- [October 15 site update with the updater on the Mac](site-update-2026-10-15.md)
 - [Artifact manifest](cleanup-audit-2026-09-09/artifact-manifest.csv)
 - [Audit summary](cleanup-audit-2026-09-09/audit-summary.json)
 - [Completion record](cleanup-audit-2026-09-09/completion.json)

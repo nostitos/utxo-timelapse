@@ -1,6 +1,6 @@
 # Current render and update files
 
-**October 9 site update completed:** the working BLK, exact history, node v3 pair, both published video streams and the 3D landscape cover block 970,658. The 4K and 1440p tails, the history patches and a rebuilt 3D dataset were published; earlier objects are reused. See the [October 9 report](history/site-update-2026-10-09.md), which also estimates a node-only pipeline from measured benchmarks.
+**October 15 site update completed:** the working BLK, exact history, both published video streams and the 3D landscape cover block 971,587. The node's v3 pair still ends at 970,658: the node VM now has 20 GB of memory, too little for the updater, so the same v3 updater ran on this Mac from a copy of the node's checkpoint, and its checkpoint at 971,587 stays on the Mac (see [Next update](#next-update)). The 4K and 1440p tails, the history patches and a rebuilt 3D dataset were published; earlier objects are reused. See the [October 15 report](history/site-update-2026-10-15.md) and, for the node timing estimate, the [October 9 report](history/site-update-2026-10-09.md).
 
 After the September 9, 2026 cleanup, keep these working files in their existing locations. No additional backup copy of the update data is retained.
 
@@ -10,33 +10,34 @@ All large working files are in `/Volumes/4T Data/buv_render/`:
 
 | File | Purpose | Size |
 |---|---|---:|
-| `utxo_4k_epoch105k_60fps_transition_crf21_to_970658.mp4` | Latest video and source for the next append | 84.66 GB |
-| `changes.blk1.full964k` | Working render input, blocks 0–970,658 | 18.46 GB |
-| `utxo_history.bin` | Pixel-explorer history, extendable with `utxo_history_update` | 59.03 GB |
-| `renderer_before_969240.bin` | Validated renderer ledger before block 969,240; skips genesis replay on the next compatible append | 980 MB |
+| `utxo_4k_epoch105k_60fps_transition_crf21_to_971587.mp4` | Latest video and source for the next append | 84.77 GB |
+| `changes.blk1.full964k` | Working render input, blocks 0–971,587 | 18.49 GB |
+| `utxo_history.bin` | Pixel-explorer history, extendable with `utxo_history_update` | 59.15 GB |
+| `renderer_before_970200.bin` | Validated renderer ledger before block 970,200; skips genesis replay on the next compatible append | 981 MB |
 | `renderer_checkpoint_current.json` | Pointer to the validated checkpoint, source/config and raw-frame proof | Small |
 | `changes.blk1.full964k.idx` | Disposable block-offset cache, rebuilt/extended if needed | 7.8 MB |
 | `changes.blk1.full964k.chunks.json` | Verified SHA-256 prefix chunks; reuse requires protected-source continuity | Small |
-| `history_positions/` | Validated cloud-record position cache; avoids repeated old-shard sorting | 14.66 GB |
+| `history_positions/` | Validated cloud-record position cache; avoids repeated old-shard sorting | 14.81 GB |
 | `history_delta_objects/` | Read-through cache of small published spend patches; new staged objects can share hard links | About 46 MB initially |
 | `history_publication_current.json` | Pointer to the validated current-data publication catalog | Small |
-| `compat1440-append970658-20261009/` | 1440p append run; its ledger and `update_20261009/compat-staged/segments.json` (with object URIs) are the previous ledger for the next 1440p append | 225 MB |
-| `landscape_970658/` | 3D dataset published as `d970658-20261009`; the previous `landscape_966827/` stays until its R2 prefix is retired | 71 GiB |
+| `compat1440-append971587-20261015/` | 1440p append run; its ledger and `update_20261015/compat-staged/segments.json` (with object URIs) are the previous ledger for the next 1440p append. The init segment is still `compat1440-20260918/ledger/5156c6f2….mp4` | 72 MB |
+| `update_20261015/extract/checkpoint_v3.utxo` | v3 updater checkpoint at block 971,587, matching `changes.blk1.full964k`; the next extraction resumes from it (the node's pair is older) | 11.04 GB |
+| `landscape_971587/` | 3D dataset published as `d971587-20261015`; the previous `landscape_970658/` and `landscape_966827/` stay until their R2 prefixes are retired | 71 GiB |
 
 Render settings: `configs/buv_render_full_weighted.json`.
 Encoder/supervisor recipe: `scripts/run_full_transition_crf21.sh`.
 Explorer settings: `configs/buv_explorer.json` and the installed copy under `~/.local/share/buv-explorer/configs/`.
 
-The retained master is 3840×2160, 60 fps, HEVC 4:4:4 CRF 21, with 970,959 frames including the 300-frame ending. Rendering is possible from the local changes file without a node connection. Choose a new output filename for another render; the existing supervisor correctly refuses to overwrite the latest video.
+The retained master is 3840×2160, 60 fps, HEVC 4:4:4 CRF 21, with 971,888 frames including the 300-frame ending. Rendering is possible from the local changes file without a node connection. Choose a new output filename for another render; the existing supervisor correctly refuses to overwrite the latest video.
 
-The previous full HLS staging directory was removed during cleanup. The current run retains append staging, drivers and diagnostics under `update_20261009/`; cloud v6 reuses 1,611 existing segments (v1 indices 0–1606, v3 1607–1609, v4 1610) plus eight new segments 1611–1618, and cloud compat2 reuses 4,029 compat1 objects plus 18 new ones. Cloud history uses the validated per-shard catalog in this run's `history-staged/catalog.json`; follow `history_publication_current.json` for subsequent updates. Do not regenerate/upload the full HLS stream for the next append. Keep publishing scripts, upload state/credentials, and `cloudflare/` sources. Deployed cloud HLS/history/UI objects were not removed and the public site does not depend on the Mac being online.
+The previous full HLS staging directory was removed during cleanup. The current run retains append staging, drivers and diagnostics under `update_20261015/`; cloud v7 reuses 1,617 existing segments (v1 indices 0–1606, v3 1607–1609, v4 1610, v6 1611–1616) plus three new segments 1617–1619, and cloud compat3 reuses 4,044 compat1/compat2 objects plus 6 new ones. Cloud history uses the validated per-shard catalog in this run's `history-staged/catalog.json`; follow `history_publication_current.json` for subsequent updates. Do not regenerate/upload the full HLS stream for the next append. The next append needs fresh prefixes (`v8`, `compat4`) added to the video Worker's allowlist. Keep publishing scripts, upload state/credentials, and `cloudflare/` sources. Deployed cloud HLS/history/UI objects were not removed and the public site does not depend on the Mac being online.
 
 ## Umbrel: update processed block data
 
 | File | Purpose | Size |
 |---|---|---:|
-| `/home/umbrel/buv_data/changes.blk1.v3` | Full incremental changes stream, currently through block 970,658 | 18.46 GB |
-| `/home/umbrel/buv_data/checkpoint_v3.utxo` | Matching state for processing new blocks | 10.95 GB |
+| `/home/umbrel/buv_data/changes.blk1.v3` | Full incremental changes stream, currently through block 970,658 (the Mac is ahead at 971,587) | 18.46 GB |
+| `/home/umbrel/buv_data/checkpoint_v3.utxo` | Matching state for processing new blocks, at 970,658 | 10.95 GB |
 
 Use the v3 implementation: retained container `buv_blk_v3`, image `buv:checkpoint-v3`, and `/home/umbrel/buv_v3_patch/buv_node_checkpoint_v3.json`. The checkpoint's marker, height, recorded BLK length, final record hash and EOF were checked against the node during cleanup. The two files must remain matched.
 
@@ -44,8 +45,8 @@ Use the v3 implementation: retained container `buv_blk_v3`, image `buv:checkpoin
 
 ## Next update
 
-1. Run the existing v3 updater on the node, keeping its BLK/checkpoint pair consistent. Do not refresh data merely as part of rendering a chosen existing range.
-2. Verify the node stream has the exact local BLK prefix, transfer only the suffix, check its hash and contiguous block heights, then append it to the existing local input. No permanent second local dataset or Mac checkpoint copy is required.
+1. Run the v3 updater, keeping its BLK/checkpoint pair consistent. Do not refresh data merely as part of rendering a chosen existing range. While the node has 20 GB of memory, run it on the Mac as on October 15: clone `changes.blk1.full964k` (`cp -c`) beside a copy of `update_20261015/extract/checkpoint_v3.utxo`, and point the node's v3 config at them and at the node's REST port through an SSH tunnel (`update_20261015/extract/` has the config, tunnel and wrapper). The node can take over again once it has about 19 GiB free; it then resumes from its own pair at 970,658, and step 2's prefix proof checks that its output equals the Mac's.
+2. Verify the updater's stream has the exact local BLK prefix, transfer only the suffix, check its hash and contiguous block heights, then append it to the existing local input (`sync_blk_append.py`; `update_20261015/run_update.py` shows the settings for a Mac source). No permanent second local dataset is required.
 3. Extend compatible explorer history with `utxo_history_update`; validate source/history continuity first. Keep the published current video's mapping unchanged until its replacement is ready.
    Use the [journal-based publisher](history-delta-publication.md): prepare a fresh `historyDeltaFile` before the history update, and start from the catalog in `history_publication_current.json`. Do not update history un-journaled and then invoke the old full-scan publisher.
 4. Load the validated compatible renderer checkpoint, replay only the short warm-up, and encode the new tail plus a small closed-GOP overlap. Save a rolling checkpoint for the next append. Remove the old ending and publish only replacement/added HLS segments and history patches. Verify playback, counts and metadata before promotion. A single MP4 export can be packet-copy assembled separately when needed.
@@ -68,10 +69,13 @@ container each night. The October 9 umbrelOS update replaced the system partitio
 and removed the timer, its service and `/usr/local/lib/utxo-timelapse`. Docker, the
 `buv_blk_v3` container and everything under `/home` survived. Run the updater
 manually (see the [October 9 report](history/site-update-2026-10-09.md)); it needs
-about 19 GiB of free memory at its peak. Anything installed outside `/home` on the
+about 19 GiB of free memory at its peak. Since a restart on October 11 the node VM
+has 20 GB (19.07 GiB usable, 8.3 GiB available with Bitcoin Core and Fulcrum
+running), so the October 15 update ran the updater on the Mac instead (see the
+[October 15 report](history/site-update-2026-10-15.md)). Anything installed outside `/home` on the
 node disappears at the next umbrelOS update.
 
-The five core working files are the latest master, local BLK/history, and node BLK/checkpoint, excluding Bitcoin Core data, software and cloud-hosted copies. Earlier masters, including the September 10 and September 13 masters, were preserved by these updates. They are rollback artifacts, not inputs required for the next append. The old renderer checkpoints are likewise preserved; `renderer_checkpoint_current.json` now points to the validated rolling checkpoint before 969,240. The Mac input is a working dataset and the node pair is the updater's state; there is no extra backup pair.
+The core working files are the latest master, local BLK/history, the Mac's updater checkpoint at 971,587 and the node BLK/checkpoint at 970,658, excluding Bitcoin Core data, software and cloud-hosted copies. Earlier masters, including the September 10, September 13 and October 9 masters, were preserved by these updates. They are rollback artifacts, not inputs required for the next append. The old renderer checkpoints are likewise preserved; `renderer_checkpoint_current.json` now points to the validated rolling checkpoint before 970,200. The Mac input is a working dataset and an updater checkpoint is the updater's state; there is no extra backup pair.
 
 Legacy `buv_data/buv_resume.json` and `buv_data/buv_update_mac.json`, v2 presets and `buv_deploy` recipes are historical source records. Their old datasets were retired. The current local render presets and canonical v3 update configuration are the maintained paths above.
 
