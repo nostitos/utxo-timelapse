@@ -1170,6 +1170,35 @@ const CHECKS = [
     ],
   },
   {
+    name: 'god-rays',
+    timeout: 120000,
+    script: `await idle(); await sleep(500);
+      // Facing a low sun, god rays change the picture. Until October 2026 their sky mask took the
+      // view ray from the post pass's own camera, never met the sun, and the setting did nothing.
+      const S = L.settings; const u = L.view.env.uniforms;
+      S.setQuality('High'); S.setLook('Golden hour'); S.set('light.sunElevation', 6); await sleep(600);
+      let best = null;
+      for (let yaw = -180; yaw < 180; yaw += 5) {
+        L.controls.setPose({ x: 600, y: 30, z: 120, yaw, pitch: 0 }); await sleep(40);
+        const d = Math.hypot(u.sunScreen.value.x - 0.5, u.sunScreen.value.y - 0.5);
+        if (u.sunVisible.value > 0.5 && (!best || d < best.d)) best = { yaw, d };
+      }
+      L.controls.setPose({ x: 600, y: 30, z: 120, yaw: best.yaw, pitch: 0 });
+      S.set('light.godRays', false); const off = await settled(1500);
+      S.set('light.godRays', true); const on = await settled(1500);
+      const shot = await jpeg(640, 360);
+      S.setLook('Landscape'); L.controls.setPose(POSES.close);
+      return { yaw: best.yaw, diff: Math.round(gridDiff(off, on) * 100) / 100, shot, frameError: L.frameError || null };`,
+    node: (v) => {
+      if (shots) writeFileSync(join(shots, 'god-rays.jpg'), Buffer.from(v.shot.split(',')[1], 'base64'));
+      v.shot = 'god-rays.jpg';
+    },
+    expect: (v) => [
+      ['god rays change the picture facing a low sun (Golden hour, mean RGB difference ' + v.diff + ')', v.diff >= 5],
+      ['no frame errors', v.frameError === null],
+    ],
+  },
+  {
     name: 'settings-audit',
     optIn: 'audit',
     timeout: 3600000,
