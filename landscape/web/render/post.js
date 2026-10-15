@@ -20,7 +20,7 @@ import {
   uv,
   toneMapping, convertColorSpace, luminance, mix, smoothstep, clamp, pow, max, dot, length, normalize, exp,
   exp2, log2, texture, texture3D, textureLoad, textureSize, rand, fract, time, hue, step, select,
-  instancedArray, instanceIndex, Loop, If, getViewPosition, cameraProjectionMatrixInverse, cameraWorldMatrix,
+  instancedArray, instanceIndex, Loop, If, getViewPosition,
 } from 'three/tsl';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { ssao } from 'three/addons/tsl/display/SSAONode.js';
@@ -325,13 +325,18 @@ export function createPost({ renderer, scene, camera, env, capabilities, aoBound
       const occlusion = Fn(() => {
         // uv() of the full-screen pass: top-left origin in both backends, the convention of
         // getViewPosition and of the radial blur centre (env.uniforms.sunScreen).
+        // The view ray uses the scene camera's matrices (sceneProjInv, sceneWorld above): the
+        // built-in camera nodes belong to this pass's own quad camera, so with them the ray
+        // never met the sun and god rays added nothing until October 2026. The glow is scaled
+        // for that ray: at intensity 1 a sun in view gets a warm halo and shafts past the
+        // landscape's silhouette, at 4 the haze around it turns bright.
         const quv = uv();
         const d = depthTex.sample(quv).r;
         const sky = step(0.999999, d);
-        const viewPos = getViewPosition(quv, float(1), cameraProjectionMatrixInverse);
-        const dir = normalize(cameraWorldMatrix.mul(vec4(viewPos, 0)).xyz);
+        const viewPos = getViewPosition(quv, float(1), sceneProjInv);
+        const dir = normalize(sceneWorld.mul(vec4(viewPos, 0)).xyz);
         const c = max(dot(dir, eu.sunDir), 0);
-        const glow = pow(c, 24).add(pow(c, 400).mul(4));
+        const glow = pow(c, 24).add(pow(c, 400).mul(4)).mul(0.04);
         return vec4(eu.sunColor.mul(glow).mul(sky), 1);
       });
       // Occlusion and radial blur at half resolution (full-res 64-tap blur cost ~10 ms at 4K).

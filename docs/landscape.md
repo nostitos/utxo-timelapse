@@ -288,9 +288,11 @@ Advanced holds every setting in seven groups, with search, JSON export and impor
 
 ### Settings audit
 
-The opt-in `settings-audit` browser check (`--audit`, about 25 minutes) starts at Extreme quality on the Landscape look with every effect on, sets each of the 123 look and quality settings to its minimum, default and maximum (every option of a list), and compares a 48 × 27 average of the frame at three cameras: the overview, a close view near the tip and a low view toward the horizon. It then breaks each setting's first condition and checks that the setting stops changing the frame. On 2026-10-13, 107 settings changed the frame by at least 0.5 (mean RGB difference out of 255) at one camera or more, and with its condition broken, no setting changed it at all.
+The opt-in `settings-audit` browser check (`--audit`, about 25 minutes) starts at Extreme quality on the Landscape look with every effect on, sets each of the 129 look and quality settings to its minimum, default and maximum (every option of a list), and compares a 48 × 27 average of the frame at three cameras: the overview, a close view near the tip and a low view toward the horizon. It then breaks each setting's first condition and checks that the setting stops changing the frame. On 2026-10-15 (dataset tip 970,658), 112 settings changed the frame by at least 0.5 (mean RGB difference out of 255) at one camera or more, and with its condition broken, no setting changed it by 0.5 or more. The largest, 0.42, was Flash floor with heat gain 0; the shader multiplies the floor by heat gain, so that difference comes from the replayed blocks.
 
-The audit found three problems, fixed in the same change:
+Five of the six settings added since the first run change the frame: Ground to the horizon (23.5 in the overview), Same at every distance (14.6) and its Uniform level (35.2), Stepped whale rows (1.1) and Far columns (0.58); Far column shadows is in the last table. Shadows with its cascades, map size and softness, the stars and their density, Column radius and Flash threshold, all under 0.5 on 2026-10-13, now pass: the first run measured them with the earlier default, a high sun, and the low view now shows the blue-hour sky with its first stars.
+
+The first run, on 2026-10-13, found three problems, fixed in the same change:
 
 | Problem | What happened | Fix |
 |---|---|---|
@@ -298,19 +300,27 @@ The audit found three problems, fixed in the same change:
 | Zero G-buffer outputs of the now plane and the flash sprites | At Performance and Film (now BitcoinTimelapse.com), which have no G-buffer, the now plane's shader failed to compile, so Now plane did nothing and the console filled with errors, also online. At Extreme with motion blur off, and with 2× supersampling and SSR, every frame came out black | They write zero only to the attachments the scene pass has, each with its own constant (`render/gbuffer.js`); the `render-layouts` check covers these layouts |
 | Wrong conditions | The sun's direction, colour and shadows still give specular highlights at albedo 0; floor reflection darkens the floor without SSR; the shadow filter also sets the volumetric light's shadow map; volumetric light changes the frame at fog density 0 | Conditions corrected |
 
-Sixteen settings changed the frame by less than 0.5 in all three views. None is broken; each needs a view or a moment the audit does not show:
+The 2026-10-15 run, and views taken afterwards to explain its results, found two more:
+
+| Problem | What happened | Fix |
+|---|---|---|
+| God rays did nothing | Facing a sun 6° above the horizon, turning god rays on changed the frame by 0.56 at intensity 4, and on Golden hour, which turns them on for its light shafts, by 0.14. The sky glow they blur took its view ray from the post pass's own full-screen camera, so the ray never met the sun | The glow uses the scene camera's matrices, like the ambient occlusion bounds, and is scaled for them: at intensity 1 a sun in view gets a warm halo and shafts past the landscape's silhouette. The `god-rays` check turns them on facing a low sun on Golden hour and needs a change of 5 or more |
+| Hard edge of the volumetric light | Looking toward a low sun at Ultra or Extreme (Golden hour), the scattered light filled a bright ellipse around the sun with a sharp rim | Still open: the likely cause is the cone of the spotlight that lights the volumetric pass (`render/env.js`: half-angle about 27°, penumbra 0.02), seen end-on |
+
+Seventeen settings changed the frame by less than 0.5 in all three views. Apart from god rays, fixed since, none is broken; each needs a view or a moment the audit does not show:
 
 | Settings | When they show |
 |---|---|
-| Shadows (0.08), and faintly cascades, map size and softness | Measured with the earlier default, a high sun; the glowing palette leaves little to shade, and a low sun (Sunrise, Sunset, Golden hour) casts long shadows |
+| Now plane (0.28) | Seen face-on. The overview stands almost in line with the plane at the replay block and sees it edge-on, and from the close view it stands behind the columns at the tip. From the empty side of the replay block it changes the frame by 0.9 at its default 0.15, and by 3.4 to 6.7 at full opacity at every quality and on BitcoinTimelapse.com |
+| Creation-edge glow and Edge width (0.42, 0.47) | Beside the newest cells: the default 1,008 blocks are a strip about one unit wide at the replay block; seen from beside it, glow 0 → 10 changes the frame by 26 |
+| White-hot whale rows (0.02) | Where the rows of 10 BTC and above are in view: the far side of the default view, or from behind |
+| Cylinder sides, cell shape, instance budget (0–0.47) | Close to the columns: sides apply only to columns wide on screen, the budget only when more columns are wanted than it allows |
+| Far column shadows (0.06) | Hardly: with a midday sun (Daylight at High) it changes the low view by 0.54; Off mainly saves the columns' shadow cost |
+| Smoothing, subdivision and skirts (0.23–0.4) | In the heightfield beyond the columns, close up |
+| Volumetric steps (0.11) and SSR steps (0.29) | Barely: the volumetric pass is blurred to hide its dither, so more steps change little (0.23 facing the sun), and SSR steps refine reflections that cover a small part of these views (SSR itself changes the close view by 2.2) |
 | SSGI intensity (0) | Not visibly: SSGI's indirect light is too faint at any intensity, and what SSGI adds is its ambient occlusion |
-| God rays and their intensity (0) | With the sun in or near the view |
-| Stars and star density (0.02, 0.04) | At night or with the sky off; daylight hides them |
-| White-hot whale rows (0.01) | Where the rows of 10 BTC and above are in view: the far side of the default view, or from behind |
-| Cylinder sides, cell shape, column radius, instance budget (0–0.47) | Close to the columns: sides apply only to columns wide on screen, radius and budget only when more columns are wanted than they allow |
-| Smoothing, subdivision and skirts (0.22–0.34) | In the heightfield beyond the columns, close up |
-| Flash threshold (0.2) | During playback, for small spends |
-| Anti-aliasing (0.29) | On edges; at Extreme, supersampling already smooths them |
+| God rays and their intensity (0) | With the sun in or near the view; 0 in this run because of the bug above |
+| Anti-aliasing (0.38) | On edges; at Extreme, supersampling already smooths them |
 
 The full results are in `settings-audit.json` in the `--shots` directory.
 
