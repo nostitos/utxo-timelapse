@@ -300,12 +300,12 @@ The first run, on 2026-10-13, found three problems, fixed in the same change:
 | Zero G-buffer outputs of the now plane and the flash sprites | At Performance and Film (now BitcoinTimelapse.com), which have no G-buffer, the now plane's shader failed to compile, so Now plane did nothing and the console filled with errors, also online. At Extreme with motion blur off, and with 2× supersampling and SSR, every frame came out black | They write zero only to the attachments the scene pass has, each with its own constant (`render/gbuffer.js`); the `render-layouts` check covers these layouts |
 | Wrong conditions | The sun's direction, colour and shadows still give specular highlights at albedo 0; floor reflection darkens the floor without SSR; the shadow filter also sets the volumetric light's shadow map; volumetric light changes the frame at fog density 0 | Conditions corrected |
 
-The 2026-10-15 run, and views taken afterwards to explain its results, found two more:
+The 2026-10-15 run, and views taken afterwards to explain its results, found two more, both fixed:
 
 | Problem | What happened | Fix |
 |---|---|---|
 | God rays did nothing | Facing a sun 6° above the horizon, turning god rays on changed the frame by 0.56 at intensity 4, and on Golden hour, which turns them on for its light shafts, by 0.14. The sky glow they blur took its view ray from the post pass's own full-screen camera, so the ray never met the sun | The glow uses the scene camera's matrices, like the ambient occlusion bounds, and is scaled for them: at intensity 1 a sun in view gets a warm halo and shafts past the landscape's silhouette. The `god-rays` check turns them on facing a low sun on Golden hour and needs a change of 5 or more |
-| Hard edge of the volumetric light | Looking toward a low sun at Ultra or Extreme (Golden hour), the scattered light filled a bright ellipse around the sun with a sharp rim | Still open: the likely cause is the cone of the spotlight that lights the volumetric pass (`render/env.js`: half-angle about 27°, penumbra 0.02), seen end-on |
+| Hard rim around a low sun | Looking toward a low sun at Ultra or Extreme (Golden hour), the volumetric glow around the sun bloomed as a bright ellipse with a sharp rim. The spotlight cone that lights the volumetric pass was not the cause: widening it or softening its penumbra changed nothing. Bloom's high-pass lets a pixel through in full once its luminance is 0.01 above the threshold, so the broad glow crossed it along one contour | Bloom fades in over a band half the threshold wide (`render/post.js`); the overview, close and map views of every look with bloom keep the same mean colour |
 
 Seventeen settings changed the frame by less than 0.5 in all three views. Apart from god rays, fixed since, none is broken; each needs a view or a moment the audit does not show:
 
