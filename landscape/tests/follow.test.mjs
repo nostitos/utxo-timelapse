@@ -1,4 +1,4 @@
-// Follow tip (landscape/web/ui/follow.js). Run: node --test landscape/tests/
+// Follow tip (landscape/web/ui/follow.js). Run: node --test landscape/tests/*.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createTipFollow, FOLLOW_TAU_S } from '../web/ui/follow.js';

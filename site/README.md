@@ -9,7 +9,7 @@ From the repository root:
 ```sh
 python3 -m http.server 8080 --directory site
 python3 scripts/check_site.py
-node --experimental-default-type=module scripts/check_site_mapping.mjs
+node scripts/check_site_mapping.mjs
 ```
 
 Open `http://localhost:8080/`. Also validate under a `/utxo-timelapse/` prefix before publishing. The Pages workflow runs link/asset/config coverage and mapper checks, then deploys only `site/` on pushes to `master`. Pull requests validate without deploying. Repository Pages settings must select **GitHub Actions**.
