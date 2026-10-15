@@ -470,11 +470,15 @@ export function createPost({ renderer, scene, camera, env, capabilities, aoBound
     U.godIntensity.value = Math.max(0, Number(s['light.godRaysIntensity']));
     U.bloomStrength.value = Math.max(0, Number(s['fx.bloomStrength']));
     U.bloomRadius.value = Math.min(1, Math.max(0, Number(s['fx.bloomRadius'])));
-    U.bloomThreshold.value = Math.max(0, Number(s['fx.bloomThreshold']));
-    // A soft knee half the threshold wide. three's high-pass lets a pixel through in full once its
-    // luminance is 0.01 above the threshold, so a broad, smooth glow (the volumetric light round a
-    // low sun at Ultra) bloomed as a flat plateau with a hard rim along that contour.
-    if (state.bloom && state.bloom.smoothWidth) state.bloom.smoothWidth.value = Math.max(0.01, 0.5 * U.bloomThreshold.value);
+    // A soft knee half the threshold wide, centred on it (0.75 to 1.25 times the threshold).
+    // three's high-pass lets a pixel through in full once its luminance is 0.01 above the
+    // threshold, so a broad, smooth glow (the volumetric light round a low sun at Ultra) bloomed
+    // as a flat plateau with a hard rim along that contour. Centring keeps the amount of bloom:
+    // a knee that started at the threshold took most of the Strong glow away.
+    const bloomThreshold = Math.max(0, Number(s['fx.bloomThreshold']));
+    const knee = Math.max(0.01, 0.5 * bloomThreshold);
+    U.bloomThreshold.value = Math.max(0, bloomThreshold - knee / 2);
+    if (state.bloom && state.bloom.smoothWidth) state.bloom.smoothWidth.value = knee;
     if (state.bloom && Array.isArray(state.bloom.bloomTintColors)) {
       const mips = Math.min(5, Math.max(1, Math.round(Number(s['fx.bloomMips']))));
       state.bloom.bloomTintColors.forEach((v, i) => v.setScalar(i < mips ? 1 : 0));
