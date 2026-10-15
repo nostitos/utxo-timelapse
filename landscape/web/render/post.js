@@ -10,7 +10,7 @@
 // Only enabled stages are built. A change in the plan (post-plan.js) rebuilds the output node;
 // numeric and colour settings only update uniforms.
 import {
-  RenderPipeline, Vector2, Vector3, Layers, Data3DTexture, HalfFloatType, RGBAFormat, LinearFilter,
+  RenderPipeline, Vector2, Vector3, Vector4, Layers, Data3DTexture, HalfFloatType, RGBAFormat, LinearFilter,
   ClampToEdgeWrapping, UnsignedByteType, DataUtils, NoToneMapping, LinearToneMapping, ReinhardToneMapping,
   ACESFilmicToneMapping, AgXToneMapping, NeutralToneMapping, LinearSRGBColorSpace, SRGBColorSpace, Color,
 } from 'three/webgpu';
@@ -47,6 +47,8 @@ const TONE = {
   agx: AgXToneMapping, neutral: NeutralToneMapping,
 };
 const DEG = Math.PI / 180;
+// Ambient occlusion fades out over this many world units outside the landscape (aoBounds).
+const AO_EDGE_FADE = 10;
 
 const toColor = (v, fallback) => {
   const c = new Color();
@@ -70,10 +72,13 @@ function makeLutTexture(lut) {
   return tex;
 }
 
-export function createPost({ renderer, scene, camera, env, capabilities }) {
+export function createPost({ renderer, scene, camera, env, capabilities, aoBounds = null }) {
   const pipeline = new RenderPipeline(renderer);
   pipeline.outputColorTransform = false;
   renderer.toneMapping = NoToneMapping;
+  // [minX, minZ, maxX, maxZ] of the landscape in world units; ambient occlusion applies inside
+  // and fades out within AO_EDGE_FADE outside. Without bounds it applies everywhere.
+  const aoBox = uniform(aoBounds ? new Vector4(...aoBounds) : new Vector4(-1e9, -1e9, 1e9, 1e9));
 
   const U = {
     aoIntensity: uniform(1),
@@ -247,6 +252,22 @@ export function createPost({ renderer, scene, camera, env, capabilities }) {
     // Lighting composites (AO, SSGI, SSR, volumetric, god rays) --------------------
     let litRGB = colorTex.rgb;
     let composite = false;
+    // Ambient occlusion stops at the landscape's edge. Outside it there is only the flat ground
+    // (Ground to the horizon takes it to the horizon), where nothing occludes; SSAO there drew
+    // dark wedges and stripes into the distant sea at grazing angles. The world position comes
+    // from the scene camera's matrices (this runs in a full-screen pass with its own camera).
+    const sceneProjInv = uniform(camera.projectionMatrixInverse);
+    const sceneWorld = uniform(camera.matrixWorld);
+    const aoTerm = (node) => {
+      const quv = uv();
+      const viewPos = getViewPosition(quv, depthTex.sample(quv).r, sceneProjInv);
+      const world = sceneWorld.mul(vec4(viewPos, 1)).xyz;
+      const dx = max(max(aoBox.x.sub(world.x), world.x.sub(aoBox.z)), 0);
+      const dz = max(max(aoBox.y.sub(world.z), world.z.sub(aoBox.w)), 0);
+      const inside = smoothstep(float(AO_EDGE_FADE), float(0), length(vec2(dx, dz)));
+      const occlusion = pow(node.getTextureNode().r.clamp(0, 1), U.aoIntensity);
+      return mix(float(1), occlusion, inside);
+    };
     if (p.ao === 'gtao') {
       const n = track(ao(depthTex, sceneNormal, camera));
       // Half resolution (temporal filtering under TRAA): full-resolution GTAO with 16 samples
@@ -254,13 +275,13 @@ export function createPost({ renderer, scene, camera, env, capabilities }) {
       n.resolutionScale = 0.5;
       n.useTemporalFiltering = p.traa;
       st.ao = n;
-      litRGB = litRGB.mul(pow(n.getTextureNode().r.clamp(0, 1), U.aoIntensity));
+      litRGB = litRGB.mul(aoTerm(n));
       composite = true;
     } else if (p.ao === 'ssao') {
       const n = track(ssao(depthTex, sceneNormal, camera));
       n.resolutionScale = 0.5;
       st.ao = n;
-      litRGB = litRGB.mul(pow(n.getTextureNode().r.clamp(0, 1), U.aoIntensity));
+      litRGB = litRGB.mul(aoTerm(n));
       composite = true;
     }
     if (p.ssgi) {
