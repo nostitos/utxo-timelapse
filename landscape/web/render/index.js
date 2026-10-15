@@ -11,6 +11,26 @@ import { readSettings } from './post-plan.js';
 export { probeCapabilities };
 
 const CAMERA_FAR = 6000;
+// Ground to the horizon (Earth's sea): from high up the far plane would cut the sea a few
+// degrees below the horizon, and the thin haze along those rays would leave the cut visible
+// as a line with the sky's colour beneath the horizon. The far plane then moves out until the
+// haze between the camera and the sea at that distance is opaque (optical depth 5), at most
+// this far. The near plane sets the depth precision, so a farther far plane costs little.
+const HORIZON_FAR_MAX = 400000;
+const HORIZON_OPTICAL_DEPTH = 5;
+
+/**
+ * Far plane for a camera at height y over a floor that reaches the horizon, under the
+ * exponential height fog of render/env.js (density at the ground, falloff per unit height).
+ * The fog's optical depth from height y to the ground over a distance d is about
+ * density × d × (1 − e^(−falloff·y)) / (falloff·y).
+ */
+export function horizonFar(y, density, falloff) {
+  if (!(density > 0)) return HORIZON_FAR_MAX;
+  const ky = Math.max(0, falloff) * Math.max(0, y);
+  const perUnit = ky > 1e-6 ? -Math.expm1(-ky) / ky : 1;
+  return Math.min(HORIZON_FAR_MAX, Math.max(CAMERA_FAR, HORIZON_OPTICAL_DEPTH / (density * perUnit)));
+}
 
 /**
  * @param {object} o
@@ -31,7 +51,11 @@ export async function createLandscapeView({
 
   const scene = new Scene();
   scene.name = 'utxo-landscape';
+  const readGroundHorizon = () => {
+    try { return !!(settings && typeof settings.get === 'function' && settings.get('geo.groundHorizon')); } catch { return false; }
+  };
   let s = readSettings(settings);
+  let groundHorizon = readGroundHorizon();
   const camera = new PerspectiveCamera(Number(s['camera.fov']) || 50, 16 / 9, 0.05, CAMERA_FAR);
   camera.name = 'view-camera';
   camera.position.set(483, 170, 360);
@@ -39,7 +63,7 @@ export async function createLandscapeView({
   camera.updateMatrixWorld();
 
   const env = createEnvironment({ renderer, scene, camera, capabilities });
-  env.sync(s);
+  env.sync(s, { groundHorizon });
 
   let terrainFactory = createTerrain;
   if (!terrainFactory) terrainFactory = (await import('./terrain/index.js')).createTerrain;
@@ -95,7 +119,8 @@ export async function createLandscapeView({
 
   function syncSettings() {
     s = readSettings(settings);
-    env.sync(s);
+    groundHorizon = readGroundHorizon();
+    env.sync(s, { groundHorizon });
     if (post.sync(s)) {
       rebuilds++;
       scaler.reset(performance.now());
@@ -129,18 +154,26 @@ export async function createLandscapeView({
   syncSettings();
   resize(true);
 
-  // Camera near plane follows the height above the terrain (depth precision for close flight).
+  // Camera near plane follows the height above the terrain (depth precision for close flight);
+  // over a floor that reaches the horizon the far plane follows the height too (horizonFar).
+  // Both move in quarter-octave steps, so the projection only changes now and then.
   let nearKey = 0;
+  let farKey = 0;
   function adaptClipPlanes() {
     let ground = 0;
     try { ground = terrain.heightAt(camera.position.x, camera.position.z) || 0; } catch { ground = 0; }
     const above = Math.max(0.005, camera.position.y - Math.max(0, ground));
     const near = Math.min(2, Math.max(0.01, above * 0.01));
     const k = Math.round(Math.log2(near) * 4);
-    if (k !== nearKey) {
+    const far = groundHorizon
+      ? horizonFar(camera.position.y, Number(s['light.fogDensity']), Number(s['light.fogHeightFalloff']))
+      : CAMERA_FAR;
+    const fk = Math.ceil(Math.log2(far / CAMERA_FAR) * 4);
+    if (k !== nearKey || fk !== farKey) {
       nearKey = k;
+      farKey = fk;
       camera.near = Math.pow(2, k / 4);
-      camera.far = CAMERA_FAR;
+      camera.far = CAMERA_FAR * Math.pow(2, fk / 4);
       camera.updateProjectionMatrix();
     }
   }

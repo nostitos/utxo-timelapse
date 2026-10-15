@@ -117,6 +117,9 @@ export function createEnvironment({ renderer, scene, camera, capabilities }) {
     starRadius: uniform(0.15),
     volDensity: uniform(1),
     volAnisotropy: uniform(0.55),
+    volCenter: uniform(new Vector2(0, 0)),
+    volRadius: uniform(400),
+    volFadeStart: uniform(2),
     sunScreen: uniform(new Vector2(0.5, 0.5)),
     sunVisible: uniform(0),
   };
@@ -248,7 +251,15 @@ export function createEnvironment({ renderer, scene, camera, capabilities }) {
     material.offsetNode = interleavedGradientNoise(screenCoordinate);
     material.scatteringNode = Fn(({ positionRay }) => {
       const h = positionRay.y.max(0);
-      const density = exp(h.mul(u.fogFalloff).negate()).mul(u.volDensity);
+      // Over a ground that reaches the horizon the march would stop at the volume's walls
+      // across open, flat ground, leaving a bright ridge on it where the walls meet the ground
+      // (most of the haze lies in the lowest few tens of units). There the density fades out
+      // from half the radius to the radius; elsewhere volFadeStart is 2, beyond the box's
+      // corners, and the fade is exactly 1.
+      const fromCamera = length(positionRay.xz.sub(u.volCenter));
+      const fadeFrom = u.volRadius.mul(u.volFadeStart);
+      const fade = float(1).sub(smoothstep(fadeFrom, max(fadeFrom.add(1), u.volRadius), fromCamera));
+      const density = exp(h.mul(u.fogFalloff).negate()).mul(u.volDensity).mul(fade);
       // Cosine between the view ray and the sun. The march ends at the camera, so where the
       // dither offset is close to 1 the last sample lies within a rounding error of it, and
       // normalising that near-zero vector gave cosines far outside [-1, 1]: the phase
@@ -295,7 +306,8 @@ export function createEnvironment({ renderer, scene, camera, capabilities }) {
 
   // Settings -------------------------------------------------------------------
   let volumetricOn = false;
-  function sync(s) {
+  /** groundHorizon: the floor reaches the horizon (geo.groundHorizon, read by the view). */
+  function sync(s, { groundHorizon = false } = {}) {
     sunDirection(Number(s['light.sunAzimuth']), Number(s['light.sunElevation']), sunDirV);
     u.sunDir.value.copy(sunDirV);
     const sunColor = toColor(s['light.sunColor'], '#ffffff');
@@ -311,6 +323,7 @@ export function createEnvironment({ renderer, scene, camera, capabilities }) {
     // 10 × fog density gives a scattering coefficient of 0.1 × the fog's extinction: the
     // analytic fog already supplies the ambient part of the haze, the volume adds sunlight.
     u.volDensity.value = 10 * u.fogDensity.value;
+    u.volFadeStart.value = groundHorizon ? 0.5 : 2;
     u.skyOn.value = s['light.sky'] ? 1 : 0;
     u.starsOn.value = s['light.stars'] ? 1 : 0;
     u.starDensity.value = Math.min(1, Math.max(0, Number(s['light.starDensity']) || 0));
@@ -376,9 +389,15 @@ export function createEnvironment({ renderer, scene, camera, capabilities }) {
       const height = Math.max(40, Math.min(400, vol.height));
       const r = Math.max(150, Math.min(900, cam.position.y * 3 + 250));
       vol.radius = r;
-      vol.mesh.position.set(cam.position.x, height / 2, cam.position.z);
-      vol.mesh.scale.set(2 * r, height, 2 * r);
+      // The camera stays inside the box: every scene pass draws the sky background first, and
+      // from above the box the rays that missed it kept the sky in the volumetric pass, which
+      // render/post.js adds to the frame (a washed-out view with a dark square under the camera).
+      const top = Math.max(height, cam.position.y + 10);
+      vol.mesh.position.set(cam.position.x, top / 2, cam.position.z);
+      vol.mesh.scale.set(2 * r, top, 2 * r);
       vol.mesh.updateMatrixWorld();
+      u.volCenter.value.set(cam.position.x, cam.position.z);
+      u.volRadius.value = r;
       const d = 3 * r;
       vol.light.target.position.set(cam.position.x, 0, cam.position.z);
       vol.light.position.copy(vol.light.target.position).addScaledVector(sunDirV, d);
