@@ -16,7 +16,7 @@
   "skipBlocks": 0,
   "repeatLastBlockTimes": 300,
   "startShowAtBlockHeight": 0,
-  "endShowAtBlockHeight": 971587,
+  "endShowAtBlockHeight": 972052,
   "connectionIpAddr": "127.0.0.1",
   "connectionSocket": 12987,
   "colorMap": "turbo",
@@ -44,6 +44,6 @@
   "epochTransitionBlocks": 120,
   "whiteHotTail": true,
   "whiteHotTailMinSatoshi": 1000000000,
-  "explorerVideoFile": "/Volumes/4T Data/buv_render/utxo_4k_epoch105k_60fps_transition_crf21_to_971587.mp4",
+  "explorerVideoFile": "/Volumes/4T Data/buv_render/utxo_4k_epoch105k_60fps_transition_crf21_to_972052.mp4",
   "explorerPort": 12988
 }
