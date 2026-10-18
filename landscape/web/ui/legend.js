@@ -16,7 +16,7 @@ const MEASURE_NOTES = {
   count: 'outputs per cell',
   value: 'bitcoin per cell',
 };
-const CURVES = { log: 'log curve', power: 'power curve', linear: 'linear' };
+const CURVES = { log: 'Logarithmic (compressed)', power: 'Power', linear: 'Linear (proportional)' };
 const NICE = [1, 2, 5];
 
 /** Palette position (0..1) of a value under the colour transfer (inverse of the legend ticks). */
@@ -64,7 +64,7 @@ function stripCanvas(rgb) {
   return c;
 }
 
-export function createLegend({ container, settings, onDismiss = null }) {
+export function createLegend({ container, settings, onDismiss = null, onEditHeight = null }) {
   const get = (id, fb) => {
     try {
       const v = settings.get(id);
@@ -96,10 +96,16 @@ export function createLegend({ container, settings, onDismiss = null }) {
       '<div class="lg-strips"></div>' +
       '<div class="lg-ticks">' + ticks.map((t) => '<span style="left:' + (t.t * 100).toFixed(2) + '%">' + t.label + '</span>').join('') + '</div>' +
       '<p class="lg-note">' + MEASURE_NOTES[colourMeasure] + '; log scale from 1 to ' + fmtCompact(transfer.upper) + (transfer.gamma !== 1 ? ', gamma ' + transfer.gamma : '') + '. Empty cells use the ground colour.</p>' +
-      '<div class="lg-row"><span class="eyebrow">Height</span><span>' + MEASURE_LABELS[heightMeasure] + ' \u00b7 ' + (CURVES[get('amp.curve', 'log')] || '') + ' \u00b7 \u00d7' + fmtCompact(get('amp.exaggeration', 1)) + '</span></div>' +
+      '<div class="lg-row"><span class="eyebrow">Height</span><span>' + MEASURE_LABELS[heightMeasure] + ' \u00b7 ' + (CURVES[get('amp.curve', 'log')] || '') + ' \u00b7 reference ' + fmtCompact(get('amp.reference', 500)) + ' \u2192 ' + fmtCompact(get('amp.exaggeration', 10)) + ' high' + '</span></div>' +
       '<div class="lg-row"><span class="eyebrow">Heat</span><span><i class="lg-swatch" style="background:rgb(' + heat.join(',') + ')"></i>Spent outputs flash, brighter for more BTC \u00b7 half-life ' + fmtCompact(halfLife) + ' blocks</span></div>' +
       '<p class="lg-foot">Each cell holds 64 blocks \u00d7 1 amount row. Every block has the same width, so early eras look sparse next to the film.</p>';
     if (close) container.querySelector('.lg-head').appendChild(close);
+    if (onEditHeight) {
+      const edit = document.createElement('button');
+      edit.type = 'button'; edit.className = 'lg-edit-height'; edit.textContent = 'Edit height scale';
+      edit.addEventListener('click', onEditHeight);
+      container.querySelector('.lg-row').appendChild(edit);
+    }
     const strips = container.querySelector('.lg-strips');
     const rows = [[whiteHot ? 'Below ' + fmtCompact(whiteBtc) + ' BTC' : 'All rows', paletteRGB(palette, opts)]];
     if (whiteHot) rows.push([fmtCompact(whiteBtc) + ' BTC and up', paletteRGB(palette, { ...opts, whiteHot: true })]);

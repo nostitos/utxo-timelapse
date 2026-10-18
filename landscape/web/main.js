@@ -283,7 +283,15 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     };
     const hud = createHud($('hud'), { onDismiss: () => dismiss('hud') });
     const help = createHelp($('help'), { touchFirst: touchOnly });
-    const legend = createLegend({ container: $('legend'), settings: store, onDismiss: () => dismiss('legend') });
+    const legend = createLegend({ container: $('legend'), settings: store, onDismiss: () => dismiss('legend'),
+      onEditHeight: () => {
+        togglePanel(true);
+        panel.filter('');
+        const row = panel.quick.row('heightCurve');
+        row.scrollIntoView({ block: 'center' });
+        row.querySelector('[aria-pressed=true]')?.focus({ preventScroll: true });
+      },
+    });
     const minimap = createMinimap({
       container: $('minimap'), grid, rows: replay.rows, settings: store,
       onNavigate: (x, z, { dragging }) => moveViewTo(x, z, dragging),

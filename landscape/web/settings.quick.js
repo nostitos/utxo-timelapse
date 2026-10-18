@@ -21,12 +21,14 @@
 //                                  commit 'change' writes on release instead of while dragging;
 //                                  at: the slider value of each stop (default 0, 1, 2...), with
 //                                  format to show the value (Time of day runs as a clock)
-//             'select' | 'slider'  bind one schema id (setting); a slider may narrow the range
+//             'select' | 'slider' | 'number'  bind one schema id (setting); a slider may narrow the range
 //                                  (min, max), use a log scale, run high to low (invert) and
 //                                  show its value through format (describe: its tooltip)
 //             'toggles'            several boolean schema ids (settings)
 //             'readout'            live frame cost (GPU time, frame rate, columns drawn against
 //                                  the cap); no setting, drawn only when the panel gets a perf source
+//   note      optional function(get): visible explanation that updates with the values
+//   hideWhenInert  hide conditional parameters, such as the power exponent outside Power
 //   needs     like schema entries: conditions under which the control changes the image
 //   rebuild   rebuild class of its costliest change (panel hint)
 
@@ -35,7 +37,7 @@ import {
 } from './settings.schema.js';
 import { valuesEqual } from './settings.js';
 
-export const QUICK_SECTIONS = Object.freeze(['Look', 'Performance', 'Scene', 'Data', 'View']);
+export const QUICK_SECTIONS = Object.freeze(['Look', 'Data', 'Performance', 'Scene', 'View']);
 
 function deepFreeze(value) {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
@@ -120,7 +122,7 @@ export const QUICK = deepFreeze([
     help: 'How fine the surface is beyond the columns: at \u00d71 (High) the surface is refined until a cell is at most 3 pixels wide on screen; \u00d72 halves that. Finer shows more detail in the distance and costs more.' },
   { id: 'loadedTiles', section: 'Performance', label: 'Loaded tiles', type: 'slider', setting: 'geo.tileBudget', rebuild: 'terrain',
     format: (value) => String(Math.round(value)),
-    help: 'How many tiles of 256 \u00d7 256 cells stay loaded (High: 225). Each costs about 1 MB of GPU memory and 2 MB in the replay worker. Too few and fine detail and columns stop short of what Terrain detail and Column distance ask for.' },
+    help: 'How many tiles of 256 \u00d7 256 cells stay loaded (High: 225). Each costs about 1.25 MiB of GPU memory on WebGPU (1 MiB on WebGL2) and 2 MiB in the replay worker. Too few and fine detail and columns stop short of what Terrain detail and Column distance ask for.' },
 
   { id: 'timeOfDay', section: 'Scene', label: 'Time of day', type: 'blend',
     at: [6.5, 9.5, 12, 17.5, 18.25, 21], format: clockTime,
@@ -163,10 +165,32 @@ export const QUICK = deepFreeze([
 
   { id: 'measure', section: 'Data', label: 'Height shows', type: 'select', setting: 'amp.measure', rebuild: 'worker',
     help: 'What the height of a cell counts: weighted density (outputs, large ones counted by amount), the number of outputs, or the BTC they hold. Colour follows it unless set otherwise in Advanced.' },
-  { id: 'palette', section: 'Data', label: 'Colours', type: 'select', setting: 'color.palette', advancedOnly: ['custom'],
-    help: 'Colour map from low to high values. Edit a custom gradient in Advanced > Colour.' },
-  { id: 'height', section: 'Data', label: 'Height', type: 'slider', setting: 'amp.exaggeration', min: 0, max: 40, step: 0.5,
-    help: 'How tall the landscape is (Advanced allows up to 200).' },
+  { id: 'heightCurve', section: 'Data', label: 'Height scale', type: 'choice',
+    help: 'How values become heights. Linear preserves proportions above the minimum height; Logarithmic compresses large values; Power uses a chosen exponent. This changes height, not the number of UTXO layers.',
+    note: (get) => {
+      const mode = get('amp.curve');
+      const curve = mode === 'linear' ? 'Linear: proportional height above the minimum.'
+        : mode === 'power' ? 'Power: heights use exponent ' + get('amp.exponent') + '.'
+        : 'Logarithmic: large values are compressed; heights are not proportional.';
+      return curve + ' Reference ' + get('amp.reference') + ' maps to ' + get('amp.exaggeration') + ' height units, before the minimum height and Big coins boost.';
+    },
+    options: [
+      option('linear', 'Linear', { 'amp.curve': 'linear' }),
+      option('log', 'Logarithmic', { 'amp.curve': 'log' }),
+      option('power', 'Power', { 'amp.curve': 'power' }),
+    ] },
+  { id: 'heightReference', section: 'Data', label: 'Reference value', type: 'number', setting: 'amp.reference',
+    help: 'The data value that reaches Height size. In Output count this is a number of UTXOs; in BTC value it is BTC. Larger reference values make the same data shorter.' },
+  { id: 'heightExponent', section: 'Data', label: 'Power exponent', type: 'number', setting: 'amp.exponent',
+    needs: [{ id: 'amp.curve', is: 'power' }], hideWhenInert: true,
+    help: '1 gives proportional heights; below 1 compresses large values and above 1 amplifies them.' },
+  { id: 'heightExposure', section: 'Data', label: 'Log exposure', type: 'number', setting: 'amp.exposure',
+    needs: [{ id: 'amp.curve', is: 'log' }], hideWhenInert: true,
+    help: 'Controls the logarithmic compression. Larger exposure makes small values more visible relative to the reference.' },
+  { id: 'height', section: 'Data', label: 'Height size', type: 'slider', setting: 'amp.exaggeration', min: 0, max: 40, step: 0.1, unit: ' u',
+    help: 'Drawing height at the Reference value, before the minimum height and Big coins boost. Default: 10 height units. This is a height, not a multiplier; Advanced allows up to 200.' },
+  { id: 'minimumHeight', section: 'Data', label: 'Minimum height', type: 'number', setting: 'amp.floor',
+    help: 'Extra drawing height added to every occupied cell. Set to 0, use Linear scale and keep Big coins Normal for heights proportional to the selected measure.' },
   { id: 'bigCoins', section: 'Data', label: 'Big coins', type: 'blend',
     help: 'Extra height for the rows at or above the whale threshold (10 BTC by default), easing in from a tenth of it so there is no cliff.',
     options: [
@@ -174,8 +198,10 @@ export const QUICK = deepFreeze([
       option('taller', 'Taller', BIG_COINS.taller),
       option('towering', 'Towering', BIG_COINS.towering),
     ] },
+  { id: 'palette', section: 'Data', label: 'Colours', type: 'select', setting: 'color.palette', advancedOnly: ['custom'],
+    help: 'Colour map from low to high values. Edit a custom gradient in Advanced > Colour.' },
   { id: 'cellShape', section: 'Data', label: 'Cell shape', type: 'choice', rebuild: 'terrain',
-    help: 'How cells are drawn near the camera: a smooth surface, rounded columns that fill their cells, square boxes, or flat-topped steps everywhere.',
+    help: 'How cells are drawn near the camera: a smooth surface, rounded columns that fill their cells, square boxes, or flat-topped steps everywhere. Columns and boxes have one layer per UTXO; the separating lines fade when too small to see.',
     options: [
       option('smooth', 'Smooth', CELL_SHAPES.smooth),
       option('columns', 'Columns', CELL_SHAPES.columns, only(CELL_SHAPES.columns, ['geo.columns', 'geo.columnShape']), { webgpu: true }),
@@ -220,7 +246,7 @@ export function quickOption(control, get) {
 
 /**
  * Current state of a control: {option} (null = mixed) for choice and toggle, {value} for
- * select and slider, {values: {id: bool}} for toggles; look and quality return {}.
+ * select, number and slider, {values: {id: bool}} for toggles; look and quality return {}.
  */
 export function quickState(control, get) {
   switch (control.type) {
@@ -228,6 +254,7 @@ export function quickState(control, get) {
     case 'toggle': return { option: quickOption(control, get) };
     case 'blend': return { option: quickOption(control, get), position: blendPosition(control, get).position };
     case 'select':
+    case 'number':
     case 'slider': return { value: get(control.setting) };
     case 'toggles': return { values: Object.fromEntries(control.settings.map((id) => [id, get(id)])) };
     default: return {};

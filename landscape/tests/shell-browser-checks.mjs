@@ -19,7 +19,7 @@
 // --games (or --only plane,fun) also runs the plane and Stack sats checks, which a normal run
 // skips. The browser is always muted (browser-check.mjs), so no check makes a sound.
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -112,7 +112,43 @@ async function findCell() {
 }
 `;
 
+// Injected into the page, so the same check works online where /dev/ is excluded.
+const COLUMN_COUNT_HELPERS = readFileSync(join(here, 'column-count-browser.mjs'), 'utf8');
+
 const CHECKS = [
+  {
+    name: 'column-counts',
+    timeout: 120000,
+    shot: 'counted-columns.png',
+    script: `${COLUMN_COUNT_HELPERS}
+      L.playback.pause(); L.follow.set(false);
+      L.settings.set('amp.exaggeration', 1);
+      L.controls.setPose({ x: Math.min(819.65, tip / 1000 - 20), y: 0.7, z: 103.1, yaw: -15, pitch: -20 });
+      await sleep(1200); await idle(45000); await sleep(500);
+      const layers = await columnLayerPixels(L.view.renderer);
+      const states = [await countAtlasCheck(L)];
+      const start = L.replay.block;
+      let deltaCells = 0;
+      const off = L.replay.onFrame(f => { deltaCells += f.deltas?.counts?.length || 0; });
+      await L.replay.advance(start + 3, { budgetMs: 1000 }); await idle(); await sleep(300);
+      states.push(await countAtlasCheck(L));
+      await L.replay.advance(start, { budgetMs: 1000 }); await idle(); await sleep(300);
+      states.push(await countAtlasCheck(L)); off();
+      L.settings.set('amp.measure', 'value'); await sleep(300); await idle(); await sleep(300);
+      states.push(await countAtlasCheck(L));
+      L.settings.set('amp.measure', 'density'); await sleep(300); await idle(); await sleep(300);
+      return { layers, states, deltaCells, columns: L.view.stats.columns, frameError: L.frameError || null };`,
+    expect: (v) => [
+      ['1, 2, 5 and 10 UTXOs draw 0, 1, 4 and 9 internal lines; subpixel layers fade in all column shapes/styles',
+        v.layers.length === 15 && v.layers.every(r => r.boundaries.every(b => b.peak > 0 && b.runs === (b.n === 1000 ? 0 : b.n - 1)))],
+      ['GPU counts match the CPU atlas after full loads, playback, rewind and measure changes',
+        v.states.length === 4 && v.states.every(s => s.gpuChecked > 0 && s.gpuMismatches === 0)],
+      ['counts match the exact replay ledger at every resident level',
+        v.states.every(s => s.exactChecked > 0 && s.exactMismatches === 0)],
+      ['playback delivered count deltas', v.deltaCells > 0],
+      ['real columns render without frame errors', v.columns > 0 && v.frameError === null],
+    ],
+  },
   {
     name: 'startup',
     shot: 'first-view.png',
@@ -883,6 +919,58 @@ const CHECKS = [
       ['the panel disables Ultra, Extreme, Columns and Boxes', v.ultraOff && v.boxesOff],
       ['Outputs (boxes) falls back to stepped cells without errors', v.boxes.columns === false && v.boxes.stepped === true && !v.boxes.frameError],
       ['renders (ready, no frame errors)', v.ready && !v.frameError],
+    ],
+  },
+  {
+    name: 'height-scale',
+    shot: 'height-scale-settings.png',
+    script: `await idle(); await sleep(500); L.playback.pause();
+      const S = L.settings; await openPanel();
+      const out = { sections: Array.from(document.querySelectorAll('#panel .lsq-sec')).map(s => s.dataset.section) };
+      const row = L.panel.quick.row('heightCurve');
+      const note = () => row.querySelector('.lsq-note').textContent;
+      out.start = { curve: S.get('amp.curve'), pressed: row.querySelector('[aria-pressed=true]').dataset.option, note: note() };
+      const panelRect = document.querySelector('#panel').getBoundingClientRect();
+      out.nearTop = row.getBoundingClientRect().top < panelRect.top + 400;
+      // Direct legend link opens the main controls, with the active option focused.
+      L.panel.close(); await sleep(150); document.querySelector('#legend .lg-edit-height').click(); await sleep(200);
+      out.link = L.panel.isOpen() && row.contains(document.activeElement) && !L.panel.quick.domElement.hidden;
+      quickButton('heightCurve', 'linear').click(); await sleep(100);
+      out.linear = { curve: S.get('amp.curve'), note: note(), legend: document.querySelector('#legend').textContent,
+        logHidden: L.panel.quick.row('heightExposure').hidden, powerHidden: L.panel.quick.row('heightExponent').hidden };
+      const enterNumber = (id, value) => { const input = L.panel.quick.row(id).querySelector('input'); input.value = String(value); input.dispatchEvent(new Event('change', { bubbles: true })); };
+      enterNumber('heightReference', 1000); enterNumber('minimumHeight', 0);
+      const height = L.panel.quick.row('height').querySelector('input'); height.value = '20'; height.dispatchEvent(new Event('input', { bubbles: true })); await sleep(100);
+      const { heightOfCpu } = await import('/render/terrain/curve.js');
+      const p = L.view.terrain.shading.heightParams();
+      out.proportional = { reference: S.get('amp.reference'), height: S.get('amp.exaggeration'), floor: S.get('amp.floor'),
+        ratio: heightOfCpu(20, 1500, p) / heightOfCpu(10, 1500, p), note: note() };
+      quickButton('heightCurve', 'power').click(); enterNumber('heightExponent', 0.8); await sleep(100);
+      out.power = { curve: S.get('amp.curve'), exponent: S.get('amp.exponent'), visible: !L.panel.quick.row('heightExponent').hidden, note: note() };
+      quickButton('heightCurve', 'log').click(); enterNumber('heightExposure', 2); await sleep(100);
+      out.log = { curve: S.get('amp.curve'), exposure: S.get('amp.exposure'), visible: !L.panel.quick.row('heightExposure').hidden, note: note() };
+      // Persistence and share links reproduce these values without changing the look.
+      const { createSettingsStore } = await import('/settings.js'); const { SCHEMA, PRESETS } = await import('/settings.schema.js');
+      S.flush(); await sleep(350);
+      const fresh = createSettingsStore(SCHEMA, PRESETS, { storage: localStorage, autosave: false });
+      fresh.load();
+      const shared = createSettingsStore(SCHEMA, PRESETS, { storage: null }); shared.fromURL(S.toURL());
+      const ids = ['amp.curve', 'amp.reference', 'amp.exaggeration', 'amp.floor', 'amp.exposure', 'amp.exponent'];
+      out.persisted = ids.every(id => fresh.get(id) === S.get(id));
+      out.shared = ids.every(id => shared.get(id) === S.get(id));
+      fresh.dispose(); shared.dispose();
+      S.setLook('Landscape'); await sleep(300);
+      L.panel.quick.row('measure').scrollIntoView({ block: 'start' });
+      out.frameError = L.frameError || null; return out;`,
+    expect: (v) => [
+      ['Data appears immediately after Look and the scale controls are near the top', v.sections[0] === 'Look' && v.sections[1] === 'Data' && v.nearTop],
+      ['the active logarithmic setting and its compression are visible', v.start.curve === 'log' && v.start.pressed === 'log' && v.start.note.includes('not proportional')],
+      ['Edit height scale opens and focuses the main controls', v.link],
+      ['Linear changes the curve and legend, and hides irrelevant parameters', v.linear.curve === 'linear' && v.linear.legend.includes('Linear (proportional)') && v.linear.logHidden && v.linear.powerHidden],
+      ['reference, drawing height and minimum height are editable; doubling the count doubles linear height', v.proportional.reference === 1000 && v.proportional.height === 20 && v.proportional.floor === 0 && Math.abs(v.proportional.ratio - 2) < 1e-9],
+      ['Power and Logarithmic expose their own editable parameters', v.power.visible && v.power.exponent === 0.8 && v.log.visible && v.log.exposure === 2],
+      ['scale settings survive storage reload and share links', v.persisted && v.shared],
+      ['no frame errors', v.frameError === null],
     ],
   },
   {

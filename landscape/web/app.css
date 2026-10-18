@@ -216,6 +216,8 @@ a { color: var(--mint); }
 .lg-ticks span:last-child { transform: translateX(-100%); }
 .lg-note { margin: 6px 0 0; font-size: 11px; line-height: 1.45; color: var(--muted); }
 .lg-row { display: grid; grid-template-columns: 56px 1fr; gap: 10px; align-items: baseline; margin-top: 8px; font-size: 12px; }
+.lg-edit-height { grid-column: 2; justify-self: start; padding: 3px 0; border: 0; background: none; color: var(--amber); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.lg-edit-height:focus-visible { outline: 1px solid currentColor; outline-offset: 2px; }
 .lg-swatch { display: inline-block; width: 9px; height: 9px; margin-right: 6px; border-radius: 50%; }
 .lg-foot { margin: 10px 0 0; padding-top: 8px; border-top: 1px solid var(--line); font-size: 11px; line-height: 1.45; color: var(--dim); }
 

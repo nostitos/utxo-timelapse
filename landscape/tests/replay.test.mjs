@@ -552,24 +552,34 @@ test('packed heat is the raw BTC sum at every level (not divided by cell area)',
 });
 
 // ------------------------------------------------------------ pack/deltas
-function applyFrameToMirror(mirror, frame) {
+function applyFrameToMirror(mirror, frame, countMirror) {
+  for (const id of frame.evicted) countMirror.delete(id);
+  for (const f of frame.full) countMirror.set(f.id, f.empty ? new Uint32Array(SLOT_CELLS) : new Uint32Array(f.counts));
   for (const id of frame.evicted) mirror.delete(id);
   for (const f of frame.full) mirror.set(f.id, f.empty ? new Float32Array(SLOT_CELLS * 4) : new Float32Array(f.data));
   const d = frame.deltas;
   for (let k = 0; k < d.ids.length; k++) {
     const m = mirror.get(d.ids[k]);
+    for (let i = d.offsets[k]; i < d.offsets[k + 1]; i++) countMirror.get(d.ids[k])[d.index[i]] = d.counts[i];
     assert.ok(m, 'delta for a tile the main thread does not hold: ' + d.ids[k]);
     for (let i = d.offsets[k]; i < d.offsets[k + 1]; i++) m.set(d.data.subarray(i * 4, i * 4 + 4), d.index[i] * 4);
   }
 }
 
-function checkMirror(st, mirror, hm, cm, where) {
+function checkMirror(st, mirror, hm, cm, where, countMirror) {
   for (let id = 0; id < st.slotOf.length; id++) {
     if (st.delivered[id]) assert.ok(mirror.has(id), where + ': delivered tile ' + id + ' missing on the main thread');
   }
   for (const [id, m] of mirror) {
     assert.ok(st.delivered[id] && st.slotOf[id] !== null, where + ': main thread holds tile ' + id + ' that is not delivered');
-    const want = packFull(st.slotOf, st.slotOf[id], hm, cm) || new Float32Array(SLOT_CELLS * 4);
+    const slot = st.slotOf[id];
+    const counts = countMirror.get(id);
+    // Compare to the exact ledger, independently of the packing implementation.
+    for (let y = 0; y < slot.rows; y++) for (let x = 0; x < slot.cols; x++) {
+      const co = (y * 256 + x) * 4;
+      assert.equal(counts[(y + 1) * 258 + x + 1], slot.cells[co] + slot.cells[co + 2], where + ': raw UTXO count');
+    }
+    const want = packFull(st.slotOf, slot, hm, cm) || new Float32Array(SLOT_CELLS * 4);
     for (let i = 0; i < want.length; i++) {
       if (m[i] !== want[i]) assert.fail(where + ': tile ' + id + ' slot cell ' + (i >> 2) + ' (' + ((i >> 2) % 258) + ',' + Math.floor((i >> 2) / 258) + ') field ' + (i & 3) + ' mirror ' + m[i] + ' fresh ' + want[i]);
     }
@@ -586,6 +596,7 @@ test('frames: full tiles plus deltas keep a main-thread mirror identical to fres
   const fb = new FrameBuilder(grid);
   const dec = new DecodedBlock();
   const mirror = new Map();
+  const countMirror = new Map();
   const r = rng(99);
   let hm = measureCode('density');
   let cm = measureCode('value');
@@ -625,13 +636,48 @@ test('frames: full tiles plus deltas keep a main-thread mirror identical to fres
     if (h % 4999 === 4000) { hm = (hm + 1) % 3; cm = (cm + 2) % 3; for (let id = 0; id < grid.tiles; id++) if (st.delivered[id]) st.wantFull[id] = 1; }
     if (h % 7 === 0 || h === blocks.length - 1) {
       const { frame, deltaCells } = fb.build(st, hm, cm, 'advance', h);
-      applyFrameToMirror(mirror, frame);
+      applyFrameToMirror(mirror, frame, countMirror);
       frames++;
       if (deltaCells) deltaFrames++;
-      if (h % 140 === 0 || h > blocks.length - 3) checkMirror(st, mirror, hm, cm, 'block ' + h);
+      if (h % 140 === 0 || h > blocks.length - 3) checkMirror(st, mirror, hm, cm, 'block ' + h, countMirror);
     }
   }
   assert.ok(frames > 2000 && deltaFrames > 1000, frames + ' frames, ' + deltaFrames + ' with deltas');
+});
+
+test('coin counts include small and large outputs, stay raw at coarse levels and retain uint precision', () => {
+  const grid = gridFromManifest({ numBlocks: 966828 });
+  const st = new LandscapeState(grid, ROWS_JS);
+  const slot = st.newSlot(grid.tiles - 1);
+  slot.cells.set([7, 700, 3, 90e8], 0);
+  slot.cells.set([16777217, 16777217, 0, 0], 4);
+  st.attach(slot);
+  st.desired[slot.id] = 1;
+  const fb = new FrameBuilder(grid);
+  for (let hm = 0; hm < 3; hm++) for (let cm = 0; cm < 3; cm++) {
+    st.wantFull[slot.id] = 1;
+    const { frame, transfer } = fb.build(st, hm, cm, 'measure', 100);
+    const full = frame.full.find(t => t.id === slot.id);
+    assert.equal(full.counts[259], 10, 'raw count, not weighted density or cell-area mean');
+    assert.equal(full.counts[260], 16777217, 'no float32 rounding');
+    assert.ok(transfer.includes(full.counts.buffer));
+    assert.ok(transfer.includes(frame.deltas.counts.buffer));
+  }
+  // The final spend removes all layers even when a heat flash remains.
+  slot.cells.fill(0, 0, 4);
+  slot.heat = new Float32Array(65536 * 2);
+  slot.heat[0] = 90; slot.heat[1] = 101; slot.heatActive = true;
+  slot.dirty[0] = 0; slot.dirtyN = 1;
+  let f = fb.build(st, 0, 0, 'advance', 101).frame;
+  let i = [...f.deltas.index].indexOf(259);
+  assert.equal(f.deltas.counts[i], 0);
+  assert.equal(f.deltas.data[i * 4 + 1], 90);
+  // Rewinding restores the exact layers.
+  slot.cells.set([7, 700, 3, 90e8], 0);
+  slot.dirty[0] = 0; slot.dirtyN = 1;
+  f = fb.build(st, 2, 2, 'advance', 100).frame;
+  i = [...f.deltas.index].indexOf(259);
+  assert.equal(f.deltas.counts[i], 10);
 });
 
 test('pack: borders copy resident neighbours, else the nearest interior cell; outside grid is 0', () => {
@@ -644,13 +690,17 @@ test('pack: borders copy resident neighbours, else the nearest interior cell; ou
   a.cells[0] = 7;
   b.cells[(10 << 8) << 2] = 9;
   st.attach(a);
-  let p = packFull(st.slotOf, a, 1, 1);
+  const counts = new Uint32Array(SLOT_CELLS);
+  let p = packFull(st.slotOf, a, 1, 1, counts);
+  assert.equal(counts[11 * 258 + 257], 5);
+  assert.equal(counts[0], 0);
   assert.equal(p[((11 * 258) + 257) * 4], 5, 'right border copies own edge while neighbour absent');
   assert.equal(p[((11 * 258) + 256) * 4], 5);
   assert.equal(p[0], 0, 'corner outside the grid (tile 0 has no upper-left neighbour)');
   assert.equal(p[(1 * 258 + 0) * 4], 0, 'left border outside the grid');
   st.attach(b);
-  p = packFull(st.slotOf, a, 1, 1);
+  p = packFull(st.slotOf, a, 1, 1, counts);
+  assert.equal(counts[11 * 258 + 257], 9);
   assert.equal(p[((11 * 258) + 257) * 4], 9, 'right border holds neighbour cell');
   const pb = packFull(st.slotOf, b, 1, 1);
   assert.equal(pb[((11 * 258) + 0) * 4], 5, 'neighbour left border holds our edge');
