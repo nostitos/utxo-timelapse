@@ -320,9 +320,9 @@ Frame delivered to `onFrame` (buffers are transferred):
 ```js
 {
   seq, block, reason: 'seek' | 'advance' | 'tiles' | 'measure', partial: false,
-  full: [{ id, level, tx, ty, empty: false, data: Float32Array(258*258*4) }],
+  full: [{ id, level, tx, ty, empty: false, data: Float32Array(258*258*4), counts: Uint32Array(258*258) }],
   deltas: { ids: Uint32Array(k), offsets: Uint32Array(k + 1),
-            index: Uint32Array(n) /* slot-local 0..258*258-1 */, data: Float32Array(n * 4) },
+            index: Uint32Array(n) /* slot-local 0..258*258-1 */, data: Float32Array(n * 4), counts: Uint32Array(n) },
   evicted: [ids],
   stats: { blocksApplied, changesApplied, ms, blocksPerSecond, residentTiles, pendingTiles, chunkCacheBytes },
   meta: { … as replay.meta }
@@ -333,7 +333,15 @@ Slot layout: 258 × 258 cells, row-major, cell `(lx, ly)` of the tile at index
 when that neighbour is resident, else a copy of the nearest interior cell; cells outside
 the grid are 0. Four floats per cell:
 `[heightValue, heat, heatBlock, colorValue]` (height and colour values divided by area; heat is the raw sum).
-`empty: true` tiles carry `data: null`. Deltas include border copies in neighbours.
+`counts` carries the raw `countSmall + countLarge` at each matching slot/delta index,
+independent of the height/colour measures and never divided by area. It stays uint32 through
+transfer and GPU storage. `empty: true` tiles carry `data: null, counts: null`. Deltas include
+border copies in neighbours. WebGPU columns split their sides into exactly N equal-height
+layers for N current UTXOs, drawing only the N-1 internal boundaries. The cap stays plain;
+1 UTXO has no internal line. The lines fade when a layer falls below 2–5 screen pixels,
+without substituting fewer layers. Playback, rewind, measure changes and tile reloads update
+the count buffer together with the existing four-float buffer. The GPU count plane adds
+about 0.25 MiB per resident WebGPU tile; WebGL2 keeps its existing four-float texture.
 
 Policies: a seek loads coarse tiles (L4–L6) first and emits a `partial: true` frame, then
 the rest. Seek planning picks the cheapest of: current resident state, nearest snapshot
@@ -504,12 +512,18 @@ savedAt, look, quality, overrides}]}`; up to 50; names 1–40 characters, unique
 built-in or quality name or Custom). A record keeps its built-in look, its quality and the
 governed values that differ from them. Values are validated and clamped.
 
-`settings.quick.js` exports `QUICK`, the quick controls in five sections (Look, Quality; Performance: Now,
-Every distance, Uniform detail, Resolution, Column distance, Column cap, Far columns, Far shadows,
-Terrain detail, Loaded tiles;
-Time of day, Sky, Haze, Shadows, Glow, Height shows, Colours, Height, Big coins,
-Cell shape, Flashes, Flash trail, Field of view, Show), and `quickOption`, `quickState`,
-`quickPatch`, `quickIds`, `blendPatch`, `blendPosition`, `blendValue`, `blendIndex`. Choice,
+`settings.quick.js` exports `QUICK`, the quick controls in five sections, ordered Look, Data,
+Performance, Scene, View. Data is immediately after Look and Quality and exposes Height shows,
+Height scale (Linear/Logarithmic/Power), the exact Reference value, Height size, Minimum height
+and the active Log exposure or Power exponent. Its visible note explains compression and the
+reference-to-height mapping. Numeric fields bind directly to schema values; irrelevant curve
+parameters are hidden. The legend names the active scale, maps reference to height without a
+multiplier, and its Edit height scale link opens/focuses the main controls.
+Performance contains Now, Every distance, Uniform detail, Resolution, Column distance,
+Column cap, Far columns, Far shadows, Terrain detail and Loaded tiles. The remaining controls
+cover Time of day, Sky, Haze, Shadows, Glow, Colours, Big coins, Cell shape, Flashes, Flash trail,
+Field of view and Show. Pure helpers include `quickOption`, `quickState`, `quickPatch`,
+`quickIds`, `blendPatch`, `blendPosition`, `blendValue` and `blendIndex`. Choice,
 toggle and blend controls write a bundle (`set`) and recognise their option by a subset of it
 (`match`); none matching means set by hand. A blend control is a slider across its options:
 between two stops numbers interpolate (`log` ids in log space), colours mix in sRGB, a boolean

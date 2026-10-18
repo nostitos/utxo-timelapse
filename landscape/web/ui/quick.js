@@ -1,8 +1,8 @@
 // UTXO Timelapse Landscape: quick settings at the top of the settings panel (ui_settings).
 //
 // Draws the controls of settings.quick.js: Look (with Save… and Delete for presets saved in
-// this browser), Quality, Column distance and Terrain detail, then the Scene, Data and View
-// rows. Each row reads the store, shows the active option or slider position ('—' when the
+// this browser), Quality, then Data, Performance, Scene and View rows. Each row reads the
+// store, shows the active option or slider position ('—' when the
 // values were set by hand in Advanced) and dims, with the reason in its tooltip, while it has
 // no effect. Blend sliders run between named stops, listed under them as buttons that jump to
 // the stop. Changes go straight to the store.
@@ -74,6 +74,12 @@ export function createQuickSettings({ store, controls = QUICK, message = () => {
     for (const control of list) {
       const b = build(control);
       b.row.dataset.quick = control.id;
+      if (control.note) {
+        const note = el('p', 'lsq-desc lsq-note', { 'aria-live': 'polite' });
+        b.row.appendChild(note);
+        const update = b.update;
+        b.update = () => { update(); note.textContent = control.note(store.get); };
+      }
       sec.appendChild(b.row);
       built.push(b);
     }
@@ -89,6 +95,7 @@ export function createQuickSettings({ store, controls = QUICK, message = () => {
       case 'blend': return buildBlend(control);
       case 'select': return buildSelect(control);
       case 'slider': return buildSlider(control);
+      case 'number': return buildNumber(control);
       case 'toggles': return buildToggles(control);
       case 'readout': return buildReadout(control);
       default: throw new Error('quick settings: unknown control type ' + control.type);
@@ -110,6 +117,7 @@ export function createQuickSettings({ store, controls = QUICK, message = () => {
   function applyNeeds(control, row, label) {
     const why = control.needs && typeof store.checkNeeds === 'function' ? store.checkNeeds(control.needs) : null;
     row.classList.toggle('lsq-inert', !!why);
+    if (control.hideWhenInert) row.hidden = !!why;
     label.title = control.help + (why ? '\nNo effect with ' + why.text + '.' : '');
   }
 
@@ -435,6 +443,33 @@ export function createQuickSettings({ store, controls = QUICK, message = () => {
       const current = store.get(control.setting);
       fill(current);
       select.value = String(current);
+      applyNeeds(control, row, label);
+    }
+    return { control, row, update };
+  }
+
+  // ---- Number (an exact numeric value, without a wide-range slider) ---------------------------
+  function buildNumber(control) {
+    const entry = store.entry(control.setting);
+    const row = el('div', 'lsq-row');
+    const id = nextId(control.id);
+    const label = labelFor(control, id);
+    const input = el('input', 'lsq-number', { type: 'number', id, min: entry.min, max: entry.max,
+      step: entry.step, inputmode: 'decimal' });
+    input.addEventListener('change', () => {
+      const value = input.valueAsNumber;
+      if (!Number.isFinite(value)) { input.value = String(store.get(control.setting)); return; }
+      try { store.set(control.setting, value); }
+      catch (error) { message(error.message, 'error'); }
+      input.value = String(store.get(control.setting));
+    });
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') input.blur();
+      if (event.key === 'Escape') { input.value = String(store.get(control.setting)); input.blur(); }
+    });
+    row.append(label, input);
+    function update() {
+      if (document.activeElement !== input) input.value = String(store.get(control.setting));
       applyNeeds(control, row, label);
     }
     return { control, row, update };

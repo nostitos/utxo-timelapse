@@ -2,6 +2,7 @@
 //
 // Each resident tile occupies one slot of 258 x 258 cells (one-cell border) with four floats
 // per cell: [heightValue, heat, heatBlock, colorValue], exactly as the worker packs it.
+// A separate uint32 storage buffer keeps raw UTXO counts for column layers on WebGPU.
 // WebGPU: one storage buffer (slots x 66564 vec4) that is also the CPU copy; full tiles are
 // uploaded as buffer ranges and per-cell deltas are scattered by a compute pass.
 // WebGL2: a DataArrayTexture (one layer per slot) uploaded per layer.
@@ -63,6 +64,14 @@ export class TileAtlas {
     this.capacity = n;
     if (this.webgpu) {
       if (this.attribute) this.attribute.dispose?.();
+      const counts = new Uint32Array(n * SLOT_CELLS);
+      if (this.countData) counts.set(this.countData);
+      this.countData = counts;
+      this.countAttribute?.dispose?.();
+      this.countAttribute = new StorageBufferAttribute(counts, 1);
+      this.countAttribute.name = 'terrainCounts';
+      this.countReadNode = storage(this.countAttribute, 'uint', n * SLOT_CELLS).toReadOnly();
+      this.countWriteNode = storage(this.countAttribute, 'uint', n * SLOT_CELLS);
       this.attribute = new StorageBufferAttribute(data, 4);
       this.attribute.name = 'terrainAtlas';
       this.readNode = storage(this.attribute, 'vec4', n * SLOT_CELLS).toReadOnly();
@@ -100,6 +109,7 @@ export class TileAtlas {
     if (!this.webgpu) return;
     this.deltaIndex = new StorageBufferAttribute(new Uint32Array(DELTA_CAPACITY), 1);
     this.deltaData = new StorageBufferAttribute(new Float32Array(DELTA_CAPACITY * 4), 4);
+    this.deltaCounts = new StorageBufferAttribute(new Uint32Array(DELTA_CAPACITY), 1);
     this.deltaCount = 0;
   }
 
@@ -107,8 +117,11 @@ export class TileAtlas {
     const idx = storage(this.deltaIndex, 'uint', DELTA_CAPACITY).toReadOnly();
     const val = storage(this.deltaData, 'vec4', DELTA_CAPACITY).toReadOnly();
     const dst = this.writeNode;
+    const counts = storage(this.deltaCounts, 'uint', DELTA_CAPACITY).toReadOnly();
+    const countDst = this.countWriteNode;
     this.scatter = Fn(() => {
       dst.element(idx.element(instanceIndex)).assign(val.element(instanceIndex));
+      countDst.element(idx.element(instanceIndex)).assign(counts.element(instanceIndex));
     })().compute(DELTA_CAPACITY, [128]);
     this.scatter.name = 'terrainAtlasScatter';
   }
@@ -233,6 +246,12 @@ export class TileAtlas {
       if (s < 0) continue;
       const base = s * FLOATS_PER_SLOT;
       this.data.set(t.data.length === FLOATS_PER_SLOT ? t.data : t.data.subarray(0, FLOATS_PER_SLOT), base);
+      if (this.webgpu) {
+        const start = s * SLOT_CELLS;
+        // Dev/older frames without counts draw plain columns, never invented layers.
+        this.countData.fill(0, start, start + SLOT_CELLS);
+        if (t.counts) this.countData.set(t.counts, start);
+      }
       this.tileState[t.id] = 1;
       this._markSlotFull(s);
       this._recomputeMaxima(t.id, s);
@@ -254,6 +273,7 @@ export class TileAtlas {
           s = this._allocSlot(id, protectSet);
           if (s < 0) continue;
           this.data.fill(0, s * FLOATS_PER_SLOT, (s + 1) * FLOATS_PER_SLOT);
+          if (this.webgpu) this.countData.fill(0, s * SLOT_CELLS, (s + 1) * SLOT_CELLS);
           this.tileState[id] = 1;
           this._markSlotFull(s);
         }
@@ -276,7 +296,9 @@ export class TileAtlas {
             this._bumpPatches(pm, pbase, sx - 1, sy - 1, v);
             if (v > this.tileMaxValue[id]) this.tileMaxValue[id] = v;
           }
-          this._stageDelta(s, li, j, data);
+          const count = d.counts ? d.counts[j] : 0;
+          if (this.webgpu) this.countData[s * SLOT_CELLS + li] = count;
+          this._stageDelta(s, li, j, data, count);
         }
         out.deltaCells += b - a;
       }
@@ -303,13 +325,14 @@ export class TileAtlas {
   _markSlotFull(s) {
     if (this.webgpu) {
       this.attribute.addUpdateRange(s * FLOATS_PER_SLOT, FLOATS_PER_SLOT);
+      this.countAttribute.addUpdateRange(s * SLOT_CELLS, SLOT_CELLS);
       this._attrDirty = true;
     } else {
       this.pendingLayers.add(s);
     }
   }
 
-  _stageDelta(s, li, j, data) {
+  _stageDelta(s, li, j, data, count) {
     if (!this.webgpu) {
       this.pendingLayers.add(s);
       return;
@@ -317,6 +340,7 @@ export class TileAtlas {
     if (this.deltaCount >= DELTA_CAPACITY) this.flush();
     const n = this.deltaCount++;
     this.deltaIndex.array[n] = s * SLOT_CELLS + li;
+    this.deltaCounts.array[n] = count;
     const dd = this.deltaData.array;
     dd[n * 4] = data[j * 4];
     dd[n * 4 + 1] = data[j * 4 + 1];
@@ -338,8 +362,11 @@ export class TileAtlas {
         this.deltaIndex.needsUpdate = true;
         this.deltaData.addUpdateRange(0, n * 4);
         this.deltaData.needsUpdate = true;
+        this.deltaCounts.addUpdateRange(0, n);
+        this.deltaCounts.needsUpdate = true;
         if (this._attrDirty) {
           this.attribute.needsUpdate = true;
+          this.countAttribute.needsUpdate = true;
           this._attrDirty = false;
         }
         this.scatter.count = n;
@@ -348,6 +375,7 @@ export class TileAtlas {
         this.stats.scatterDispatches++;
       } else if (this._attrDirty) {
         this.attribute.needsUpdate = true;
+        this.countAttribute.needsUpdate = true;
         this._attrDirty = false;
       }
     } else if (this.pendingLayers.size) {
@@ -379,11 +407,13 @@ export class TileAtlas {
   }
 
   get bytes() {
-    return this.capacity * FLOATS_PER_SLOT * 4;
+    return this.capacity * (FLOATS_PER_SLOT * 4 + (this.webgpu ? SLOT_CELLS * 4 : 0));
   }
 
   dispose() {
     this.attribute?.dispose?.();
+    this.countAttribute?.dispose?.();
+    this.deltaCounts?.dispose?.();
     this.texture?.dispose();
     this.pageTexture.dispose();
   }

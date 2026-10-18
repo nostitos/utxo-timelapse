@@ -21,8 +21,8 @@ import {
 } from 'three/webgpu';
 import {
   Fn, uniform, int, uint, float, vec3, vec4, uvec2, storage, instanceIndex, atomicAdd, atomicLoad,
-  Loop, If, max, mix, abs, smoothstep, select, normalize, length, round, positionGeometry, positionWorld,
-  varying, normalView, transformNormalToView, dFdx, dFdy, vec2, dot, clamp, sqrt, cameraPosition,
+  Loop, If, min, max, mix, abs, smoothstep, select, normalize, length, round, positionGeometry, positionWorld,
+  varying, normalView, transformNormalToView, dFdx, dFdy, fwidth, vec2, dot, clamp, sqrt, cameraPosition,
 } from 'three/tsl';
 import { tileInfo, SLOT, SLOT_CELLS } from '../../data/grid.js';
 import { TerrainNodeMaterial } from './heightfield.js';
@@ -324,12 +324,26 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
     colV.setInterpolation('flat');
     const hV = varying(shading.heightOf(raw.x, float(ref.y.mod(uint(4096)))), 'vColHeight');
     hV.setInterpolation('flat');
-    const col = vec3(colV);
+    const count = varying(float(atlas.countReadNode.element(int(ref.x))), 'vColCount');
+    count.setInterpolation('flat');
+    // Normalised height makes exactly N layers whatever the height measure/curve.
+    // Only the N-1 internal boundaries are drawn; a single UTXO stays one solid coin.
+    const layer = varying(positionGeometry.y, 'vColLayer').mul(count);
+    const boundary = round(layer);
+    const fw = max(fwidth(layer), 1e-5);
+    // Keep boundaries hairline-thin even when a single layer fills the screen.
+    const width = min(float(0.035), fw.mul(0.8));
+    const seam = float(1).sub(smoothstep(width.sub(fw.mul(0.5)), width.add(fw.mul(0.5)), abs(layer.sub(boundary))));
+    const internal = boundary.greaterThanEqual(1).and(boundary.lessThan(count));
+    // Fade when layers are under 2-5 pixels tall. Never replace N with a smaller count.
+    const fade = float(1).sub(smoothstep(0.2, 0.5, fw));
     // Side or cap: the faces are exactly vertical or horizontal, so the screen-space facet
     // normal in world space tells them apart.
     const wp = positionWorld;
     const facet = dFdx(wp).cross(dFdy(wp));
     const side = select(abs(facet.y).lessThan(length(facet).mul(0.5)), float(1), float(0));
+    const groove = select(internal, seam.mul(fade).mul(side), float(0));
+    const col = vec3(colV).mul(float(1).sub(groove.mul(0.5)));
     if (style !== 'prism') {
       // Round shading on flat rectangles: the normal turns across the column as on a cylinder
       // seen from the camera (u = -1 at its left edge, 0 in the middle, 1 at its right edge).

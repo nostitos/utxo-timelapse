@@ -4,8 +4,10 @@
 // Slot layout: 258 x 258 cells, row-major, tile cell (lx, ly) at (ly + 1) * 258 + (lx + 1).
 // Four float32 per cell: [heightValue, heat, heatBlock, colorValue]; height and colour values
 // are divided by the cell area (L0 cells), heat is the cell's raw BTC sum (so activity stays
-// visible at coarse levels). The border holds the same-level neighbour's cell when that
-// neighbour is resident, else a copy of the nearest interior cell; cells outside the grid are 0.
+// visible at coarse levels). A parallel uint32 plane carries raw UTXO counts, independent
+// of those measures and without area normalisation, for the column's coin layers. The border
+// holds the same-level neighbour's cell when resident, else the nearest interior cell;
+// cells outside the grid are 0.
 import { SLOT, SLOT_CELLS } from '../data/grid.js';
 
 export const MEASURES = Object.freeze(['density', 'count', 'value']);
@@ -31,7 +33,8 @@ function zero4(out, o) {
  * Handles interior cells, borders (resident neighbour or nearest interior copy) and cells
  * outside the grid. Returns true when any value is non-zero.
  */
-export function resolveCell(slotOf, slot, sx, sy, hm, cm, out, o) {
+export function resolveCell(slotOf, slot, sx, sy, hm, cm, out, o, counts = null, ci = o / 4) {
+  if (counts) counts[ci] = 0;
   let lx = sx - 1;
   let ly = sy - 1;
   let src = slot;
@@ -66,6 +69,7 @@ export function resolveCell(slotOf, slot, sx, sy, hm, cm, out, o) {
     if (heat !== 0) hb = src.heat[(li << 1) + 1];
   }
   if (c[co] === 0 && c[co + 2] === 0 && heat === 0) { zero4(out, o); return false; }
+  if (counts) counts[ci] = c[co] + c[co + 2];
   const inv = 1 / area;
   out[o] = measureValue(c, co, hm) * inv;
   out[o + 1] = heat;
@@ -75,7 +79,8 @@ export function resolveCell(slotOf, slot, sx, sy, hm, cm, out, o) {
 }
 
 /** Packs a whole slot (interior + border). Returns a Float32Array, or null when all zero. */
-export function packFull(slotOf, slot, hm, cm) {
+export function packFull(slotOf, slot, hm, cm, counts = null) {
+  if (counts) counts.fill(0);
   const out = new Float32Array(SLOT_CELLS * 4);
   let any = false;
   const c = slot.cells;
@@ -93,6 +98,7 @@ export function packFull(slotOf, slot, hm, cm) {
       let h = 0;
       if (heat !== null) h = heat[li << 1];
       if (cs === 0 && cl === 0 && h === 0) continue;
+      if (counts) counts[o / 4] = cs + cl;
       const inv = 1 / (colW[lx + 1] * rh);
       const ss = c[co + 1];
       const sl = c[co + 3];
@@ -106,12 +112,12 @@ export function packFull(slotOf, slot, hm, cm) {
     }
   }
   for (let sx = 0; sx < SLOT; sx++) {
-    if (resolveCell(slotOf, slot, sx, 0, hm, cm, out, sx << 2)) any = true;
-    if (resolveCell(slotOf, slot, sx, SLOT - 1, hm, cm, out, ((SLOT - 1) * SLOT + sx) << 2)) any = true;
+    if (resolveCell(slotOf, slot, sx, 0, hm, cm, out, sx << 2, counts)) any = true;
+    if (resolveCell(slotOf, slot, sx, SLOT - 1, hm, cm, out, ((SLOT - 1) * SLOT + sx) << 2, counts)) any = true;
   }
   for (let sy = 1; sy < SLOT - 1; sy++) {
-    if (resolveCell(slotOf, slot, 0, sy, hm, cm, out, (sy * SLOT) << 2)) any = true;
-    if (resolveCell(slotOf, slot, SLOT - 1, sy, hm, cm, out, (sy * SLOT + SLOT - 1) << 2)) any = true;
+    if (resolveCell(slotOf, slot, 0, sy, hm, cm, out, (sy * SLOT) << 2, counts)) any = true;
+    if (resolveCell(slotOf, slot, SLOT - 1, sy, hm, cm, out, (sy * SLOT + SLOT - 1) << 2, counts)) any = true;
   }
   return any ? out : null;
 }
@@ -270,12 +276,13 @@ export class FrameBuilder {
     }
     dIndex = dIndex.slice(0, n);
     const dData = new Float32Array(n * 4);
+    const dCounts = new Uint32Array(n);
     for (let k = 0; k < dIds.length; k++) {
       const s = slotOf[dIds[k]];
       for (let i = dOffsets[k]; i < dOffsets[k + 1]; i++) {
         const idx = dIndex[i];
         const sy = (idx / SLOT) | 0;
-        resolveCell(slotOf, s, idx - sy * SLOT, sy, hm, cm, dData, i * 4);
+        resolveCell(slotOf, s, idx - sy * SLOT, sy, hm, cm, dData, i * 4, dCounts);
       }
     }
 
@@ -284,9 +291,10 @@ export class FrameBuilder {
     const transfer = [];
     for (const id of fullIds) {
       const s = slotOf[id];
-      const data = packFull(slotOf, s, hm, cm);
-      full.push({ id, level: s.level, tx: s.tx, ty: s.ty, empty: data === null, data });
-      if (data !== null) transfer.push(data.buffer);
+      const counts = new Uint32Array(SLOT_CELLS);
+      const data = packFull(slotOf, s, hm, cm, counts);
+      full.push({ id, level: s.level, tx: s.tx, ty: s.ty, empty: data === null, data, counts: data === null ? null : counts });
+      if (data !== null) transfer.push(data.buffer, counts.buffer);
       delivered[id] = 1;
       state.wantFull[id] = 0;
     }
@@ -299,8 +307,8 @@ export class FrameBuilder {
       s.dirtyAll = false;
       s.borderMask = 0;
     }
-    const deltas = { ids: Uint32Array.from(dIds), offsets: Uint32Array.from(dOffsets), index: dIndex, data: dData };
-    transfer.push(deltas.ids.buffer, deltas.offsets.buffer, deltas.index.buffer, deltas.data.buffer);
+    const deltas = { ids: Uint32Array.from(dIds), offsets: Uint32Array.from(dOffsets), index: dIndex, data: dData, counts: dCounts };
+    transfer.push(deltas.ids.buffer, deltas.offsets.buffer, deltas.index.buffer, deltas.data.buffer, deltas.counts.buffer);
     const evicted = state.evicted;
     state.evicted = [];
     const frame = { seq: ++this.seq, block, reason, partial, full, deltas, evicted };
