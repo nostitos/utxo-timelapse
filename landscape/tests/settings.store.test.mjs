@@ -12,6 +12,52 @@ import {
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 const make = (options = {}) => createSettingsStore(SCHEMA, PRESETS, { storage: null, ...options });
 
+test('settings saved before a retune take the tier\'s new value; later choices stay', () => {
+  // A save from before revision 1 (no revision field), when High, Ultra and Extreme used TRAA
+  // and GTAO and Extreme motion blur: those old tier values load as the current ones.
+  const before = (quality, values, look = 'Landscape') => {
+    const s = make();
+    s.setLook(look);
+    s.setQuality(quality);
+    const json = s.toJSON();
+    delete json.revision;
+    Object.assign(json.values, values);
+    return json;
+  };
+  for (const quality of ['High', 'Ultra']) {
+    const s = make();
+    const report = s.fromJSON(before(quality, { 'display.aa': 'traa', 'fx.ao': 'gtao' }));
+    assert.equal(s.get('display.aa'), 'smaa', quality);
+    assert.equal(s.get('fx.ao'), 'ssao', quality);
+    assert.equal(s.preset, quality, quality + ' loads clean, not Custom');
+    assert.deepEqual(report.retired.sort(), ['display.aa', 'fx.ao']);
+  }
+  const extreme = make();
+  extreme.fromJSON(before('Extreme', { 'display.aa': 'traa', 'fx.ao': 'gtao', 'fx.motionBlur': true }));
+  assert.equal(extreme.get('fx.ao'), 'ssao');
+  assert.equal(extreme.get('fx.aoSamples'), 32);
+  assert.equal(extreme.get('display.aa'), 'smaa');
+  assert.equal(extreme.get('fx.motionBlur'), false);
+  assert.equal(extreme.preset, 'Extreme');
+  // Values that differed from the old tier were the user's own and stay.
+  const balanced = make();
+  balanced.fromJSON(before('Balanced', { 'display.aa': 'traa' }));
+  assert.equal(balanced.get('display.aa'), 'traa', 'Balanced never used TRAA, so TRAA there was chosen by hand');
+  const film = make();
+  film.fromJSON(before('High', { 'display.aa': 'traa' }, 'BitcoinTimelapse.com'));
+  assert.equal(film.get('display.aa'), 'traa', 'the look sets anti-aliasing, so TRAA was chosen by hand');
+  assert.equal(make().fromJSON({ quality: 'High', 'display.aa': 'traa' }).retired.length, 0, 'a plain map is taken as written');
+  // Since revision 1, TRAA chosen at High survives a save and a reload.
+  const storage = memoryStorage();
+  const chosen = make({ storage, autosave: false });
+  chosen.set('display.aa', 'traa');
+  assert.equal(chosen.save(), true);
+  const reloaded = make({ storage });
+  assert.equal(reloaded.load(), true);
+  assert.equal(reloaded.get('display.aa'), 'traa');
+  assert.equal(reloaded.preset, 'Custom');
+});
+
 function memoryStorage(limit = Infinity) {
   const map = new Map();
   return {

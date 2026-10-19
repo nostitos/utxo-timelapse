@@ -36,6 +36,7 @@ import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 import { traa } from 'three/addons/tsl/display/TRAANode.js';
 import { radialBlur } from 'three/addons/tsl/display/radialBlur.js';
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
+import { depthAwareBlur } from 'three/addons/tsl/display/depthAwareBlur.js';
 import { G_BUFFER_OUTPUTS, gBufferBlend, setGBufferLayout } from './gbuffer.js';
 import { planPipeline, planKey, planStages, lutText } from './post-plan.js';
 import { parseCubeLUT } from './cube-lut.js';
@@ -258,30 +259,42 @@ export function createPost({ renderer, scene, camera, env, capabilities, aoBound
     // from the scene camera's matrices (this runs in a full-screen pass with its own camera).
     const sceneProjInv = uniform(camera.projectionMatrixInverse);
     const sceneWorld = uniform(camera.matrixWorld);
-    const aoTerm = (node) => {
+    const aoTerm = (aoTex) => {
       const quv = uv();
       const viewPos = getViewPosition(quv, depthTex.sample(quv).r, sceneProjInv);
       const world = sceneWorld.mul(vec4(viewPos, 1)).xyz;
       const dx = max(max(aoBox.x.sub(world.x), world.x.sub(aoBox.z)), 0);
       const dz = max(max(aoBox.y.sub(world.z), world.z.sub(aoBox.w)), 0);
       const inside = smoothstep(float(AO_EDGE_FADE), float(0), length(vec2(dx, dz)));
-      const occlusion = pow(node.getTextureNode().r.clamp(0, 1), U.aoIntensity);
+      const occlusion = pow(aoTex.r.clamp(0, 1), U.aoIntensity);
       return mix(float(1), occlusion, inside);
+    };
+    // GTAO turns its sampling noise every frame for TRAA to average away. Without TRAA (SMAA,
+    // or supersampling) its fixed 5x5 noise tile stays and shows as dark speckles between the
+    // spikes, so the result goes through the separable depth-aware blur that SSAO uses, at the
+    // same half resolution as the AO.
+    const denoiseAO = (n) => {
+      const blurPass = (input, axis) => {
+        const step = axis.div(vec2(textureSize(input, 0)));
+        const v = depthAwareBlur(input, depthTex, step, camera, float(2), n.radius);
+        return track(label(convertToTexture(vec4(v, v, v, 1), null, null, { resolutionScale: 0.5 }), 'GTAO denoise'));
+      };
+      return blurPass(blurPass(n.getTextureNode(), vec2(1, 0)), vec2(0, 1));
     };
     if (p.ao === 'gtao') {
       const n = track(ao(depthTex, sceneNormal, camera));
-      // Half resolution (temporal filtering under TRAA): full-resolution GTAO with 16 samples
-      // measured 3.7 ms of a 14 ms frame at 4K in close views.
+      // Half resolution (temporal filtering under TRAA, the blur above otherwise): full-resolution
+      // GTAO with 16 samples measured 3.7 ms of a 14 ms frame at 4K in close views.
       n.resolutionScale = 0.5;
       n.useTemporalFiltering = p.traa;
       st.ao = n;
-      litRGB = litRGB.mul(aoTerm(n));
+      litRGB = litRGB.mul(aoTerm(p.traa ? n.getTextureNode() : denoiseAO(n)));
       composite = true;
     } else if (p.ao === 'ssao') {
       const n = track(ssao(depthTex, sceneNormal, camera));
       n.resolutionScale = 0.5;
       st.ao = n;
-      litRGB = litRGB.mul(aoTerm(n));
+      litRGB = litRGB.mul(aoTerm(n.getTextureNode()));
       composite = true;
     }
     if (p.ssgi) {

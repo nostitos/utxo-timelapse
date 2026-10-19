@@ -1007,6 +1007,14 @@ const CHECKS = [
       quickButton('quality', 'Balanced').click(); await sleep(50);
       out.ui.qualityAfterClick = S.quality;
       out.ui.statusAfter = document.querySelector('#panel .lsp-status').textContent;
+      // Picking a quality turns auto scale off (it cut Extreme to half the pixels); Undo restores it.
+      S.set('display.autoScale', true); await sleep(50);
+      quickButton('quality', 'High').click(); await sleep(50);
+      const box = document.querySelector('#panel .lsp-message');
+      out.ui.autoScale = { afterClick: S.get('display.autoScale'), message: box.hidden ? '' : box.textContent };
+      const undo = box.querySelector('button'); if (undo) undo.click(); await sleep(50);
+      out.ui.autoScale.afterUndo = S.get('display.autoScale');
+      S.set('display.autoScale', false);
       S.setLook('Landscape'); S.setQuality('High'); await sleep(50);
       // Each main control changes the picture: the largest of the differences between its two
       // ends at four cameras (each shows best somewhere else: the sky low, big coins from behind).
@@ -1040,6 +1048,8 @@ const CHECKS = [
       ['status reads the look and quality; Advanced starts closed (' + v.ui.status + ')', v.ui.status === 'Landscape \u00b7 ' + v.ui.quality && v.ui.advancedClosed === true],
       ['every option of every quick control selects itself (' + v.clicks.length + ' options' + (v.bad.length ? '; failed ' + v.bad.join(', ') : '') + ')', v.clicks.length >= 30 && v.bad.length === 0],
       ['the look select and quality buttons drive the store (' + v.ui.statusAfter + ')', v.ui.lookAfterSelect === 'Golden hour' && v.ui.qualityAfterClick === 'Balanced' && v.ui.statusAfter === 'Golden hour \u00b7 Balanced'],
+      ['a quality button turns auto scale off and Undo turns it back on (' + v.ui.autoScale.message + ')', v.ui.autoScale.afterClick === false
+        && /^Auto scale off: High renders at 100% resolution/.test(v.ui.autoScale.message) && v.ui.autoScale.afterUndo === true],
       ...Object.entries(v.effects).map(([k, e]) => [k + ' changes the picture (mean RGB difference ' + e.diff + ' at the ' + e.pose + ' camera)', e.diff >= 10]),
       ['no frame errors', v.frameError === null],
     ],
@@ -1237,9 +1247,12 @@ const CHECKS = [
         ['High', () => { S.setQuality('High'); S.setLook('Landscape'); }],
         ['Performance (no G-buffer)', () => S.setQuality('Performance')],
         ['Extreme', () => S.setQuality('Extreme')],
+        ['Extreme, motion blur on', () => S.set('fx.motionBlur', true)],
         ['Extreme, motion blur off', () => S.set('fx.motionBlur', false)],
-        ['SSAA 1 (TRAA back)', () => S.set('display.ssaa', 1)],
+        ['SSAA 1', () => S.set('display.ssaa', 1)],
+        ['TRAA', () => S.set('display.aa', 'traa')],
         ['SSAA 2 again', () => S.set('display.ssaa', 2)],
+        ['GTAO through the denoise blur', () => S.set('fx.ao', 'gtao')],
         ['SSR off', () => S.set('fx.ssr', false)],
         ['AO off', () => S.set('fx.ao', 'off')],
         ['SSR on, AO off', () => S.set('fx.ssr', true)],
@@ -1256,6 +1269,84 @@ const CHECKS = [
       ['no WebGPU validation errors' + (v.errorCount ? ': ' + v.errors.join(' | ') : ''), v.errorCount === 0],
       ['no frame errors', v.frameError === null],
     ],
+  },
+  {
+    name: 'quality-clarity',
+    timeout: 240000,
+    script: `await idle(); await sleep(800);
+      // October 2026: High and Ultra looked softer than Balanced and shimmered with the camera
+      // still (TRAA over spikes thinner than a pixel), and Extreme showed GTAO's noise tile as
+      // dark speckles. At the camera where it was reported, every tier from Balanced up must be
+      // still, use SMAA and SSAO at full resolution, and its ambient occlusion must be no noisier
+      // than Balanced's. AO noise is the fine detail of what AO changes: the frame with AO minus
+      // the frame without, less its 7 x 7 local mean. (Scores on the frame alone could not
+      // tell: TRAA's shimmer raised a sharpness score, and the dark gaps between spikes swamped
+      // a speckle count. Before the change: Balanced 0.82, High 2.8, Ultra 2.84, Extreme 4.67;
+      // GTAO through the depth-aware blur still measured 1.9 at High and 2.78 at Extreme.)
+      const S = L.settings; const errors = [];
+      const original = console.error;
+      console.error = (...a) => { const t = a.map(String).join(' '); if (/GPUValidationError|Invalid CommandBuffer/.test(t)) errors.push(t.slice(0, 160)); original.apply(console, a); };
+      await L.seek(tip); await idle();
+      S.setMany({ 'display.autoScale': false, 'camera.fov': 70, 'amp.exaggeration': 16.1 });
+      const POSE = { x: 991.128, y: 34.356, z: 166.546, yaw: 60.08, pitch: -16.77 };
+      // A 700 x 400 crop of the landscape (1600 x 900 frame) in the frame that drew it.
+      const crop = () => new Promise((resolve) => requestAnimationFrame(() => {
+        const k = canvas.width / 1600; const w = Math.round(700 * k); const h = Math.round(400 * k);
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        const ctx = c.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(canvas, Math.round(420 * k), Math.round(380 * k), w, h, 0, 0, w, h);
+        resolve({ w, h, c, d: ctx.getImageData(0, 0, w, h).data });
+      }));
+      const gray = ({ w, h, d }) => { const g = new Float32Array(w * h); for (let i = 0; i < w * h; i++) g[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2]; return g; };
+      const aoNoise = (withAO, withoutAO) => { const { w, h } = withAO; const a = gray(withAO); const b = gray(withoutAO);
+        const d = new Float32Array(w * h); for (let i = 0; i < d.length; i++) d[i] = a[i] - b[i];
+        const I = new Float64Array((w + 1) * (h + 1));
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) I[(y + 1) * (w + 1) + x + 1] = d[y * w + x] + I[y * (w + 1) + x + 1] + I[(y + 1) * (w + 1) + x] - I[y * (w + 1) + x];
+        let s = 0; let n = 0;
+        for (let y = 3; y < h - 3; y++) for (let x = 3; x < w - 3; x++) {
+          const box = I[(y + 4) * (w + 1) + x + 4] - I[(y - 3) * (w + 1) + x + 4] - I[(y + 4) * (w + 1) + x - 3] + I[(y - 3) * (w + 1) + x - 3];
+          s += Math.abs(d[y * w + x] - box / 49); n++;
+        }
+        return Math.round(s / n * 1000) / 1000; };
+      const still = async () => { let prev = await crop(); let s = 0;
+        for (let i = 0; i < 10; i++) { await sleep(40); const next = await crop(); let t = 0;
+          for (let j = 0; j < next.d.length; j++) if (j % 4 !== 3) t += Math.abs(next.d[j] - prev.d[j]);
+          s += t / (next.d.length * 0.75); prev = next; }
+        return Math.round(s / 10 * 1000) / 1000; };
+      const out = { tiers: {}, shots: [] };
+      for (const q of ['Balanced', 'High', 'Ultra', 'Extreme']) {
+        S.setQuality(q); L.controls.setPose(POSE);
+        await settled(1500, 15000); await idle(); await sleep(1500);
+        const img = await crop();
+        const p = L.view.post.plan;
+        const stillness = await still();
+        S.set('fx.ao', 'off'); await settled(1200, 8000); await sleep(800);
+        const noAO = await crop(); S.reset('fx.ao'); await settled(1200, 8000);
+        out.tiers[q] = { still: stillness, aoNoise: aoNoise(img, noAO),
+          scale: L.view.stats.scale, aa: p.traa ? 'traa' : p.smaa ? 'smaa' : p.fxaa ? 'fxaa' : 'none', motionBlur: p.motionBlur, ao: p.ao };
+        out.shots.push([q, img.c.toDataURL('image/png'), await jpeg(1600, 900)]);
+      }
+      console.error = original;
+      S.reset(['camera.fov', 'amp.exaggeration']); S.setQuality('High');
+      return { ...out, errors: errors.slice(0, 3), errorCount: errors.length, frameError: L.frameError || null };`,
+    node: (v) => {
+      if (shots) for (const [q, crop, frame] of v.shots) {
+        writeFileSync(join(shots, 'quality-' + q.toLowerCase() + '-crop.png'), Buffer.from(crop.split(',')[1], 'base64'));
+        writeFileSync(join(shots, 'quality-' + q.toLowerCase() + '.jpg'), Buffer.from(frame.split(',')[1], 'base64'));
+      }
+      v.shots = v.shots.map(([q]) => q);
+    },
+    expect: (v) => {
+      const t = v.tiers; const b = t.Balanced;
+      const fmt = (q) => q + ' still ' + t[q].still + ', AO noise ' + t[q].aoNoise + ', ' + t[q].ao + ', ' + t[q].aa + ', scale ' + t[q].scale;
+      return [
+        ...Object.keys(t).map((q) => [q + ' is still with the camera parked (' + fmt(q) + ')', t[q].still < 0.3]),
+        ...['High', 'Ultra', 'Extreme'].map((q) => [q + "'s ambient occlusion is no noisier than Balanced's (" + t[q].aoNoise + ' vs ' + b.aoNoise + ')', t[q].aoNoise <= 1.25 * b.aoNoise + 0.05]),
+        ['Balanced to Extreme use SMAA and SSAO at full resolution without motion blur', Object.values(t).every((x) => x.aa === 'smaa' && x.ao === 'ssao' && x.scale === 1 && x.motionBlur === false)],
+        ['no WebGPU validation errors' + (v.errorCount ? ': ' + v.errors.join(' | ') : ''), v.errorCount === 0],
+        ['no frame errors', v.frameError === null],
+      ];
+    },
   },
   {
     name: 'god-rays',

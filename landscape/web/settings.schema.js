@@ -87,9 +87,9 @@ export const PRESET_NAMES = Object.freeze([...LOOKS, ...QUALITY_ORDER]);
 export const QUALITY_INFO = Object.freeze({
   Performance: '75% resolution, FXAA, no shadows or ambient occlusion, bloom with 4 mips, 96 resident tiles, coarser terrain detail (6 px per cell) and 8-sided cylinders only close to the camera (cells 12 px wide or more, at most 250,000).',
   Balanced: 'Native resolution, SMAA, two 2048 PCF shadow cascades, SSAO with 8 samples, bloom, 160 resident tiles and cylinders where cells are 6 px wide or more.',
-  High: 'Startup quality (schema defaults): native resolution, TRAA, three 2048 PCF shadow cascades, GTAO with 16 samples, bloom, fog, sky, stars, 225 resident tiles and 12-sided cylinders where cells are 4 px wide or more.',
+  High: 'Startup quality (schema defaults): native resolution, SMAA, three 2048 PCF shadow cascades, SSAO with 16 samples, bloom, fog, sky, stars, 225 resident tiles and 12-sided cylinders where cells are 4 px wide or more.',
   Ultra: 'High plus three 4096 shadow cascades, volumetric light (32 steps), god rays, and bicubic smoothing (applies once Subdivision is raised). At 4K on an M4 Max: 60 fps in the overview, about 35 to 40 fps among cylinders (about 60 with Column cells off).',
-  Extreme: 'Deliberately GPU-bound: Ultra plus a fourth shadow cascade, 2x supersampling, softer shadows (softness 1.5), GTAO with 32 samples, SSR, 64 volumetric steps, motion blur, subdivision 2, finer detail (2 px per cell, 320 resident tiles) and up to 2M cylinders. At 4K on an M4 Max: about 55 fps in the overview, 13 to 15 fps among cylinders.',
+  Extreme: 'Deliberately GPU-bound, for GPUs beyond an M4 Max: Ultra plus a fourth shadow cascade, 2x supersampling under SMAA, softer shadows (softness 1.5), SSAO with 32 samples, SSR, 64 volumetric steps, subdivision 2, finer detail (2 px per cell, 320 resident tiles) and up to 2M cylinders. At 4K on an M4 Max: about 55 fps in the overview, 13 to 15 fps among cylinders.',
 });
 
 export const LOOK_INFO = Object.freeze({
@@ -430,7 +430,8 @@ const ENTRIES = [
   // Effects: ambient occlusion
   { id: 'fx.ao', section: 'Ambient occlusion', label: 'Ambient occlusion', type: 'enum',
     options: ['off', 'ssao', 'gtao'], optionLabels: { off: 'Off', ssao: 'SSAO', gtao: 'GTAO' },
-    default: 'gtao', rebuild: 'post', help: 'Screen-space ambient occlusion. Film: off.' },
+    default: 'ssao', rebuild: 'post',
+    help: 'Screen-space ambient occlusion. SSAO is blurred and steady. GTAO is more detailed but noisier: TRAA averages its noise, and without TRAA a light blur leaves dark blotches between the spikes. Film: off.' },
   { id: 'fx.aoRadius', section: 'Ambient occlusion', label: 'AO radius', type: 'number',
     min: 0.05, max: 10, step: 0.01, scale: 'log', default: 1, unit: 'world units', help: 'Occlusion sampling radius.' },
   { id: 'fx.aoIntensity', section: 'Ambient occlusion', label: 'AO intensity', type: 'number',
@@ -515,7 +516,7 @@ const ENTRIES = [
     min: 0.25, max: 2, step: 0.05, default: 1, unit: 'x',
     help: 'Render resolution as a multiple of devicePixelRatio (2 = 7680x4320 on a 3840x2160 canvas).' },
   { id: 'display.autoScale', section: 'Resolution', label: 'Auto scale', type: 'bool', default: false, preset: false,
-    help: 'Adjust the scale between minimum and maximum to hold the target frame rate. A personal preference: presets leave it alone, so turn it off to let Ultra or Extreme load the GPU fully.' },
+    help: 'Adjust the scale between minimum and maximum to hold the target frame rate. A personal preference that looks and links leave alone; choosing a quality in the panel turns it off, so the tier renders at its own resolution.' },
   { id: 'display.targetFps', section: 'Resolution', label: 'Target fps', type: 'int',
     min: 24, max: 240, step: 1, default: 60, unit: 'fps', preset: false, help: 'Frame rate auto scale aims for.' },
   { id: 'display.scaleMin', section: 'Resolution', label: 'Auto minimum', type: 'number',
@@ -527,7 +528,8 @@ const ENTRIES = [
   { id: 'display.aa', section: 'Anti-aliasing', label: 'Anti-aliasing', type: 'enum',
     options: ['none', 'fxaa', 'smaa', 'traa'],
     optionLabels: { none: 'None', fxaa: 'FXAA', smaa: 'SMAA', traa: 'TRAA (temporal)' },
-    default: 'traa', rebuild: 'post', help: 'Post-process anti-aliasing. Film: none.' },
+    default: 'smaa', rebuild: 'post',
+    help: 'Post-process anti-aliasing. TRAA blends jittered frames: smoother edges in motion, but it softens the thin spikes and makes them shimmer even with the camera still. Film: none.' },
   { id: 'display.ssaa', section: 'Anti-aliasing', label: 'Supersampling', type: 'enum', options: [1, 2, 4],
     optionLabels: { 1: 'Off', 2: '2x', 4: '4x' }, default: 1, rebuild: 'post',
     help: 'Supersamples the scene pass only, at sqrt(N) times the resolution per axis (4 = 2x2), resolved by an exact box downsample. Effects run at output resolution; TRAA is skipped while supersampling is on.' },
@@ -743,6 +745,10 @@ export const FLASH_TRAIL = deepFreeze({
 // (Chrome 154, 120 Hz) measured Ultra at 59–65 fps in the close view with four cascades, so
 // Ultra now uses three 4096 cascades (the fourth cost 1.1 ms; map size and bicubic ~0 ms).
 // See docs/landscape.md for the final measurements.
+// October 19, 2026: High, Ultra and Extreme use SMAA instead of TRAA and SSAO instead of GTAO,
+// and Extreme drops motion blur. TRAA blended jittered frames over spikes thinner than a pixel,
+// which softened them and kept changing the frame with the camera still; GTAO without TRAA left
+// dark blotches between the spikes; motion blur smeared every move.
 export const QUALITY_PRESETS = deepFreeze({
   Performance: {
     'display.scale': 0.75,
@@ -760,10 +766,8 @@ export const QUALITY_PRESETS = deepFreeze({
     'geo.instanceBudget': 250000,
   },
   Balanced: {
-    'display.aa': 'smaa',
     'light.cascades': 2,
     'light.shadowMapSize': 2048,
-    'fx.ao': 'ssao',
     'fx.aoSamples': 8,
     'geo.tileBudget': 160,
     'geo.pixelsPerCell': 4,
@@ -784,14 +788,12 @@ export const QUALITY_PRESETS = deepFreeze({
     'light.shadowMapSize': 4096,
     'light.shadowFilter': 'pcf',
     'light.shadowSoftness': 1.5,
-    'fx.ao': 'gtao',
     'fx.aoSamples': 32,
     'fx.ssr': true,
     'fx.ssrSteps': 32,
     'light.volumetric': true,
     'light.volumetricSteps': 64,
     'light.godRays': true,
-    'fx.motionBlur': true,
     'geo.smoothing': 'bicubic',
     'geo.subdivision': 2,
     'geo.columns': true,
@@ -800,6 +802,20 @@ export const QUALITY_PRESETS = deepFreeze({
     'geo.pixelsPerCell': 2,
   },
 });
+
+// Quality-tier values a retune replaced, with the settings revision that replaced them. The
+// store saves every value, so a browser that saved a tier before a retune would keep the old
+// value as a change of its own. Settings saved before a revision (toJSON writes
+// SETTINGS_REVISION) load such a value as the tier's current one, unless the look sets it;
+// settings saved since keep whatever was chosen by hand.
+export const SETTINGS_REVISION = 1;
+export const RETIRED_QUALITY_VALUES = deepFreeze([
+  { revision: 1, values: {
+    High: { 'display.aa': 'traa', 'fx.ao': 'gtao' },
+    Ultra: { 'display.aa': 'traa', 'fx.ao': 'gtao' },
+    Extreme: { 'display.aa': 'traa', 'fx.ao': 'gtao', 'fx.motionBlur': true },
+  } },
+]);
 
 // The data looks (Outputs, Money map, Linear, Paper) share one plain stage: a high white sun
 // over a flat background with no sky, haze or glow, square boxes, the grid and the now plane,
