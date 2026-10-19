@@ -563,11 +563,11 @@ const CHECKS = [
       out.on = { pressed: btn.getAttribute('aria-pressed'), on: L.sound.on, context: L.sound.state.context,
         stored: localStorage.getItem('utxo-landscape-sound'), toast: document.getElementById('toast').textContent };
       // 1x from above the most recent blocks.
-      { const v0 = S().totals.voices, fr0 = S().totals.frames; let maxLevel = 0, onScreen = 0, voiced = 0;
+      { const v0 = S().totals.voices, fr0 = S().totals.frames; let maxLevel = 0, onScreen = 0, voiced = 0, minLead = Infinity;
         L.playback.play();
-        for (let i = 0; i < 40; i++) { await sleep(50); const lf = S().lastFrame; if (lf) { maxLevel = Math.max(maxLevel, lf.maxLevel); onScreen = Math.max(onScreen, lf.onScreen); voiced = Math.max(voiced, lf.voiced); } }
+        for (let i = 0; i < 40; i++) { await sleep(50); const lf = S().lastFrame; if (lf) { maxLevel = Math.max(maxLevel, lf.maxLevel); onScreen = Math.max(onScreen, lf.onScreen); voiced = Math.max(voiced, lf.voiced); minLead = Math.min(minLead, lf.lead); } }
         L.playback.pause(); await idle();
-        out.play = { voices: S().totals.voices - v0, frames: S().totals.frames - fr0, maxLevel, onScreen, voiced, dRef: S().dRef, created: S().created }; }
+        out.play = { voices: S().totals.voices - v0, frames: S().totals.frames - fr0, maxLevel, onScreen, voiced, minLead, dRef: S().dRef, created: S().created }; }
       // Max: busy frames feed the crackle.
       { let crowd = 0; L.playback.setSpeed('max'); L.playback.play();
         for (let i = 0; i < 30; i++) { await sleep(50); const lf = S().lastFrame; if (lf) crowd = Math.max(crowd, lf.crowdGain); }
@@ -597,15 +597,16 @@ const CHECKS = [
       return out;`,
     expect: (v) => [
       ['a Sound button in the timeline, off by default (' + v.title + ')',
-        /^Sound: a click for each spend flash on screen/.test(v.title || '') && v.pressed0 === 'false' && !v.on0 && v.ctx0 === null && v.stored0 === null],
+        /^Sound: ticks for the spend flashes on screen/.test(v.title || '') && v.pressed0 === 'false' && !v.on0 && v.ctx0 === null && v.stored0 === null],
       ['off: ' + v.off.flashes + ' flashes played silently, no audio context', v.off.flashes > 0 && v.off.voices === 0 && !v.off.created && v.off.context === null],
       ['the button turns sound on: pressed, remembered, context ' + v.on.context + ', notice "' + v.on.toast + '"',
         v.on.pressed === 'true' && v.on.on && v.on.context === 'running' && v.on.stored === 'on' && /Sound on/.test(v.on.toast)],
-      ['1x from above: ' + v.play.voices + ' clicks over ' + v.play.frames + ' frames, up to ' + v.play.onScreen + ' flashes on screen and ' + v.play.voiced + ' clicks in a frame, loudest ' + v.play.maxLevel.toFixed(2),
-        v.play.voices > 0 && v.play.onScreen > 0 && v.play.voiced <= 16 && v.play.maxLevel > 0 && v.play.maxLevel <= 1],
+      ['1x from above: ' + v.play.voices + ' ticks over ' + v.play.frames + ' frames (about 60 a second), up to ' + v.play.onScreen + ' flashes on screen and ' + v.play.voiced + ' ticks in a frame, loudest ' + v.play.maxLevel.toFixed(2),
+        v.play.voices >= 90 && v.play.voices <= 140 && v.play.onScreen > 0 && v.play.voiced <= 6 && v.play.maxLevel > 0 && v.play.maxLevel <= 1],
+      ['every tick is scheduled at least 60 ms ahead of the audio clock (closest ' + (v.play.minLead * 1000).toFixed(1) + ' ms)', v.play.minLead >= 0.0599],
       ['the reference distance follows the view: ' + (v.play.dRef || 0).toFixed(1) + ' from above, ' + (v.closeRef || 0).toFixed(1) + ' near the ground',
-        v.play.dRef >= 1 && v.play.dRef <= 1000 && v.closeRef > 0 && v.closeRef < v.play.dRef * 0.5],
-      ['Max: busy frames feed the crackle (gain ' + v.crowd.toFixed(3) + ')', v.crowd > 0 && v.crowd <= 0.35],
+        v.play.dRef >= 1 && v.play.dRef <= 1000 && v.closeRef > 0 && v.closeRef < v.play.dRef * 0.75],
+      ['Max: busy frames feed a soft crackle (gain ' + v.crowd.toFixed(3) + ')', v.crowd > 0 && v.crowd <= 0.06],
       ['M turns it off: released, remembered, no clicks for ' + v.m.flashes + ' flashes, context ' + v.m.context,
         !v.m.on && v.m.pressed === 'false' && v.m.stored === 'off' && v.m.flashes > 0 && v.m.voices === 0 && v.m.context === 'suspended'],
       ['seeking and scrubbing stay silent (' + v.seek.voices + ' clicks)', v.seek.on && v.seek.voices === 0],

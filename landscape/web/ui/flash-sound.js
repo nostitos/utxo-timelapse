@@ -1,49 +1,58 @@
-// Spend-flash sound (landscape/SPEC.md §8): a short click of filtered noise for each spend
-// flash on screen, after the film's audio synthesizer (src/cpp/buv/AudioSynthesizer.h). The
-// age of the spent coins picks the band (old coins a low thud, young ones a high tick), the
-// BTC moved sets the level (the flash sprite's amount scale), and the distance from the camera
-// lowers and dulls it. Distance is measured against the view, not in world units: flashes at
-// the distance the camera looks at (the nearer of the terrain at the centre of the view and
-// the median distance of the frame's flashes on screen) play at full level, nearer ones no
-// louder, farther ones fall off and pass through a low-pass filter. The loudest flashes of a
-// frame get their own click from a budget that refills at MAX_VOICES_SECOND a second and holds
-// at most MAX_VOICES_FRAME (so busy playback clicks steadily, about 5 a frame at 60 fps); the
-// rest feed one crackle whose level follows their sum. Only advance frames
+// Spend-flash sound (landscape/SPEC.md §8): a short tick of filtered noise for spend flashes on
+// screen, after the film's audio synthesizer (src/cpp/buv/AudioSynthesizer.h) moved up to
+// 480 Hz-6.5 kHz: the age of the spent coins picks the band (old coins a low knock, young ones
+// a high tick), the BTC moved sets the level (the flash sprite's amount scale), and the
+// distance from the camera lowers and dulls it. Nothing sounds below 150 Hz: on a MacBook's
+// built-in speakers, which limit sustained bass, the film's 80 Hz thuds came out as surges and
+// near-silences.
+// Distance is measured against the view, not in world units: flashes at the median distance
+// of the frame's flashes on screen play at full level, nearer ones no louder, farther ones fall
+// off and pass through a low-pass filter, so zooming changes the balance but not the overall
+// level. The loudest flashes of a
+// frame get their own tick from a budget that refills at MAX_VOICES_SECOND a second and holds
+// at most MAX_VOICES_FRAME, so busy playback ticks steadily (about one a frame at 60 fps) and
+// each tick stays audible; the rest feed a soft crackle that grows with their summed level.
+// Ticks are scheduled LEAD_S ahead of the audio clock and spread over the time each frame
+// stands for, so frames arriving unevenly do not bunch them. Only advance frames
 // (playback and steps forward) sound, so seeks and scrubs stay silent, and only while the
 // shared switch (ui/sound.js) is on. flashVoices plans a frame (pure); buildFlashGraph is the
 // Web Audio graph on any BaseAudioContext.
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
-/** Bands by the age of the spent coins in blocks (below maxAge), as in the film's synthesizer. */
+/** Bands by the age of the spent coins in blocks (below maxAge): the film's age bands, higher. */
 export const FLASH_BANDS = Object.freeze([
-  Object.freeze({ id: 'air', maxAge: 100, freq: 12000, q: 0.8, gain: 0.45, decay: 0.018 }),
-  Object.freeze({ id: 'high', maxAge: 1000, freq: 4000, q: 1.0, gain: 0.55, decay: 0.025 }),
-  Object.freeze({ id: 'mid', maxAge: 10000, freq: 1500, q: 1.0, gain: 0.7, decay: 0.035 }),
-  Object.freeze({ id: 'low', maxAge: 100000, freq: 200, q: 1.5, gain: 0.9, decay: 0.06 }),
-  Object.freeze({ id: 'sub', maxAge: Infinity, freq: 80, q: 2.0, gain: 1.0, decay: 0.09 }),
+  Object.freeze({ id: 'air', maxAge: 100, freq: 6500, q: 1.2, gain: 0.4, decay: 0.006 }),
+  Object.freeze({ id: 'high', maxAge: 1000, freq: 3600, q: 1.4, gain: 0.5, decay: 0.008 }),
+  Object.freeze({ id: 'mid', maxAge: 10000, freq: 1900, q: 1.6, gain: 0.65, decay: 0.011 }),
+  Object.freeze({ id: 'low', maxAge: 100000, freq: 950, q: 1.8, gain: 0.8, decay: 0.016 }),
+  Object.freeze({ id: 'deep', maxAge: Infinity, freq: 480, q: 2.0, gain: 1.0, decay: 0.024 }),
 ]);
 /** Stereo positions a click snaps to (left edge of the screen to the right edge). */
 export const FLASH_PANS = Object.freeze([-1, -0.5, 0, 0.5, 1]);
-export const MAX_VOICES_FRAME = 16;
-export const MAX_VOICES_SECOND = 300;
+export const MAX_VOICES_FRAME = 6;
+export const MAX_VOICES_SECOND = 60;
 export const SCREEN_MARGIN = 1.1; // NDC: flashes just outside the frame still sound
 export const FAR_RATIO = 2; // beyond this many reference distances a click is low-passed
-export const FAR_LOWPASS_HZ = 1200;
+export const FAR_LOWPASS_HZ = 2000;
+export const HIGHPASS_HZ = 150; // nothing below: laptop speakers duck sustained bass
 export const REF_MIN = 1;
 export const REF_MAX = 1000;
 export const REF_TAU_S = 0.5;
 export const EDGE_LEVEL = 0.35; // spends of coins created near the creation edge
-export const CROWD_PER_LEVEL = 0.02;
-export const CROWD_MAX = 0.35;
-const ATTACK_S = 0.002;
+export const CROWD_MAX = 0.06;
+export const CROWD_REF = 200; // summed level of the unvoiced flashes that reaches CROWD_MAX
+export const LEAD_S = 0.06; // ticks are scheduled at least this far ahead of the audio clock
+export const DRIFT_S = 0.2; // and at most this much further, when frames arrive faster than they play
+const ATTACK_S = 0.001;
 const SLICE_S = 0.12;
 const NOISE_S = 0.5;
 const NOISE_RMS = 0.2;
 const CRACKLE_S = 2;
 const CRACKLE_RATE = 400; // clicks per second in the crowd loop
-const MASTER_GAIN = 0.5;
-const SPREAD_MAX_S = 0.05; // a frame's clicks spread over the time since the previous frame
+const MASTER_GAIN = 0.9;
+const FRAME_S_MIN = 1 / 240;
+const FRAME_S_MAX = 0.1; // the longest stretch one frame's ticks are spread over
 
 /** Index into FLASH_BANDS for coins 'age' blocks old. */
 export function bandIndex(age) {
@@ -85,11 +94,11 @@ export function createFlashPlanState() {
 /**
  * Plans the sound of one frame's flashes. items: [{x, y, z, xEnd, t, old}] from
  * render/terrain/flashes.js (world units; t = amount scale; xEnd = the cell's newest block / 1000);
- * camera: {x, y, z, elements} from view.cameraView(); focus: distance to the terrain at the
- * centre of the view, or null; block: the frame's block; now: ms; state: createFlashPlanState().
+ * camera: {x, y, z, elements} from view.cameraView(); block: the frame's block; now: ms;
+ * state: createFlashPlanState().
  * Returns {voices: [{band, pan, far, level, ndcX, distance}], crowd: {gain, pan}, dRef, onScreen}.
  */
-export function flashVoices(items, { camera, focus = null, block = NaN, now = 0, state = createFlashPlanState() } = {}) {
+export function flashVoices(items, { camera, block = NaN, now = 0, state = createFlashPlanState() } = {}) {
   const m = camera.elements;
   const on = [];
   for (const it of items) {
@@ -100,7 +109,7 @@ export function flashVoices(items, { camera, focus = null, block = NaN, now = 0,
   if (on.length) {
     const ds = on.map((o) => o.d).sort((a, b) => a - b);
     const median = ds[ds.length >> 1];
-    const target = clamp(Number.isFinite(focus) && focus > 0 ? Math.min(focus, median) : median, REF_MIN, REF_MAX);
+    const target = clamp(median, REF_MIN, REF_MAX);
     if (!(state.dRef > 0)) state.dRef = target;
     else {
       const dt = Number.isFinite(state.at) ? Math.max(0, (now - state.at) / 1000) : 0;
@@ -136,10 +145,30 @@ export function flashVoices(items, { camera, focus = null, block = NaN, now = 0,
   }
   return {
     voices,
-    crowd: { gain: Math.min(CROWD_MAX, CROWD_PER_LEVEL * sum), pan: sum > 0 ? panSum / sum : 0 },
+    crowd: { gain: crowdGain(sum), pan: sum > 0 ? panSum / sum : 0 },
     dRef: state.dRef,
     onScreen: on.length,
   };
+}
+
+/** Crackle level for the summed level of a frame's unvoiced flashes: logarithmic, up to CROWD_MAX. */
+export function crowdGain(sum) {
+  if (!(sum > 0)) return 0;
+  return CROWD_MAX * Math.min(1, Math.log1p(sum) / Math.log1p(CROWD_REF));
+}
+
+/**
+ * Where one frame's ticks go on the audio clock. cursor: the end of the previous frame's span
+ * (or null); now: the context's currentTime; span: the time the frame stands for (s). Returns
+ * {start, end}: the span starts at the cursor unless that fell behind now + LEAD_S (a stall: it
+ * restarts there) or ran beyond now + LEAD_S + DRIFT_S (frames arriving faster: it is pulled in).
+ */
+export function frameSpan(cursor, now, span) {
+  const d = clamp(Number.isFinite(span) ? span : FRAME_S_MIN, FRAME_S_MIN, FRAME_S_MAX);
+  let start = Number.isFinite(cursor) ? cursor : now + LEAD_S;
+  if (start < now + LEAD_S) start = now + LEAD_S;
+  if (start > now + LEAD_S + DRIFT_S) start = now + LEAD_S + DRIFT_S;
+  return { start, end: start + d };
 }
 
 function xorshift(seed) {
@@ -224,20 +253,26 @@ function toBuffer(ctx, data) {
 export function buildFlashGraph(ctx, { destination = ctx.destination } = {}) {
   const master = ctx.createGain();
   master.gain.value = MASTER_GAIN;
-  const comp = ctx.createDynamicsCompressor();
-  comp.threshold.value = -18;
-  comp.knee.value = 6;
-  comp.ratio.value = 4;
-  comp.attack.value = 0.003;
-  comp.release.value = 0.15;
-  comp.connect(master).connect(destination);
+  // A peak limiter only: sparse ticks rarely reach it, so it does not pump.
+  const limiter = ctx.createDynamicsCompressor();
+  limiter.threshold.value = -6;
+  limiter.knee.value = 0;
+  limiter.ratio.value = 20;
+  limiter.attack.value = 0.001;
+  limiter.release.value = 0.08;
+  const highpass = ctx.createBiquadFilter();
+  highpass.type = 'highpass';
+  highpass.frequency.value = HIGHPASS_HZ;
+  highpass.Q.value = 0.7;
+  const input = highpass; // everything enters here
+  highpass.connect(limiter).connect(master).connect(destination);
   const near = ctx.createGain();
-  near.connect(comp);
+  near.connect(input);
   const far = ctx.createBiquadFilter();
   far.type = 'lowpass';
   far.frequency.value = FAR_LOWPASS_HZ;
   far.Q.value = 0.7;
-  far.connect(comp);
+  far.connect(input);
   const panner = (value, out) => {
     const p = ctx.createStereoPanner ? ctx.createStereoPanner() : ctx.createGain();
     if (p.pan) p.pan.value = value;
@@ -252,16 +287,16 @@ export function buildFlashGraph(ctx, { destination = ctx.destination } = {}) {
   crackle.loop = true;
   const crowdBand = ctx.createBiquadFilter();
   crowdBand.type = 'bandpass';
-  crowdBand.frequency.value = 1200;
-  crowdBand.Q.value = 0.5;
+  crowdBand.frequency.value = 2500;
+  crowdBand.Q.value = 0.7;
   const crowdGain = ctx.createGain();
   crowdGain.gain.value = 0;
-  const crowdPan = panner(0, comp);
+  const crowdPan = panner(0, input);
   crackle.connect(crowdBand).connect(crowdGain).connect(crowdPan);
   crackle.start(ctx.currentTime);
 
   return {
-    /** One click at time t (voice from flashVoices). */
+    /** One tick at time t (voice from flashVoices). */
     play(voice, t = ctx.currentTime) {
       const b = FLASH_BANDS[voice.band] || FLASH_BANDS[2];
       const src = ctx.createBufferSource();
@@ -270,12 +305,12 @@ export function buildFlashGraph(ctx, { destination = ctx.destination } = {}) {
       const peak = Math.max(1e-4, voice.level * b.gain);
       g.gain.setValueAtTime(0, t);
       g.gain.linearRampToValueAtTime(peak, t + ATTACK_S);
-      g.gain.setTargetAtTime(0, t + ATTACK_S, b.decay / 4);
+      g.gain.setTargetAtTime(0, t + ATTACK_S, b.decay / 3);
       src.connect(g).connect((voice.far ? buses.far : buses.near)[voice.pan] || buses.near[2]);
       src.onended = () => g.disconnect();
-      src.start(t, Math.random() * (NOISE_S - SLICE_S), SLICE_S);
+      src.start(t, Math.random() * (NOISE_S - SLICE_S), Math.min(SLICE_S, ATTACK_S + b.decay * 5));
     },
-    /** The crowd crackle: rises to gain now and fades out unless the next frame renews it. */
+    /** The crowd crackle: rises to gain at t and fades out unless the next frame renews it. */
     crowd(gain, pan, t = ctx.currentTime) {
       crowdGain.gain.cancelScheduledValues(t);
       crowdGain.gain.setTargetAtTime(gain, t, 0.12);
@@ -293,17 +328,19 @@ export function buildFlashGraph(ctx, { destination = ctx.destination } = {}) {
   };
 }
 
-/** Live flash sound on the shared switch: spawn(items, {block, reason, camera, focus}) and state for checks. */
+/** Live flash sound on the shared switch: spawn(items, {block, reason, camera}) and state for checks. */
 export function createFlashSound({ sound, now = () => performance.now() } = {}) {
   let graph = null;
   let graphCtx = null;
   let lastSpawn = null;
+  let frameS = 1 / 60; // eased time between frames: the span one frame's ticks are spread over
+  let cursor = null; // audio time where the next frame's ticks start
   let lastFrame = null;
   const plan = createFlashPlanState();
   const totals = { voices: 0, frames: 0 };
   return {
     /** One frame's new flashes (render/terrain/flashes.js onSpawn) with the camera. */
-    spawn(items, { block = NaN, reason = 'advance', camera = null, focus = null } = {}) {
+    spawn(items, { block = NaN, reason = 'advance', camera = null } = {}) {
       if (!sound || !sound.running || !items || !items.length || !camera || !camera.elements) return null;
       if (reason !== 'advance') return null;
       const ctx = sound.context;
@@ -311,21 +348,29 @@ export function createFlashSound({ sound, now = () => performance.now() } = {}) 
         if (graph) graph.dispose();
         graph = buildFlashGraph(ctx);
         graphCtx = ctx;
+        cursor = null;
       }
       const t = now();
-      const p = flashVoices(items, { camera, focus, block, now: t, state: plan });
-      const spread = lastSpawn === null ? 0 : clamp((t - lastSpawn) / 1000, 0, SPREAD_MAX_S);
+      const p = flashVoices(items, { camera, block, now: t, state: plan });
+      if (lastSpawn !== null) {
+        const gap = (t - lastSpawn) / 1000;
+        // A pause (paused playback, a seek) restarts the schedule instead of stretching the span.
+        if (gap > 0.5) cursor = null;
+        else frameS += (clamp(gap, FRAME_S_MIN, FRAME_S_MAX) - frameS) * 0.2;
+      }
       lastSpawn = t;
-      const t0 = ctx.currentTime + 0.005;
+      const span = frameSpan(cursor, ctx.currentTime, frameS);
+      cursor = span.end;
       let maxLevel = 0;
       for (const v of p.voices) {
-        graph.play(v, t0 + Math.random() * spread);
+        graph.play(v, span.start + Math.random() * (span.end - span.start));
         if (v.level > maxLevel) maxLevel = v.level;
       }
-      graph.crowd(p.crowd.gain, p.crowd.pan, ctx.currentTime);
+      graph.crowd(p.crowd.gain, p.crowd.pan, span.start);
       totals.voices += p.voices.length;
       totals.frames++;
-      lastFrame = { block, candidates: items.length, onScreen: p.onScreen, voiced: p.voices.length, crowdGain: p.crowd.gain, maxLevel };
+      lastFrame = { block, candidates: items.length, onScreen: p.onScreen, voiced: p.voices.length, crowdGain: p.crowd.gain, maxLevel,
+        lead: span.start - ctx.currentTime };
       return p;
     },
     get state() {

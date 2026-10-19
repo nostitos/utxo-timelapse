@@ -168,26 +168,11 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     const sound = createSound();
     const planeSound = createPlaneSound({ sound });
     const flashSound = createFlashSound({ sound });
-    // Each frame's new flash sprites, with the camera and the distance the view looks at
-    // (measured at most every 100 ms: a ray cast against the terrain).
-    let focusAt = -Infinity;
-    let focusD = null;
-    const focusNow = () => {
-      const t = performance.now();
-      if (t - focusAt > 100) {
-        focusAt = t;
-        try {
-          focusD = view.focusDistance();
-        } catch {
-          focusD = null;
-        }
-      }
-      return focusD;
-    };
+    // Each frame's new flash sprites, with the camera.
     if (typeof view.onFlashes === 'function' && typeof view.cameraView === 'function') {
       view.onFlashes((list, meta) => {
         if (!sound.running || meta.reason !== 'advance') return;
-        flashSound.spawn(list, { ...meta, camera: view.cameraView(), focus: focusNow() });
+        flashSound.spawn(list, { ...meta, camera: view.cameraView() });
       });
     }
     /** M and the Sound button; Flashes off leaves nothing to hear in map mode, so say so. */
