@@ -389,12 +389,16 @@ const CHECKS = [
       await L.seek(inData(314000)); await idle();
       L.controls.setPose({ x: Math.min(150, tip / 1000 - 40), y: 14, z: 120, yaw: -70, pitch: -14 }); await sleep(400); await idle();
       L.plane.setCraft('plane');
+      L.sound.set(false);
       const out = { funButton: !!document.querySelector('#timeline [data-act="fun"]') };
       key('KeyT', { key: 't' }); await sleep(50);
       out.modeAfterT = L.controls.mode;
       await takeoffDone();
       out.tookOff = !L.plane.takingOff && !!L.plane.state;
       const keysEl = document.getElementById('planekeys');
+      // Sound is off by default: takeoff builds no engine; turning it on in flight starts it.
+      out.silent = { state: L.plane.sound.state, keys: keysEl.textContent.includes('Sound off') };
+      L.sound.set(true); await sleep(100);
       out.keys = keysEl.hidden ? null : keysEl.textContent;
       out.sound0 = L.plane.sound.state;
       // Bank to turn: a quarter second of D banks the plane while the heading has barely moved.
@@ -490,6 +494,8 @@ const CHECKS = [
       ['the controls card stays visible: the craft, bank to turn, up raises the nose, next craft, Stack sats, sound, land',
         !!v.keys && /^Plane/.test(v.keys) && /banking turns/.test(v.keys) && /up raises the nose/.test(v.keys) && /Next craft: Bird/.test(v.keys) &&
         /Stack sats: 60 s/.test(v.keys) && /Sound on/.test(v.keys) && /Land in map mode/.test(v.keys)],
+      ['with Sound off, takeoff builds no engine and the card says Sound off; Sound on in flight starts it',
+        !v.silent.state.created && v.silent.state.muted && v.silent.keys && v.sound0.created],
       ['engine sound: built on takeoff, pitch rises with the throttle (' + (v.sound0.target ? v.sound0.target.freq.toFixed(0) : '?') + ' -> ' + (v.sound1.target ? v.sound1.target.freq.toFixed(0) : '?') + ' Hz, context ' + v.sound1.context + ')',
         v.sound0.created && v.sound0.active && v.sound1.target.freq > v.sound0.target.freq + 10],
       ['M mutes the engine and the card says so', v.muted.state.muted && v.muted.state.target.gain === 0 && v.muted.keys],
@@ -533,6 +539,77 @@ const CHECKS = [
       ['F enters the same mode and presses the button', v.f.mode === 'flight' && v.f.pressed === 'true'],
       ['a Fun button opens a menu (' + (v.fun && v.fun.title) + ')', !!v.fun && /^Fun: fly a plane, bird or jet/.test(v.fun.title) && v.fun.popup === 'true'],
       ['help has Fly and Fun sections (' + v.help.join(', ') + ')', v.help.includes('Fly') && v.help.includes('Fun') && !v.help.includes('Plane')],
+      ['no frame errors', v.frameError === null],
+    ],
+  },
+  {
+    // ui/sound.js and ui/flash-sound.js: the Sound button, M, and a click per spend flash on screen.
+    name: 'flash-sound',
+    shot: 'sound-on.png',
+    timeout: 120000,
+    script: `const btn = document.querySelector('#timeline [data-act="sound"]');
+      const S = () => L.flashSound.state;
+      const spawned = () => L.view.terrain.flashes.stats.spawned;
+      const out = { title: btn && btn.title, pressed0: btn && btn.getAttribute('aria-pressed'), on0: L.sound.on, ctx0: L.sound.state.context,
+        stored0: localStorage.getItem('utxo-landscape-sound') };
+      L.follow.set(false);
+      await L.seek(inData(tip)); await idle();
+      L.controls.setPose(POSES.map); await sleep(600); await idle();
+      L.playback.setSpeed('1');
+      // Off: the flashes play, silently, and no audio context exists.
+      { const f0 = spawned(); L.playback.play(); await sleep(1000); L.playback.pause(); await idle();
+        out.off = { flashes: spawned() - f0, voices: S().totals.voices, created: S().created, context: L.sound.state.context }; }
+      btn.click(); await sleep(150);
+      out.on = { pressed: btn.getAttribute('aria-pressed'), on: L.sound.on, context: L.sound.state.context,
+        stored: localStorage.getItem('utxo-landscape-sound'), toast: document.getElementById('toast').textContent };
+      // 1x from above the most recent blocks.
+      { const v0 = S().totals.voices, fr0 = S().totals.frames; let maxLevel = 0, onScreen = 0, voiced = 0;
+        L.playback.play();
+        for (let i = 0; i < 40; i++) { await sleep(50); const lf = S().lastFrame; if (lf) { maxLevel = Math.max(maxLevel, lf.maxLevel); onScreen = Math.max(onScreen, lf.onScreen); voiced = Math.max(voiced, lf.voiced); } }
+        L.playback.pause(); await idle();
+        out.play = { voices: S().totals.voices - v0, frames: S().totals.frames - fr0, maxLevel, onScreen, voiced, dRef: S().dRef, created: S().created }; }
+      // Max: busy frames feed the crackle.
+      { let crowd = 0; L.playback.setSpeed('max'); L.playback.play();
+        for (let i = 0; i < 30; i++) { await sleep(50); const lf = S().lastFrame; if (lf) crowd = Math.max(crowd, lf.crowdGain); }
+        L.playback.pause(); L.playback.setSpeed('1'); await idle(); out.crowd = crowd; }
+      // Close to the ground the reference distance shrinks with the view (Max may have reached the tip).
+      await L.seek(inData(tip - 10000)); await idle();
+      L.controls.setPose(POSES.close); await sleep(600); await idle();
+      L.playback.play(); await sleep(1500); L.playback.pause(); await idle();
+      out.closeRef = S().dRef;
+      // M turns it off: no clicks, and the context is suspended once the sound has faded.
+      key('KeyM', { key: 'm' }); await sleep(100);
+      out.m = { on: L.sound.on, pressed: btn.getAttribute('aria-pressed'), stored: localStorage.getItem('utxo-landscape-sound') };
+      { const v1 = S().totals.voices, f1 = spawned(); L.playback.play(); await sleep(1000); L.playback.pause(); await idle(); await sleep(400);
+        out.m.voices = S().totals.voices - v1; out.m.flashes = spawned() - f1; out.m.context = L.sound.state.context; }
+      // Seeking and scrubbing stay silent with the sound on.
+      key('KeyM', { key: 'm' }); await sleep(100);
+      { const v2 = S().totals.voices;
+        await L.seek(inData(tip - 30000)); await idle();
+        for (const b of [600000, 650000, 700000]) { L.playback.scrubTo(inData(b)); await sleep(200); }
+        L.playback.scrubEnd(inData(700000)); await sleep(300); await idle();
+        out.seek = { voices: S().totals.voices - v2, on: L.sound.on }; }
+      key('KeyH', { key: 'h' }); await sleep(150);
+      out.help = [...document.querySelectorAll('#help dl div')].map((d) => d.textContent).find((t) => /Sound on or off/.test(t)) || null;
+      L.ui.help.close(); await sleep(100);
+      L.controls.setPose(POSES.map); await sleep(300); await idle();
+      out.frameError = L.frameError || null;
+      return out;`,
+    expect: (v) => [
+      ['a Sound button in the timeline, off by default (' + v.title + ')',
+        /^Sound: a click for each spend flash on screen/.test(v.title || '') && v.pressed0 === 'false' && !v.on0 && v.ctx0 === null && v.stored0 === null],
+      ['off: ' + v.off.flashes + ' flashes played silently, no audio context', v.off.flashes > 0 && v.off.voices === 0 && !v.off.created && v.off.context === null],
+      ['the button turns sound on: pressed, remembered, context ' + v.on.context + ', notice "' + v.on.toast + '"',
+        v.on.pressed === 'true' && v.on.on && v.on.context === 'running' && v.on.stored === 'on' && /Sound on/.test(v.on.toast)],
+      ['1x from above: ' + v.play.voices + ' clicks over ' + v.play.frames + ' frames, up to ' + v.play.onScreen + ' flashes on screen and ' + v.play.voiced + ' clicks in a frame, loudest ' + v.play.maxLevel.toFixed(2),
+        v.play.voices > 0 && v.play.onScreen > 0 && v.play.voiced <= 16 && v.play.maxLevel > 0 && v.play.maxLevel <= 1],
+      ['the reference distance follows the view: ' + (v.play.dRef || 0).toFixed(1) + ' from above, ' + (v.closeRef || 0).toFixed(1) + ' near the ground',
+        v.play.dRef >= 1 && v.play.dRef <= 1000 && v.closeRef > 0 && v.closeRef < v.play.dRef * 0.5],
+      ['Max: busy frames feed the crackle (gain ' + v.crowd.toFixed(3) + ')', v.crowd > 0 && v.crowd <= 0.35],
+      ['M turns it off: released, remembered, no clicks for ' + v.m.flashes + ' flashes, context ' + v.m.context,
+        !v.m.on && v.m.pressed === 'false' && v.m.stored === 'off' && v.m.flashes > 0 && v.m.voices === 0 && v.m.context === 'suspended'],
+      ['seeking and scrubbing stay silent (' + v.seek.voices + ' clicks)', v.seek.on && v.seek.voices === 0],
+      ['help lists M and the Sound button', !!v.help && /M/.test(v.help) && /Sound button/.test(v.help)],
       ['no frame errors', v.frameError === null],
     ],
   },
@@ -878,6 +955,8 @@ const CHECKS = [
       }
       out.pageScale = window.visualViewport ? visualViewport.scale : 1;
       out.fly = { button: !!document.querySelector('#timeline [data-act="fly"]'), fun: !!document.querySelector('#timeline [data-act="fun"]') };
+      { const sb = document.querySelector('#timeline [data-act="sound"]'); const hb = document.querySelector('#timeline [data-act="help"]').getBoundingClientRect();
+        out.sound = { button: !!sb, right: Math.round(hb.right), width: innerWidth }; }
       key('KeyT', { key: 't' }); await sleep(100); out.fly.mode = L.controls.mode;
       out.frameError = L.frameError || null;
       return out;`,
@@ -898,6 +977,8 @@ const CHECKS = [
       ['pinch over empty ground: no fling (' + v.background.moved.toFixed(0) + ' units, landscape edge ' + v.background.edgeDist.toFixed(0) + ' away)', v.background.sky && v.background.moved > 1 && v.background.moved < 0.6 * v.background.edgeDist],
       ['the page itself never zooms', v.pageScale === 1],
       ['touch-only: no Fly or Fun button and T does not take off', !v.fly.button && !v.fly.fun && v.fly.mode === 'map'],
+      ['a Sound button on touch devices too, and the button row fits (help ends at ' + v.sound.right + ' of ' + v.sound.width + ' px)',
+        v.sound.button && v.sound.right <= v.sound.width],
       ['no frame errors', v.frameError === null],
     ],
   },

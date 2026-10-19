@@ -1,6 +1,6 @@
 // createLandscapeView (render_post): renderer, camera, environment, terrain, post-processing,
 // resolution scale and the performance overlay behind one object. See landscape/SPEC.md §6.
-import { Scene, PerspectiveCamera, Raycaster, Vector2, Vector3 } from 'three/webgpu';
+import { Scene, PerspectiveCamera, Raycaster, Vector2, Vector3, Matrix4 } from 'three/webgpu';
 import { createRenderContext, probeCapabilities } from './context.js';
 import { createEnvironment } from './env.js';
 import { createPost } from './post.js';
@@ -180,6 +180,7 @@ export async function createLandscapeView({
 
   const raycaster = new Raycaster();
   const ndc = new Vector2();
+  const viewProjection = new Matrix4();
   let lastFrameTime = NaN;
   let fpsEMA = NaN;
   let frameEMA = NaN;
@@ -200,6 +201,14 @@ export async function createLandscapeView({
     setBlock(block) { if (terrain.setBlock) terrain.setBlock(block); },
     /** Plane mode: column detail reach times farther, moved shift radii ahead (0, 1 = centred on the camera). */
     setDetailAhead(shift, reach) { if (terrain.setDetailAhead) terrain.setDetailAhead(shift, reach); },
+    /** fn(list, {block, reason, now}) for each frame's new flash sprites (ui/flash-sound.js); returns an unsubscribe function. */
+    onFlashes(fn) { return terrain.onFlashes ? terrain.onFlashes(fn) : () => {}; },
+    /** Camera position and view-projection matrix (column-major, valid until the next call). */
+    cameraView() {
+      camera.updateMatrixWorld();
+      viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+      return { x: camera.position.x, y: camera.position.y, z: camera.position.z, elements: viewProjection.elements };
+    },
     applyFrame(frame) {
       if (frame && frame.stats) workerStats = frame.stats;
       if (terrain.applyFrame) terrain.applyFrame(frame);

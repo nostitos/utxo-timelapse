@@ -16,6 +16,8 @@ import { resolvePlace } from './ui/places.js';
 import { createControls, isTypingTarget } from './ui/controls.js';
 import { createPlaneHud } from './ui/plane-hud.js';
 import { createPlaneSound } from './ui/plane-sound.js';
+import { createSound } from './ui/sound.js';
+import { createFlashSound } from './ui/flash-sound.js';
 import { createPlaneModel } from './render/plane-model.js';
 import { CRAFTS, CRAFT_ORDER, craftSpec, nextCraft } from './ui/plane.js';
 import { createStackSats, startStackSats, stopStackSats, stepStackSats } from './ui/stack-sats.js';
@@ -161,7 +163,40 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       map: 'Map mode',
       flight: 'Flight: mouse to look, WASD to fly, E/Q up and down, Esc for map mode',
     };
-    const planeSound = createPlaneSound();
+    // One sound switch (the Sound button and M, off by default) for the spend flashes and the
+    // plane engine, which share its audio context.
+    const sound = createSound();
+    const planeSound = createPlaneSound({ sound });
+    const flashSound = createFlashSound({ sound });
+    // Each frame's new flash sprites, with the camera and the distance the view looks at
+    // (measured at most every 100 ms: a ray cast against the terrain).
+    let focusAt = -Infinity;
+    let focusD = null;
+    const focusNow = () => {
+      const t = performance.now();
+      if (t - focusAt > 100) {
+        focusAt = t;
+        try {
+          focusD = view.focusDistance();
+        } catch {
+          focusD = null;
+        }
+      }
+      return focusD;
+    };
+    if (typeof view.onFlashes === 'function' && typeof view.cameraView === 'function') {
+      view.onFlashes((list, meta) => {
+        if (!sound.running || meta.reason !== 'advance') return;
+        flashSound.spawn(list, { ...meta, camera: view.cameraView(), focus: focusNow() });
+      });
+    }
+    /** M and the Sound button; Flashes off leaves nothing to hear in map mode, so say so. */
+    function toggleSound() {
+      const on = sound.toggle();
+      const hint = on && !(Number(store.get('amp.flashSize')) > 0) ? ' \u00b7 turn on Flashes to hear spends' : '';
+      notice(on ? 'Sound on' + hint : 'Sound off', 'info', 'sound');
+      return on;
+    }
     // Plane mode draws cylinders farther out and moves that disc ahead of the camera, by the
     // craft's detailReach and detailShift (the plane: 1.6x and 0.6 radii, so the sharp area
     // reaches about 2.5x as far in front of it).
@@ -349,7 +384,10 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         placesMenu.close();
         funMenu.toggle();
       },
+      onSound: () => toggleSound(),
     });
+    timeline.setSound(sound.on);
+    sound.onChange((on) => timeline.setSound(on));
 
     /** Turn Follow tip on or off; on, the camera stays put and moves on with the tip from here. */
     function setFollow(on, { quiet = false } = {}) {
@@ -679,7 +717,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
           setFollow(!follow.active);
           break;
         case 'KeyM':
-          notice(planeSound.toggleMuted() ? 'Plane sound off' : 'Plane sound on', 'info', 'sound');
+          toggleSound();
           break;
         case 'KeyG':
           // Panels need the cursor: leave plane mode (and its pointer lock) first.
@@ -716,8 +754,8 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       }
     });
     // Browsers may keep the sound suspended until a gesture; any key press or click retries.
-    window.addEventListener('keydown', () => planeSound.unlock(), true);
-    window.addEventListener('pointerdown', () => planeSound.unlock(), true);
+    window.addEventListener('keydown', () => sound.unlock(), true);
+    window.addEventListener('pointerdown', () => sound.unlock(), true);
     window.addEventListener('resize', () => {
       try {
         view.resize();
@@ -755,6 +793,23 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       flyTo: (place) => flyToPlace(place),
       inspect: (x, y) => inspectAt(x, y),
       hash: () => currentHash(),
+      sound: {
+        get on() {
+          return sound.on;
+        },
+        /** As M: toggles and shows the notice. */
+        toggle: () => toggleSound(),
+        set: (on) => sound.set(on),
+        get state() {
+          return sound.state;
+        },
+      },
+      flashSound: {
+        /** {created, context, dRef, lastFrame, totals} (ui/flash-sound.js). */
+        get state() {
+          return flashSound.state;
+        },
+      },
       follow: {
         get active() {
           return follow.active;

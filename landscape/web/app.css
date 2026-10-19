@@ -678,13 +678,20 @@ kbd {
   .tl-speeds button { padding: 7px 7px; }
   .tl-transport .tl-btn:first-child, .tl-transport .tl-btn:last-child { display: none; }
 }
+/* Just wider, the 1,008-block steps return: tighter gaps keep the tool buttons inside. */
+@media (min-width: 981px) and (max-width: 999px) {
+  #timeline { gap: 11px; }
+}
 @media (max-height: 760px) {
   #minimap { display: none; }
 }
 
 /* ---- tablets in portrait ------------------------------------------------------------------ */
-/* Keep the speed buttons whole: icon-only Places and Settings and a block field without its label. */
-@media (min-width: 701px) and (max-width: 900px) and (min-height: 501px) {
+/* Keep the speed buttons whole: icon-only tool buttons, tighter gaps and a block field without
+   its label. The labelled tool buttons need 940 px. */
+@media (min-width: 701px) and (max-width: 939px) and (min-height: 501px) {
+  #timeline { gap: 10px; }
+  .tl-tools { gap: 4px; }
   .tl-speeds { flex: none; }
   .tl-track { min-width: 120px; }
   .tl-field span { display: none; }
@@ -695,8 +702,8 @@ kbd {
 /* The narrower of those windows (701-800 px) with Follow, Fly and Fun: one button cycles the
    speeds, as on phones, and tighter gaps keep the row inside. */
 @media (min-width: 701px) and (max-width: 800px) and (min-height: 501px) {
-  #timeline { gap: 10px; }
-  .tl-tools { gap: 4px; }
+  #timeline { gap: 8px; }
+  .tl-tools { gap: 2px; }
   .tl-speeds { display: none; }
   .tl-speedcycle {
     display: block;
@@ -855,7 +862,7 @@ kbd {
 }
 
 /* Portrait phones: a two-row timeline (scrubber, then the buttons) and bottom sheets above it.
-   The button row (steps, play, speed, Follow, Places, Settings, Help) needs 384 px. */
+   The button row (steps, play, speed, Follow, Sound, Places, Settings, Help) needs 428 px. */
 @media (max-width: 700px) and (min-height: 501px) {
   :root { --tl-h: calc(100px + var(--sab)); --sheet-h: calc(var(--full-h) * 0.58); --insp-h: calc(var(--full-h) * 0.45); }
   #timeline {
@@ -897,10 +904,14 @@ kbd {
   .help-grid { columns: 1; }
   .help-grid dl div { grid-template-columns: 128px 1fr; gap: 10px; }
 }
-/* Phones narrower than the 384 px button row (320, 360, 375 px): the scrubber replaces the
+/* Phones narrower than the 428 px button row (320 to 414 px): the scrubber replaces the
    single-block steps. */
-@media (max-width: 383px) {
+@media (max-width: 427px) {
   .tl-transport [data-act='back'], .tl-transport [data-act='fwd'] { display: none; }
+}
+/* The narrowest phones (320 px): the tool buttons take the desktop size. */
+@media (max-width: 343px) {
+  .tl-tools .tl-text:not(.tl-round), .tl-tools .tl-round { width: 34px; }
 }
 @keyframes sheetup { from { opacity: 0; transform: translateY(24px); } }
 
