@@ -127,40 +127,51 @@ test('BitcoinTimelapse.com plans an empty chain (exact palette colours)', () => 
 
 test('High, Ultra and Extreme plans', () => {
   const high = planPipeline(presetSettings('High'), WEBGPU);
-  assert.equal(high.ao, 'gtao');
-  assert.equal(high.traa, true);
+  // SMAA and SSAO from High up: TRAA softened the spikes and shimmered with the camera still,
+  // and GTAO without TRAA left dark blotches between them.
+  assert.equal(high.ao, 'ssao');
+  assert.equal(high.traa, false);
+  assert.equal(high.smaa, true);
   assert.equal(high.bloom, true);
   assert.equal(high.toneMapping, 'agx');
-  assert.deepEqual(high.mrt, { normal: true, metalrough: false, diffuse: false, velocity: true });
+  assert.deepEqual(high.mrt, { normal: true, metalrough: false, diffuse: false, velocity: false });
+  // TRAA chosen by hand still plans its velocity attachment, and steps aside under supersampling.
+  const temporal = planPipeline({ ...presetSettings('High'), 'display.aa': 'traa' }, WEBGPU);
+  assert.equal(temporal.traa, true);
+  assert.equal(temporal.smaa, false);
+  assert.equal(temporal.mrt.velocity, true);
+  assert.equal(planPipeline({ ...presetSettings('High'), 'display.aa': 'traa', 'display.ssaa': 2 }, WEBGPU).traa, false);
   const ultra = planPipeline(presetSettings('Ultra'), WEBGPU);
   // Ultra (retuned after the headed 4K run): High + 3×4096 cascades, volumetric scattering
   // and god rays; SSGI and SSR are left to Extreme / manual use.
-  assert.equal(ultra.ao, 'gtao');
+  assert.equal(ultra.ao, 'ssao');
   assert.equal(ultra.ssgi, false);
   assert.equal(ultra.ssr, false);
-  assert.equal(ultra.volumetric && ultra.godRays && ultra.traa && ultra.bloom, true);
-  assert.deepEqual(ultra.mrt, { normal: true, metalrough: false, diffuse: false, velocity: true });
+  assert.equal(ultra.volumetric && ultra.godRays && ultra.smaa && ultra.bloom, true);
+  assert.equal(ultra.traa, false);
+  assert.deepEqual(ultra.mrt, { normal: true, metalrough: false, diffuse: false, velocity: false });
   // SSGI supplies AO itself when it is on, so no second AO pass is planned.
   const gi = planPipeline({ ...presetSettings('Ultra'), 'fx.ssgi': true }, WEBGPU);
   assert.equal(gi.ssgi, true);
   assert.equal(gi.ao, 'off');
   assert.equal(gi.aoFromSsgi, true);
-  assert.deepEqual(gi.mrt, { normal: true, metalrough: false, diffuse: true, velocity: true });
+  assert.deepEqual(gi.mrt, { normal: true, metalrough: false, diffuse: true, velocity: false });
   // Depth of field wins over SSGI: the pipeline with both froze the page.
   const both = planPipeline({ ...presetSettings('Ultra'), 'fx.ssgi': true, 'fx.dof': true }, WEBGPU);
   assert.equal(both.dof, true);
   assert.equal(both.ssgi, false);
-  assert.equal(both.ao, 'gtao', 'the AO pass returns when SSGI steps aside');
+  assert.equal(both.ao, 'ssao', 'the AO pass returns when SSGI steps aside');
   assert.equal(both.mrt.diffuse, false);
   assert.equal(planPipeline({ ...presetSettings('Ultra'), 'fx.ssgi': true, 'fx.dof': true, 'fx.dofMaxBlur': 0 }, WEBGPU).ssgi, true);
   const extreme = planPipeline(presetSettings('Extreme'), WEBGPU);
   assert.equal(extreme.ssaa, 2);
-  assert.equal(extreme.traa, false, 'SSAA replaces TRAA (TRAA needs output-sized depth)');
-  assert.equal(extreme.motionBlur, true);
-  assert.equal(extreme.mrt.velocity, true);
+  assert.equal(extreme.traa, false);
+  assert.equal(extreme.smaa, true, 'SMAA on top of the supersampled scene');
+  assert.equal(extreme.motionBlur, false);
+  assert.equal(extreme.mrt.velocity, false);
   assert.equal(extreme.ssr && extreme.volumetric && extreme.godRays, true);
   assert.equal(extreme.ssgi, false);
-  assert.equal(extreme.ao, 'gtao');
+  assert.equal(extreme.ao, 'ssao');
 });
 
 test('WebGL2 drops compute and SSGI; structural keys ignore numeric changes', () => {
@@ -169,7 +180,7 @@ test('WebGL2 drops compute and SSGI; structural keys ignore numeric changes', ()
   const gl = planPipeline(s, WEBGL2);
   assert.equal(gl.ssgi, false);
   assert.equal(gl.autoExposure, false);
-  assert.equal(gl.ao, 'gtao', 'falls back to the AO pass when SSGI is unavailable');
+  assert.equal(gl.ao, 'ssao', 'falls back to the AO pass when SSGI is unavailable');
   const gpu = planPipeline(s, WEBGPU);
   assert.equal(gpu.autoExposure, true);
   const a = presetSettings('High');

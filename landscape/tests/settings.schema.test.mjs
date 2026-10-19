@@ -271,7 +271,12 @@ test('quality presets scale up from Performance to Extreme', () => {
   assert.ok(extreme['geo.subdivision'] >= 2);
   assert.ok(extreme['geo.instanceBudget'] >= 2000000);
   assert.equal(extreme['fx.ssr'], true);
-  assert.equal(extreme['fx.motionBlur'], true);
+  // Clarity from Balanced up: SMAA and SSAO in every tier, no motion blur smearing Extreme.
+  for (const name of ['Balanced', 'High', 'Ultra', 'Extreme']) {
+    assert.equal(resolved(name)['display.aa'], 'smaa', name);
+    assert.equal(resolved(name)['fx.ao'], 'ssao', name);
+  }
+  assert.equal(extreme['fx.motionBlur'], false);
   assert.ok(extreme['fx.aoSamples'] > ultra['fx.aoSamples']);
   assert.ok(extreme['light.volumetricSteps'] > ultra['light.volumetricSteps']);
   // Look settings stay constant across quality tiers (the grid is a look setting too).

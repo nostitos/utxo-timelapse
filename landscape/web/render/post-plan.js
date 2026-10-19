@@ -52,7 +52,7 @@ export const POST_DEFAULTS = Object.freeze({
   'light.stars': true,
   'light.starDensity': 0.5,
 
-  'fx.ao': 'gtao',
+  'fx.ao': 'ssao',
   'fx.aoRadius': 1,
   'fx.aoIntensity': 1,
   'fx.aoSamples': 16,
@@ -83,7 +83,7 @@ export const POST_DEFAULTS = Object.freeze({
   'display.targetFps': 60,
   'display.scaleMin': 0.5,
   'display.scaleMax': 2,
-  'display.aa': 'traa',
+  'display.aa': 'smaa',
   'display.ssaa': 1,
   'display.overlay': false,
 

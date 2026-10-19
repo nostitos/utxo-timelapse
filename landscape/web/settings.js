@@ -14,6 +14,8 @@ import {
   WEBGL2_MAX_PRESET,
   DEFAULT_LOOK,
   LOOK_ALIASES,
+  SETTINGS_REVISION,
+  RETIRED_QUALITY_VALUES,
 } from './settings.schema.js';
 
 export const SETTINGS_FORMAT = 'utxo-landscape-settings-1';
@@ -403,6 +405,7 @@ export function createSettingsStore(schema = SCHEMA, presets = PRESETS, options 
   const lookNames = Object.freeze([...new Set([defaultLook, ...presetNames.filter((name) => !qualityNames.includes(name))])]);
   const lookAliases = options.lookAliases ?? LOOK_ALIASES;
   const webgl2MaxPreset = options.webgl2MaxPreset ?? WEBGL2_MAX_PRESET;
+  const retiredValues = options.retiredQualityValues ?? RETIRED_QUALITY_VALUES;
   const storageKey = options.storageKey ?? STORAGE_KEY;
   const presetsKey = options.presetsKey ?? PRESETS_KEY;
   const storage = options.storage === undefined ? defaultStorage() : options.storage;
@@ -630,6 +633,24 @@ export function createSettingsStore(schema = SCHEMA, presets = PRESETS, options 
     return fallback.ok ? fallback.value : entry.default;
   }
 
+  /** True when the look (built-in or saved) sets the setting, so the quality tier does not. */
+  function lookSets(entry, lk) {
+    const user = userRecord(lk);
+    if (user && hasOwn(user.overrides, entry.id)) return true;
+    const builtin = user ? user.look : lk;
+    return isLook(builtin) && hasOwn(presets[builtin], entry.id);
+  }
+
+  /** True when value is what tier q gave the setting before a retune newer than revision. */
+  function retiredValue(entry, value, q, revision) {
+    for (const retune of retiredValues) {
+      if (revision >= retune.revision) continue;
+      const tier = retune.values[q];
+      if (tier && hasOwn(tier, entry.id) && valuesEqual(value, tier[entry.id])) return true;
+    }
+    return false;
+  }
+
   function write(entry, value) {
     const previous = values.get(entry.id);
     if (valuesEqual(previous, value)) return false;
@@ -843,7 +864,7 @@ export function createSettingsStore(schema = SCHEMA, presets = PRESETS, options 
       out[entry.id] = plainValue(values.get(entry.id));
     }
     // 'preset' repeats the quality for readers from before looks existed.
-    return { format: SETTINGS_FORMAT, preset: quality, quality, look, baseLook: lookBuiltin, values: out };
+    return { format: SETTINGS_FORMAT, revision: SETTINGS_REVISION, preset: quality, quality, look, baseLook: lookBuiltin, values: out };
   }
 
   function fromJSON(input) {
@@ -852,11 +873,12 @@ export function createSettingsStore(schema = SCHEMA, presets = PRESETS, options 
     if (data.format !== undefined && data.format !== SETTINGS_FORMAT) {
       throw new Error('Unsupported settings format "' + data.format + '" (expected ' + SETTINGS_FORMAT + ')');
     }
-    const report = { preset: null, quality: null, look: null, lookFallback: null, applied: [], ignored: [], invalid: [], capped: [] };
+    const report = { preset: null, quality: null, look: null, lookFallback: null, applied: [], ignored: [], invalid: [], capped: [], retired: [] };
     let map = data.values;
-    if (!map || typeof map !== 'object') {
+    const saved = !!map && typeof map === 'object';
+    if (!saved) {
       map = { ...data }; // plain {id: value} map, optionally with 'preset', 'quality' and 'look'
-      for (const key of ['preset', 'format', 'quality', 'look', 'baseLook', 'view']) delete map[key];
+      for (const key of ['preset', 'format', 'revision', 'quality', 'look', 'baseLook', 'view']) delete map[key];
     }
     let targetQuality = null;
     let targetLook = null;
@@ -895,6 +917,10 @@ export function createSettingsStore(schema = SCHEMA, presets = PRESETS, options 
       for (const entry of governed) write(entry, baseValue(entry));
       queueFlush();
     }
+    // Settings this store saved before a retune (RETIRED_QUALITY_VALUES) take the tier's
+    // current value where they still hold its old one.
+    const savedQuality = saved && targetQuality !== null ? cappedFrom ?? quality : null;
+    const savedRevision = Number(data.revision) || 0;
     for (const [id, value] of Object.entries(map)) {
       const entry = byId.get(id);
       if (!entry) {
@@ -908,6 +934,11 @@ export function createSettingsStore(schema = SCHEMA, presets = PRESETS, options 
       }
       if (cappedFrom && entry.preset !== false && valuesEqual(result.value, baseValue(entry, look, cappedFrom))) {
         report.capped.push(id);
+        continue;
+      }
+      if (savedQuality !== null && entry.preset !== false && !lookSets(entry, look)
+        && retiredValue(entry, result.value, savedQuality, savedRevision)) {
+        report.retired.push(id);
         continue;
       }
       write(entry, result.value);

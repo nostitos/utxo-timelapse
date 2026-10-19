@@ -263,8 +263,17 @@ export function createQuickSettings({ store, controls = QUICK, message = () => {
     const buttons = store.qualities.map((name) => {
       const button = el('button', null, { type: 'button', text: name, 'data-option': name, 'aria-pressed': 'false' });
       button.addEventListener('click', () => {
+        // Auto scale buys frame rate with resolution, which undid what a higher tier adds (at
+        // Extreme it went down to half the pixels). A quality picked here renders at its own
+        // resolution; Undo or Advanced turns auto scale back on.
+        const autoScale = store.get('display.autoScale') === true;
+        if (autoScale) store.set('display.autoScale', false);
         const applied = store.setQuality(name);
         if (applied !== name) message(name + ' needs WebGPU; using ' + applied, 'error');
+        else if (autoScale) {
+          message('Auto scale off: ' + applied + ' renders at ' + Math.round(store.get('display.scale') * 100)
+            + '% resolution', 'info', () => store.set('display.autoScale', true));
+        }
       });
       seg.appendChild(button);
       return button;
