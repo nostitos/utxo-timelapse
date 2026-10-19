@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   FLASH_BANDS, MAX_VOICES_FRAME, MAX_VOICES_SECOND, REF_MAX, EDGE_LEVEL, LEAD_S, DRIFT_S, HIGHPASS_HZ, DENSITY_KNEE,
-  DENSITY_GAIN_MAX, TAIL_S, DETUNE, bandIndex, distanceGain, farGain, projectPoint, flashVoices, createFlashPlanState,
+  DENSITY_GAIN_MAX, TAIL_S, FAR_DARKEN, bandIndex, distanceGain, projectPoint, flashVoices, createFlashPlanState,
   mixFrame, densityGain, frameSpan, createFlashSound, tickEvents, tickRenderer,
 } from '../web/ui/flash-sound.js';
 import { createSound, readSoundPref, SOUND_KEY, LEGACY_PLANE_KEY } from '../web/ui/sound.js';
@@ -62,7 +62,7 @@ test('distance relative to the view: full at the reference and nearer, 0.4 at tw
   assert.equal(byDistance.get(10).level, 1);
   assert.ok(near(byDistance.get(20).level, 0.4));
   assert.ok(near(byDistance.get(40).level, 2 / 17));
-  assert.ok(!byDistance.get(20).far && byDistance.get(40).far, 'beyond twice the reference the tick is duller');
+  assert.ok(!byDistance.get(20).far && byDistance.get(40).far, 'beyond twice the reference the tick is darker');
 });
 
 test('reference distance: the median flash on screen, clamped and eased', () => {
@@ -130,7 +130,7 @@ function rms(d) {
   return Math.sqrt(s / d.length);
 }
 
-test('many ticks overlap into a patter: few are separate tones with gaps, hundreds an even sound', () => {
+test('many ticks overlap into rain: few are separate clicks with gaps, hundreds an even hiss', () => {
   const rate = 48000;
   const span = Math.round(0.1 * rate);
   // n ticks over spanS seconds, at the same power a second however many there are.
@@ -150,8 +150,8 @@ test('many ticks overlap into a patter: few are separate tones with gaps, hundre
   };
   const sparse = flatness(6, 0.3); // 20 a second
   const dense = flatness(400, 0.1); // 4,000 a second
-  assert.ok(sparse.gaps > 0.3 && sparse.cv > 1.2, 'six ticks: separate tones with silence between (' + JSON.stringify(sparse) + ')');
-  assert.ok(dense.gaps === 0 && dense.cv < 0.45, '400 ticks: an even patter (' + JSON.stringify(dense) + ')');
+  assert.ok(sparse.gaps > 0.3 && sparse.cv > 1.2, 'six ticks: separate clicks with silence between (' + JSON.stringify(sparse) + ')');
+  assert.ok(dense.gaps === 0 && dense.cv < 0.45, '400 ticks: an even hiss (' + JSON.stringify(dense) + ')');
   // At the same power a second the level stays about the same however many ticks there are.
   assert.ok(Math.abs(20 * Math.log10(dense.level / sparse.level)) < 3, 'same power: ' + sparse.level.toFixed(4) + ' vs ' + dense.level.toFixed(4));
   // Ticks stay inside the buffer: the span plus the longest tick.
@@ -189,35 +189,40 @@ function crossingsPerSecond(d, rate) {
   return (n / d.length) * rate;
 }
 
-test('tick tones: one pitch per band from the first cycle to the last, lower for older coins; far high tones duller', () => {
+test('tick clicks: a few milliseconds long, brighter for younger coins, darker when far', () => {
   const rate = 48000;
-  const pitches = FLASH_BANDS.map((b, i) => {
-    // One tick of band i at its middle pitch (random 0.5), from the start of the buffer.
-    const { left } = mixFrame([{ band: i, pan: 0, far: false, level: 1 }], { sampleRate: rate, spanSamples: 1, random: () => 0.5 });
-    const crossings = [];
-    let peak = 0;
-    let top = 0;
-    for (let k = 0; k < left.length; k++) if (Math.abs(left[k]) > peak) [peak, top] = [Math.abs(left[k]), k];
-    for (let k = 1; k < left.length; k++) {
-      if (k > top && Math.abs(left[k]) < 1e-3 * peak && Math.abs(left[k - 1]) < 1e-3 * peak) break; // faded out
-      if ((left[k - 1] < 0) !== (left[k] < 0)) crossings.push(k - left[k] / (left[k] - left[k - 1]));
+  // Zero crossings a second over the samples that sound: higher for a brighter click.
+  const brightness = (band, far = false) => {
+    const voices = Array.from({ length: 40 }, () => ({ band, pan: 0, far, level: 1 }));
+    const { left } = mixFrame(voices, { sampleRate: rate, spanSamples: rate, random: seeded(band + (far ? 10 : 1)) });
+    let n = 0;
+    let active = 0;
+    for (let i = 1; i < left.length; i++) {
+      if (left[i] === 0) continue;
+      active++;
+      if ((left[i - 1] < 0) !== (left[i] < 0)) n++;
     }
-    // Every half cycle, the first ones in the attack included, is the band's pitch: nothing higher at the start.
-    const half = rate / (2 * b.freq);
-    for (let k = 1; k < crossings.length; k++) {
-      const d = crossings[k] - crossings[k - 1];
-      assert.ok(Math.abs(d / half - 1) < 0.02, b.id + ': half cycle ' + k + ' is ' + d.toFixed(2) + ' samples, not ' + half.toFixed(2));
+    return (n / active) * rate;
+  };
+  const zc = FLASH_BANDS.map((b, i) => brightness(i));
+  for (let i = 1; i < zc.length; i++) assert.ok(zc[i] < zc[i - 1], 'older coins sound darker: ' + zc.map(Math.round).join(', '));
+  assert.ok(zc[4] < 0.55 * zc[0], 'the oldest coins clearly darker than the youngest: ' + Math.round(zc[4]) + ' vs ' + Math.round(zc[0]));
+  assert.ok(brightness(4, true) < 0.85 * zc[4], 'a far click is darker: ' + Math.round(brightness(4, true)) + ' vs ' + Math.round(zc[4]));
+  assert.ok(FAR_DARKEN < 1);
+  // A click, not a tone: 99% of its energy in its first 8 ms, and it ends within 30 ms.
+  const renderer = tickRenderer(rate);
+  for (let b = 0; b < FLASH_BANDS.length; b++) {
+    assert.ok(renderer.len[b] < 0.03 * rate, FLASH_BANDS[b].id + ' lasts ' + renderer.len[b] + ' samples');
+    const { left } = mixFrame([{ band: b, pan: 0, far: false, level: 1 }], { sampleRate: rate, spanSamples: 1, random: seeded(b + 20) });
+    let all = 0;
+    let early = 0;
+    for (let i = 0; i < left.length; i++) {
+      all += left[i] * left[i];
+      if (i < 0.008 * rate) early += left[i] * left[i];
     }
-    assert.ok(crossings.length >= 6, b.id + ' rings for a few cycles: ' + crossings.length);
-    return b.freq;
-  });
-  for (let i = 1; i < pitches.length; i++) assert.ok(pitches[i] < pitches[i - 1], 'older coins sound lower');
-  assert.ok(pitches[pitches.length - 1] >= 2 * HIGHPASS_HZ, 'the deepest tone is well above the high-pass');
-  // Detuned ticks stay within DETUNE of the band.
-  const r = seeded(11);
-  const events = tickEvents(Array.from({ length: 200 }, () => ({ band: 4, pan: 0, far: false, level: 1 })), { spanSamples: 100, random: r });
-  for (let k = 2; k < events.length; k += EVENT_FIELDS) assert.ok(Math.abs(events[k] / FLASH_BANDS[4].freq - 1) <= DETUNE);
-  assert.ok(farGain(FLASH_BANDS[0].freq) < 0.2 && farGain(FLASH_BANDS[4].freq) > 0.85, 'far: the highest tone loses most, the deepest little');
+    assert.ok(all > 0 && early / all > 0.99, FLASH_BANDS[b].id + ': ' + (100 * early / all).toFixed(2) + '% of the energy in 8 ms');
+  }
+  assert.ok(FLASH_BANDS.every((b) => b.freq >= 2 * HIGHPASS_HZ), 'every band well above the high-pass');
 });
 
 function memoryStorage(init = {}) {
@@ -291,11 +296,9 @@ test('the audio-thread renderer: 128-frame blocks match one pass, late ticks pla
   for (let k = 0; k < events.length; k += EVENT_FIELDS) {
     assert.ok(events[k] >= 48000 && events[k] < 48800, 'starts inside the span');
     const v = voices[k / EVENT_FIELDS];
-    const f = events[k + 2];
-    assert.ok(Math.abs(f / FLASH_BANDS[v.band].freq - 1) <= DETUNE, 'within DETUNE of the band');
+    assert.equal(events[k + 2], FLASH_BANDS[v.band].freq * (v.far ? FAR_DARKEN : 1), 'centred on the band, lower when far');
     const amp = Math.hypot(events[k + 3], events[k + 4]);
-    const want = v.level * FLASH_BANDS[v.band].gain * 0.65 * 0.2 * (v.far ? farGain(f) : 1);
-    assert.ok(Math.abs(amp - want) < 1e-9, 'equal-power pan keeps the level; far ticks are duller');
+    assert.ok(Math.abs(amp - v.level * FLASH_BANDS[v.band].gain * 0.65 * 0.65) < 1e-9, 'equal-power pan keeps the level');
   }
   const total = 800 + Math.ceil(TAIL_S * rate) + 128;
   const a = { l: new Float32Array(total), r: new Float32Array(total) };
@@ -318,7 +321,7 @@ test('the audio-thread renderer: 128-frame blocks match one pass, late ticks pla
   assert.equal(r1.active.length + r1.pending.length, 0, 'every tick finished');
   // A tick queued after its start frame passed plays whole from the next block.
   const late = renderer();
-  late.add(Float64Array.of(1000, 4, 330, 1, 0, Math.PI / 2));
+  late.add(Float64Array.of(1000, 4, 1600, 1, 0, 12345));
   const out = new Float32Array(4000);
   late.render(out, new Float32Array(4000), 5000, 4000);
   const firstSound = out.findIndex((v) => v !== 0);
