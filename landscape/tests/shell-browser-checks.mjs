@@ -567,12 +567,12 @@ const CHECKS = [
         L.playback.play();
         for (let i = 0; i < 40; i++) { await sleep(50); const lf = S().lastFrame; if (lf) { maxLevel = Math.max(maxLevel, lf.maxLevel); onScreen = Math.max(onScreen, lf.onScreen); voiced = Math.max(voiced, lf.voiced); minLead = Math.min(minLead, lf.lead); } }
         L.playback.pause(); await idle();
-        out.play = { voices: S().totals.voices - v0, frames: S().totals.frames - fr0, maxLevel, onScreen, voiced, minLead, dRef: S().dRef, created: S().created }; }
+        out.play = { voices: S().totals.voices - v0, frames: S().totals.frames - fr0, maxLevel, onScreen, voiced, minLead, dRef: S().dRef, created: S().created, mode: S().mode }; }
       // Max: dense frames mix hundreds of ticks into one buffer each.
       { let voiced = 0, gain = 0; const t0 = S().totals; L.playback.setSpeed('max'); L.playback.play();
         for (let i = 0; i < 30; i++) { await sleep(50); const lf = S().lastFrame; if (lf) { voiced = Math.max(voiced, lf.voiced); gain = Math.max(gain, lf.gain); } }
         L.playback.pause(); L.playback.setSpeed('1'); await idle(); const t1 = S().totals;
-        out.dense = { voiced, gain, mixMs: (t1.mixMs - t0.mixMs) / Math.max(1, t1.frames - t0.frames), perSecond: (t1.voices - t0.voices) / 1.5 }; }
+        out.dense = { voiced, gain, mainMs: (t1.mainMs - t0.mainMs) / Math.max(1, t1.frames - t0.frames), perSecond: (t1.voices - t0.voices) / 1.5 }; }
       // Close to the ground the reference distance shrinks with the view (Max may have reached the tip).
       await L.seek(inData(tip - 10000)); await idle();
       L.controls.setPose(POSES.close); await sleep(600); await idle();
@@ -605,10 +605,11 @@ const CHECKS = [
       ['1x from above: ' + v.play.voices + ' ticks over ' + v.play.frames + ' frames (up to 4,000 a second), up to ' + v.play.onScreen + ' flashes on screen and ' + v.play.voiced + ' ticks in a frame, loudest ' + v.play.maxLevel.toFixed(2),
         v.play.voices >= 3000 && v.play.voices <= 8800 && v.play.onScreen > 0 && v.play.voiced <= 400 && v.play.maxLevel > 0 && v.play.maxLevel <= 1],
       ['every frame of ticks is queued well ahead of the audio clock (closest ' + (v.play.minLead * 1000).toFixed(1) + ' ms; the schedule aims for 60)', v.play.minLead >= 0.05],
+      ['ticks are synthesized on the audio thread (' + v.play.mode + ')', v.play.mode === 'worklet'],
       ['the reference distance follows the view: ' + (v.play.dRef || 0).toFixed(1) + ' from above, ' + (v.closeRef || 0).toFixed(1) + ' near the ground',
         v.play.dRef >= 1 && v.play.dRef <= 1000 && v.closeRef > 0 && v.closeRef < v.play.dRef * 0.75],
-      ['Max: ' + Math.round(v.dense.perSecond) + ' ticks a second, up to ' + v.dense.voiced + ' in a frame, mixed in ' + v.dense.mixMs.toFixed(2) + ' ms a frame on average (density gain up to ' + v.dense.gain.toFixed(2) + ')',
-        v.dense.voiced >= 30 && v.dense.perSecond > 1000 && v.dense.mixMs < 2 && v.dense.gain > 0 && v.dense.gain <= 2],
+      ['Max: ' + Math.round(v.dense.perSecond) + ' ticks a second, up to ' + v.dense.voiced + ' in a frame, ' + v.dense.mainMs.toFixed(2) + ' ms of page time a frame on average (density gain up to ' + v.dense.gain.toFixed(2) + ')',
+        v.dense.voiced >= 30 && v.dense.perSecond > 1000 && v.dense.mainMs < 0.5 && v.dense.gain > 0 && v.dense.gain <= 2],
       ['M turns it off: released, remembered, no clicks for ' + v.m.flashes + ' flashes, context ' + v.m.context,
         !v.m.on && v.m.pressed === 'false' && v.m.stored === 'off' && v.m.flashes > 0 && v.m.voices === 0 && v.m.context === 'suspended'],
       ['seeking and scrubbing stay silent (' + v.seek.voices + ' clicks)', v.seek.on && v.seek.voices === 0],

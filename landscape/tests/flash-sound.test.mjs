@@ -5,9 +5,10 @@ import assert from 'node:assert/strict';
 import {
   FLASH_BANDS, MAX_VOICES_FRAME, MAX_VOICES_SECOND, REF_MAX, EDGE_LEVEL, LEAD_S, DRIFT_S, HIGHPASS_HZ, DENSITY_KNEE,
   DENSITY_GAIN_MAX, TAIL_S, bandIndex, distanceGain, projectPoint, flashVoices, createFlashPlanState, bandNoise, tickNoise,
-  mixFrame, densityGain, frameSpan, createFlashSound,
+  mixFrame, densityGain, frameSpan, createFlashSound, tickEvents, tickRenderer,
 } from '../web/ui/flash-sound.js';
 import { createSound, readSoundPref, SOUND_KEY, LEGACY_PLANE_KEY } from '../web/ui/sound.js';
+import { EVENT_FIELDS } from '../web/ui/flash-worklet.js';
 import { createPlaneSound } from '../web/ui/plane-sound.js';
 
 // A camera at c looking along -z: 90 degree vertical field of view, aspect 1, near 0.1, far 1000.
@@ -260,4 +261,48 @@ test('the engine and the flashes stay silent while the switch is off or the fram
   const on = { on: true, running: true, context: null };
   assert.equal(createFlashSound({ sound: on }).spawn([ahead(10)], { camera: CAM, reason: 'seek' }), null);
   assert.equal(flashes.state.totals.voices, 0);
+});
+
+test('the audio-thread renderer: 128-frame blocks match one pass, late ticks play whole, events place and pan ticks', () => {
+  const rate = 48000;
+  const noise = tickNoise(rate);
+  const renderer = () => tickRenderer(noise, rate);
+  const voices = [];
+  for (let i = 0; i < 300; i++) voices.push({ band: i % 5, pan: ((i % 9) - 4) / 4, far: i % 7 === 0, level: 0.2 + (i % 5) / 6 });
+  const r0 = renderer();
+  const events = tickEvents(voices, { sampleRate: rate, spanSamples: 800, gain: 1, startFrame: 48000, lengths: r0.len, noiseLength: noise.near[0].length, random: seeded(3) });
+  assert.equal(events.length, voices.length * EVENT_FIELDS);
+  for (let k = 0; k < events.length; k += EVENT_FIELDS) {
+    assert.ok(events[k] >= 48000 && events[k] < 48800, 'starts inside the span');
+    const v = voices[k / EVENT_FIELDS];
+    const amp = Math.hypot(events[k + 3], events[k + 4]);
+    assert.ok(Math.abs(amp - v.level * FLASH_BANDS[v.band].gain * 0.65) < 1e-9, 'equal-power pan keeps the level');
+  }
+  const total = 800 + Math.ceil(TAIL_S * rate) + 128;
+  const a = { l: new Float32Array(total), r: new Float32Array(total) };
+  r0.add(events);
+  r0.render(a.l, a.r, 48000, total);
+  const r1 = renderer();
+  r1.add(events);
+  const b = { l: new Float32Array(total), r: new Float32Array(total) };
+  for (let f = 0; f < total; f += 128) {
+    const n = Math.min(128, total - f);
+    const l = new Float32Array(n);
+    const r = new Float32Array(n);
+    r1.render(l, r, 48000 + f, n);
+    b.l.set(l, f);
+    b.r.set(r, f);
+  }
+  let diff = 0;
+  for (let i = 0; i < total; i++) diff = Math.max(diff, Math.abs(a.l[i] - b.l[i]), Math.abs(a.r[i] - b.r[i]));
+  assert.ok(diff < 1e-6 && rms(a.l) > 0, 'blockwise equals one pass (max difference ' + diff + ')');
+  assert.equal(r1.active.length + r1.pending.length, 0, 'every tick finished');
+  // A tick queued after its start frame passed plays whole from the next block.
+  const late = renderer();
+  late.add(Float64Array.of(1000, 4, 0, 1, 0, 0));
+  const out = new Float32Array(4000);
+  late.render(out, new Float32Array(4000), 5000, 4000);
+  const firstSound = out.findIndex((v) => v !== 0);
+  assert.equal(firstSound, 0);
+  assert.ok(out.slice(late.len[4]).every((v) => v === 0) && out[late.len[4] - 1] !== 0, 'the whole tick, ' + late.len[4] + ' samples');
 });

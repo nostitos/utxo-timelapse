@@ -12,12 +12,15 @@
 // a few spends are distinct ticks and many overlap into a rain-like hiss, as many raindrops do.
 // Loudness follows the energy of every flash on screen, voiced or not, compressed above
 // DENSITY_KNEE (power to DENSITY_POWER), so busy blocks are louder than quiet ones without a
-// large jump. Each frame's ticks are mixed in JavaScript (mixFrame) into one stereo buffer that
-// spans the time the frame stands for, scheduled LEAD_S ahead of the audio clock, so frames
-// arriving unevenly do not bunch them and thousands of ticks cost one node a frame. Only
+// large jump. Each frame's ticks become compact events spread over the time the frame stands
+// for, LEAD_S ahead of the audio clock, so frames arriving unevenly do not bunch them; an
+// AudioWorklet (ui/flash-worklet.js) synthesizes them on the audio thread, so thousands of ticks
+// a second cost the page almost nothing. Only
 // advance frames (playback and steps forward) sound, so seeks and scrubs stay silent, and only
-// while the shared switch (ui/sound.js) is on. flashVoices and mixFrame are pure; buildFlashGraph
-// is the Web Audio graph on any BaseAudioContext.
+// while the shared switch (ui/sound.js) is on. flashVoices, tickEvents and mixFrame are pure;
+// buildFlashGraph is the Web Audio graph on any BaseAudioContext.
+
+import { TickRenderer, tickLengths, EVENT_FIELDS } from './flash-worklet.js';
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
@@ -45,7 +48,7 @@ export const DENSITY_GAIN_MAX = 2; // how far voiced ticks may be raised to stan
 export const LEAD_S = 0.06; // ticks are scheduled at least this far ahead of the audio clock
 export const DRIFT_S = 0.2; // and at most this much further, when frames arrive faster than they play
 const ATTACK_S = 0.001;
-const DECAYS = 5; // a tick lasts ATTACK_S + DECAYS x its band's decay
+const DECAYS = 3; // a tick lasts ATTACK_S + DECAYS x its band's decay (it is then 78 dB down)
 const NOISE_S = 0.5;
 const NOISE_RMS = 0.2;
 const MIX_GAIN = 0.65;
@@ -239,46 +242,56 @@ export function tickNoise(sampleRate) {
 }
 
 /**
- * Mixes one frame's ticks into a stereo buffer: each starts at a random point of the first
- * spanSamples samples, with a 1 ms attack and its band's exponential decay, equal-power panned
- * by its screen x, at level x band gain x gain. noise: tickNoise(sampleRate). Returns
- * {left, right} of length spanSamples + the longest tick (Float32Array).
+ * Tick events for one frame (EVENT_FIELDS numbers each, for TickRenderer): each voice starts at a
+ * random point of the spanSamples samples after startFrame, at level x band gain x gain,
+ * equal-power panned by its screen x, on a random slice of its band's noise.
+ */
+export function tickEvents(voices, { sampleRate, spanSamples, gain = 1, startFrame = 0, lengths, noiseLength, random = Math.random }) {
+  const out = new Float64Array(voices.length * EVENT_FIELDS);
+  let k = 0;
+  for (const v of voices) {
+    const band = FLASH_BANDS[v.band] ? v.band : 2;
+    const amp = v.level * FLASH_BANDS[band].gain * gain * MIX_GAIN;
+    if (!(amp > 0)) continue;
+    const angle = ((clamp(v.pan ?? 0, -1, 1) + 1) * Math.PI) / 4;
+    out[k++] = startFrame + Math.floor(random() * Math.max(1, spanSamples));
+    out[k++] = band;
+    out[k++] = Math.floor(random() * Math.max(1, noiseLength - lengths[band]));
+    out[k++] = amp * Math.cos(angle);
+    out[k++] = amp * Math.sin(angle);
+    out[k++] = v.far ? 1 : 0;
+  }
+  return k === out.length ? out : out.slice(0, k);
+}
+
+const DECAY_LIST = FLASH_BANDS.map((b) => b.decay);
+
+/** A TickRenderer for 'noise' (tickNoise) at 'sampleRate'. */
+export function tickRenderer(noise, sampleRate) {
+  return new TickRenderer({ sampleRate, near: noise.near, far: noise.far, decays: DECAY_LIST, attackS: ATTACK_S, decaysPerTick: DECAYS });
+}
+
+/**
+ * Mixes one frame's ticks into a stereo buffer on this thread (the fallback without
+ * AudioWorklet, and the tests): {left, right} of length spanSamples + the longest tick.
  */
 export function mixFrame(voices, { sampleRate, spanSamples, gain = 1, noise, random = Math.random }) {
-  const attack = Math.max(1, Math.round(ATTACK_S * sampleRate));
+  const renderer = tickRenderer(noise, sampleRate);
   const length = Math.max(1, spanSamples) + Math.ceil(TAIL_S * sampleRate) + 1;
+  renderer.add(tickEvents(voices, { sampleRate, spanSamples, gain, lengths: renderer.len, noiseLength: noise.near[0].length, random }));
   const left = new Float32Array(length);
   const right = new Float32Array(length);
-  for (const v of voices) {
-    const b = FLASH_BANDS[v.band] || FLASH_BANDS[2];
-    const src = (v.far ? noise.far : noise.near)[v.band] || noise.near[2];
-    const len = attack + Math.round(DECAYS * b.decay * sampleRate);
-    const amp = v.level * b.gain * gain * MIX_GAIN;
-    if (!(amp > 0)) continue;
-    const start = Math.min(Math.floor(random() * Math.max(1, spanSamples)), length - len);
-    const offset = Math.floor(random() * (src.length - len));
-    const angle = ((clamp(v.pan ?? 0, -1, 1) + 1) * Math.PI) / 4;
-    const gl = amp * Math.cos(angle);
-    const gr = amp * Math.sin(angle);
-    const fall = Math.exp(-1 / ((b.decay / 3) * sampleRate));
-    let env = 1;
-    for (let i = 0; i < len; i++) {
-      let e;
-      if (i < attack) e = (i + 1) / attack;
-      else {
-        e = env;
-        env *= fall;
-      }
-      const s = src[offset + i] * e;
-      left[start + i] += s * gl;
-      right[start + i] += s * gr;
-    }
-  }
+  renderer.render(left, right, 0, length);
   return { left, right };
 }
 
-/** The flash graph on any BaseAudioContext: {play({left, right}, t), dispose()}. */
-export function buildFlashGraph(ctx, { destination = ctx.destination } = {}) {
+/**
+ * The flash graph on any BaseAudioContext: {queue(voices, {start, spanSamples, gain}), mode,
+ * dispose()}. Ticks are synthesized by the 'flash-ticks' AudioWorklet (ui/flash-worklet.js) on
+ * the audio thread; until it has loaded, or where AudioWorklet is missing, each frame is mixed
+ * here and played as one buffer.
+ */
+export function buildFlashGraph(ctx, { destination = ctx.destination, worklet = true } = {}) {
   const master = ctx.createGain();
   master.gain.value = MASTER_GAIN;
   // A peak limiter: dense frames are kept in check by densityGain, so it rarely acts.
@@ -297,20 +310,48 @@ export function buildFlashGraph(ctx, { destination = ctx.destination } = {}) {
   highpass2.frequency.value = HIGHPASS_HZ;
   highpass2.Q.value = 0.7;
   highpass.connect(highpass2).connect(limiter).connect(master).connect(destination);
+  const sampleRate = ctx.sampleRate;
+  const noise = tickNoise(sampleRate);
+  const lengths = tickLengths(DECAY_LIST, sampleRate, ATTACK_S, DECAYS);
+  let node = null;
+  let mode = 'main';
+  if (worklet && ctx.audioWorklet && typeof AudioWorkletNode === 'function') {
+    mode = 'loading';
+    ctx.audioWorklet.addModule(new URL('./flash-worklet.js', import.meta.url)).then(() => {
+      node = new AudioWorkletNode(ctx, 'flash-ticks', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
+      node.port.postMessage({ type: 'init', near: noise.near, far: noise.far, decays: DECAY_LIST, attackS: ATTACK_S, decaysPerTick: DECAYS });
+      node.connect(highpass);
+      mode = 'worklet';
+    }).catch((err) => {
+      console.warn('flash sound: AudioWorklet unavailable, mixing on the main thread', err);
+      mode = 'main';
+    });
+  }
+  function playMixed(voices, start, spanSamples, gain) {
+    const { left, right } = mixFrame(voices, { sampleRate, spanSamples, gain, noise });
+    const buffer = ctx.createBuffer(2, left.length, sampleRate);
+    buffer.getChannelData(0).set(left);
+    buffer.getChannelData(1).set(right);
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(highpass);
+    src.onended = () => src.disconnect();
+    src.start(start);
+  }
   return {
-    noise: tickNoise(ctx.sampleRate),
-    /** One frame's mixed ticks (mixFrame) at time t. */
-    play({ left, right }, t = ctx.currentTime) {
-      const buffer = ctx.createBuffer(2, left.length, ctx.sampleRate);
-      buffer.getChannelData(0).set(left);
-      buffer.getChannelData(1).set(right);
-      const src = ctx.createBufferSource();
-      src.buffer = buffer;
-      src.connect(highpass);
-      src.onended = () => src.disconnect();
-      src.start(t);
+    get mode() {
+      return mode;
+    },
+    /** One frame's voices from 'start' (audio time) over spanSamples, at density gain 'gain'. */
+    queue(voices, { start, spanSamples, gain }) {
+      if (mode === 'worklet') {
+        const events = tickEvents(voices, { sampleRate, spanSamples, gain, startFrame: Math.round(start * sampleRate), lengths,
+          noiseLength: noise.near[0].length });
+        node.port.postMessage({ type: 'ticks', events }, [events.buffer]);
+      } else playMixed(voices, start, spanSamples, gain);
     },
     dispose() {
+      if (node) node.disconnect();
       master.disconnect();
     },
   };
@@ -325,12 +366,13 @@ export function createFlashSound({ sound, now = () => performance.now() } = {}) 
   let cursor = null; // audio time where the next frame's ticks start
   let lastFrame = null;
   const plan = createFlashPlanState();
-  const totals = { voices: 0, frames: 0, mixMs: 0 };
+  const totals = { voices: 0, frames: 0, mainMs: 0 };
   return {
     /** One frame's new flashes (render/terrain/flashes.js onSpawn) with the camera. */
     spawn(items, { block = NaN, reason = 'advance', camera = null } = {}) {
       if (!sound || !sound.running || !items || !items.length || !camera || !camera.elements) return null;
       if (reason !== 'advance') return null;
+      const t = now();
       const ctx = sound.context;
       if (!graph || graphCtx !== ctx) {
         if (graph) graph.dispose();
@@ -338,7 +380,6 @@ export function createFlashSound({ sound, now = () => performance.now() } = {}) 
         graphCtx = ctx;
         cursor = null;
       }
-      const t = now();
       const p = flashVoices(items, { camera, block, now: t, state: plan });
       if (lastSpawn !== null) {
         const gap = (t - lastSpawn) / 1000;
@@ -353,25 +394,20 @@ export function createFlashSound({ sound, now = () => performance.now() } = {}) 
       const gain = densityGain(p.energy / d, p.voicedEnergy / d);
       let maxLevel = 0;
       for (const v of p.voices) if (v.level > maxLevel) maxLevel = v.level;
-      let mixMs = 0;
-      let lead = span.start - ctx.currentTime;
-      if (p.voices.length && gain > 0) {
-        const m0 = now();
-        const mix = mixFrame(p.voices, { sampleRate: ctx.sampleRate, spanSamples: Math.round(d * ctx.sampleRate), gain, noise: graph.noise });
-        lead = span.start - ctx.currentTime; // when the buffer is queued, after mixing
-        graph.play(mix, span.start);
-        mixMs = now() - m0;
-      }
+      const lead = span.start - ctx.currentTime;
+      if (p.voices.length && gain > 0) graph.queue(p.voices, { start: span.start, spanSamples: Math.round(d * ctx.sampleRate), gain });
+      const mainMs = now() - t;
       totals.voices += p.voices.length;
       totals.frames++;
-      totals.mixMs += mixMs;
+      totals.mainMs += mainMs;
       lastFrame = { block, candidates: items.length, onScreen: p.onScreen, voiced: p.voices.length, gain, maxLevel,
-        energyRate: p.energy / d, lead, mixMs };
+        energyRate: p.energy / d, lead, mainMs, mode: graph.mode };
       return p;
     },
     get state() {
       const ctx = sound ? sound.context : null;
-      return { created: !!graph, context: ctx ? ctx.state : null, dRef: plan.dRef, lastFrame, totals: { ...totals } };
+      return { created: !!graph, mode: graph ? graph.mode : null, context: ctx ? ctx.state : null, dRef: plan.dRef, lastFrame,
+        totals: { ...totals } };
     },
   };
 }
