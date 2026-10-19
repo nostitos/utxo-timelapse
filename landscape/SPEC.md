@@ -652,8 +652,8 @@ the centre (160 px ÷ `camera.sensitivity` for full deflection, return 3/s); A/D
 switches to the flight-sim convention, pull back for nose up), easing in over 0.25 s; the
 chase camera swings after the plane (4/s) and never rolls, so the bank shows. W/S throttle
 0.25–16 units/s on a logarithmic throttle (start 2; each quarter of the bar multiplies the
-speed by 2.83), Shift 3×, wheel sets the chase distance (0.8–40, default 2), M
-toggles the synthesized engine sound (`ui/plane-sound.js`, remembered in localStorage). A
+speed by 2.83), Shift 3×, wheel sets the chase distance (0.8–40, default 2); the synthesized
+engine sound (`ui/plane-sound.js`) plays while the Sound switch is on (M, below). A
 controls card stays visible while flying. With `view.setDetailAhead(0.6, 1.6)` the terrain
 draws cylinders down to `geo.columnPixels / 1.6` and moves their disc 0.6 radii ahead of
 the camera (near cylinders still measured from the camera; L0 tiles kept that far out).
@@ -747,8 +747,37 @@ every point a gesture or animation in progress is anchored to (each point once).
 keeps the tip's speed and direction, glides to the new tip after a seek, and its total shift
 equals the tip's. Map and flight mode follow; plane mode holds (re-anchors on every frame and replay
 frame), so landing never jumps.
+
+Sound (`ui/sound.js`; M or the timeline's Sound button between Fun and Places, `aria-pressed`
+while on, also on touch devices): one switch for every sound, off by default and remembered in
+localStorage (`utxo-landscape-sound` = `on` | `off`; without it, the old plane switch
+`utxo-landscape-plane-sound` = `on` counts as on). Turning it on creates the one shared
+`AudioContext` inside that gesture; later key presses and clicks resume it; turned off (after
+0.6 s) or with the page hidden it is suspended. The notice reads "Sound on", "Sound off", or
+"Sound on · turn on Flashes to hear spends" when `amp.flashSize` is 0. The plane engine plays
+in that context while the switch is on; landing fades it and removes its graph.
+Spend sound (`ui/flash-sound.js`): `render/terrain/flashes.js` calls `onSpawn(chosen, { block,
+reason, now })` with each frame's new flash sprites (`t` = the amount scale, `old` outside the
+edge window); terrain `onFlashes(fn)` and `view.onFlashes(fn)` pass them on, and
+`view.cameraView()` gives the camera position and its column-major view-projection. Only
+`advance` frames sound (playback and 1-block steps forward), so seeks and scrubs are silent. A
+flash sounds when it projects in front of the camera within NDC ±1.1. Reference distance: the
+nearer of `view.focusDistance()` (sampled at most every 100 ms) and the median distance of the
+frame's flashes on screen, clamped to 1–1,000 and eased in log space (τ = 0.5 s). Level =
+(0.25 + 0.75 t) × (0.35 for creation-edge spends) × min(1, 2 / (1 + (d / ref)²)): full at the
+reference and nearer, 0.4 at twice, 0.118 at four times; beyond twice the click passes a
+1.2 kHz low-pass. The age of the cell's newest coins (block − xEnd × 1000) picks the band, as in
+the film's synthesizer (`src/cpp/buv/AudioSynthesizer.h`): under 100 blocks 12 kHz, 1,000 4 kHz,
+10,000 1.5 kHz, 100,000 200 Hz, older 80 Hz. Each band is white noise through the film's
+band-pass twice (one pass leaves the 80 Hz band mostly hiss), at RMS 0.2; a click is a 120 ms
+slice with a 2 ms attack and an 18–90 ms decay (band gains 0.45 to 1), panned by screen x to
+one of five positions. Loudest first, clicks draw on a budget that refills at 300 a second and
+holds at most 16; the frame's other flashes feed a crackle loop (sparse clicks, 1.2 kHz
+band-pass) at min(0.35, 0.02 × the sum of their levels), panned to their level-weighted screen
+x and fading 0.25 s after the last frame. All of it passes a compressor (−18 dB, 4:1) and a 0.5
+master gain.
 Keys everywhere (ignored while typing in inputs): Space play/pause, `[`/`]` ±1 block,
-Shift+`[`/`]` ±1,008, N Follow tip, I inspect at cursor (crosshair in flight, nose circle in plane mode), C next craft,
+Shift+`[`/`]` ±1,008, N Follow tip, M sound, I inspect at cursor (crosshair in flight, nose circle in plane mode), C next craft,
 Enter Stack sats (plane mode), Esc exits flight or plane mode/closes the drawer or a menu. Places: eras at 50,000, 210,000, 314,000, 420,000, 500,000, 630,000,
 700,000, 840,000, 900,000 and the tip (seek + fly to that creation column); amount bands:
 50 BTC coinbase row, ≥10 BTC, 1 BTC, 10,000 sat, 546 sat, 1–100 sat (fly to that row).
@@ -763,6 +792,7 @@ hidden, the hover card docks at the top left in its place (`#hover.undocked`).
 
 Test hook: main.js sets `window.__landscape = { ready, settings, replay, view, controls,
 playback, seek(block), flyTo(place), inspect(x, y), follow: { active, lag, toggle(), set(on) },
+sound: { on, toggle(), set(on), state }, flashSound: { state },
 plane: { active, takingOff, state, pose,
 model, craft, crafts, setCraft(id), coins, game: { active, state, start(), stop() }, sound, takeoff(), land() },
 fun: { open, toggle(), card } }` and sets `ready = true` after the

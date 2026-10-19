@@ -7,6 +7,8 @@
 // every sprite keeps a minimum on-screen size, grows with the BTC moved, and spends of coins
 // created near the creation edge (within amp.edgeBlocks of the current block) get smaller
 // flashes. When a frame has more candidates than slots, old coins and larger amounts win.
+// onSpawn(chosen, {block, reason, now}) hears each frame's new flashes (ui/flash-sound.js):
+// the chosen candidates with old (outside the edge window) and t (amount scale) set.
 import { Sprite, SpriteNodeMaterial, InstancedBufferAttribute, AdditiveBlending, DynamicDrawUsage } from 'three/webgpu';
 import {
   instancedBufferAttribute, vec2, vec3, vec4, float, uv, smoothstep, length, pow, max, distance, uniform,
@@ -37,7 +39,7 @@ function topByWeight(items, n) {
   return items.slice(0, n);
 }
 
-export function createFlashes({ shading, capacity = FLASH_CAPACITY }) {
+export function createFlashes({ shading, capacity = FLASH_CAPACITY, onSpawn = null }) {
   const U = shading.uniforms;
   const posAttr = new InstancedBufferAttribute(new Float32Array(capacity * 4), 4); // x, y, z, size
   const valAttr = new InstancedBufferAttribute(new Float32Array(capacity * 4), 4); // intensity, fade, minPx, 0
@@ -76,7 +78,7 @@ export function createFlashes({ shading, capacity = FLASH_CAPACITY }) {
    * coins (cells whose newest block is more than edgeBlocks before 'block') outrank
    * creation-edge spends, which get at most FLASH_YOUNG_SHARE of the slots.
    */
-  function spawn(items, { size = 1, reference = 100, edge = 0.3, block = Infinity, edgeBlocks = 1008, now = performance.now(), maxNew = FLASH_MAX_NEW } = {}) {
+  function spawn(items, { size = 1, reference = 100, edge = 0.3, block = Infinity, edgeBlocks = 1008, now = performance.now(), maxNew = FLASH_MAX_NEW, reason = null } = {}) {
     if (!(size > 0) || !items.length) return;
     for (const it of items) {
       it.old = !Number.isFinite(block) || block - (it.xEnd ?? it.x) * 1000 > edgeBlocks;
@@ -92,6 +94,7 @@ export function createFlashes({ shading, capacity = FLASH_CAPACITY }) {
     let oldCount = 0;
     for (const it of chosen) {
       const look = flashLook(it.btcCell ?? it.btc, { size, reference, old: it.old, edge });
+      it.t = look.t;
       if (it.old) oldCount++;
       list.push({ x: it.x, y: it.y, z: it.z, size: look.size, minPx: look.minPx, intensity: look.intensity, t0: now });
     }
@@ -99,6 +102,13 @@ export function createFlashes({ shading, capacity = FLASH_CAPACITY }) {
     stats.spawned += chosen.length;
     stats.lastFrame = chosen.length;
     stats.lastOld = oldCount;
+    if (onSpawn && chosen.length) {
+      try {
+        onSpawn(chosen, { block, reason, now });
+      } catch (err) {
+        console.warn('flash listener', err);
+      }
+    }
   }
 
   /** Advances the flashes; worldPerPixel = world units per screen pixel at distance 1. */

@@ -2,7 +2,7 @@
 //
 // createTerrain({ renderer, scene, camera, settings, manifest, rows, blocktimes, capabilities,
 //   labelsElement }) → { object3d, applyFrame, setBlock, update, pick, heightAt, focusDistance,
-//   setDetailAhead, stats, dispose }
+//   setDetailAhead, onFlashes, stats, dispose }
 import {
   Group, Mesh, PlaneGeometry, MeshStandardNodeMaterial, MeshBasicNodeMaterial, DoubleSide, Vector3, Matrix4,
   Color,
@@ -200,7 +200,14 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
   // ---- labels and columns ----------------------------------------------------------------
   const labels = labelsElement ? createAxisLabels({ element: labelsElement, grid, rows, blocktimes }) : null;
   let lastAmountRows = null;
-  const flashes = createFlashes({ shading });
+  // Listeners for each frame's new flashes (view.onFlashes; ui/flash-sound.js plays them).
+  const flashListeners = new Set();
+  const flashes = createFlashes({
+    shading,
+    onSpawn: (list, meta) => {
+      for (const fn of flashListeners) fn(list, meta);
+    },
+  });
   object3d.add(flashes.sprite);
   let columns = null; // created on first use (its instance buffer is budget-sized)
   const columnBudgetCap = Math.max(1, Math.min(8000000, capabilities.maxInstances || 8000000));
@@ -604,7 +611,8 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     }
     if (candidates.length) {
       for (const c of candidates) c.y = heightAt(c.x, c.z);
-      flashes.spawn(candidates, { size: flashSize, reference: get('amp.heatReference'), edge: get('amp.heatEdge'), block: blk, edgeBlocks: get('amp.heatEdgeBlocks') });
+      flashes.spawn(candidates, { size: flashSize, reference: get('amp.heatReference'), edge: get('amp.heatEdge'), block: blk,
+        edgeBlocks: get('amp.heatEdgeBlocks'), reason: frame.reason ?? null });
     }
     stats.applyMs = performance.now() - tA;
     stats.applyMsTotal = (stats.applyMsTotal || 0) + stats.applyMs;
@@ -763,6 +771,12 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     return 100;
   }
 
+  /** fn(list, {block, reason, now}) for each frame's new flash sprites; returns an unsubscribe function. */
+  function onFlashes(fn) {
+    flashListeners.add(fn);
+    return () => flashListeners.delete(fn);
+  }
+
   function dispose() {
     if (unsubscribe) unsubscribe();
     object3d.removeFromParent();
@@ -779,7 +793,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
   }
 
   return {
-    object3d, applyFrame, setBlock, update, pick, heightAt, focusDistance, setDetailAhead, stats, dispose,
+    object3d, applyFrame, setBlock, update, pick, heightAt, focusDistance, setDetailAhead, onFlashes, stats, dispose,
     // extras for dev pages and tests
     atlas, shading, grid, cellAt, get mode() { return mode; }, get drawn() { return drawn; },
     get meshes() { return { heightfield: [...hfLevels.values()].map((L) => L.mesh), floor, nowPlane, columns: columns ? columns.mesh : null }; },

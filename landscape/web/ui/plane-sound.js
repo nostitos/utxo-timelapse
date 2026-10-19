@@ -7,14 +7,15 @@
 // vacuum cleaner) but a turbine heard from behind: a deep brown-noise rumble, a softer
 // low-passed roar that opens up with the throttle, slow turbulence on both and a faint
 // two-tone whine, with the afterburner adding rumble on boost; the bird has no engine, only
-// wind pulsed at its wing beat, silent beat while it glides. A collected Stack sats coin plays a short two-note chime. M mutes it (remembered in
-// localStorage). The audio context starts on the key press or click that takes off; browsers
-// keep it silent until such a gesture.
+// wind pulsed at its wing beat, silent beat while it glides. A collected Stack sats coin plays a
+// short two-note chime. It plays only while the shared sound switch (ui/sound.js: the Sound
+// button and M) is on, in that switch's audio context; landing fades the engine out and
+// removes its graph, and the next takeoff builds it again.
 
 import { craftSpec, flapRate } from './plane.js';
 
-const STORE_KEY = 'utxo-landscape-plane-sound';
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+const DISPOSE_MS = 600; // after landing, once the engine has faded out
 
 /**
  * Audio targets for a flight state and craft (profile: 'plane', 'bird' or 'jet'). Pure:
@@ -321,108 +322,74 @@ export function buildEngine(ctx, { destination = ctx.destination, volume = 0.18 
   return api;
 }
 
-/** Live engine sound for plane mode: start(), stop(), update(plane), unlock(), toggleMuted(). */
-export function createPlaneSound({ storage = globalThis.localStorage, volume = 0.18 } = {}) {
-  let ctx = null;
+/** Live engine sound for plane mode on the shared switch (ui/sound.js): start(), stop(), update(plane), coin(). */
+export function createPlaneSound({ sound, volume = 0.18 } = {}) {
   let engine = null;
   let active = false;
   let lastBumps = null;
-  let suspendTimer = 0;
-  let muted = false;
-  try {
-    muted = storage ? storage.getItem(STORE_KEY) === 'off' : false;
-  } catch {
-    muted = false;
-  }
-
-  function ensure() {
-    if (ctx) return ctx;
-    const AC = globalThis.AudioContext || globalThis.webkitAudioContext;
-    if (!AC) return null;
-    try {
-      ctx = new AC({ latencyHint: 'interactive' });
-      engine = buildEngine(ctx, { volume });
-    } catch {
-      ctx = null;
-      engine = null;
-    }
-    return ctx;
-  }
-  function resume() {
-    if (ctx && ctx.state !== 'running' && ctx.state !== 'closed') ctx.resume().catch(() => {});
-  }
+  let disposeTimer = 0;
   function hidden() {
     return typeof document !== 'undefined' && document.hidden;
   }
-  if (typeof document !== 'undefined') {
-    document.addEventListener('visibilitychange', () => {
-      if (!ctx) return;
-      if (hidden()) ctx.suspend().catch(() => {});
-      else if (active && !muted) resume();
-    });
+  /** The engine graph, built in the shared context once sound is on and a gesture created it. */
+  function ensureEngine() {
+    if (engine) return engine;
+    const ctx = sound && sound.on ? sound.context : null;
+    if (!ctx) return null;
+    try {
+      engine = buildEngine(ctx, { volume });
+    } catch {
+      engine = null;
+    }
+    return engine;
   }
 
   return {
-    /** Takeoff (call from the key press or click, so the browser lets the sound start). */
+    /** Takeoff (from the key press or click, so the browser lets a stored Sound on start). */
     start() {
       active = true;
       lastBumps = null;
-      clearTimeout(suspendTimer);
-      if (muted) return;
-      ensure();
-      resume();
+      clearTimeout(disposeTimer);
+      if (!sound || !sound.on) return;
+      sound.unlock();
+      ensureEngine();
     },
-    /** Landing: fade out, then suspend the context. */
+    /** Landing: fade out, then remove the engine graph (the shared context keeps running). */
     stop() {
       active = false;
-      if (!ctx || !engine) return;
+      if (!engine) return;
       engine.set({ on: false });
-      clearTimeout(suspendTimer);
-      suspendTimer = setTimeout(() => {
-        if (ctx && !active) ctx.suspend().catch(() => {});
-      }, 600);
+      clearTimeout(disposeTimer);
+      disposeTimer = setTimeout(() => {
+        if (active || !engine) return;
+        engine.dispose();
+        engine = null;
+      }, DISPOSE_MS);
     },
-    /** Per frame with the ui/plane.js state. */
+    /** Per frame with the ui/plane.js state. Sound turned on in flight starts the engine. */
     update(plane) {
-      if (!active || !plane || !engine) return;
-      engine.set({ throttle: plane.throttle, speed: plane.speed, boost: plane.boosting, bank: plane.bank, on: !muted && !hidden() },
+      if (!active || !plane) return;
+      const on = !!(sound && sound.on) && !hidden();
+      if (on && !engine) ensureEngine();
+      if (!engine) return;
+      engine.set({ throttle: plane.throttle, speed: plane.speed, boost: plane.boosting, bank: plane.bank, on },
         undefined, 0.08, plane.craft);
-      if (lastBumps !== null && plane.bumps > lastBumps && !muted) engine.bump(undefined, engine.last ? engine.last.bumpGain : 1);
+      if (lastBumps !== null && plane.bumps > lastBumps && on) engine.bump(undefined, engine.last ? engine.last.bumpGain : 1);
       lastBumps = plane.bumps;
     },
     /** A collected coin (Stack sats). */
     coin() {
-      if (!active || muted || !engine || hidden()) return;
+      if (!active || !sound || !sound.on || !engine || hidden()) return;
       engine.coin();
     },
-    /** Any later key press or click: browsers may have kept the context suspended. */
-    unlock() {
-      if (active && !muted) {
-        ensure();
-        resume();
-      }
-    },
-    toggleMuted() {
-      muted = !muted;
-      try {
-        if (storage) storage.setItem(STORE_KEY, muted ? 'off' : 'on');
-      } catch {
-        /* private mode: not remembered */
-      }
-      if (muted) {
-        if (engine) engine.set({ on: false });
-      } else if (active) {
-        ensure();
-        resume();
-      }
-      return muted;
-    },
+    /** Whether the shared switch is off (the plane controls card shows it). */
     get muted() {
-      return muted;
+      return !(sound && sound.on);
     },
     /** For checks: whether the graph exists, the context state and the last targets. */
     get state() {
-      return { created: !!engine, context: ctx ? ctx.state : null, active, muted, target: engine ? engine.last : null };
+      const ctx = sound ? sound.context : null;
+      return { created: !!engine, context: ctx ? ctx.state : null, active, muted: !(sound && sound.on), target: engine ? engine.last : null };
     },
   };
 }
