@@ -3,9 +3,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  FLASH_BANDS, FLASH_PANS, MAX_VOICES_FRAME, MAX_VOICES_SECOND, CROWD_MAX, REF_MAX, EDGE_LEVEL,
+  FLASH_BANDS, FLASH_PANS, MAX_VOICES_FRAME, MAX_VOICES_SECOND, CROWD_MAX, REF_MAX, EDGE_LEVEL, LEAD_S, DRIFT_S, HIGHPASS_HZ,
   bandIndex, distanceGain, projectPoint, panIndex, flashVoices, createFlashPlanState, bandNoise, crackleNoise,
-  createFlashSound,
+  createFlashSound, crowdGain, frameSpan,
 } from '../web/ui/flash-sound.js';
 import { createSound, readSoundPref, SOUND_KEY, LEGACY_PLANE_KEY } from '../web/ui/sound.js';
 import { createPlaneSound } from '../web/ui/plane-sound.js';
@@ -48,8 +48,9 @@ test('distance relative to the view: full at the reference and nearer, 0.4 at tw
   assert.ok(near(distanceGain(40, 10), 2 / 17));
   // The same ratios hold zoomed far out: only distance over the reference counts.
   assert.ok(near(distanceGain(800, 400), distanceGain(2, 1)));
-  const p = plan([ahead(5), ahead(10), ahead(20), ahead(40)], { focus: 10 });
-  assert.equal(p.dRef, 10);
+  // The median flash on screen is at 10, so the reference is 10.
+  const p = plan([ahead(5), ahead(10), ahead(10, { s: 1e-6 }), ahead(20), ahead(40)]);
+  assert.ok(near(p.dRef, 10));
   const byDistance = new Map(p.voices.map((v) => [Math.round(v.distance), v]));
   assert.equal(byDistance.get(5).level, 1);
   assert.equal(byDistance.get(10).level, 1);
@@ -59,13 +60,12 @@ test('distance relative to the view: full at the reference and nearer, 0.4 at tw
   assert.ok(p.voices.every((v) => v.level <= 1));
 });
 
-test('reference distance: the nearer of the focus and the median flash, clamped and eased', () => {
+test('reference distance: the median flash on screen, clamped and eased', () => {
   const flashes = [ahead(8), ahead(10), ahead(12)];
-  assert.equal(plan(flashes, { focus: 3 }).dRef, 3);
-  assert.equal(plan(flashes, { focus: null }).dRef, 10);
-  assert.equal(plan(flashes, { focus: 50 }).dRef, 10);
+  assert.equal(plan(flashes).dRef, 10);
+  assert.equal(plan([ahead(2), ahead(3), ahead(400), ahead(500), ahead(600)]).dRef, 400, 'mostly far flashes: the far ones set the level');
   assert.equal(plan([ahead(0.3)], {}).dRef, 1);
-  assert.equal(plan([ahead(4000)], { focus: 5000 }).dRef, REF_MAX);
+  assert.equal(plan([ahead(4000)]).dRef, REF_MAX);
   const state = createFlashPlanState();
   plan([ahead(10)], { state, now: 0 });
   const eased = plan([ahead(40)], { state, now: 500 }).dRef;
@@ -77,36 +77,37 @@ test('reference distance: the nearer of the focus and the median flash, clamped 
 
 test('level follows the BTC moved; spends near the creation edge are quieter', () => {
   // All three within the reference distance (the median, 10.05), so only amount and age differ.
-  const p = plan([ahead(10, { t: 0 }), ahead(10, { t: 1, s: 1 }), ahead(10, { t: 1, s: -1, old: false })], { focus: 20 });
+  const p = plan([ahead(10, { t: 0 }), ahead(10, { t: 1, s: 1 }), ahead(10, { t: 1, s: -1, old: false })]);
   const lv = (s) => p.voices.find((v) => near(v.ndcX, s / 10)).level;
   assert.ok(near(lv(0), 0.25), 'the smallest spend is still heard');
   assert.ok(near(lv(1), 1));
   assert.ok(near(lv(-1), EDGE_LEVEL));
 });
 
-test('the age of the spent coins picks the band, from the high air band to the sub band', () => {
+test('the age of the spent coins picks the band, from the high air band to the deep band, all above the bass laptops duck', () => {
   const ages = [[0, 'air'], [99, 'air'], [100, 'high'], [999, 'high'], [1000, 'mid'], [9999, 'mid'], [10000, 'low'],
-    [99999, 'low'], [100000, 'sub'], [800000, 'sub']];
+    [99999, 'low'], [100000, 'deep'], [800000, 'deep']];
   for (const [age, id] of ages) assert.equal(FLASH_BANDS[bandIndex(age)].id, id, 'age ' + age);
+  assert.ok(FLASH_BANDS.every((b) => b.freq >= 3 * HIGHPASS_HZ), 'every band well above the high-pass');
   // xEnd is the cell's newest block / 1000: a cell 200,000 blocks back is ancient.
   const p = plan([ahead(10, { xEnd: 700 }), ahead(10, { xEnd: 899.95, s: 1 })], { block: 900000 });
-  assert.deepEqual(p.voices.map((v) => FLASH_BANDS[v.band].id).sort(), ['air', 'sub']);
+  assert.deepEqual(p.voices.map((v) => FLASH_BANDS[v.band].id).sort(), ['air', 'deep']);
 });
 
-test('busy frames: the loudest get clicks, the rest feed the crackle; 300 clicks a second, spread evenly', () => {
+test('busy frames: the loudest get ticks, the rest feed a soft crackle; 60 ticks a second, spread evenly', () => {
   // 16 large spends at the reference distance among 984 dust spends four times farther.
   const quiet = [];
   for (let i = 0; i < 984; i++) quiet.push(ahead(40, { t: 0, s: ((i % 21) - 10) * 2 }));
   const loud = [];
   for (let i = 0; i < 16; i++) loud.push(ahead(10, { t: 1 }));
   const many = [...quiet.slice(0, 500), ...loud, ...quiet.slice(500)];
-  const p = plan(many, { focus: 10 });
+  const p = plan(many);
   assert.equal(p.voices.length, MAX_VOICES_FRAME);
   assert.equal(p.onScreen, 1000);
   assert.ok(p.voices.every((v) => v.level === 1 && near(v.distance, 10)), 'the voiced flashes are the loudest ones');
-  assert.equal(p.crowd.gain, CROWD_MAX, 'hundreds of quiet spends: the crackle at its ceiling');
-  const some = plan([...loud, ...quiet.slice(0, 20)], { focus: 10 });
-  assert.ok(some.crowd.gain > 0 && some.crowd.gain < CROWD_MAX, 'twenty quiet spends: a faint crackle (' + some.crowd.gain + ')');
+  const some = plan([...loud.slice(0, MAX_VOICES_FRAME), ...quiet.slice(0, 20)]);
+  assert.ok(some.crowd.gain > 0 && some.crowd.gain < p.crowd.gain && p.crowd.gain <= CROWD_MAX,
+    'the crackle grows with the unvoiced spends and stays soft: ' + some.crowd.gain.toFixed(3) + ' for 20, ' + p.crowd.gain.toFixed(3) + ' for 994');
   const few = plan([ahead(10), ahead(11), ahead(12), ahead(13), ahead(14)]);
   assert.equal(few.voices.length, 5);
   assert.equal(few.crowd.gain, 0);
@@ -116,17 +117,52 @@ test('busy frames: the loudest get clicks, the rest feed the crackle; 300 clicks
   for (let f = 0; f < 100; f++) perFrame.push(plan(many.slice(0, 100), { state, now: f * 10 }).voices.length);
   const total = perFrame.reduce((a, b) => a + b, 0);
   assert.equal(perFrame[0], MAX_VOICES_FRAME, 'a quiet moment allows a burst');
-  assert.ok(total <= MAX_VOICES_SECOND + MAX_VOICES_FRAME && total >= MAX_VOICES_SECOND - 10, 'one second of 100-flash frames: ' + total + ' clicks');
-  assert.ok(perFrame.slice(1).every((n) => n >= 2 && n <= 4), 'clicks every frame, never a silent gap: ' + perFrame.slice(1, 12).join(' '));
+  assert.ok(total <= MAX_VOICES_SECOND + MAX_VOICES_FRAME && total >= MAX_VOICES_SECOND - 5, 'one second of 100-flash frames: ' + total + ' ticks');
+  let run = 0;
+  let longest = 0;
+  for (const n of perFrame.slice(1)) {
+    run = n === 0 ? run + 1 : 0;
+    longest = Math.max(longest, run);
+  }
+  assert.ok(perFrame.slice(1).every((n) => n <= 1) && longest <= 2, 'a tick every 10 to 30 ms, never a burst or a gap: ' + perFrame.slice(1, 20).join(''));
   plan([], { state, now: 2000 });
   assert.equal(plan(many.slice(0, 100), { state, now: 2000 }).voices.length, MAX_VOICES_FRAME, 'the budget refills after a pause');
+});
+
+test('ticks are scheduled ahead of the audio clock and spread evenly, even when frames arrive unevenly', () => {
+  // Steady frames: each span starts where the previous one ended.
+  let cursor = null;
+  let audio = 10;
+  const spans = [];
+  for (let i = 0; i < 5; i++) {
+    const s = frameSpan(cursor, audio, 1 / 60);
+    spans.push(s);
+    cursor = s.end;
+    audio += 1 / 60;
+  }
+  assert.ok(near(spans[0].start, 10 + LEAD_S));
+  for (let i = 1; i < spans.length; i++) assert.ok(near(spans[i].start, spans[i - 1].end), 'contiguous');
+  // Five frames arriving at once still get five consecutive spans.
+  const clump = [];
+  for (let i = 0; i < 5; i++) {
+    const s = frameSpan(cursor, audio, 1 / 60);
+    clump.push(s.start);
+    cursor = s.end;
+  }
+  assert.ok(clump.every((t, i) => i === 0 || t > clump[i - 1] + 0.016), 'a clump is spread out: ' + clump.map((t) => (t - audio).toFixed(3)).join(' '));
+  // A stall: the cursor fell behind the clock, so the next span starts LEAD_S ahead again.
+  assert.ok(near(frameSpan(cursor, audio + 2, 1 / 60).start, audio + 2 + LEAD_S));
+  // Frames far faster than they play: the schedule never runs more than DRIFT_S past the lead.
+  assert.ok(near(frameSpan(audio + 5, audio, 1 / 60).start, audio + LEAD_S + DRIFT_S));
+  assert.equal(crowdGain(0), 0);
+  assert.ok(crowdGain(1) < crowdGain(50) && crowdGain(50) < crowdGain(1e6) && crowdGain(1e6) === CROWD_MAX);
 });
 
 test('nothing on screen: silence', () => {
   const behind = [{ x: 0, y: 0, z: 10, t: 1 }];
   const aside = [{ x: 30, y: 0, z: -10, t: 1 }];
   for (const items of [behind, aside]) {
-    const p = plan(items, { focus: 10 });
+    const p = plan(items);
     assert.equal(p.voices.length, 0);
     assert.equal(p.onScreen, 0);
     assert.equal(p.crowd.gain, 0);
@@ -147,7 +183,7 @@ function crossingsPerSecond(d, rate) {
   return (n / d.length) * rate;
 }
 
-test('click noise: each band filtered around its frequency, all at the same level; the crowd loop crackles', () => {
+test('tick noise: each band filtered around its frequency, all at the same level; the crowd loop crackles', () => {
   const rate = 48000;
   const zc = FLASH_BANDS.map((b) => {
     const d = bandNoise(rate, 0.5, b);
@@ -157,9 +193,9 @@ test('click noise: each band filtered around its frequency, all at the same leve
   });
   for (let i = 1; i < zc.length; i++) assert.ok(zc[i] < zc[i - 1], 'older coins sound lower: ' + zc.map(Math.round).join(', '));
   // A narrow band crosses zero about twice per cycle of its centre frequency.
-  assert.ok(zc[4] > 100 && zc[4] < 260, 'sub ' + zc[4]);
-  assert.ok(zc[3] > 250 && zc[3] < 650, 'low ' + zc[3]);
-  assert.ok(zc[2] > 2000 && zc[2] < 4500, 'mid ' + zc[2]);
+  assert.ok(zc[4] > 650 && zc[4] < 1400, 'deep ' + zc[4]);
+  assert.ok(zc[3] > 1300 && zc[3] < 2700, 'low ' + zc[3]);
+  assert.ok(zc[2] > 2600 && zc[2] < 5200, 'mid ' + zc[2]);
   const c = crackleNoise(rate, 2);
   let peak = 0;
   for (const v of c) peak = Math.max(peak, Math.abs(v));
