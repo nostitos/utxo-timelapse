@@ -4,7 +4,7 @@
 // integers: counts and satoshi sums stay far below 2^53).
 import { tileInfo, tileId } from '../data/grid.js';
 
-export const DIRTY_CAP = 16384;          // per-slot changed-cell list before falling back to a full resend
+export const DIRTY_CAP = 16384;          // distinct changed cells per slot and frame before a full resend
 export const WEIGHT_THRESHOLD = 500000000; // exactly 5 BTC is small
 export const HEAT_TABLE = 65536;          // exact decay factors for gaps below this many blocks
 
@@ -13,6 +13,10 @@ export class TileSlot {
   constructor(grid, id) {
     this.cells = new Float64Array(65536 * 4);
     this.dirty = new Uint16Array(DIRTY_CAP);
+    // One bit per cell: whether it is already in this frame's dirty list. A busy block changes
+    // the same coarse cells thousands of times; listing each once keeps coarse tiles as deltas
+    // instead of overflowing the list into a full 1 MB resend every frame.
+    this.mark = new Uint32Array(2048);
     this.heat = null;                    // Float32Array(65536 * 2): [heat, heatBlock] per cell, lazy
     this.colW = new Float64Array(258);   // L0 columns covered by slot column sx (0 outside the grid)
     this.rowH = new Float64Array(258);   // L0 rows covered by slot row sy (0 outside the grid)
@@ -69,7 +73,22 @@ export class TileSlot {
   }
 
   get memoryBytes() {
-    return this.cells.byteLength + this.dirty.byteLength + (this.heat ? this.heat.byteLength : 0) + 4200;
+    return this.cells.byteLength + this.dirty.byteLength + this.mark.byteLength + (this.heat ? this.heat.byteLength : 0) + 4200;
+  }
+
+  /** After a frame is built: empties the dirty list and its marks (all of them after a full resend). */
+  clearDirty() {
+    if (this.dirtyAll) this.mark.fill(0);
+    else {
+      const m = this.mark;
+      const d = this.dirty;
+      for (let k = 0; k < this.dirtyN; k++) {
+        const li = d[k];
+        m[li >>> 5] &= ~(1 << (li & 31));
+      }
+    }
+    this.dirtyN = 0;
+    this.dirtyAll = false;
   }
 }
 
@@ -95,15 +114,27 @@ export function makeApplier(grid, minAmt) {
   return standard ? makeUnrolledApplier(grid, minAmt) : makeGenericApplier(grid, minAmt);
 }
 
+/**
+ * Lists cell li as changed in this frame, once. The marks are only kept while dirtyAll is
+ * false; a slot that falls back to a full resend clears them all in clearDirty.
+ */
+export function markDirty(slot, li) {
+  if (slot.dirtyAll) return;
+  const m = slot.mark;
+  const w = li >>> 5;
+  const b = 1 << (li & 31);
+  if ((m[w] & b) !== 0) return;
+  m[w] |= b;
+  if (slot.dirtyN < DIRTY_CAP) slot.dirty[slot.dirtyN++] = li;
+  else slot.dirtyAll = true;
+}
+
 function touch(slot, li, off, dc, ds) {
   const cells = slot.cells;
   const o = (li << 2) + off;
   cells[o] += dc;
   cells[o + 1] += ds;
-  if (!slot.dirtyAll) {
-    if (slot.dirtyN < DIRTY_CAP) slot.dirty[slot.dirtyN++] = li;
-    else slot.dirtyAll = true;
-  }
+  markDirty(slot, li);
 }
 
 function touchHeat(slot, li, add, hb, decay, hl) {
@@ -259,10 +290,7 @@ export function makeGenericApplier(grid, minAmt) {
         const o = (li << 2) + off;
         cells[o] += dc;
         cells[o + 1] += ds;
-        if (!slot.dirtyAll) {
-          if (slot.dirtyN < DIRTY_CAP) slot.dirty[slot.dirtyN++] = li;
-          else slot.dirtyAll = true;
-        }
+        markDirty(slot, li);
         if (spendHeat) {
           let hv = slot.heat;
           if (hv === null) hv = slot.heat = new Float32Array(131072);

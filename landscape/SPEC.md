@@ -336,7 +336,10 @@ the grid are 0. Four floats per cell:
 `counts` carries the raw `countSmall + countLarge` at each matching slot/delta index,
 independent of the height/colour measures and never divided by area. It stays uint32 through
 transfer and GPU storage. `empty: true` tiles carry `data: null, counts: null`. Deltas include
-border copies in neighbours. WebGPU columns split their sides into exactly N equal-height
+border copies in neighbours. A tile is sent in full when it is newly delivered or when more than
+16,384 distinct cells changed since the last frame (`DIRTY_CAP`); each slot lists a changed cell
+once per frame (a bitmap of 65,536 bits), so the thousands of changes a busy block makes to the
+same coarse cells stay deltas instead of a full 1 MB resend of every coarse tile. WebGPU columns split their sides into exactly N equal-height
 layers for N current UTXOs, drawing only the N-1 internal boundaries. The cap stays plain;
 1 UTXO has no internal line. The lines fade when a layer falls below 2–5 screen pixels,
 without substituting fewer layers. Playback, rewind, measure changes and tile reloads update
@@ -532,7 +535,10 @@ writing them; `blendPosition` finds the point the current values lie on, or null
 day maps its stops to clock hours (`at`). Column distance and Terrain detail bind
 `geo.columnPixels` and `geo.pixelsPerCell` on inverted log sliders. Tiles under the column
 disc always refine to level 0 (`selectTiles` option `mustRefine`), so columns appear wherever
-Column distance reaches. `ui/quick.js` draws them at the top of the panel,
+Column distance reaches. A tile desired in the previous selection stays visible while its box at
+the assumed height of unloaded tiles is (`previousDesired`): a tile assumed tall until it loads,
+then culled by its real height, would otherwise be requested and dropped on alternate frames
+while Follow tip moves the camera. `ui/quick.js` draws them at the top of the panel,
 with Save… and Delete for saved looks; the schema's settings sit in the panel's closed
 Advanced folder, dimmed while their `needs` fail.
 

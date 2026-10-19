@@ -295,6 +295,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     columns: 0,
   };
   let previousSplit = null;
+  let previousDesired = null; // tiles desired last time: visibility hysteresis (lod.js)
   let lastDesiredKey = '';
   let lastDesired = [];
   let drawn = new Map();
@@ -379,10 +380,11 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
       : null;
     const fixedLevel = mode.uniform ? Math.max(0, Math.min(grid.levels.length - 1, Math.round(Number(get('geo.uniformLevel')) || 0))) : null;
     const sel = selectTiles(grid, { position: [pos.x, pos.y, pos.z], planes, projScale, orthographic }, {
-      threshold, budget, previousSplit, isResident: (id) => atlas.isResident(id), isEmpty: (id) => atlas.isEmpty(id),
+      threshold, budget, previousSplit, previousDesired, isResident: (id) => atlas.isResident(id), isEmpty: (id) => atlas.isEmpty(id),
       tileMaxHeight: tileMaxH, defaultMaxHeight: heightBound(globalMax * 4), mustRefine, fixedLevel,
     });
     previousSplit = sel.split;
+    previousDesired = new Set(sel.desired);
 
     // Patch instances (front to back), each assigned a subdivision level.
     const list = [];

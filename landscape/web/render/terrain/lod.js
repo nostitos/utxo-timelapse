@@ -165,6 +165,9 @@ export function rootTiles(grid) {
  *         tileMaxHeight(id) → height bound of a resident tile, or a negative number when unknown,
  *         defaultMaxHeight: bound for tiles without data,
  *         previousSplit: Set of tiles split last time (hysteresis), hysteresis: 0.8,
+ *         previousDesired: Set of tiles desired last time: such a tile stays visible while its
+ *         box at defaultMaxHeight is (a tile assumed tall until it loads, then culled by its
+ *         real height, would otherwise be requested and dropped on alternate frames),
  *         mustRefine(id) → bool: split this tile whatever its error, before any other
  *         (the column region needs level-0 tiles; still within the budget),
  *         fixedLevel: null, or a level every visible tile refines to whatever its error
@@ -200,6 +203,9 @@ export function selectTiles(grid, view, opts) {
     return b;
   };
   const visible = (id) => boxVisible(planes, bounds(id));
+  const prevDesired = opts.previousDesired || null;
+  const tallH = opts.defaultMaxHeight ?? 50;
+  const keep = (id) => visible(id) || (prevDesired !== null && prevDesired.has(id) && boxVisible(planes, tileBounds(grid, id, Math.max(tallH, maxH(id)))));
   const error = (id) => {
     const t = tileInfo(grid, id);
     const { cw, ch } = cellSize(grid, t.level);
@@ -216,7 +222,7 @@ export function selectTiles(grid, view, opts) {
   let deferred = 0;
   // Tiles that must refine sort ahead of every error (their key exceeds any pixel size).
   const key = (id) => (mustRefine && mustRefine(id) ? 1e12 + error(id) : error(id));
-  for (const r of roots) if (visible(r)) heap.push(r, key(r));
+  for (const r of roots) if (keep(r)) heap.push(r, key(r));
   while (heap.size) {
     const [id, e] = heap.pop();
     if (fixedLevel !== null) {
@@ -225,7 +231,7 @@ export function selectTiles(grid, view, opts) {
       const limit = prev && prev.has(id) ? threshold * hysteresis : threshold;
       if (e <= limit) continue;
     }
-    const kids = childTiles(grid, id).filter(visible);
+    const kids = childTiles(grid, id).filter(keep);
     if (!kids.length) continue;
     if (selected.size + kids.length > budget) {
       deferred++;

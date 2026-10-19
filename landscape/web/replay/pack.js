@@ -303,8 +303,7 @@ export class FrameBuilder {
     for (let id = 0; id < tiles; id++) {
       const s = slotOf[id];
       if (s === null) continue;
-      s.dirtyN = 0;
-      s.dirtyAll = false;
+      s.clearDirty();
       s.borderMask = 0;
     }
     const deltas = { ids: Uint32Array.from(dIds), offsets: Uint32Array.from(dOffsets), index: dIndex, data: dData, counts: dCounts };

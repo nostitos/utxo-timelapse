@@ -284,3 +284,28 @@ test('fixedLevel refines every visible tile to one level, nearest first, within 
   const missing = allL1.filter((id) => !near.includes(id));
   assert.ok(missing.every((id) => dist(id) > kept * 0.5), 'the refused tiles are the far ones');
 });
+
+test('a tile culled by its real height stays desired while its assumed-tall box is in view (no flip-flop)', () => {
+  const grid = GRIDS[0];
+  // One plane: only boxes reaching above y = 10 are visible. Unloaded tiles are assumed 50 high.
+  const planes = [0, 1, 0, -10];
+  const view = { position: [100, 30, 120], planes, projScale: 4000 };
+  let resident = new Set();
+  const opts = (prev) => ({ threshold: 2, budget: 400, defaultMaxHeight: 50, isResident: (id) => resident.has(id),
+    tileMaxHeight: (id) => (resident.has(id) ? 1 : -1), previousDesired: prev });
+  const first = selectTiles(grid, view, opts(null));
+  const kid = first.desired.find((id) => tileInfo(grid, id).level < grid.levels.length - 1);
+  assert.ok(kid !== undefined, 'refines below the roots while heights are unknown');
+  // Once every desired tile is resident and only 1 high, it is outside the view...
+  resident = new Set(first.desired);
+  const without = selectTiles(grid, view, opts(null));
+  assert.ok(!without.desired.includes(kid), 'without hysteresis the loaded tile is dropped (and would be requested again)');
+  // ...but desired last time it stays, and the next frame asks for the same set.
+  const withPrev = selectTiles(grid, view, opts(new Set(first.desired)));
+  assert.ok(withPrev.desired.includes(kid));
+  const again = selectTiles(grid, view, opts(new Set(withPrev.desired)));
+  assert.deepEqual(again.desired, withPrev.desired, 'stable from frame to frame');
+  // Out of view even at the assumed height: dropped despite the hysteresis.
+  const gone = selectTiles(grid, { ...view, planes: [0, 1, 0, -100] }, opts(new Set(first.desired)));
+  assert.ok(!gone.desired.includes(kid));
+});
