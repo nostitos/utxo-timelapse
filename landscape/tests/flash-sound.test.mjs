@@ -88,7 +88,7 @@ test('the age of the spent coins picks the band, from the high air band to the d
   const ages = [[0, 'air'], [99, 'air'], [100, 'high'], [999, 'high'], [1000, 'mid'], [9999, 'mid'], [10000, 'low'],
     [99999, 'low'], [100000, 'deep'], [800000, 'deep']];
   for (const [age, id] of ages) assert.equal(FLASH_BANDS[bandIndex(age)].id, id, 'age ' + age);
-  assert.ok(FLASH_BANDS.every((b) => b.freq >= 3 * HIGHPASS_HZ), 'every band well above the high-pass');
+  assert.ok(FLASH_BANDS.every((b) => b.freq >= 2 * HIGHPASS_HZ), 'every band well above the high-pass');
   // xEnd is the cell's newest block / 1000: a cell 200,000 blocks back is ancient.
   const p = plan([ahead(10, { xEnd: 700 }), ahead(10, { xEnd: 899.95, s: 1 })], { block: 900000 });
   assert.deepEqual(p.voices.map((v) => FLASH_BANDS[v.band].id).sort(), ['air', 'deep']);
@@ -193,9 +193,9 @@ test('tick noise: each band filtered around its frequency, all at the same level
   });
   for (let i = 1; i < zc.length; i++) assert.ok(zc[i] < zc[i - 1], 'older coins sound lower: ' + zc.map(Math.round).join(', '));
   // A narrow band crosses zero about twice per cycle of its centre frequency.
-  assert.ok(zc[4] > 650 && zc[4] < 1400, 'deep ' + zc[4]);
-  assert.ok(zc[3] > 1300 && zc[3] < 2700, 'low ' + zc[3]);
-  assert.ok(zc[2] > 2600 && zc[2] < 5200, 'mid ' + zc[2]);
+  assert.ok(zc[4] > 1500 && zc[4] < 2600, 'deep ' + zc[4]);
+  assert.ok(zc[3] > 2400 && zc[3] < 4200, 'low ' + zc[3]);
+  assert.ok(zc[2] > 3800 && zc[2] < 6400, 'mid ' + zc[2]);
   const c = crackleNoise(rate, 2);
   let peak = 0;
   for (const v of c) peak = Math.max(peak, Math.abs(v));

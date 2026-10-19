@@ -767,18 +767,18 @@ median distance of the frame's flashes on screen, clamped to 1–1,000 and eased
 (0.35 for creation-edge spends) × min(1, 2 / (1 + (d / ref)²)): full at the reference and nearer,
 0.4 at twice, 0.118 at four times; beyond twice the tick passes a 2 kHz low-pass. The age of the
 cell's newest coins (block − xEnd × 1000) picks the band, the film's age bands
-(`src/cpp/buv/AudioSynthesizer.h`) moved up so laptop speakers play them: under 100 blocks
-6.5 kHz, 1,000 3.6 kHz, 10,000 1.9 kHz, 100,000 950 Hz, older 480 Hz. Each band is white noise
-through the band-pass twice, at RMS 0.2; a tick has a 1 ms attack and a 6–24 ms decay (band
-gains 0.4 to 1) and is panned by screen x to one of five positions. Everything passes a 150 Hz
-high-pass: on a MacBook's built-in speakers, which limit sustained bass, the film's 80 Hz thuds
-came out as surges and near-silences. Loudest first, ticks draw on a budget that refills
+(`src/cpp/buv/AudioSynthesizer.h`) moved up and narrowed into pitched ticks: under 100 blocks
+6 kHz, 1,000 3.6 kHz, 10,000 2.5 kHz, 100,000 1.6 kHz, older 1 kHz (Q 2 to 4). Each band is white
+noise through its band-pass twice, at RMS 0.2; a tick has a 1 ms attack and a 5–12 ms decay (band
+gains 0.55 to 0.8) and is panned by screen x to one of five positions. Everything passes two
+400 Hz high-passes (24 dB an octave): on a MacBook's built-in speakers the film's 80 Hz thuds
+came out as surges and near-silences, and a 480 Hz lowest band still sounded muddy. Loudest first, ticks draw on a budget that refills
 at 60 a second and holds at most 6, so each stays audible; the frame's other flashes feed a
 crackle loop (sparse clicks, 2.5 kHz band-pass) at 0.06 × min(1, ln(1 + sum) / ln(201)) of their
 summed level, panned to their level-weighted screen x and fading 0.25 s after the last frame.
 Ticks are scheduled at least 60 ms ahead of the audio clock, each frame's across the eased time
 between frames, and the schedule runs at most 0.2 s further ahead, so frames that arrive in a
-clump are spread out. A peak limiter (−6 dB, 20:1) and a 0.9 master gain follow.
+clump are spread out. A peak limiter (−6 dB, 20:1) and a 1.1 master gain follow.
 Keys everywhere (ignored while typing in inputs): Space play/pause, `[`/`]` ±1 block,
 Shift+`[`/`]` ±1,008, N Follow tip, M sound, I inspect at cursor (crosshair in flight, nose circle in plane mode), C next craft,
 Enter Stack sats (plane mode), Esc exits flight or plane mode/closes the drawer or a menu. Places: eras at 50,000, 210,000, 314,000, 420,000, 500,000, 630,000,
