@@ -1,15 +1,16 @@
-// Spend-flash sound (landscape/SPEC.md §8): a short pitched tick of narrow-band noise for each
-// spend flash on screen, after the film's audio synthesizer (src/cpp/buv/AudioSynthesizer.h)
-// moved up to 1-6 kHz: the age of the spent coins picks the band (old coins a lower tick, young
-// ones a higher one), the BTC moved sets the level (the flash sprite's amount scale), and the
-// distance from the camera lowers and dulls it. Nothing sounds below 400 Hz: the film's 80 Hz
-// thuds came out as surges and near-silences on a MacBook's built-in speakers, and a 480 Hz
-// lowest band still sounded muddy.
+// Spend-flash sound (landscape/SPEC.md §8): a short clean tone for each spend flash on screen,
+// after the film's audio synthesizer (src/cpp/buv/AudioSynthesizer.h): the age of the spent
+// coins picks the pitch (old coins 330 Hz, young ones 2.4 kHz, each tick within 8% of its band),
+// the BTC moved sets the level (the flash sprite's amount scale), and the distance from the
+// camera lowers and dulls it. Each tick is a sine with a soft 4 ms start, so it has only its own
+// pitch: the noise ticks before it splashed every band with hiss and their low ticks seemed to
+// start high. Nothing is below 300 Hz: the film's 80 Hz thuds came out as surges and
+// near-silences on a MacBook's built-in speakers.
 // Distance is measured against the view, not in world units: flashes at the median distance
 // of the frame's flashes on screen play at full level, nearer ones no louder, farther ones fall
-// off and are low-passed, so zooming changes the balance but not the overall level.
+// off and sound duller, so zooming changes the balance but not the overall level.
 // Density: up to MAX_VOICES_SECOND ticks a second (MAX_VOICES_FRAME at once), loudest first, so
-// a few spends are distinct ticks and many overlap into a rain-like hiss, as many raindrops do.
+// a few spends are distinct tones and many overlap into a rain-like patter, as many raindrops do.
 // Loudness follows the energy of every flash on screen, voiced or not, compressed above
 // DENSITY_KNEE (power to DENSITY_POWER), so busy blocks are louder than quiet ones without a
 // large jump. Each frame's ticks become compact events spread over the time the frame stands
@@ -20,24 +21,28 @@
 // while the shared switch (ui/sound.js) is on. flashVoices, tickEvents and mixFrame are pure;
 // buildFlashGraph is the Web Audio graph on any BaseAudioContext.
 
-import { TickRenderer, tickLengths, EVENT_FIELDS } from './flash-worklet.js';
+import { TickRenderer, EVENT_FIELDS } from './flash-worklet.js';
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
-/** Bands by the age of the spent coins in blocks (below maxAge): the film's age bands, higher. */
+/**
+ * Bands by the age of the spent coins in blocks (below maxAge): the film's age bands as clean
+ * tones about a sixth apart. decay is three time constants (s).
+ */
 export const FLASH_BANDS = Object.freeze([
-  Object.freeze({ id: 'air', maxAge: 100, freq: 6000, q: 2, gain: 0.7, decay: 0.005 }),
-  Object.freeze({ id: 'high', maxAge: 1000, freq: 3600, q: 2.5, gain: 0.8, decay: 0.007 }),
-  Object.freeze({ id: 'mid', maxAge: 10000, freq: 2500, q: 3, gain: 0.75, decay: 0.008 }),
-  Object.freeze({ id: 'low', maxAge: 100000, freq: 1600, q: 3.5, gain: 0.65, decay: 0.01 }),
-  Object.freeze({ id: 'deep', maxAge: Infinity, freq: 1000, q: 4, gain: 0.55, decay: 0.012 }),
+  Object.freeze({ id: 'air', maxAge: 100, freq: 2400, gain: 0.7, decay: 0.009 }),
+  Object.freeze({ id: 'high', maxAge: 1000, freq: 1400, gain: 0.8, decay: 0.012 }),
+  Object.freeze({ id: 'mid', maxAge: 10000, freq: 850, gain: 0.75, decay: 0.018 }),
+  Object.freeze({ id: 'low', maxAge: 100000, freq: 500, gain: 0.65, decay: 0.024 }),
+  Object.freeze({ id: 'deep', maxAge: Infinity, freq: 330, gain: 0.55, decay: 0.03 }),
 ]);
+export const DETUNE = 0.08; // each tick's pitch within this share of its band's, so many do not ring as a chord
 export const MAX_VOICES_FRAME = 400; // the most flash sprites one frame spawns
 export const MAX_VOICES_SECOND = 4000;
 export const SCREEN_MARGIN = 1.1; // NDC: flashes just outside the frame still sound
-export const FAR_RATIO = 2; // beyond this many reference distances a tick is low-passed
-export const FAR_LOWPASS_HZ = 2000;
-export const HIGHPASS_HZ = 400; // nothing below (24 dB an octave): no boom, no mud
+export const FAR_RATIO = 2; // beyond this many reference distances a tick is duller
+export const FAR_LOWPASS_HZ = 1000; // as through two one-pole low-passes here: higher tones lose more
+export const HIGHPASS_HZ = 150; // nothing below (24 dB an octave): no boom
 export const REF_MIN = 1;
 export const REF_MAX = 1000;
 export const REF_TAU_S = 0.5;
@@ -47,10 +52,9 @@ export const DENSITY_POWER = 0.4; // above the knee, 10x the energy is 4 dB loud
 export const DENSITY_GAIN_MAX = 2; // how far voiced ticks may be raised to stand for unvoiced ones
 export const LEAD_S = 0.06; // ticks are scheduled at least this far ahead of the audio clock
 export const DRIFT_S = 0.2; // and at most this much further, when frames arrive faster than they play
-const ATTACK_S = 0.001;
+const ATTACK_S = 0.004;
 const DECAYS = 3; // a tick lasts ATTACK_S + DECAYS x its band's decay (it is then 78 dB down)
-const NOISE_S = 0.5;
-const NOISE_RMS = 0.2;
+const TONE_PEAK = 0.2; // a tone's peak before the gains
 const MIX_GAIN = 0.65;
 const MASTER_GAIN = 1.1;
 const FRAME_S_MIN = 1 / 240;
@@ -167,118 +171,53 @@ export function frameSpan(cursor, now, span) {
   return { start, end: start + d };
 }
 
-function xorshift(seed) {
-  let x = seed >>> 0 || 0x9e3779b9;
-  return () => {
-    x ^= x << 13;
-    x ^= x >>> 17;
-    x ^= x << 5;
-    return ((x >>> 0) / 4294967296) * 2 - 1;
-  };
-}
-
-/** RBJ band-pass (0 dB peak), as computeBandpass in the film's synthesizer. */
-function bandpass(freq, q, sampleRate) {
-  const w = (2 * Math.PI * Math.min(freq, sampleRate * 0.45)) / sampleRate;
-  const alpha = Math.sin(w) / (2 * q);
-  const a0 = 1 + alpha;
-  return { b0: alpha / a0, b2: -alpha / a0, a1: (-2 * Math.cos(w)) / a0, a2: (1 - alpha) / a0 };
-}
-
-function normalize(d, rms) {
-  let s = 0;
-  for (let i = 0; i < d.length; i++) s += d[i] * d[i];
-  const k = s > 0 ? rms / Math.sqrt(s / d.length) : 0;
-  for (let i = 0; i < d.length; i++) d[i] *= k;
-  return d;
-}
-
-/**
- * White noise through a band's filter twice, scaled to the same RMS for every band
- * (Float32Array). One pass of the film's band-pass falls off only 6 dB an octave; two passes
- * keep each band near its frequency.
- */
-export function bandNoise(sampleRate, seconds, band, seed = 0x2545f491) {
-  const n = Math.max(1, Math.round(sampleRate * seconds));
-  const warm = Math.round(sampleRate * 0.05);
-  const c = bandpass(band.freq, band.q, sampleRate);
-  const rnd = xorshift(seed);
-  const out = new Float32Array(n);
-  let a1 = 0;
-  let a2 = 0;
-  let b1 = 0;
-  let b2 = 0;
-  for (let i = -warm; i < n; i++) {
-    const x = rnd();
-    const y = c.b0 * x + a1;
-    a1 = -c.a1 * y + a2;
-    a2 = c.b2 * x - c.a2 * y;
-    const w = c.b0 * y + b1;
-    b1 = -c.a1 * w + b2;
-    b2 = c.b2 * y - c.a2 * w;
-    if (i >= 0) out[i] = w;
-  }
-  return normalize(out, NOISE_RMS);
-}
-
-/** The same noise through two one-pole low-passes at 'freq' (the duller copy for far ticks). */
-export function lowpassed(data, sampleRate, freq = FAR_LOWPASS_HZ) {
-  const k = 1 - Math.exp((-2 * Math.PI * freq) / sampleRate);
-  const out = new Float32Array(data.length);
-  let y1 = 0;
-  let y2 = 0;
-  for (let i = 0; i < data.length; i++) {
-    y1 += k * (data[i] - y1);
-    y2 += k * (y1 - y2);
-    out[i] = y2;
-  }
-  return out;
-}
-
-/** Near and far tick noise for every band at 'sampleRate': {near: [Float32Array], far: [...]}. */
-export function tickNoise(sampleRate) {
-  const near = FLASH_BANDS.map((b, i) => bandNoise(sampleRate, NOISE_S, b, 0x2545f491 + i * 7919));
-  return { near, far: near.map((d) => lowpassed(d, sampleRate)) };
+/** Level factor for a far tick at 'freq': two one-pole low-passes at FAR_LOWPASS_HZ, so higher tones dull more. */
+export function farGain(freq) {
+  const r = freq / FAR_LOWPASS_HZ;
+  return 1 / (1 + r * r);
 }
 
 /**
  * Tick events for one frame (EVENT_FIELDS numbers each, for TickRenderer): each voice starts at a
- * random point of the spanSamples samples after startFrame, at level x band gain x gain,
- * equal-power panned by its screen x, on a random slice of its band's noise.
+ * random point of the spanSamples samples after startFrame, at a random pitch within DETUNE of
+ * its band's and a random phase, at level x band gain x gain (far ticks also x farGain),
+ * equal-power panned by its screen x.
  */
-export function tickEvents(voices, { sampleRate, spanSamples, gain = 1, startFrame = 0, lengths, noiseLength, random = Math.random }) {
+export function tickEvents(voices, { spanSamples, gain = 1, startFrame = 0, random = Math.random }) {
   const out = new Float64Array(voices.length * EVENT_FIELDS);
   let k = 0;
   for (const v of voices) {
     const band = FLASH_BANDS[v.band] ? v.band : 2;
-    const amp = v.level * FLASH_BANDS[band].gain * gain * MIX_GAIN;
+    const freq = FLASH_BANDS[band].freq * (1 + DETUNE * (2 * random() - 1));
+    const amp = v.level * FLASH_BANDS[band].gain * gain * MIX_GAIN * TONE_PEAK * (v.far ? farGain(freq) : 1);
     if (!(amp > 0)) continue;
     const angle = ((clamp(v.pan ?? 0, -1, 1) + 1) * Math.PI) / 4;
     out[k++] = startFrame + Math.floor(random() * Math.max(1, spanSamples));
     out[k++] = band;
-    out[k++] = Math.floor(random() * Math.max(1, noiseLength - lengths[band]));
+    out[k++] = freq;
     out[k++] = amp * Math.cos(angle);
     out[k++] = amp * Math.sin(angle);
-    out[k++] = v.far ? 1 : 0;
+    out[k++] = random() * 2 * Math.PI;
   }
   return k === out.length ? out : out.slice(0, k);
 }
 
 const DECAY_LIST = FLASH_BANDS.map((b) => b.decay);
+const RENDERER_OPTIONS = { decays: DECAY_LIST, attackS: ATTACK_S, decaysPerTick: DECAYS };
 
-/** A TickRenderer for 'noise' (tickNoise) at 'sampleRate'. */
-export function tickRenderer(noise, sampleRate) {
-  return new TickRenderer({ sampleRate, near: noise.near, far: noise.far, decays: DECAY_LIST, attackS: ATTACK_S, decaysPerTick: DECAYS });
+/** A TickRenderer at 'sampleRate'. */
+export function tickRenderer(sampleRate) {
+  return new TickRenderer({ sampleRate, ...RENDERER_OPTIONS });
 }
 
 /**
  * Mixes one frame's ticks into a stereo buffer on this thread (the fallback without
  * AudioWorklet, and the tests): {left, right} of length spanSamples + the longest tick.
  */
-export function mixFrame(voices, { sampleRate, spanSamples, gain = 1, noise, random = Math.random }) {
-  const renderer = tickRenderer(noise, sampleRate);
+export function mixFrame(voices, { sampleRate, spanSamples, gain = 1, random = Math.random }) {
+  const renderer = tickRenderer(sampleRate);
   const length = Math.max(1, spanSamples) + Math.ceil(TAIL_S * sampleRate) + 1;
-  renderer.add(tickEvents(voices, { sampleRate, spanSamples, gain, lengths: renderer.len, noiseLength: noise.near[0].length, random }));
+  renderer.add(tickEvents(voices, { spanSamples, gain, random }));
   const left = new Float32Array(length);
   const right = new Float32Array(length);
   renderer.render(left, right, 0, length);
@@ -311,15 +250,13 @@ export function buildFlashGraph(ctx, { destination = ctx.destination, worklet = 
   highpass2.Q.value = 0.7;
   highpass.connect(highpass2).connect(limiter).connect(master).connect(destination);
   const sampleRate = ctx.sampleRate;
-  const noise = tickNoise(sampleRate);
-  const lengths = tickLengths(DECAY_LIST, sampleRate, ATTACK_S, DECAYS);
   let node = null;
   let mode = 'main';
   if (worklet && ctx.audioWorklet && typeof AudioWorkletNode === 'function') {
     mode = 'loading';
     ctx.audioWorklet.addModule(new URL('./flash-worklet.js', import.meta.url)).then(() => {
       node = new AudioWorkletNode(ctx, 'flash-ticks', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
-      node.port.postMessage({ type: 'init', near: noise.near, far: noise.far, decays: DECAY_LIST, attackS: ATTACK_S, decaysPerTick: DECAYS });
+      node.port.postMessage({ type: 'init', ...RENDERER_OPTIONS });
       node.connect(highpass);
       mode = 'worklet';
     }).catch((err) => {
@@ -328,7 +265,7 @@ export function buildFlashGraph(ctx, { destination = ctx.destination, worklet = 
     });
   }
   function playMixed(voices, start, spanSamples, gain) {
-    const { left, right } = mixFrame(voices, { sampleRate, spanSamples, gain, noise });
+    const { left, right } = mixFrame(voices, { sampleRate, spanSamples, gain });
     const buffer = ctx.createBuffer(2, left.length, sampleRate);
     buffer.getChannelData(0).set(left);
     buffer.getChannelData(1).set(right);
@@ -345,8 +282,7 @@ export function buildFlashGraph(ctx, { destination = ctx.destination, worklet = 
     /** One frame's voices from 'start' (audio time) over spanSamples, at density gain 'gain'. */
     queue(voices, { start, spanSamples, gain }) {
       if (mode === 'worklet') {
-        const events = tickEvents(voices, { sampleRate, spanSamples, gain, startFrame: Math.round(start * sampleRate), lengths,
-          noiseLength: noise.near[0].length });
+        const events = tickEvents(voices, { spanSamples, gain, startFrame: Math.round(start * sampleRate) });
         node.port.postMessage({ type: 'ticks', events }, [events.buffer]);
       } else playMixed(voices, start, spanSamples, gain);
     },
