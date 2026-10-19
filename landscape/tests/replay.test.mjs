@@ -11,7 +11,7 @@ import {
   crc32, encodeTileBlob, decodeTileBlob, buildSnapshotFile, parseSnapshotHeader, parseSnapshotDirectory,
   snapshotPrefixBytes, checkSnapshotHeader, readSnapshotDirectory,
 } from '../web/data/snapshot.js';
-import { LandscapeState, TileSlot, makeApplier, makeGenericApplier } from '../web/replay/state.js';
+import { LandscapeState, TileSlot, makeApplier, makeGenericApplier, markDirty, DIRTY_CAP } from '../web/replay/state.js';
 import { FrameBuilder, packFull, measureCode } from '../web/replay/pack.js';
 import { planSeek, snapshotAtOrBelow } from '../web/replay/planner.js';
 import { ChunkStore } from '../web/replay/chunks.js';
@@ -480,7 +480,7 @@ test('unrolled and generic appliers agree on cells, heat, dirty lists and totals
         if (!a) continue;
         assert.deepEqual([a.dirtyN, a.dirtyAll, a.heatActive], [b.dirtyN, b.dirtyAll, b.heatActive], 'tile ' + id);
         assert.deepEqual(a.dirty.subarray(0, a.dirtyN), b.dirty.subarray(0, b.dirtyN));
-        a.dirtyN = 0; b.dirtyN = 0; a.dirtyAll = false; b.dirtyAll = false;
+        a.clearDirty(); b.clearDirty();
       }
     }
   }
@@ -830,3 +830,22 @@ for (const dir of DATASETS) {
     t.diagnostic(dir + ': ' + chosen.length + ' of ' + pairs.length + ' snapshot pairs, ' + tilesChecked + ' tile checks, ' + blocksReplayed + ' blocks replayed both ways');
   });
 }
+
+test('dirty lists hold each changed cell once per frame, so busy blocks stay deltas', () => {
+  const grid = gridFromManifest({ numBlocks: 1000 });
+  const slot = new TileSlot(grid, 0);
+  slot.clearDirty();
+  for (let k = 0; k < 100000; k++) markDirty(slot, k % 500);
+  assert.equal(slot.dirtyAll, false, '100,000 changes to 500 cells: no full resend');
+  assert.equal(slot.dirtyN, 500);
+  assert.deepEqual([...slot.dirty.subarray(0, 5)], [0, 1, 2, 3, 4]);
+  slot.clearDirty();
+  assert.equal(slot.dirtyN, 0);
+  markDirty(slot, 3);
+  assert.equal(slot.dirtyN, 1, 'cleared marks: the next frame lists cell 3 again');
+  slot.clearDirty();
+  for (let li = 0; li <= DIRTY_CAP; li++) markDirty(slot, li);
+  assert.equal(slot.dirtyAll, true, 'more distinct cells than the list holds: full resend');
+  slot.clearDirty();
+  assert.ok(slot.mark.every((w) => w === 0) && !slot.dirtyAll && slot.dirtyN === 0, 'a full resend clears every mark');
+});
