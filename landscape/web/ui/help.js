@@ -18,7 +18,7 @@ const SECTIONS = [
     [['Shift', '[', ']'], 'Back or forward 1,008 blocks (about a week)'],
     [['1', '2', '3', '4'], 'Speed 1\u00d7, 2\u00d7, 5\u00d7, Max; 1\u00d7 is 60 blocks, about 10 hours of Bitcoin, every second'],
     [['N'], 'Follow the tip (the Follow button): the camera moves with the newest block, while playing and when you scrub or step, and you can still pan, orbit and zoom; N again stops'],
-    [['M', '~Sound button'], 'Sound on or off: ticks for the spend flashes on screen while playing, lower for older coins, louder for more BTC and nearer the view; the engine in plane mode'],
+    [['M', '~Sound button'], 'Sound on or off: a click for each spend flash on screen while playing, darker for older coins, louder for more BTC and nearer the view; the engine in plane mode'],
   ]],
   ['Map mode', [
     [['~Drag'], 'Pan; the grabbed point stays under the cursor'],

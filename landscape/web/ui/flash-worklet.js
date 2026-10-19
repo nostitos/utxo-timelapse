@@ -1,31 +1,32 @@
 // Spend ticks on the audio thread (ui/flash-sound.js; landscape/SPEC.md §8). TickRenderer
-// synthesizes ticks from compact events: each a sine at its own frequency and phase with a
-// raised-cosine attack and an exponential decay, at a start frame of the audio clock, with left
-// and right gains. The AudioWorklet below runs it on the audio thread, so mixing thousands of
-// ticks a second costs the page nothing; ui/flash-sound.js uses the same class to mix on the
-// main thread where AudioWorklet is missing, and the tests use it directly. No imports: an
-// AudioWorklet module should load on its own.
+// synthesizes ticks from compact events: each a click of white noise with a 0.2 ms rise and an
+// exponential decay, through its own band-pass at the event's centre frequency, at a start
+// frame of the audio clock, with left and right gains. The AudioWorklet below runs it on the
+// audio thread, so mixing thousands of ticks a second costs the page nothing; ui/flash-sound.js
+// uses the same class to mix on the main thread where AudioWorklet is missing, and the tests use
+// it directly. No imports: an AudioWorklet module should load on its own.
 
 /** Samples a tick of each band lasts: attack plus decaysPerTick decays (decays in seconds). */
-export function tickLengths(decays, sampleRate, attackS = 0.004, decaysPerTick = 3) {
+export function tickLengths(decays, sampleRate, attackS = 0.0002, decaysPerTick = 3) {
   const attack = Math.max(1, Math.round(attackS * sampleRate));
   return decays.map((d) => attack + Math.round(decaysPerTick * d * sampleRate));
 }
 
 /** Fields of one event in the Float64Array that TickRenderer.add takes. */
-export const EVENT_FIELDS = 6; // start frame, band, frequency (Hz), left gain, right gain, phase (radians)
+export const EVENT_FIELDS = 6; // start frame, band, centre frequency (Hz), left gain, right gain, noise seed
 const MAX_PENDING = 20000;
 
 export class TickRenderer {
-  /** decays: per-band decay (s, three time constants); a tick is attackS plus decaysPerTick decays. */
-  constructor({ sampleRate, decays, attackS = 0.004, decaysPerTick = 3 }) {
+  /**
+   * decays: per-band decay (s, three time constants); qs: per-band band-pass Q. A tick is
+   * attackS plus decaysPerTick decays.
+   */
+  constructor({ sampleRate, decays, qs, attackS = 0.0002, decaysPerTick = 3 }) {
     this.sampleRate = sampleRate;
     this.attack = Math.max(1, Math.round(attackS * sampleRate));
     this.len = tickLengths(decays, sampleRate, attackS, decaysPerTick);
     this.fall = decays.map((d) => Math.exp(-1 / ((d / 3) * sampleRate)));
-    // Raised-cosine attack: no corner at the start, so a tick has only its own pitch.
-    this.rise = new Float32Array(this.attack);
-    for (let i = 0; i < this.attack; i++) this.rise[i] = 0.5 - 0.5 * Math.cos((Math.PI * (i + 1)) / this.attack);
+    this.qs = qs;
     this.pending = [];
     this.active = [];
   }
@@ -33,11 +34,13 @@ export class TickRenderer {
   /** Queues events: Float64Array of EVENT_FIELDS numbers per tick. */
   add(events) {
     for (let k = 0; k + EVENT_FIELDS <= events.length && this.pending.length < MAX_PENDING; k += EVENT_FIELDS) {
+      const band = events[k + 1] | 0;
+      // RBJ band-pass, 0 dB at its centre.
       const w = (2 * Math.PI * Math.min(events[k + 2], this.sampleRate * 0.45)) / this.sampleRate;
-      const phase = events[k + 5];
-      // The sine by its two-term recurrence: s[n+1] = c s[n] - s[n-1].
-      this.pending.push({ start: events[k], band: events[k + 1] | 0, gl: events[k + 3], gr: events[k + 4], c: 2 * Math.cos(w),
-        s1: Math.sin(phase), s0: Math.sin(phase - w), i: 0, env: 1 });
+      const alpha = Math.sin(w) / (2 * (this.qs[band] || 1));
+      const a0 = 1 + alpha;
+      this.pending.push({ start: events[k], band, gl: events[k + 3], gr: events[k + 4], b0: alpha / a0, a1: (-2 * Math.cos(w)) / a0,
+        a2: (1 - alpha) / a0, x1: 0, x2: 0, y1: 0, y2: 0, seed: (events[k + 5] >>> 0) || 0x9e3779b9, i: 0, env: 1 });
     }
   }
 
@@ -55,39 +58,42 @@ export class TickRenderer {
       this.pending.length = w;
     }
     const attack = this.attack;
-    const rise = this.rise;
     let w = 0;
     for (const t of this.active) {
       const len = this.len[t.band];
       const fall = this.fall[t.band];
-      let i = t.i;
-      let env = t.env;
-      let s0 = t.s0;
-      let s1 = t.s1;
-      const c = t.c;
+      const { b0, a1, a2, gl, gr } = t;
+      let { i, env, x1, x2, y1, y2, seed } = t;
       let o = t.start + i - frame0;
-      const gl = t.gl;
-      const gr = t.gr;
       while (o < n && i < len) {
         let e;
-        if (i < attack) e = rise[i];
+        if (i < attack) e = (i + 1) / attack;
         else {
           e = env;
           env *= fall;
         }
-        const s = s1 * e;
-        left[o] += s * gl;
-        right[o] += s * gr;
-        const next = c * s1 - s0;
-        s0 = s1;
-        s1 = next;
+        seed ^= seed << 13;
+        seed ^= seed >>> 17;
+        seed ^= seed << 5;
+        const x = ((seed >>> 0) / 2147483648 - 1) * e;
+        const y = b0 * (x - x2) - a1 * y1 - a2 * y2;
+        x2 = x1;
+        x1 = x;
+        y2 = y1;
+        y1 = y;
+        left[o] += y * gl;
+        right[o] += y * gr;
         i++;
         o++;
       }
+      // Field by field: the audio thread should not allocate per tick and block.
       t.i = i;
       t.env = env;
-      t.s0 = s0;
-      t.s1 = s1;
+      t.x1 = x1;
+      t.x2 = x2;
+      t.y1 = y1;
+      t.y2 = y2;
+      t.seed = seed;
       if (i < len) this.active[w++] = t;
     }
     this.active.length = w;

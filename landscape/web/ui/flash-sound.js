@@ -1,16 +1,16 @@
-// Spend-flash sound (landscape/SPEC.md §8): a short clean tone for each spend flash on screen,
-// after the film's audio synthesizer (src/cpp/buv/AudioSynthesizer.h): the age of the spent
-// coins picks the pitch (old coins 330 Hz, young ones 2.4 kHz, each tick within 8% of its band),
-// the BTC moved sets the level (the flash sprite's amount scale), and the distance from the
-// camera lowers and dulls it. Each tick is a sine with a soft 4 ms start, so it has only its own
-// pitch: the noise ticks before it splashed every band with hiss and their low ticks seemed to
-// start high. Nothing is below 300 Hz: the film's 80 Hz thuds came out as surges and
-// near-silences on a MacBook's built-in speakers.
+// Spend-flash sound (landscape/SPEC.md §8): a crisp click for each spend flash on screen, like a
+// raindrop: a 0.2 ms rise and a 1-3 ms decay of white noise through a broad band-pass. The age of
+// the spent coins sets its brightness (old coins centred at 1.6 kHz, young ones at 7 kHz), the
+// BTC moved sets the level (the flash sprite's amount scale), and the distance from the camera
+// lowers and darkens it. Clicks have no pitch: pitched noise ticks seemed to start high on old
+// coins, and clean tones at 330 Hz-2.4 kHz sounded like bubbles under water. Nothing is below
+// 300 Hz: the film's 80 Hz thuds came out as surges and near-silences on a MacBook's built-in
+// speakers.
 // Distance is measured against the view, not in world units: flashes at the median distance
 // of the frame's flashes on screen play at full level, nearer ones no louder, farther ones fall
-// off and sound duller, so zooming changes the balance but not the overall level.
+// off and sound darker, so zooming changes the balance but not the overall level.
 // Density: up to MAX_VOICES_SECOND ticks a second (MAX_VOICES_FRAME at once), loudest first, so
-// a few spends are distinct tones and many overlap into a rain-like patter, as many raindrops do.
+// a few spends are distinct clicks and many overlap into the hiss of rain, as many raindrops do.
 // Loudness follows the energy of every flash on screen, voiced or not, compressed above
 // DENSITY_KNEE (power to DENSITY_POWER), so busy blocks are louder than quiet ones without a
 // large jump. Each frame's ticks become compact events spread over the time the frame stands
@@ -26,23 +26,23 @@ import { TickRenderer, EVENT_FIELDS } from './flash-worklet.js';
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
 /**
- * Bands by the age of the spent coins in blocks (below maxAge): the film's age bands as clean
- * tones about a sixth apart. decay is three time constants (s).
+ * Bands by the age of the spent coins in blocks (below maxAge): the film's age bands as clicks
+ * centred on freq (band-pass Q q), darker and a little longer for older coins. decay is three
+ * time constants (s).
  */
 export const FLASH_BANDS = Object.freeze([
-  Object.freeze({ id: 'air', maxAge: 100, freq: 2400, gain: 0.7, decay: 0.009 }),
-  Object.freeze({ id: 'high', maxAge: 1000, freq: 1400, gain: 0.8, decay: 0.012 }),
-  Object.freeze({ id: 'mid', maxAge: 10000, freq: 850, gain: 0.75, decay: 0.018 }),
-  Object.freeze({ id: 'low', maxAge: 100000, freq: 500, gain: 0.65, decay: 0.024 }),
-  Object.freeze({ id: 'deep', maxAge: Infinity, freq: 330, gain: 0.55, decay: 0.03 }),
+  Object.freeze({ id: 'air', maxAge: 100, freq: 7000, q: 0.9, gain: 0.8, decay: 0.0036 }),
+  Object.freeze({ id: 'high', maxAge: 1000, freq: 4800, q: 0.9, gain: 0.85, decay: 0.0045 }),
+  Object.freeze({ id: 'mid', maxAge: 10000, freq: 3300, q: 0.9, gain: 0.9, decay: 0.0057 }),
+  Object.freeze({ id: 'low', maxAge: 100000, freq: 2300, q: 0.9, gain: 1, decay: 0.0069 }),
+  Object.freeze({ id: 'deep', maxAge: Infinity, freq: 1600, q: 0.9, gain: 1.1, decay: 0.0084 }),
 ]);
-export const DETUNE = 0.08; // each tick's pitch within this share of its band's, so many do not ring as a chord
 export const MAX_VOICES_FRAME = 400; // the most flash sprites one frame spawns
 export const MAX_VOICES_SECOND = 4000;
 export const SCREEN_MARGIN = 1.1; // NDC: flashes just outside the frame still sound
-export const FAR_RATIO = 2; // beyond this many reference distances a tick is duller
-export const FAR_LOWPASS_HZ = 1000; // as through two one-pole low-passes here: higher tones lose more
-export const HIGHPASS_HZ = 150; // nothing below (24 dB an octave): no boom
+export const FAR_RATIO = 2; // beyond this many reference distances a tick is darker
+export const FAR_DARKEN = 0.6; // and its band-pass centre is this much lower
+export const HIGHPASS_HZ = 300; // nothing below (24 dB an octave): no boom
 export const REF_MIN = 1;
 export const REF_MAX = 1000;
 export const REF_TAU_S = 0.5;
@@ -52,9 +52,9 @@ export const DENSITY_POWER = 0.4; // above the knee, 10x the energy is 4 dB loud
 export const DENSITY_GAIN_MAX = 2; // how far voiced ticks may be raised to stand for unvoiced ones
 export const LEAD_S = 0.06; // ticks are scheduled at least this far ahead of the audio clock
 export const DRIFT_S = 0.2; // and at most this much further, when frames arrive faster than they play
-const ATTACK_S = 0.004;
+const ATTACK_S = 0.0002;
 const DECAYS = 3; // a tick lasts ATTACK_S + DECAYS x its band's decay (it is then 78 dB down)
-const TONE_PEAK = 0.2; // a tone's peak before the gains
+const CLICK_PEAK = 0.65; // the white noise's peak before the gains
 const MIX_GAIN = 0.65;
 const MASTER_GAIN = 1.1;
 const FRAME_S_MIN = 1 / 240;
@@ -171,39 +171,32 @@ export function frameSpan(cursor, now, span) {
   return { start, end: start + d };
 }
 
-/** Level factor for a far tick at 'freq': two one-pole low-passes at FAR_LOWPASS_HZ, so higher tones dull more. */
-export function farGain(freq) {
-  const r = freq / FAR_LOWPASS_HZ;
-  return 1 / (1 + r * r);
-}
-
 /**
  * Tick events for one frame (EVENT_FIELDS numbers each, for TickRenderer): each voice starts at a
- * random point of the spanSamples samples after startFrame, at a random pitch within DETUNE of
- * its band's and a random phase, at level x band gain x gain (far ticks also x farGain),
- * equal-power panned by its screen x.
+ * random point of the spanSamples samples after startFrame, centred on its band's frequency (far
+ * ticks FAR_DARKEN lower), at level x band gain x gain, equal-power panned by its screen x, with
+ * its own noise.
  */
 export function tickEvents(voices, { spanSamples, gain = 1, startFrame = 0, random = Math.random }) {
   const out = new Float64Array(voices.length * EVENT_FIELDS);
   let k = 0;
   for (const v of voices) {
     const band = FLASH_BANDS[v.band] ? v.band : 2;
-    const freq = FLASH_BANDS[band].freq * (1 + DETUNE * (2 * random() - 1));
-    const amp = v.level * FLASH_BANDS[band].gain * gain * MIX_GAIN * TONE_PEAK * (v.far ? farGain(freq) : 1);
+    const amp = v.level * FLASH_BANDS[band].gain * gain * MIX_GAIN * CLICK_PEAK;
     if (!(amp > 0)) continue;
     const angle = ((clamp(v.pan ?? 0, -1, 1) + 1) * Math.PI) / 4;
     out[k++] = startFrame + Math.floor(random() * Math.max(1, spanSamples));
     out[k++] = band;
-    out[k++] = freq;
+    out[k++] = FLASH_BANDS[band].freq * (v.far ? FAR_DARKEN : 1);
     out[k++] = amp * Math.cos(angle);
     out[k++] = amp * Math.sin(angle);
-    out[k++] = random() * 2 * Math.PI;
+    out[k++] = 1 + Math.floor(random() * 0xfffffffe);
   }
   return k === out.length ? out : out.slice(0, k);
 }
 
 const DECAY_LIST = FLASH_BANDS.map((b) => b.decay);
-const RENDERER_OPTIONS = { decays: DECAY_LIST, attackS: ATTACK_S, decaysPerTick: DECAYS };
+const RENDERER_OPTIONS = { decays: DECAY_LIST, qs: FLASH_BANDS.map((b) => b.q), attackS: ATTACK_S, decaysPerTick: DECAYS };
 
 /** A TickRenderer at 'sampleRate'. */
 export function tickRenderer(sampleRate) {

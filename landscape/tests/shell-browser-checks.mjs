@@ -598,7 +598,7 @@ const CHECKS = [
       return out;`,
     expect: (v) => [
       ['a Sound button in the timeline, off by default (' + v.title + ')',
-        /^Sound: ticks for the spend flashes on screen/.test(v.title || '') && v.pressed0 === 'false' && !v.on0 && v.ctx0 === null && v.stored0 === null],
+        /^Sound: a click for each spend flash on screen/.test(v.title || '') && v.pressed0 === 'false' && !v.on0 && v.ctx0 === null && v.stored0 === null],
       ['off: ' + v.off.flashes + ' flashes played silently, no audio context', v.off.flashes > 0 && v.off.voices === 0 && !v.off.created && v.off.context === null],
       ['the button turns sound on: pressed, remembered, context ' + v.on.context + ', notice "' + v.on.toast + '"',
         v.on.pressed === 'true' && v.on.on && v.on.context === 'running' && v.on.stored === 'on' && /Sound on/.test(v.on.toast)],
