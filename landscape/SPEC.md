@@ -765,20 +765,23 @@ flash sounds when it projects in front of the camera within NDC ±1.1. Reference
 median distance of the frame's flashes on screen, clamped to 1–1,000 and eased in log space
 (τ = 0.5 s), so zooming shifts the balance but not the overall level. Level = (0.25 + 0.75 t) ×
 (0.35 for creation-edge spends) × min(1, 2 / (1 + (d / ref)²)): full at the reference and nearer,
-0.4 at twice, 0.118 at four times; beyond twice the tick passes a 2 kHz low-pass. The age of the
+0.4 at twice, 0.118 at four times; beyond twice its noise passes two 2 kHz one-pole low-passes. The age of the
 cell's newest coins (block − xEnd × 1000) picks the band, the film's age bands
 (`src/cpp/buv/AudioSynthesizer.h`) moved up and narrowed into pitched ticks: under 100 blocks
 6 kHz, 1,000 3.6 kHz, 10,000 2.5 kHz, 100,000 1.6 kHz, older 1 kHz (Q 2 to 4). Each band is white
 noise through its band-pass twice, at RMS 0.2; a tick has a 1 ms attack and a 5–12 ms decay (band
-gains 0.55 to 0.8) and is panned by screen x to one of five positions. Everything passes two
-400 Hz high-passes (24 dB an octave): on a MacBook's built-in speakers the film's 80 Hz thuds
-came out as surges and near-silences, and a 480 Hz lowest band still sounded muddy. Loudest first, ticks draw on a budget that refills
-at 60 a second and holds at most 6, so each stays audible; the frame's other flashes feed a
-crackle loop (sparse clicks, 2.5 kHz band-pass) at 0.06 × min(1, ln(1 + sum) / ln(201)) of their
-summed level, panned to their level-weighted screen x and fading 0.25 s after the last frame.
-Ticks are scheduled at least 60 ms ahead of the audio clock, each frame's across the eased time
-between frames, and the schedule runs at most 0.2 s further ahead, so frames that arrive in a
-clump are spread out. A peak limiter (−6 dB, 20:1) and a 1.1 master gain follow.
+gains 0.55 to 0.8) and is equal-power panned by its screen x. Nothing sounds below 400 Hz (24 dB an
+octave): on a MacBook's built-in speakers the film's 80 Hz thuds
+came out as surges and near-silences, and a 480 Hz lowest band still sounded muddy. Every flash on screen ticks, loudest
+first, from a budget that refills at 4,000 a second and holds at most 400 (one frame's sprites):
+a few spends are separate ticks, and from about 250 a second they overlap into a rain-like hiss.
+Loudness follows the energy of every flash on screen (the sum of level squared a second, voiced
+or not): unchanged up to 40, above that compressed to the power 0.4 (10 times the energy is 4 dB
+louder), with the voiced ticks raised at most 2 times to stand for the rest. Each frame's ticks
+are mixed in JavaScript (`mixFrame`) into one stereo buffer that spans the eased time between
+frames plus the longest tick, played at least 60 ms ahead of the audio clock; spans follow one
+another, and the schedule runs at most 0.2 s further ahead, so frames that arrive in a clump are
+spread out. Two 400 Hz high-passes, a peak limiter (−6 dB, 20:1) and a 1.1 master gain follow.
 Keys everywhere (ignored while typing in inputs): Space play/pause, `[`/`]` ±1 block,
 Shift+`[`/`]` ±1,008, N Follow tip, M sound, I inspect at cursor (crosshair in flight, nose circle in plane mode), C next craft,
 Enter Stack sats (plane mode), Esc exits flight or plane mode/closes the drawer or a menu. Places: eras at 50,000, 210,000, 314,000, 420,000, 500,000, 630,000,
