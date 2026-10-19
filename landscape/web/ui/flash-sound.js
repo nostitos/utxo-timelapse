@@ -1,10 +1,10 @@
-// Spend-flash sound (landscape/SPEC.md §8): a short tick of filtered noise for spend flashes on
-// screen, after the film's audio synthesizer (src/cpp/buv/AudioSynthesizer.h) moved up to
-// 480 Hz-6.5 kHz: the age of the spent coins picks the band (old coins a low knock, young ones
-// a high tick), the BTC moved sets the level (the flash sprite's amount scale), and the
-// distance from the camera lowers and dulls it. Nothing sounds below 150 Hz: on a MacBook's
-// built-in speakers, which limit sustained bass, the film's 80 Hz thuds came out as surges and
-// near-silences.
+// Spend-flash sound (landscape/SPEC.md §8): a short pitched tick of narrow-band noise for spend
+// flashes on screen, after the film's audio synthesizer (src/cpp/buv/AudioSynthesizer.h) moved
+// up to 1-6 kHz: the age of the spent coins picks the band (old coins a lower tok, young
+// ones a high tick), the BTC moved sets the level (the flash sprite's amount scale), and the
+// distance from the camera lowers and dulls it. Nothing sounds below 400 Hz: the film's 80 Hz
+// thuds came out as surges and near-silences on a MacBook's built-in speakers, and a 480 Hz
+// lowest band still sounded muddy.
 // Distance is measured against the view, not in world units: flashes at the median distance
 // of the frame's flashes on screen play at full level, nearer ones no louder, farther ones fall
 // off and pass through a low-pass filter, so zooming changes the balance but not the overall
@@ -22,11 +22,11 @@ const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
 /** Bands by the age of the spent coins in blocks (below maxAge): the film's age bands, higher. */
 export const FLASH_BANDS = Object.freeze([
-  Object.freeze({ id: 'air', maxAge: 100, freq: 6500, q: 1.2, gain: 0.4, decay: 0.006 }),
-  Object.freeze({ id: 'high', maxAge: 1000, freq: 3600, q: 1.4, gain: 0.5, decay: 0.008 }),
-  Object.freeze({ id: 'mid', maxAge: 10000, freq: 1900, q: 1.6, gain: 0.65, decay: 0.011 }),
-  Object.freeze({ id: 'low', maxAge: 100000, freq: 950, q: 1.8, gain: 0.8, decay: 0.016 }),
-  Object.freeze({ id: 'deep', maxAge: Infinity, freq: 480, q: 2.0, gain: 1.0, decay: 0.024 }),
+  Object.freeze({ id: 'air', maxAge: 100, freq: 6000, q: 2, gain: 0.7, decay: 0.005 }),
+  Object.freeze({ id: 'high', maxAge: 1000, freq: 3600, q: 2.5, gain: 0.8, decay: 0.007 }),
+  Object.freeze({ id: 'mid', maxAge: 10000, freq: 2500, q: 3, gain: 0.75, decay: 0.008 }),
+  Object.freeze({ id: 'low', maxAge: 100000, freq: 1600, q: 3.5, gain: 0.65, decay: 0.01 }),
+  Object.freeze({ id: 'deep', maxAge: Infinity, freq: 1000, q: 4, gain: 0.55, decay: 0.012 }),
 ]);
 /** Stereo positions a click snaps to (left edge of the screen to the right edge). */
 export const FLASH_PANS = Object.freeze([-1, -0.5, 0, 0.5, 1]);
@@ -35,7 +35,7 @@ export const MAX_VOICES_SECOND = 60;
 export const SCREEN_MARGIN = 1.1; // NDC: flashes just outside the frame still sound
 export const FAR_RATIO = 2; // beyond this many reference distances a click is low-passed
 export const FAR_LOWPASS_HZ = 2000;
-export const HIGHPASS_HZ = 150; // nothing below: laptop speakers duck sustained bass
+export const HIGHPASS_HZ = 400; // nothing below (24 dB an octave): no boom, no mud
 export const REF_MIN = 1;
 export const REF_MAX = 1000;
 export const REF_TAU_S = 0.5;
@@ -50,7 +50,7 @@ const NOISE_S = 0.5;
 const NOISE_RMS = 0.2;
 const CRACKLE_S = 2;
 const CRACKLE_RATE = 400; // clicks per second in the crowd loop
-const MASTER_GAIN = 0.9;
+const MASTER_GAIN = 1.1;
 const FRAME_S_MIN = 1 / 240;
 const FRAME_S_MAX = 0.1; // the longest stretch one frame's ticks are spread over
 
@@ -264,8 +264,12 @@ export function buildFlashGraph(ctx, { destination = ctx.destination } = {}) {
   highpass.type = 'highpass';
   highpass.frequency.value = HIGHPASS_HZ;
   highpass.Q.value = 0.7;
+  const highpass2 = ctx.createBiquadFilter();
+  highpass2.type = 'highpass';
+  highpass2.frequency.value = HIGHPASS_HZ;
+  highpass2.Q.value = 0.7;
   const input = highpass; // everything enters here
-  highpass.connect(limiter).connect(master).connect(destination);
+  highpass.connect(highpass2).connect(limiter).connect(master).connect(destination);
   const near = ctx.createGain();
   near.connect(input);
   const far = ctx.createBiquadFilter();
