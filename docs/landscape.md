@@ -165,10 +165,10 @@ The worker keeps exact Float64 state for the resident tiles at every level and d
 | 1× | 60 blocks/s, exact | 10 hours, 36,000× real time |
 | 2× | 120 blocks/s, exact | 20 hours, 72,000× real time |
 | 5× | 300 blocks/s, exact; the HUD shows the achieved rate if the worker falls behind | about 2.1 days, 180,000× real time |
-| Max | Back-to-back exact replay; paced to the download when that is slower (online, near the tip) | the HUD's blocks/s × 10 minutes |
+| Max | Back-to-back exact replay, shown as it comes; paced to the download when that is slower (online, near the tip) | the HUD's blocks/s × 10 minutes |
 | Scrubbing | The snapshot at or below the handle while dragging, then an exact seek on release | — |
 
-The speed menu's tooltips give the same figures. The field beside the scrubber shows the block and its UTC date to the minute; type a block or a date into it and press Enter to go there. Blocks have averaged about 9.6 minutes over the chain's history, so measured against the real calendar 1× is closer to 34,600× real time.
+At 0.5× to 5× the worker runs a tenth of a second ahead and each block is shown when the playhead reaches it, so the count goes up at an even pace even when the worker answers a frame late; pausing shows the blocks it already has. The speed menu's tooltips give the same figures. The field beside the scrubber shows the block and its UTC date to the minute; type a block or a date into it and press Enter to go there. Blocks have averaged about 9.6 minutes over the chain's history, so measured against the real calendar 1× is closer to 34,600× real time.
 
 Activity heat adds the BTC each spend moves to its cell and decays with a half-life in blocks. Seeks and backward steps clear it, and pausing keeps it. Every spend makes its cell glow: at least a floor brightness (as every spent output flashes in the film), brighter for more BTC moved, and dimmer for coins created within the last four weeks, which are spent constantly. Spends also get flash sprites that keep a minimum on-screen size, so activity stays visible from far away.
 

@@ -6,6 +6,10 @@
 //
 // Frames are transferred from the worker; after delivery they belong to the main thread.
 // Callbacks may read frame data but must not mutate it (several consumers share it).
+// Playback can run the worker ahead of the screen: showThrough(block) delivers frames in order up
+// to that block and holds later advance frames (and anything behind them) until it rises, so
+// blocks appear when the playhead reaches them, not when the worker happens to answer.
+// client.block is the block delivered (on screen); client.workerBlock the worker's latest.
 import { gridFromManifest } from '../data/grid.js';
 import { MEASURES } from '../replay/pack.js';
 
@@ -32,6 +36,8 @@ export async function createReplayClient(opts = {}) {
   let disposed = false;
   let advanceInFlight = null;
   let advanceQueued = null;
+  const held = []; // frames waiting for the playhead (showThrough)
+  let showLimit = Infinity;
   let readyResolve;
   let readyReject;
   const ready = new Promise((res, rej) => { readyResolve = res; readyReject = rej; });
@@ -43,6 +49,7 @@ export async function createReplayClient(opts = {}) {
     blocktimes: null,
     snapshotBlocks: null,
     block: null,
+    workerBlock: null,
     busy: true,
     meta: null,
     status: null,
@@ -71,8 +78,17 @@ export async function createReplayClient(opts = {}) {
     setChunkCacheMB(mb) {
       post({ type: 'setChunkCacheMB', mb: Number(mb) });
     },
+    /**
+     * Deliver held frames up to 'block' (Infinity: all, and no holding); later advance frames
+     * wait, and frames of any kind behind them keep their order.
+     */
+    showThrough(block) {
+      showLimit = block;
+      while (held.length && (held[0].reason !== 'advance' || held[0].block <= showLimit)) deliver(held.shift());
+    },
     /** Exact seek. Latest seek wins; superseded promises resolve {cancelled: true}. */
     seek(block) {
+      client.showThrough(Infinity);
       if (advanceQueued) { advanceQueued.resolve({ cancelled: true }); advanceQueued = null; }
       return request({ type: 'seek', block: Number(block) });
     },
@@ -103,6 +119,7 @@ export async function createReplayClient(opts = {}) {
       for (const p of pending.values()) p.resolve({ cancelled: true });
       pending.clear();
       if (advanceQueued) { advanceQueued.resolve({ cancelled: true }); advanceQueued = null; }
+      held.length = 0;
       frameCbs.clear();
       statusCbs.clear();
       errorCbs.clear();
@@ -153,17 +170,23 @@ export async function createReplayClient(opts = {}) {
     else p.resolve(value);
   }
 
+  function deliver(f) {
+    client.block = f.block;
+    if (f.meta) client.meta = f.meta;
+    client.stats = f.stats;
+    for (const cb of frameCbs) {
+      try { cb(f); } catch (err) { emitError(err); }
+    }
+  }
+
   function onMessage(e) {
     const m = e.data;
     switch (m.type) {
       case 'frame': {
         const f = m.frame;
-        client.block = f.block;
-        if (f.meta) client.meta = f.meta;
-        client.stats = f.stats;
-        for (const cb of frameCbs) {
-          try { cb(f); } catch (err) { emitError(err); }
-        }
+        client.workerBlock = f.block;
+        if (held.length || (f.reason === 'advance' && f.block > showLimit)) held.push(f);
+        else deliver(f);
         break;
       }
       case 'status':
@@ -174,7 +197,7 @@ export async function createReplayClient(opts = {}) {
         }
         break;
       case 'seekDone':
-        if (!m.cancelled && !m.error && m.block !== undefined) client.block = m.block;
+        if (!m.cancelled && !m.error && m.block !== undefined) client.block = client.workerBlock = m.block;
         if (m.buffer) client.buffer = m.buffer;
         settle(m, m.cancelled ? { cancelled: true } : { block: m.block, ms: m.ms, plan: m.plan });
         break;

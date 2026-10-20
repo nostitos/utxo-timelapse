@@ -19,6 +19,11 @@
 // frontier (replay.buffer). That settles at the download rate with
 // (1 - PACE_FLOOR) x PACE_HORIZON_S, about 0.9 s, of blocks in hand.
 //
+// Smooth exact speeds: with a client that can hold frames (replay.showThrough), the worker is asked
+// for SHOW_BEHIND_S of blocks beyond the playhead and each block is shown when the playhead
+// reaches it. Blocks then appear at an even pace even when the worker answers a frame late or
+// pauses briefly; a longer pause holds the playhead instead of making it jump afterwards.
+//
 // At Bitcoin's 10-minute target, 1x shows about 10 hours of the chain every second, 36,000
 // times real time (speedHint, shown as the speed buttons' tooltips).
 
@@ -50,6 +55,7 @@ export const PACE_FLOOR = 0.7;      // share of the download rate played with an
 export const PACE_HORIZON_S = 3;    // the downloaded blocks ahead are spread over this long
 const PACE_SMOOTH_S = 0.5;          // the paced rate eases toward its goal with this time constant
 const FRONTIER_WAIT_MS = 1000;      // a frontier that does not move for this long is ignored
+export const SHOW_BEHIND_S = 0.1;   // exact speeds show the playhead this far behind the worker
 
 export function speedById(id) {
   return SPEEDS.find((s) => s.id === String(id)) || SPEEDS.find((s) => s.id === DEFAULT_SPEED);
@@ -233,12 +239,20 @@ export function createPlayback({ replay, tip, snapshots = [], now = () => perfor
     return myOp.promise;
   }
 
+  const canHold = typeof replay.showThrough === 'function';
+  const workerBlock = () => replay.workerBlock ?? replay.block;
+  /** Exact speeds hold the worker's frames for the playhead (see SHOW_BEHIND_S). */
+  function holding() {
+    return canHold && playing && !scrub && speedById(speed).policy === 'exact' && !(op && op.kind === 'seek');
+  }
+
   function kick() {
     if (op || advancing || scrub) return;
-    const block = replay.block;
+    const block = workerBlock();
     if (block == null) return;
     if (playing) {
-      const plan = planPlay({ speed, block, target: target ?? block, tip: tipBlock, frameMs, paced });
+      const ahead = holding() ? (paced && paceRate !== null ? paceRate : speedById(speed).rate) * SHOW_BEHIND_S : 0;
+      const plan = planPlay({ speed, block, target: (target ?? block) + ahead, tip: tipBlock, frameMs, paced });
       if (!plan) return;
       issueAdvance(plan.target, plan.budgetMs);
       return;
@@ -309,6 +323,7 @@ export function createPlayback({ replay, tip, snapshots = [], now = () => perfor
       // spend heat, so the flashes the user paused to look at would vanish.
       requested = null;
       target = null;
+      if (canHold) replay.showThrough(Infinity);
       resetRate();
       emitChange();
     },
@@ -380,12 +395,16 @@ export function createPlayback({ replay, tip, snapshots = [], now = () => perfor
       const t = now();
       if (Number.isFinite(dt) && dt > 0) frameMs = frameMs * 0.9 + Math.min(dt * 1000, 100) * 0.1;
       const block = replay.block;
-      if (block == null || scrub) return;
+      if (block == null || scrub) {
+        if (canHold) replay.showThrough(Infinity);
+        return;
+      }
       if (playing) {
         const spec = speedById(speed);
+        const hold = holding();
         // While a seek is pending the state will continue from the seek block, so the
         // playhead moves on from there (a stale block would cap it behind the jump).
-        const base = op && op.kind === 'seek' ? op.block : block;
+        const base = op && op.kind === 'seek' ? op.block : workerBlock();
         const step = Number.isFinite(dt) && dt > 0 ? Math.min(dt, 0.25) : 0;
         const want = spec.policy === 'max' ? Infinity : spec.rate;
         const pace = op && op.kind === 'seek' ? null : downloadPace(replay.buffer, base, tipBlock);
@@ -400,9 +419,11 @@ export function createPlayback({ replay, tip, snapshots = [], now = () => perfor
         }
         if (spec.policy !== 'max' || paced) {
           const rate = paced ? paceRate : spec.rate;
-          const from = Math.max(target ?? base, base);
-          let next = Math.min(from + rate * step, base + Math.max(1, rate * 0.25), tipBlock);
-          if (paced) {
+          // Holding, the playhead trails the worker and never passes it (a worker pause holds it);
+          // otherwise it runs at most a quarter second ahead of the worker.
+          const from = hold ? Math.max(target ?? block, block) : Math.max(target ?? base, base);
+          let next = Math.min(from + rate * step, hold ? base + 1 : base + Math.max(1, rate * 0.25), tipBlock);
+          if (paced && !hold) {
             // Stay inside the downloaded blocks: past them the worker would wait for the next
             // chunk and then race through it. A frontier that stops moving is ignored after
             // FRONTIER_WAIT_MS, so a stale report cannot hold playback.
@@ -426,6 +447,7 @@ export function createPlayback({ replay, tip, snapshots = [], now = () => perfor
         }
       }
       kick();
+      if (canHold) replay.showThrough(holding() && target !== null ? Math.floor(target) : Infinity);
       sampleRate(t);
     },
     onChange(fn) {
