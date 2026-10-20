@@ -1,0 +1,649 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What remains · A guide to the Bitcoin Landscape</title>
+<meta name="description" content="Bitcoin’s unspent outputs, block by block: an illustrated visual essay and practical guide to the 3D Bitcoin UTXO landscape.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#07090c">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../fonts/fonts.css">
+<link rel="stylesheet" href="guide.css">
+<link rel="preload" as="image" href="assets/stills/still-field-1600.webp" imagesrcset="assets/stills/still-field-800.webp 800w, assets/stills/still-field-1600.webp 1600w, assets/stills/still-field-3200.webp 3200w" imagesizes="100vw" fetchpriority="high">
+<script type="module" src="guide.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="masthead">
+<a class="wordmark" href="#top">Bitcoin Landscape</a>
+<nav class="topnav" aria-label="Page">
+<a href="#movements">Movements</a>
+<a href="#guide">Guide</a>
+<a href="#views">Views</a>
+</nav>
+<a class="invite small" href="/">Explore the landscape <span aria-hidden="true">↗</span></a>
+</header>
+
+<main id="main">
+
+<section class="opening" id="top" aria-labelledby="title">
+<div class="wrap opening-text">
+<p class="label">A visual essay and guide</p>
+<h1 id="title">What <em>remains</em></h1>
+<div class="opening-side">
+<p class="subtitle">Bitcoin’s unspent outputs, block by block</p>
+<p class="lede">Every output Bitcoin has created and not yet spent, laid out as a landscape. Left to right is when it was made, from the first block to the newest; front to back is how much it holds, from one satoshi to thousands of bitcoin. Height and colour show how much remains in each place. Your browser replays the real chain to draw it.</p>
+<p class="actions">
+<a class="invite" href="/">Explore the landscape <span aria-hidden="true">↗</span></a>
+<a class="invite ghost" href="assets/film/what-remains-1080.mp4" data-film-open><span class="play-glyph" aria-hidden="true"></span>Watch the film <span class="sep" aria-hidden="true">·</span> 90 seconds</a>
+</p>
+</div>
+</div>
+<figure class="hero">
+<div class="preview hero-plate" data-preview data-after-load>
+<img class="poster" src="assets/stills/still-field-1600.webp" srcset="assets/stills/still-field-800.webp 800w, assets/stills/still-field-1600.webp 1600w, assets/stills/still-field-3200.webp 3200w" sizes="100vw" width="1600" height="900" fetchpriority="high" decoding="async" alt="The landscape seen from beyond its newest block: a long field of glowing columns runs back to a dark horizon, its near edge bright where the chain is still being written.">
+<video muted loop playsinline preload="none" width="1600" height="900" aria-hidden="true" tabindex="-1" data-src="assets/clips/field-tip.mp4" data-lazy-poster="assets/stills/field-tip-poster-1600.webp"></video>
+<button class="motion" type="button" aria-pressed="false" hidden><span class="motion-glyph" aria-hidden="true"></span><span class="motion-label">Motion</span><span class="vh"> in the Opening preview</span></button>
+</div>
+<figcaption class="wrap edition"><span>This edition: blocks 0 to 972,052, through 18 October 2026</span></figcaption>
+</figure>
+</section>
+
+<div class="movements">
+<nav class="index" id="movements" aria-label="Movements">
+<ol>
+<li><a href="#field"><span class="num">I</span> Field</a></li>
+<li><a href="#strata"><span class="num">II</span> Strata</a></li>
+<li><a href="#cell"><span class="num">III</span> A cell</a></li>
+<li><a href="#time"><span class="num">IV</span> Time</a></li>
+<li><a href="#readings"><span class="num">V</span> Readings</a></li>
+<li><a href="#return"><span class="num">VI</span> Return</a></li>
+</ol>
+</nav>
+
+<!-- I: full-bleed film, text set narrow and offset below -->
+<section class="movement m-bleed" id="field" aria-labelledby="field-h">
+<header class="wrap mhead reveal"><span class="numeral" aria-hidden="true">I</span><h2 id="field-h"><span class="vh">I. </span>Field</h2></header>
+<div class="wrap cols">
+<p class="intro reveal">Seen from beyond its newest block, the landscape runs back seventeen years to the horizon. The near edge glows where the chain is still being written. Everything behind it is what remains: outputs that were created at some block and have not been spent since.</p>
+</div>
+<figure class="plate bleed reveal">
+<div class="preview" data-preview>
+<img class="poster" src="assets/stills/field-poster-1600.webp" width="1600" height="900" loading="lazy" decoding="async" alt="The landscape from beyond its newest block, the bright near edge in front and the older field receding toward the horizon.">
+<video muted loop playsinline preload="none" width="1600" height="900" aria-hidden="true" tabindex="-1" data-src="assets/clips/field.mp4" data-lazy-poster="assets/stills/field-poster-1600.webp"></video>
+<button class="motion" type="button" aria-pressed="false" hidden><span class="motion-glyph" aria-hidden="true"></span><span class="motion-label">Motion</span><span class="vh"> in the Field preview</span></button>
+</div>
+<figcaption class="wrap cap">
+<span class="readout"><span>Block 969,652</span><span>3 Oct 2026 · 01:15 UTC</span><span>165,296,876 outputs</span><span>20,092,636.67 BTC</span></span>
+<span class="cap-text">Block 969,652, 3 October 2026, 01:15 UTC: 165,296,876 unspent outputs holding 20,092,636.67 BTC.</span>
+</figcaption>
+</figure>
+<div class="wrap cols after">
+<div class="aside">
+<a class="explore" data-scene="field" href="/#b=969652&amp;mode=map&amp;cam=1070.759,57.884,82.899,96.00,-16.00&amp;preset=Ultra&amp;camera.fov=40">Explore this view <span aria-hidden="true">↗</span></a>
+<details class="data"><summary>Read the data</summary><div class="data-body"><p>A cell covers 64 blocks of creation time and one of 2,072 amount rows. Height and colour show weighted density: an output of up to 5 BTC counts one; a larger output counts its amount divided by 5 BTC, so large holdings stay visible among the small. Height follows a logarithm of that value.</p></div></details>
+</div>
+</div>
+</section>
+
+<!-- II: narrow text column at left, plate running off the right edge -->
+<section class="movement m-offset" id="strata" aria-labelledby="strata-h">
+<div class="offset-grid">
+<div class="offset-text">
+<header class="mhead reveal"><span class="numeral" aria-hidden="true">II</span><h2 id="strata-h"><span class="vh">II. </span>Strata</h2></header>
+<p class="intro reveal">From above the newest blocks, the field becomes a chart. Creation time runs left to right, amount runs from a single satoshi at the near side to 10,000 BTC and more at the far side. Round amounts draw bright lines across the years, because so many outputs are made for exactly 1 BTC, 0.1 BTC or 0.01 BTC.</p>
+<figure class="mini reveal">
+<div class="preview" data-preview>
+<img class="poster" src="assets/stills/strata-poster-1600.webp" width="1600" height="900" loading="lazy" decoding="async" alt="The camera above the field, looking straight down at bright horizontal lines.">
+<video muted loop playsinline preload="none" width="1600" height="900" aria-hidden="true" tabindex="-1" data-src="assets/clips/strata.mp4" data-lazy-poster="assets/stills/strata-poster-1600.webp"></video>
+<button class="motion" type="button" aria-pressed="false" hidden><span class="motion-glyph" aria-hidden="true"></span><span class="motion-label">Motion</span><span class="vh"> in the Strata preview</span></button>
+</div>
+<figcaption class="cap small">From the field to the overhead reading, then down toward the bright band of 1 BTC outputs.</figcaption>
+</figure>
+<a class="explore" data-scene="strata" href="/#b=969652&amp;mode=map&amp;cam=950.000,69.989,95.222,0.00,-89.00&amp;preset=Ultra&amp;camera.fov=50">Explore this view <span aria-hidden="true">↗</span></a>
+</div>
+<figure class="plate offset-plate reveal">
+<img src="assets/stills/still-strata-1600.webp" srcset="assets/stills/still-strata-800.webp 800w, assets/stills/still-strata-1600.webp 1600w, assets/stills/still-strata-3200.webp 3200w" sizes="(min-width: 960px) 64vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="The field from directly overhead: a blue texture crossed by bright horizontal lines, with amount labels such as 1 BTC and 0.1 BTC beside the newest edge.">
+<figcaption class="cap"><span class="readout"><span>Overhead</span><span>Block 969,652</span></span><span class="cap-text">Overhead at block 969,652. Each bright horizontal line is a row of round amounts.</span></figcaption>
+</figure>
+</div>
+</section>
+
+<!-- III: tall portrait crop beside the text -->
+<section class="movement m-portrait" id="cell" aria-labelledby="cell-h">
+<div class="wrap portrait-grid">
+<figure class="plate portrait-plate reveal">
+<img src="assets/stills/still-cell-1600.webp" srcset="assets/stills/still-cell-800.webp 800w, assets/stills/still-cell-1600.webp 1600w, assets/stills/still-cell-3200.webp 3200w" sizes="(min-width: 960px) 40vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="Close among the columns: one tall column of about 1 BTC outputs stands in the middle, its height marked in fine divisions, among shorter blue neighbours.">
+<figcaption class="cap"><span class="readout"><span>Cell 15150:803</span><span>214 outputs</span><span>214.0569 BTC</span></span></figcaption>
+</figure>
+<div class="portrait-text">
+<header class="mhead reveal"><span class="numeral" aria-hidden="true">III</span><h2 id="cell-h"><span class="vh">III. </span>A cell</h2></header>
+<p class="intro reveal">Come close and the field breaks into columns. Each column is a cell: 64 blocks and one narrow band of amounts. This one holds 214 outputs of about 1 BTC each, all created in the eleven hours before this moment. Each division is one output. Its neighbours, just above and just below 1 BTC, hold 17 and 35.</p>
+<figure class="mini reveal">
+<div class="preview" data-preview>
+<img class="poster" src="assets/stills/cell-poster-1600.webp" width="1600" height="900" loading="lazy" decoding="async" alt="One tall column of about 1 BTC outputs at the edge of the field, older columns to its left and empty ground beyond the newest block to its right.">
+<video muted loop playsinline preload="none" width="1600" height="900" aria-hidden="true" tabindex="-1" data-src="assets/clips/cell.mp4" data-lazy-poster="assets/stills/cell-poster-1600.webp"></video>
+<button class="motion" type="button" aria-pressed="false" hidden><span class="motion-glyph" aria-hidden="true"></span><span class="motion-label">Motion</span><span class="vh"> in the A cell preview</span></button>
+</div>
+<figcaption class="cap small">Settling beside the column, block 969,652.</figcaption>
+</figure>
+<a class="explore" data-scene="cell" href="/#b=969652&amp;mode=map&amp;cam=969.092,7.733,84.065,-12.00,-2.00&amp;preset=Ultra">Explore this view <span aria-hidden="true">↗</span></a>
+<details class="data"><summary>Read the data</summary><div class="data-body"><p>Cell 15150:803 covers blocks 969,600 to 969,663 and amounts from 0.99676749 to 1.00868904 BTC. At block 969,652 it holds 214 outputs, 214.0569 BTC. Height is a logarithm of weighted density, so ten times as many outputs do not stand ten times as tall; the divisions always show the exact count.</p></div></details>
+</div>
+</div>
+</section>
+
+<!-- IV: text first, then a contained cinema film -->
+<section class="movement m-cinema" id="time" aria-labelledby="time-h">
+<div class="wrap cinema-head">
+<header class="mhead reveal"><span class="numeral" aria-hidden="true">IV</span><h2 id="time-h"><span class="vh">IV. </span>Time</h2></header>
+<p class="intro reveal">Now the camera holds still and the chain moves: 1,200 real blocks, about eight days, replayed at 60 blocks a second. New columns rise on the empty ground beyond the edge; older outputs flash as they are spent. The column we read grows to 232 outputs while its last blocks are written, up to block 969,663, then only loses them, down to 94. Spending does not destroy bitcoin: a spent output leaves the unspent set and its value moves into new outputs at the edge.</p>
+</div>
+<figure class="plate wrap cinema reveal">
+<div class="preview" data-preview>
+<img class="poster" src="assets/stills/time-poster-1600.webp" width="1600" height="900" loading="lazy" decoding="async" alt="The column at the edge of the field before the blocks replay, the empty ground to its right where new columns will rise.">
+<video muted loop playsinline preload="none" width="1600" height="900" aria-hidden="true" tabindex="-1" data-src="assets/clips/time.mp4" data-lazy-poster="assets/stills/time-poster-1600.webp"></video>
+<button class="motion" type="button" aria-pressed="false" hidden><span class="motion-glyph" aria-hidden="true"></span><span class="motion-label">Motion</span><span class="vh"> in the Time preview</span></button>
+</div>
+<figcaption class="cap">
+<span class="readout"><span>Blocks 969,652 → 970,852</span><span>3 → 11 Oct 2026</span><span>1x · 60 blocks/s</span></span>
+<span class="cap-text">Blocks 969,652 to 970,852, 3 to 11 October 2026, at the app’s 1x speed. At block 969,912, 17 of the cell’s outputs are spent in one block.</span>
+</figcaption>
+</figure>
+<div class="wrap cols after">
+<div class="aside">
+<a class="explore" data-scene="time" href="/#b=969652&amp;mode=map&amp;cam=969.092,7.733,84.065,-12.00,-2.00&amp;preset=Ultra">Explore this view <span aria-hidden="true">↗</span></a>
+<details class="data"><summary>Read the data</summary><div class="data-body"><p>Flashes mark spends, brighter for more bitcoin moved; spends of coins created within the last four weeks are dimmed, because young coins move constantly.</p></div></details>
+</div>
+</div>
+</section>
+
+<!-- V: paired comparison -->
+<section class="movement m-pair" id="readings" aria-labelledby="readings-h">
+<div class="wrap pair-head">
+<header class="mhead reveal"><span class="numeral" aria-hidden="true">V</span><h2 id="readings-h"><span class="vh">V. </span>Readings</h2></header>
+<p class="intro reveal">The same place and the same block, read two ways. Height shows the number of outputs in both. First, colour shows that number too, and the crowded rows of small amounts burn brightest. Then colour shows the bitcoin they hold: the crowded rows go dark and the rows of large amounts light up, beyond the 5 BTC label at the newest edge.</p>
+</div>
+<div class="pair wrap">
+<figure class="plate reveal">
+<img src="assets/stills/still-count-1600.webp" srcset="assets/stills/still-count-800.webp 800w, assets/stills/still-count-1600.webp 1600w, assets/stills/still-count-3200.webp 3200w" sizes="(min-width: 800px) 48vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="The field with colour by number of outputs: the crowded rows of small amounts glow brightest across the near side.">
+<figcaption class="cap"><span class="readout"><span>A · Outputs</span><span>Block 970,852</span></span><span class="cap-text">Colour by outputs per cell</span><a class="explore" data-scene="readings-count" href="/#b=970852&amp;mode=map&amp;cam=983.123,22.371,155.513,30.00,-24.00&amp;preset=Ultra&amp;color.measure=count&amp;color.whiteHot=0&amp;amp.measure=count">Explore this view <span aria-hidden="true">↗</span></a></figcaption>
+</figure>
+<figure class="plate reveal">
+<img src="assets/stills/still-value-1600.webp" srcset="assets/stills/still-value-800.webp 800w, assets/stills/still-value-1600.webp 1600w, assets/stills/still-value-3200.webp 3200w" sizes="(min-width: 800px) 48vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="The same field with colour by bitcoin held: the crowded small-amount rows turn dark and the rows of large amounts light up.">
+<figcaption class="cap"><span class="readout"><span>B · Value</span><span>Block 970,852</span></span><span class="cap-text">Colour by BTC per cell (1 to 2,000 BTC)</span><a class="explore" data-scene="readings-value" href="/#b=970852&amp;mode=map&amp;cam=983.123,22.371,155.513,30.00,-24.00&amp;preset=Ultra&amp;color.measure=value&amp;color.offset=1&amp;color.upper=2000&amp;color.whiteHot=0&amp;amp.measure=count">Explore this view <span aria-hidden="true">↗</span></a></figcaption>
+</figure>
+</div>
+<div class="wrap pair-foot">
+<p class="highlight reveal">Outputs above 5 BTC are <b>0.157%</b> of all unspent outputs and hold <b>83.7%</b> of the value.</p>
+<figure class="mini reveal">
+<div class="preview" data-preview>
+<img class="poster" src="assets/stills/readings-poster-1600.webp" width="1600" height="900" loading="lazy" decoding="async" alt="The field coloured by the bitcoin in each cell: the band of large amounts beyond the 5 BTC label lights up.">
+<video muted loop playsinline preload="none" width="1600" height="900" aria-hidden="true" tabindex="-1" data-src="assets/clips/readings.mp4" data-lazy-poster="assets/stills/readings-poster-1600.webp"></video>
+<button class="motion" type="button" aria-pressed="false" hidden><span class="motion-glyph" aria-hidden="true"></span><span class="motion-label">Motion</span><span class="vh"> in the Readings preview</span></button>
+</div>
+<figcaption class="cap small">Readings in motion, block 970,852.</figcaption>
+</figure>
+</div>
+</section>
+
+<!-- VI: full-bleed film, invitation centred -->
+<section class="movement m-return" id="return" aria-labelledby="return-h">
+<header class="wrap mhead centre reveal"><span class="numeral" aria-hidden="true">VI</span><h2 id="return-h"><span class="vh">VI. </span>Return</h2></header>
+<figure class="plate bleed reveal">
+<div class="preview" data-preview>
+<img class="poster" src="assets/stills/return-poster-1600.webp" width="1600" height="900" loading="lazy" decoding="async" alt="The opening view again: the field from beyond its newest block, 1,200 blocks later.">
+<video muted loop playsinline preload="none" width="1600" height="900" aria-hidden="true" tabindex="-1" data-src="assets/clips/return.mp4" data-lazy-poster="assets/stills/return-poster-1600.webp"></video>
+<button class="motion" type="button" aria-pressed="false" hidden><span class="motion-glyph" aria-hidden="true"></span><span class="motion-label">Motion</span><span class="vh"> in the Return preview</span></button>
+</div>
+<figcaption class="wrap cap centre"><span class="readout"><span>Block 970,852</span><span>1,200 blocks later</span></span><a class="explore" data-scene="return" href="/#b=970852&amp;mode=map&amp;cam=1070.759,57.884,82.899,96.00,-16.00&amp;preset=Ultra&amp;camera.fov=40">Explore this view <span aria-hidden="true">↗</span></a></figcaption>
+</figure>
+<div class="wrap return-text">
+<p class="intro reveal">Back at the opening view, 1,200 blocks later. From here the landscape looks unchanged, yet its edge has moved on and the column we read has lost more than half of its outputs. You can read it yourself now.</p>
+<p class="actions centre reveal"><a class="invite large" href="/">Explore the landscape <span aria-hidden="true">↗</span></a></p>
+<p class="note reveal">Every view on this page opens in the app at its exact block and camera.</p>
+</div>
+</section>
+</div>
+
+<section class="guide" id="guide" aria-labelledby="guide-h">
+<div class="wrap">
+<header class="section-head">
+<p class="label">Practical</p>
+<h2 id="guide-h">The guide</h2>
+</header>
+
+<div class="g-row" id="getting-around">
+<h3>Getting around</h3>
+<div class="g-body">
+<p>The app opens in map mode. Drag to pan, and the point you grabbed stays under the cursor. Right-drag or Shift-drag orbits around the point under the cursor, the wheel or a trackpad pinch zooms toward it, and a double-click flies there. P opens Places, which jumps to the eras or flies to the amount bands, from the 50 BTC coinbase row to 1 to 100 sat.</p>
+<p>F, or the Fly button, switches to flight mode: the mouse looks around, WASD flies, E and Q go up and down, Shift is 4x faster and the wheel sets the speed. Esc returns to map mode.</p>
+<figure class="g-figure">
+<img src="assets/stills/ui-app-1600.webp" srcset="assets/stills/ui-app-800.webp 800w, assets/stills/ui-app-1600.webp 1600w" sizes="(min-width: 960px) 60vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="The landscape app in a desktop browser: the field fills the window, with the block panel at the top left and the timeline along the bottom.">
+<figcaption class="cap small">The app at its first view.</figcaption>
+</figure>
+<div class="keys-grid">
+<div class="keys"><h4>Map mode</h4><dl><div><dt><span class="gesture">Drag</span></dt><dd>Pan; the grabbed point stays under the cursor</dd></div>
+<div><dt><span class="gesture">Right-drag</span> <kbd>Shift</kbd></dt><dd>Orbit around the point under the cursor</dd></div>
+<div><dt><span class="gesture">Wheel</span> <span class="gesture">Trackpad pinch</span></dt><dd>Zoom toward the cursor</dd></div>
+<div><dt><span class="gesture">Double-click</span></dt><dd>Fly to that point</dd></div>
+<div><dt><span class="gesture">Point</span></dt><dd>The card under the block shows the amount range, blocks and unspent outputs under the cursor</dd></div>
+<div><dt><span class="gesture">Click</span> <kbd>I</kbd></dt><dd>Inspect the cell under the cursor</dd></div>
+<div><dt><kbd>←</kbd> <kbd>↑</kbd> <kbd>→</kbd> <kbd>↓</kbd></dt><dd>Pan (Shift for 4×)</dd></div>
+<div><dt><kbd>Q</kbd> <kbd>E</kbd></dt><dd>Rotate around the screen centre</dd></div>
+<div><dt><kbd>PgUp</kbd> <kbd>PgDn</kbd></dt><dd>Tilt</dd></div></dl></div>
+<div class="keys"><h4>Fly</h4><dl><div><dt><kbd>F</kbd> <span class="gesture">Fly button</span></dt><dd>Enter or leave flight mode</dd></div>
+<div><dt><span class="gesture">Mouse</span></dt><dd>Look (drag when pointer lock is unavailable)</dd></div>
+<div><dt><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></dt><dd>Fly; Shift for 4×</dd></div>
+<div><dt><kbd>E</kbd> <kbd>Q</kbd></dt><dd>Up and down</dd></div>
+<div><dt><span class="gesture">Wheel</span></dt><dd>Flight speed</dd></div>
+<div><dt><kbd>I</kbd></dt><dd>Inspect the cell at the crosshair</dd></div>
+<div><dt><kbd>Esc</kbd></dt><dd>Back to map mode</dd></div></dl></div>
+<div class="keys"><h4>Panels</h4><dl><div><dt><kbd>G</kbd></dt><dd>Graphics settings</dd></div>
+<div><dt><kbd>P</kbd></dt><dd>Places</dd></div>
+<div><dt><kbd>H</kbd> <kbd>?</kbd></dt><dd>Help</dd></div>
+<div><dt><kbd>Esc</kbd></dt><dd>Close the inspector or a panel</dd></div></dl></div>
+</div>
+</div>
+</div>
+
+<div class="g-row" id="touch">
+<h3>Touch</h3>
+<div class="g-body g-split">
+<div>
+<p>On a touch screen, map mode follows the conventions of map apps: every gesture keeps the ground under your fingers where it is. Pinch, twist and a two-finger drag combine in one movement.</p>
+<p>Phones get their own layout. The timeline keeps the scrubber, transport, the speed menu, and Places, Settings and Help; in portrait the inspector and the settings open as sheets from the bottom. Flight and plane mode need a keyboard.</p>
+<div class="keys"><h4>Gestures</h4><dl><div><dt><span class="gesture">One finger</span></dt><dd>Pan; the ground stays under your finger</dd></div>
+<div><dt><span class="gesture">Pinch</span></dt><dd>Zoom around your fingers</dd></div>
+<div><dt><span class="gesture">Twist</span></dt><dd>Rotate</dd></div>
+<div><dt><span class="gesture">Two fingers up or down</span></dt><dd>Tilt</dd></div>
+<div><dt><span class="gesture">Tap</span></dt><dd>Inspect the cell</dd></div>
+<div><dt><span class="gesture">Double-tap</span></dt><dd>Fly closer; keep the second tap down and drag to zoom</dd></div>
+<div><dt><span class="gesture">Two-finger tap</span></dt><dd>Zoom out</dd></div></dl></div>
+</div>
+<figure class="g-figure phone">
+<img src="assets/stills/ui-phone-1600.webp" srcset="assets/stills/ui-phone-800.webp 800w, assets/stills/ui-phone-1600.webp 1600w" sizes="(min-width: 960px) 18rem, 60vw" width="800" height="1733" loading="lazy" decoding="async" alt="The app on a phone in portrait: the landscape fills the screen above a compact timeline with large touch controls.">
+<figcaption class="cap small">The phone layout, portrait.</figcaption>
+</figure>
+</div>
+</div>
+
+<div class="g-row" id="playback">
+<h3>Time and playback</h3>
+<div class="g-body">
+<p>Space plays or pauses. The speeds are 0.5x, 1x, 2x, 5x and Max, on the keys 0 to 4 or the speed menu in the timeline; 1x is 60 blocks, about 10 hours of Bitcoin, every second. <kbd>[</kbd> and <kbd>]</kbd> step one block back or forward, exactly; with Shift they step 1,008 blocks, about a week. The timeline also accepts a block height or a UTC date.</p>
+<p>N, or the Follow button, follows the tip: the camera moves with the newest block, while playing and when you scrub or step, and you can still pan, orbit and zoom. N again stops. Every block you land on, by seeking, stepping or playing at 1x, is the exact unspent set after that block. Online, 5x and Max follow the speed of your connection, and the HUD says so when playback is download-limited.</p>
+<p>M, or the Sound button, turns on a click for each spend flash on screen while the chain plays, darker for older coins and louder for more bitcoin. Sound is off at first.</p>
+<figure class="g-figure wide">
+<div class="preview" data-preview>
+<img class="poster" src="assets/stills/seventeen-years-poster-1600.webp" width="1600" height="900" loading="lazy" decoding="async" alt="The whole landscape from far above as it grows from the genesis block to the newest.">
+<video muted loop playsinline preload="none" width="1600" height="900" aria-hidden="true" tabindex="-1" data-src="assets/clips/seventeen-years.mp4" data-lazy-poster="assets/stills/seventeen-years-poster-1600.webp"></video>
+<button class="motion" type="button" aria-pressed="false" hidden><span class="motion-glyph" aria-hidden="true"></span><span class="motion-label">Motion</span><span class="vh"> in the Seventeen years preview</span></button>
+</div>
+<figcaption class="cap small">Seventeen years: sampled block states from the genesis block to the newest, about 2,000 blocks apart.</figcaption>
+</figure>
+</div>
+</div>
+
+<div class="g-row" id="reading-a-cell">
+<h3>Reading a cell</h3>
+<div class="g-body g-split rev">
+<div>
+<p>Point at the landscape and a card under the block panel shows the cell under the cursor: its amount band, its blocks and the days they were mined, and its unspent outputs and their value at the current block. It updates live from data already in the browser.</p>
+<p>Click, or press I, to open the inspector. It shows the cell’s lifecycle from the history index, and its 2D link opens the same place in the explorer at bitcointimelapse.com, at the nearest pixel.</p>
+</div>
+<figure class="g-figure">
+<img src="assets/stills/ui-inspector-1600.webp" srcset="assets/stills/ui-inspector-800.webp 800w, assets/stills/ui-inspector-1600.webp 1600w" sizes="(min-width: 960px) 40vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="The inspector open beside the landscape, listing one cell’s outputs and value above a chart of its lifecycle.">
+<figcaption class="cap small">The inspector.</figcaption>
+</figure>
+</div>
+</div>
+
+<div class="g-row" id="looks">
+<h3>Looks</h3>
+<div class="g-body">
+<p>A look sets the light, palette and measure in one choice; the data stays the same. Eleven are built in, each one click away in the settings, and Save… stores your own.</p>
+</div>
+<ul class="looks" role="list">
+<li class="look">
+<img src="assets/stills/look-landscape-1600.webp" srcset="assets/stills/look-landscape-800.webp 800w, assets/stills/look-landscape-1600.webp 1600w, assets/stills/look-landscape-3200.webp 3200w" sizes="(min-width: 1200px) 22vw, (min-width: 640px) 45vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="The field in deep blue dusk light, its columns lit by a soft afterglow under a darkening sky.">
+<h4>Landscape</h4>
+<p>The default look: film palette colours in the blue hour just after sunset, the first stars out, light haze, shadows, bloom and cylinder columns near the camera.</p>
+<a class="explore" data-scene="look-landscape" href="/#b=972052&amp;mode=map&amp;cam=978.126,32.492,171.204,55.00,-20.00&amp;preset=Ultra">Explore this view <span aria-hidden="true">↗</span></a>
+</li>
+<li class="look">
+<img src="assets/stills/look-bitcointimelapse-com-1600.webp" srcset="assets/stills/look-bitcointimelapse-com-800.webp 800w, assets/stills/look-bitcointimelapse-com-1600.webp 1600w, assets/stills/look-bitcointimelapse-com-3200.webp 3200w" sizes="(min-width: 1200px) 22vw, (min-width: 640px) 45vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="The field in flat, unlit film colours on pure black, with white-hot rows among the blue.">
+<h4>BitcoinTimelapse.com</h4>
+<p>The film at bitcointimelapse.com: its unlit colours through the film palette, stepped cells instead of cylinders, black background and ground, no lighting or post effects.</p>
+<a class="explore" data-scene="look-bitcointimelapse-com" href="/#b=972052&amp;mode=map&amp;cam=978.126,32.492,171.204,55.00,-20.00&amp;preset=Ultra&amp;look=BitcoinTimelapse.com">Explore this view <span aria-hidden="true">↗</span></a>
+</li>
+<li class="look">
+<img src="assets/stills/look-daylight-1600.webp" srcset="assets/stills/look-daylight-800.webp 800w, assets/stills/look-daylight-1600.webp 1600w, assets/stills/look-daylight-3200.webp 3200w" sizes="(min-width: 1200px) 22vw, (min-width: 640px) 45vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="The field under a pale blue midday sky, green and yellow columns casting short crisp shadows.">
+<h4>Daylight</h4>
+<p>Midday: a high white sun in a pale blue sky, crisp shadows and the viridis palette, with no glow, so the relief reads like a map.</p>
+<a class="explore" data-scene="look-daylight" href="/#b=972052&amp;mode=map&amp;cam=978.126,32.492,171.204,55.00,-20.00&amp;preset=Ultra&amp;look=Daylight">Explore this view <span aria-hidden="true">↗</span></a>
+</li>
+<li class="look">
+<img src="assets/stills/look-golden-hour-1600.webp" srcset="assets/stills/look-golden-hour-800.webp 800w, assets/stills/look-golden-hour-1600.webp 1600w, assets/stills/look-golden-hour-3200.webp 3200w" sizes="(min-width: 1200px) 22vw, (min-width: 640px) 45vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="The field at sunset in orange haze, long shadows stretching from its columns.">
+<h4>Golden hour</h4>
+<p>Sunset from the tip side: a low orange sun, long shadows, thick warm haze, light shafts toward the sun and the inferno palette.</p>
+<a class="explore" data-scene="look-golden-hour" href="/#b=972052&amp;mode=map&amp;cam=978.126,32.492,171.204,55.00,-20.00&amp;preset=Ultra&amp;look=Golden+hour">Explore this view <span aria-hidden="true">↗</span></a>
+</li>
+<li class="look">
+<img src="assets/stills/look-earth-1600.webp" srcset="assets/stills/look-earth-800.webp 800w, assets/stills/look-earth-1600.webp 1600w, assets/stills/look-earth-3200.webp 3200w" sizes="(min-width: 1200px) 22vw, (min-width: 640px) 45vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="The field as land in a morning sea, sand and brown at its sparse edges and green where it is busiest.">
+<h4>Earth</h4>
+<p>A summer morning over an atlas: mist pales the distance, a sea runs to the horizon, and land goes from sand on the sparsest cells through brown earth to green.</p>
+<a class="explore" data-scene="look-earth" href="/#b=972052&amp;mode=map&amp;cam=978.126,32.492,171.204,55.00,-20.00&amp;preset=Ultra&amp;look=Earth">Explore this view <span aria-hidden="true">↗</span></a>
+</li>
+<li class="look">
+<img src="assets/stills/look-whales-1600.webp" srcset="assets/stills/look-whales-800.webp 800w, assets/stills/look-whales-1600.webp 1600w, assets/stills/look-whales-3200.webp 3200w" sizes="(min-width: 1200px) 22vw, (min-width: 640px) 45vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="The field at sunrise with tall dark-red and white towers rising along the rows of large amounts.">
+<h4>Whales</h4>
+<p>Sunrise over the BTC held in each cell instead of the number of outputs: the large-amount rows tower over the dust, and the magma palette runs to white on the biggest holdings.</p>
+<a class="explore" data-scene="look-whales" href="/#b=972052&amp;mode=map&amp;cam=978.126,32.492,171.204,55.00,-20.00&amp;preset=Ultra&amp;look=Whales">Explore this view <span aria-hidden="true">↗</span></a>
+</li>
+<li class="look">
+<img src="assets/stills/look-pulse-1600.webp" srcset="assets/stills/look-pulse-800.webp 800w, assets/stills/look-pulse-1600.webp 1600w, assets/stills/look-pulse-3200.webp 3200w" sizes="(min-width: 1200px) 22vw, (min-width: 640px) 45vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="A dim grey field with scattered amber glows where outputs were recently spent.">
+<h4>Pulse</h4>
+<p>A dim grey landscape where activity shows: spends flash amber and their glow lingers for hundreds of blocks. Press Play to watch the chain breathe.</p>
+<a class="explore" data-scene="look-pulse" href="/#b=972052&amp;mode=map&amp;cam=978.126,32.492,171.204,55.00,-20.00&amp;preset=Ultra&amp;look=Pulse">Explore this view <span aria-hidden="true">↗</span></a>
+</li>
+<li class="look">
+<img src="assets/stills/look-outputs-1600.webp" srcset="assets/stills/look-outputs-800.webp 800w, assets/stills/look-outputs-1600.webp 1600w, assets/stills/look-outputs-3200.webp 3200w" sizes="(min-width: 1200px) 22vw, (min-width: 640px) 45vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="The field as square boxes in blue and yellow under a plain white sun, with no sky or haze.">
+<h4>Outputs</h4>
+<p>Height and colour by the number of outputs in each cell, cividis, square boxes under a white sun, so dust rows and large holdings are compared by count alone.</p>
+<a class="explore" data-scene="look-outputs" href="/#b=972052&amp;mode=map&amp;cam=978.126,32.492,171.204,55.00,-20.00&amp;preset=Ultra&amp;look=Outputs">Explore this view <span aria-hidden="true">↗</span></a>
+</li>
+<li class="look">
+<img src="assets/stills/look-money-map-1600.webp" srcset="assets/stills/look-money-map-800.webp 800w, assets/stills/look-money-map-1600.webp 1600w, assets/stills/look-money-map-3200.webp 3200w" sizes="(min-width: 1200px) 22vw, (min-width: 640px) 45vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="Tall grey bars of small outputs beside shorter columns glowing violet, red and yellow where the money is.">
+<h4>Money map</h4>
+<p>Height by the number of outputs, colour by the BTC they hold: grey below 1 BTC per cell, then violet, red and orange to pale yellow at 2,000 BTC.</p>
+<a class="explore" data-scene="look-money-map" href="/#b=972052&amp;mode=map&amp;cam=978.126,32.492,171.204,55.00,-20.00&amp;preset=Ultra&amp;look=Money+map">Explore this view <span aria-hidden="true">↗</span></a>
+</li>
+<li class="look">
+<img src="assets/stills/look-linear-1600.webp" srcset="assets/stills/look-linear-800.webp 800w, assets/stills/look-linear-1600.webp 1600w, assets/stills/look-linear-3200.webp 3200w" sizes="(min-width: 1200px) 22vw, (min-width: 640px) 45vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="A nearly flat field from which a few thin walls rise very high.">
+<h4>Linear</h4>
+<p>Height in proportion to weighted density, so proportions are true: nearly everything lies flat and the densest dust cells rise as walls.</p>
+<a class="explore" data-scene="look-linear" href="/#b=972052&amp;mode=map&amp;cam=978.126,32.492,171.204,55.00,-20.00&amp;preset=Ultra&amp;look=Linear">Explore this view <span aria-hidden="true">↗</span></a>
+</li>
+<li class="look">
+<img src="assets/stills/look-paper-1600.webp" srcset="assets/stills/look-paper-800.webp 800w, assets/stills/look-paper-1600.webp 1600w, assets/stills/look-paper-3200.webp 3200w" sizes="(min-width: 1200px) 22vw, (min-width: 640px) 45vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="The field drawn in grey and black ink on a white page.">
+<h4>Paper</h4>
+<p>A white page for figures: light grey to black ink by density, soft shadows and red spend flashes.</p>
+<a class="explore" data-scene="look-paper" href="/#b=972052&amp;mode=map&amp;cam=978.126,32.492,171.204,55.00,-20.00&amp;preset=Ultra&amp;look=Paper">Explore this view <span aria-hidden="true">↗</span></a>
+</li>
+</ul>
+<figure class="g-figure wide-row">
+<div class="preview" data-preview>
+<img class="poster" src="assets/stills/day-poster-1600.webp" width="1600" height="900" loading="lazy" decoding="async" alt="The same view of the field from sunrise through midday and dusk to night.">
+<video muted loop playsinline preload="none" width="1600" height="900" aria-hidden="true" tabindex="-1" data-src="assets/clips/day.mp4" data-lazy-poster="assets/stills/day-poster-1600.webp"></video>
+<button class="motion" type="button" aria-pressed="false" hidden><span class="motion-glyph" aria-hidden="true"></span><span class="motion-label">Motion</span><span class="vh"> in the A day over the field preview</span></button>
+</div>
+<figcaption class="cap small">A day over the field: time of day from sunrise to night over the same view; the data does not change.</figcaption>
+</figure>
+</div>
+
+<div class="g-row" id="quality">
+<h3>Quality</h3>
+<div class="g-body g-split">
+<div>
+<dl class="tiers">
+<div><dt>Performance</dt><dd>75% resolution, FXAA, no shadows or ambient occlusion, and cylinders only close to the camera.</dd></div>
+<div><dt>Balanced</dt><dd>Native resolution, SMAA, two shadow cascades, SSAO and bloom, with cylinders where cells are 6 px wide or more.</dd></div>
+<div><dt>High</dt><dd>Three shadow cascades, SSAO with 16 samples, fog, sky and stars, and 12-sided cylinders where cells are 4 px wide or more.</dd></div>
+<div><dt>Ultra</dt><dd>High plus 4096 shadow cascades, volumetric light and god rays: 60 fps in the overview at 4K on an M4 Max.</dd></div>
+<div><dt>Extreme</dt><dd>Deliberately GPU-bound, for GPUs beyond an M4 Max: supersampling, SSR, finer detail and up to 2M cylinders.</dd></div>
+</dl>
+<p>A first visit starts at Balanced with automatic resolution scaling. A browser without WebGPU, a touch-only device or one that reports 4 GB of memory or less starts at Performance and says so. Choosing a quality turns the automatic scaling off. Ultra, Extreme and the cylinder columns need WebGPU; <code>?webgl=1</code> forces the WebGL2 fallback, capped at High.</p>
+</div>
+<figure class="g-figure">
+<img src="assets/stills/ui-settings-1600.webp" srcset="assets/stills/ui-settings-800.webp 800w, assets/stills/ui-settings-1600.webp 1600w" sizes="(min-width: 960px) 40vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="The settings panel open over the landscape, with the look and quality menus at the top.">
+<figcaption class="cap small">Settings: look and quality first.</figcaption>
+</figure>
+</div>
+</div>
+
+<div class="g-row" id="sharing">
+<h3>Sharing</h3>
+<div class="g-body">
+<p>The address keeps the block, camera, navigation mode, look, quality and the settings that differ from them, so a copied link reproduces the view; Copy link in the settings does the same. A link without a block opens at least 1,008 blocks, about a week, before the last block, so Play has something to play.</p>
+</div>
+</div>
+
+<div class="g-row" id="under-the-hood">
+<h3>Under the hood</h3>
+<div class="g-body">
+<ul class="facts" role="list">
+<li><span class="label">Grid</span>64 blocks per column and 2,072 amount rows, 15,189 × 2,072 cells for blocks 0 to 972,052.</li>
+<li><span class="label">Replay</span>A Web Worker in your browser replays the change log from snapshots, so every block is exact.</li>
+<li><span class="label">Data</span>The dataset sits on Cloudflare R2 behind a Cloudflare Worker, which also answers the inspector’s cell lookups.</li>
+</ul>
+<p class="links"><a href="https://github.com/nostitos/utxo-timelapse/blob/master/docs/landscape.md">How the landscape works</a> <span aria-hidden="true">·</span> <a href="https://github.com/nostitos/utxo-timelapse/blob/master/landscape/SPEC.md">Implementation contract</a></p>
+</div>
+</div>
+</div>
+</section>
+
+<section class="coda" id="coda" aria-labelledby="coda-h">
+<div class="wrap">
+<header class="section-head">
+<p class="label">Coda</p>
+<h2 id="coda-h">Fly</h2>
+</header>
+<div class="coda-grid">
+<div class="coda-text">
+<p class="intro">T, or the Fun button, puts a craft in the air above the centre of the view, already flying: the plane, the bird or the jet. The mouse is a stick: sideways banks, up raises the nose, and the bank turns the craft.</p>
+<p>A and D or the left and right arrows bank, the up and down arrows raise and lower the nose, W and S set the throttle, Shift boosts, and C changes craft, even in flight. Esc or T lands in map mode.</p>
+<h3>Stack sats</h3>
+<p>Enter starts a one-minute game. Fly through trails of coins and grab the bonus coins on the tallest columns. Each coin is worth the amount of the row it floats over: over the 50 BTC coinbase row it pays 50 BTC, over the 546 sat row 546 sat, so the whale rows at the back pay most.</p>
+<div class="keys"><h4>Fun</h4><dl><div><dt><kbd>T</kbd></dt><dd>Take off from the centre of the view; T again lands</dd></div>
+<div><dt><kbd>C</kbd></dt><dd>Next craft: plane, bird, jet</dd></div>
+<div><dt><kbd>Enter</kbd></dt><dd>Stack sats</dd></div>
+<div><dt><kbd>A</kbd> <kbd>D</kbd> <kbd>←</kbd> <kbd>→</kbd></dt><dd>Bank left or right</dd></div>
+<div><dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Nose up or down</dd></div>
+<div><dt><kbd>W</kbd> <kbd>S</kbd></dt><dd>Faster or slower; Shift to boost</dd></div>
+<div><dt><kbd>Esc</kbd></dt><dd>Back to map mode</dd></div></dl></div>
+</div>
+<div class="crafts">
+<figure><div class="preview" data-preview>
+<img class="poster" src="assets/stills/plane-poster-1600.webp" width="1600" height="900" loading="lazy" decoding="async" alt="A small plane flying low over the glowing columns, seen from behind.">
+<video muted loop playsinline preload="none" width="1600" height="900" aria-hidden="true" tabindex="-1" data-src="assets/clips/plane.mp4" data-lazy-poster="assets/stills/plane-poster-1600.webp"></video>
+<button class="motion" type="button" aria-pressed="false" hidden><span class="motion-glyph" aria-hidden="true"></span><span class="motion-label">Motion</span><span class="vh"> in the Plane preview</span></button>
+</div><figcaption class="cap small"><span class="readout"><span>Plane</span></span></figcaption></figure>
+<figure><div class="preview" data-preview>
+<img class="poster" src="assets/stills/bird-poster-1600.webp" width="1600" height="900" loading="lazy" decoding="async" alt="A bird gliding just above the columns, seen from behind.">
+<video muted loop playsinline preload="none" width="1600" height="900" aria-hidden="true" tabindex="-1" data-src="assets/clips/bird.mp4" data-lazy-poster="assets/stills/bird-poster-1600.webp"></video>
+<button class="motion" type="button" aria-pressed="false" hidden><span class="motion-glyph" aria-hidden="true"></span><span class="motion-label">Motion</span><span class="vh"> in the Bird preview</span></button>
+</div><figcaption class="cap small"><span class="readout"><span>Bird</span></span></figcaption></figure>
+<figure><div class="preview" data-preview>
+<img class="poster" src="assets/stills/jet-poster-1600.webp" width="1600" height="900" loading="lazy" decoding="async" alt="A jet flying fast over the landscape, its tail lamp lit.">
+<video muted loop playsinline preload="none" width="1600" height="900" aria-hidden="true" tabindex="-1" data-src="assets/clips/jet.mp4" data-lazy-poster="assets/stills/jet-poster-1600.webp"></video>
+<button class="motion" type="button" aria-pressed="false" hidden><span class="motion-glyph" aria-hidden="true"></span><span class="motion-label">Motion</span><span class="vh"> in the Jet preview</span></button>
+</div><figcaption class="cap small"><span class="readout"><span>Jet</span></span></figcaption></figure>
+<figure><div class="preview" data-preview>
+<img class="poster" src="assets/stills/stack-sats-poster-1600.webp" width="1600" height="900" loading="lazy" decoding="async" alt="A craft flying through a curving trail of gold bitcoin coins above the columns.">
+<video muted loop playsinline preload="none" width="1600" height="900" aria-hidden="true" tabindex="-1" data-src="assets/clips/stack-sats.mp4" data-lazy-poster="assets/stills/stack-sats-poster-1600.webp"></video>
+<button class="motion" type="button" aria-pressed="false" hidden><span class="motion-glyph" aria-hidden="true"></span><span class="motion-label">Motion</span><span class="vh"> in the Stack sats preview</span></button>
+</div><figcaption class="cap small"><span class="readout"><span>Stack sats</span></span></figcaption></figure>
+</div>
+</div>
+</div>
+</section>
+
+<section class="views" id="views" aria-labelledby="views-h">
+<div class="wrap">
+<header class="section-head">
+<p class="label">Index</p>
+<h2 id="views-h">Views</h2>
+<p class="note">Each view opens in the app at its block and camera.</p>
+</header>
+<h3>Movements</h3>
+<ul class="view-grid" role="list">
+<li class="view">
+<img src="assets/stills/still-field-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The field from beyond its newest block.">
+<span class="view-title">Field</span>
+<a class="explore" data-scene="field" href="/#b=969652&amp;mode=map&amp;cam=1070.759,57.884,82.899,96.00,-16.00&amp;preset=Ultra&amp;camera.fov=40">Explore<span class="vh"> Field</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/still-strata-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The field from directly overhead, crossed by bright lines.">
+<span class="view-title">Strata</span>
+<a class="explore" data-scene="strata" href="/#b=969652&amp;mode=map&amp;cam=950.000,69.989,95.222,0.00,-89.00&amp;preset=Ultra&amp;camera.fov=50">Explore<span class="vh"> Strata</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/still-cell-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="One tall column among shorter neighbours.">
+<span class="view-title">A cell</span>
+<a class="explore" data-scene="cell" href="/#b=969652&amp;mode=map&amp;cam=969.092,7.733,84.065,-12.00,-2.00&amp;preset=Ultra">Explore<span class="vh"> A cell</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/return-poster-1600.webp" width="800" height="450" loading="lazy" decoding="async" alt="The opening view, 1,200 blocks later.">
+<span class="view-title">Return</span>
+<a class="explore" data-scene="return" href="/#b=970852&amp;mode=map&amp;cam=1070.759,57.884,82.899,96.00,-16.00&amp;preset=Ultra&amp;camera.fov=40">Explore<span class="vh"> Return</span> <span aria-hidden="true">↗</span></a>
+</li>
+</ul>
+<h3>Places</h3>
+<ul class="view-grid" role="list">
+<li class="view">
+<img src="assets/stills/still-first-line-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The 50 BTC row of 2009 and 2010, a line of light across the sparse early field.">
+<span class="view-title">The first line</span>
+<a class="explore" data-scene="first-line" href="/#b=972052&amp;mode=map&amp;cam=45.359,4.820,54.810,70.00,-10.00&amp;preset=Ultra&amp;camera.fov=40">Explore<span class="vh"> The first line</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/still-towers-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="Tall columns of large amounts at the newest blocks.">
+<span class="view-title">Towers at the edge</span>
+<a class="explore" data-scene="towers" href="/#b=972052&amp;mode=map&amp;cam=976.382,6.610,20.658,140.00,-5.00&amp;preset=Ultra&amp;camera.fov=40">Explore<span class="vh"> Towers at the edge</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/still-ridge-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="A dense ridge of rows of a few hundred satoshis.">
+<span class="view-title">The ridge</span>
+<a class="explore" data-scene="dust-ridge" href="/#b=972052&amp;mode=map&amp;cam=871.217,23.474,150.783,135.00,-28.00&amp;preset=Ultra&amp;camera.fov=40">Explore<span class="vh"> The ridge</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/field-tip-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The opening view at the last block of this edition.">
+<span class="view-title">The field at the newest block</span>
+<a class="explore" data-scene="field-tip" href="/#b=972052&amp;mode=map&amp;cam=1070.759,57.884,82.899,96.00,-16.00&amp;preset=Ultra&amp;camera.fov=40">Explore<span class="vh"> The field at the newest block</span> <span aria-hidden="true">↗</span></a>
+</li>
+</ul>
+<h3>Time</h3>
+<ul class="view-grid" role="list">
+<li class="view">
+<img src="assets/stills/still-change-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The column and its neighbours after 1,200 blocks.">
+<span class="view-title">Time</span>
+<a class="explore" data-scene="time" href="/#b=969652&amp;mode=map&amp;cam=969.092,7.733,84.065,-12.00,-2.00&amp;preset=Ultra">Explore<span class="vh"> Time</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/seventeen-years-poster-1600.webp" width="800" height="450" loading="lazy" decoding="async" alt="The whole landscape from far above.">
+<span class="view-title">Seventeen years</span>
+<a class="explore" data-scene="seventeen-years" href="/#b=0&amp;mode=map&amp;cam=669.352,161.081,479.658,22.00,-22.00&amp;preset=Ultra">Explore<span class="vh"> Seventeen years</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/ridge-rises-poster-1600.webp" width="800" height="450" loading="lazy" decoding="async" alt="The rows of a few hundred satoshis filling, 2023 into 2024.">
+<span class="view-title">The ridge rises</span>
+<a class="explore" data-scene="ridge-rises" href="/#b=770000&amp;mode=map&amp;cam=835.759,22.476,224.616,40.00,-22.00&amp;preset=Ultra">Explore<span class="vh"> The ridge rises</span> <span aria-hidden="true">↗</span></a>
+</li>
+</ul>
+<h3>Light and reading</h3>
+<ul class="view-grid" role="list">
+<li class="view">
+<img src="assets/stills/still-count-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The field coloured by number of outputs.">
+<span class="view-title">Readings: outputs</span>
+<a class="explore" data-scene="readings-count" href="/#b=970852&amp;mode=map&amp;cam=983.123,22.371,155.513,30.00,-24.00&amp;preset=Ultra&amp;color.measure=count&amp;color.whiteHot=0&amp;amp.measure=count">Explore<span class="vh"> Readings: outputs</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/still-value-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The field coloured by bitcoin held.">
+<span class="view-title">Readings: value</span>
+<a class="explore" data-scene="readings-value" href="/#b=970852&amp;mode=map&amp;cam=983.123,22.371,155.513,30.00,-24.00&amp;preset=Ultra&amp;color.measure=value&amp;color.offset=1&amp;color.upper=2000&amp;color.whiteHot=0&amp;amp.measure=count">Explore<span class="vh"> Readings: value</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/day-poster-1600.webp" width="800" height="450" loading="lazy" decoding="async" alt="The field in changing daylight.">
+<span class="view-title">A day over the field</span>
+<a class="explore" data-scene="day" href="/#b=972052&amp;mode=map&amp;cam=1027.065,33.266,157.527,70.00,-12.00&amp;preset=Ultra&amp;color.fog=5a3f3a&amp;light.sunAzimuth=290&amp;light.sunElevation=9&amp;light.sunIntensity=4.5&amp;light.sunColor=ffc78a&amp;light.skyColor=f6d6b8&amp;light.groundColor=3a2e28&amp;light.ambient=0.5&amp;light.stars=0">Explore<span class="vh"> A day over the field</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/earth-poster-1600.webp" width="800" height="450" loading="lazy" decoding="async" alt="The field as an atlas, with sea to the horizon.">
+<span class="view-title">Earth</span>
+<a class="explore" data-scene="earth" href="/#b=972052&amp;mode=map&amp;cam=887.108,72.577,332.987,40.00,-14.00&amp;preset=Ultra&amp;look=Earth">Explore<span class="vh"> Earth</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/look-landscape-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The field in deep blue dusk light, its columns lit by a soft afterglow under a darkening sky.">
+<span class="view-title">Look: Landscape</span>
+<a class="explore" data-scene="look-landscape" href="/#b=972052&amp;mode=map&amp;cam=978.126,32.492,171.204,55.00,-20.00&amp;preset=Ultra">Explore<span class="vh"> Look: Landscape</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/look-bitcointimelapse-com-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The field in flat, unlit film colours on pure black, with white-hot rows among the blue.">
+<span class="view-title">Look: BitcoinTimelapse.com</span>
+<a class="explore" data-scene="look-bitcointimelapse-com" href="/#b=972052&amp;mode=map&amp;cam=978.126,32.492,171.204,55.00,-20.00&amp;preset=Ultra&amp;look=BitcoinTimelapse.com">Explore<span class="vh"> Look: BitcoinTimelapse.com</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/look-daylight-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The field under a pale blue midday sky, green and yellow columns casting short crisp shadows.">
+<span class="view-title">Look: Daylight</span>
+<a class="explore" data-scene="look-daylight" href="/#b=972052&amp;mode=map&amp;cam=978.126,32.492,171.204,55.00,-20.00&amp;preset=Ultra&amp;look=Daylight">Explore<span class="vh"> Look: Daylight</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/look-golden-hour-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The field at sunset in orange haze, long shadows stretching from its columns.">
+<span class="view-title">Look: Golden hour</span>
+<a class="explore" data-scene="look-golden-hour" href="/#b=972052&amp;mode=map&amp;cam=978.126,32.492,171.204,55.00,-20.00&amp;preset=Ultra&amp;look=Golden+hour">Explore<span class="vh"> Look: Golden hour</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/look-earth-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The field as land in a morning sea, sand and brown at its sparse edges and green where it is busiest.">
+<span class="view-title">Look: Earth</span>
+<a class="explore" data-scene="look-earth" href="/#b=972052&amp;mode=map&amp;cam=978.126,32.492,171.204,55.00,-20.00&amp;preset=Ultra&amp;look=Earth">Explore<span class="vh"> Look: Earth</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/look-whales-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The field at sunrise with tall dark-red and white towers rising along the rows of large amounts.">
+<span class="view-title">Look: Whales</span>
+<a class="explore" data-scene="look-whales" href="/#b=972052&amp;mode=map&amp;cam=978.126,32.492,171.204,55.00,-20.00&amp;preset=Ultra&amp;look=Whales">Explore<span class="vh"> Look: Whales</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/look-pulse-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="A dim grey field with scattered amber glows where outputs were recently spent.">
+<span class="view-title">Look: Pulse</span>
+<a class="explore" data-scene="look-pulse" href="/#b=972052&amp;mode=map&amp;cam=978.126,32.492,171.204,55.00,-20.00&amp;preset=Ultra&amp;look=Pulse">Explore<span class="vh"> Look: Pulse</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/look-outputs-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The field as square boxes in blue and yellow under a plain white sun, with no sky or haze.">
+<span class="view-title">Look: Outputs</span>
+<a class="explore" data-scene="look-outputs" href="/#b=972052&amp;mode=map&amp;cam=978.126,32.492,171.204,55.00,-20.00&amp;preset=Ultra&amp;look=Outputs">Explore<span class="vh"> Look: Outputs</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/look-money-map-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="Tall grey bars of small outputs beside shorter columns glowing violet, red and yellow where the money is.">
+<span class="view-title">Look: Money map</span>
+<a class="explore" data-scene="look-money-map" href="/#b=972052&amp;mode=map&amp;cam=978.126,32.492,171.204,55.00,-20.00&amp;preset=Ultra&amp;look=Money+map">Explore<span class="vh"> Look: Money map</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/look-linear-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="A nearly flat field from which a few thin walls rise very high.">
+<span class="view-title">Look: Linear</span>
+<a class="explore" data-scene="look-linear" href="/#b=972052&amp;mode=map&amp;cam=978.126,32.492,171.204,55.00,-20.00&amp;preset=Ultra&amp;look=Linear">Explore<span class="vh"> Look: Linear</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/look-paper-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The field drawn in grey and black ink on a white page.">
+<span class="view-title">Look: Paper</span>
+<a class="explore" data-scene="look-paper" href="/#b=972052&amp;mode=map&amp;cam=978.126,32.492,171.204,55.00,-20.00&amp;preset=Ultra&amp;look=Paper">Explore<span class="vh"> Look: Paper</span> <span aria-hidden="true">↗</span></a>
+</li>
+</ul>
+</div>
+</section>
+
+</main>
+
+<footer class="footer">
+<div class="wrap foot-grid">
+<p class="foot-mark">What <em>remains</em></p>
+<ul class="credits" role="list">
+<li>Original concept and code by <a href="https://github.com/martinus/BitcoinUtxoVisualizer">Martinus</a> (BitcoinUtxoVisualizer, MIT).</li>
+<li>Part of <a href="https://github.com/nostitos/utxo-timelapse">UTXO Timelapse</a>. Rendered with three.js.</li>
+<li>Set in Instrument Serif and IBM Plex (SIL Open Font License).</li>
+<li>The 2D film and its guide: <a href="https://bitcointimelapse.com/guide/">bitcointimelapse.com/guide</a>.</li>
+</ul>
+<p class="production">Every image is a capture of the landscape app with dataset d972052-20261018, blocks 0 to 972,052. The film and the studies were rendered frame by frame at the Ultra quality tier; the flight and interface clips are real-time recordings of bitcoinlandscape.com as a first-time visitor. Music: an original score synthesized for the film.</p>
+</div>
+</footer>
+
+<dialog class="film-dialog" id="film" aria-labelledby="film-title">
+<div class="film-head">
+<h2 id="film-title">What <em>remains</em> <span class="label">90 seconds</span></h2>
+<button class="film-close" type="button" data-film-close>Close <span aria-hidden="true">×</span></button>
+</div>
+<video controls playsinline preload="none" width="1920" height="1080" data-src="assets/film/what-remains-1080.mp4" data-lazy-poster="assets/film/poster-1600.webp"></video>
+</dialog>
+</body>
+</html>

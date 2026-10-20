@@ -625,6 +625,19 @@ body.plane #legend { display: none; }
 #help::backdrop { background: rgba(0, 0, 0, 0.55); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
 .help-head { display: flex; justify-content: space-between; gap: 20px; }
 .help-head h2 { margin: 8px 0 0; font: 400 38px/1.05 var(--display); letter-spacing: -0.02em; }
+.help-tools { display: flex; flex: none; align-items: center; align-self: flex-start; gap: 10px; }
+.help-guide {
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  font: 500 10px/1 var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-decoration: none;
+  white-space: nowrap;
+  color: var(--mint);
+}
+.help-guide:hover { color: var(--ink); border-color: var(--muted); }
 .help-head h2 em, .loading-card h1 em { font-style: italic; color: var(--mint); }
 .help-lead { max-width: 740px; margin: 14px 0 20px; font-size: 13.5px; line-height: 1.6; color: var(--muted); }
 .help-grid { columns: 2; column-gap: 36px; }
@@ -828,6 +841,7 @@ kbd {
     padding: 18px 16px 20px;
   }
   .help-head h2 { font-size: 28px; }
+  .help-guide { padding: 13px 12px; border-radius: 20px; }
   .help-lead { margin: 10px 0 16px; font-size: 13px; }
   #help .icon-btn { width: 40px; height: 40px; }
 

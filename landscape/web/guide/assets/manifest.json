@@ -1,0 +1,1486 @@
+{
+  "format": "what-remains-guide-1",
+  "edition": {
+    "title": "What remains",
+    "subtitle": "Bitcoin’s unspent outputs, block by block",
+    "release": "landscape-20261019-10",
+    "revision": "48537ca",
+    "dataset": "d972052-20261018",
+    "tip": 972052
+  },
+  "generated": "2026-10-20T07:31:46.308Z",
+  "scenes": [
+    {
+      "id": "field",
+      "title": "Field",
+      "purpose": "The whole history seen from beyond its newest block: the edge glows in front and the past recedes to the horizon.",
+      "kind": "sequence",
+      "movement": "I",
+      "look": "Landscape",
+      "block": 969652,
+      "link": "/#b=969652&mode=map&cam=1070.759,57.884,82.899,96.00,-16.00&preset=Ultra&camera.fov=40",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T07:13:35.795Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 300,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "2f3162290d3114ff"
+      }
+    },
+    {
+      "id": "strata",
+      "title": "Strata",
+      "purpose": "Rise above the newest blocks to read the axes from above, then descend toward the bright band of 1 BTC outputs.",
+      "kind": "sequence",
+      "movement": "II",
+      "look": "Landscape",
+      "block": 969652,
+      "link": "/#b=969652&mode=map&cam=950.000,69.989,95.222,0.00,-89.00&preset=Ultra&camera.fov=50",
+      "linkAt": 7,
+      "captured": {
+        "created": "2026-10-20T07:18:03.469Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 420,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "96a5c7a9cfb6656d"
+      }
+    },
+    {
+      "id": "cell",
+      "title": "A cell",
+      "purpose": "Arrive beside one column at the newest edge and hold: 214 outputs of about 1 BTC, each division one output.",
+      "kind": "sequence",
+      "movement": "III",
+      "look": "Landscape",
+      "block": 969652,
+      "link": "/#b=969652&mode=map&cam=969.092,7.733,84.065,-12.00,-2.00&preset=Ultra",
+      "linkAt": 10,
+      "captured": {
+        "created": "2026-10-20T06:14:26.398Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 480,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "ab8fd9d40abba9a2"
+      }
+    },
+    {
+      "id": "time",
+      "title": "Time",
+      "purpose": "The camera holds still while 1,200 real blocks replay: the cell loses outputs and new columns rise beyond the edge.",
+      "kind": "sequence",
+      "movement": "IV",
+      "look": "Landscape",
+      "block": [
+        969652,
+        970852
+      ],
+      "link": "/#b=969652&mode=map&cam=969.092,7.733,84.065,-12.00,-2.00&preset=Ultra",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T06:16:44.347Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 600,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "8b435855b81bd6c1"
+      }
+    },
+    {
+      "id": "readings-count",
+      "title": "Readings: outputs",
+      "purpose": "Height and colour by the number of outputs in each cell, with the app’s amount labels.",
+      "kind": "sequence",
+      "movement": "V",
+      "look": "Landscape",
+      "block": 970852,
+      "link": "/#b=970852&mode=map&cam=983.123,22.371,155.513,30.00,-24.00&preset=Ultra&color.measure=count&color.whiteHot=0&amp.measure=count",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T06:21:03.783Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 540,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "63f9756249cc0337"
+      }
+    },
+    {
+      "id": "readings-value",
+      "title": "Readings: value",
+      "purpose": "Height by the number of outputs, colour by the BTC they hold: the band beyond the 5 BTC label lights up.",
+      "kind": "sequence",
+      "movement": "V",
+      "look": "Landscape",
+      "block": 970852,
+      "link": "/#b=970852&mode=map&cam=983.123,22.371,155.513,30.00,-24.00&preset=Ultra&color.measure=value&color.offset=1&color.upper=2000&color.whiteHot=0&amp.measure=count",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T06:25:22.424Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 540,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "99ff15f6cf28514f"
+      }
+    },
+    {
+      "id": "return",
+      "title": "Return",
+      "purpose": "Pull back to the opening view, 1,200 blocks later.",
+      "kind": "sequence",
+      "movement": "VI",
+      "look": "Landscape",
+      "block": 970852,
+      "link": "/#b=970852&mode=map&cam=1070.759,57.884,82.899,96.00,-16.00&preset=Ultra&camera.fov=40",
+      "linkAt": 10,
+      "captured": {
+        "created": "2026-10-20T07:21:25.699Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 390,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "3c6740036d375fa0"
+      }
+    },
+    {
+      "id": "field-tip",
+      "title": "The field at the newest block",
+      "purpose": "The opening composition at the last block of this edition, breathing slowly.",
+      "kind": "sequence",
+      "movement": null,
+      "look": "Landscape",
+      "block": 972052,
+      "link": "/#b=972052&mode=map&cam=1070.759,57.884,82.899,96.00,-16.00&preset=Ultra&camera.fov=40",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T06:34:23.262Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 450,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "01a8777329500b86"
+      }
+    },
+    {
+      "id": "first-line",
+      "title": "The first line",
+      "purpose": "The 50 BTC row of 2009 and 2010: block rewards that have never been spent, a wall of light in the sparse early field.",
+      "kind": "sequence",
+      "movement": null,
+      "look": "Landscape",
+      "block": 972052,
+      "link": "/#b=972052&mode=map&cam=45.359,4.820,54.810,70.00,-10.00&preset=Ultra&camera.fov=40",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T05:19:21.895Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 420,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "23cad697afba8cb9"
+      }
+    },
+    {
+      "id": "towers",
+      "title": "Towers at the edge",
+      "purpose": "The rows of 10 BTC and more at the newest blocks, a skyline of few, large outputs.",
+      "kind": "sequence",
+      "movement": null,
+      "look": "Landscape",
+      "block": 972052,
+      "link": "/#b=972052&mode=map&cam=976.382,6.610,20.658,140.00,-5.00&preset=Ultra&camera.fov=40",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T05:21:34.218Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 420,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "aa9ff6cfe3112536"
+      }
+    },
+    {
+      "id": "dust-ridge",
+      "title": "The ridge",
+      "purpose": "The dense rows of a few hundred to a thousand satoshis, created since 2023.",
+      "kind": "sequence",
+      "movement": null,
+      "look": "Landscape",
+      "block": 972052,
+      "link": "/#b=972052&mode=map&cam=871.217,23.474,150.783,135.00,-28.00&preset=Ultra&camera.fov=40",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T05:26:23.493Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 420,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "ec4bf0a1024e7ef1"
+      }
+    },
+    {
+      "id": "seventeen-years",
+      "title": "Seventeen years",
+      "purpose": "Sampled block states from the genesis block to the newest, about 2,000 blocks apart.",
+      "kind": "sequence",
+      "movement": null,
+      "look": "Landscape",
+      "block": [
+        0,
+        972052
+      ],
+      "link": "/#b=0&mode=map&cam=669.352,161.081,479.658,22.00,-22.00&preset=Ultra",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T05:29:00.586Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 480,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "00a238b31143d9a1"
+      }
+    },
+    {
+      "id": "ridge-rises",
+      "title": "The ridge rises",
+      "purpose": "Sampled block states, 2023 into 2024: the rows of a few hundred satoshis fill.",
+      "kind": "sequence",
+      "movement": null,
+      "look": "Landscape",
+      "block": [
+        770000,
+        835000
+      ],
+      "link": "/#b=770000&mode=map&cam=835.759,22.476,224.616,40.00,-22.00&preset=Ultra",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T05:31:30.729Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 360,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "70d9e8c3ee10dfc4"
+      }
+    },
+    {
+      "id": "day",
+      "title": "A day over the field",
+      "purpose": "Time of day from sunrise to night over the same view; the data does not change.",
+      "kind": "sequence",
+      "movement": null,
+      "look": "Landscape",
+      "block": 972052,
+      "link": "/#b=972052&mode=map&cam=1027.065,33.266,157.527,70.00,-12.00&preset=Ultra&color.fog=5a3f3a&light.sunAzimuth=290&light.sunElevation=9&light.sunIntensity=4.5&light.sunColor=ffc78a&light.skyColor=f6d6b8&light.groundColor=3a2e28&light.ambient=0.5&light.stars=0",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T05:34:40.126Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 420,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "61d647a33f8fc884"
+      }
+    },
+    {
+      "id": "earth",
+      "title": "Earth",
+      "purpose": "The Earth look: the same data as an atlas, sea to the horizon.",
+      "kind": "sequence",
+      "movement": null,
+      "look": "Earth",
+      "block": 972052,
+      "link": "/#b=972052&mode=map&cam=887.108,72.577,332.987,40.00,-14.00&preset=Ultra&look=Earth",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T05:37:06.358Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 420,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "a181615e3750a04d"
+      }
+    },
+    {
+      "id": "still-field",
+      "title": "Field",
+      "purpose": null,
+      "kind": "still",
+      "movement": null,
+      "look": "Landscape",
+      "block": 969652,
+      "link": "/#b=969652&mode=map&cam=1070.759,57.884,82.899,96.00,-16.00&preset=Ultra&camera.fov=40",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T06:34:27.488Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 1,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "af21fde2a6c4b91b"
+      }
+    },
+    {
+      "id": "still-strata",
+      "title": "Strata from above",
+      "purpose": null,
+      "kind": "still",
+      "movement": null,
+      "look": "Landscape",
+      "block": 969652,
+      "link": "/#b=969652&mode=map&cam=950.000,69.989,95.222,0.00,-89.00&preset=Ultra",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T05:37:10.236Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 1,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "0ce9f7d01756e126"
+      }
+    },
+    {
+      "id": "still-cell",
+      "title": "A cell",
+      "purpose": "The column of the film seen from beyond the newest block, above the field against the sky.",
+      "kind": "still",
+      "movement": null,
+      "look": "Landscape",
+      "block": 969652,
+      "link": "/#b=969652&mode=map&cam=973.919,7.150,80.050,94.00,-2.00&preset=Ultra",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T06:34:29.982Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 1,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "cc824422a4dcc9be"
+      }
+    },
+    {
+      "id": "still-change",
+      "title": "After 1,200 blocks",
+      "purpose": "The last frame of Time: the cell holds 94 outputs; new columns stand to its right.",
+      "kind": "still",
+      "movement": null,
+      "look": "Landscape",
+      "block": 970852,
+      "link": "/#b=970852&mode=map&cam=969.092,7.733,84.065,-12.00,-2.00&preset=Ultra",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T06:34:30.853Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 1,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "f9aa4730e7984ffc"
+      }
+    },
+    {
+      "id": "still-count",
+      "title": "Outputs per cell",
+      "purpose": null,
+      "kind": "still",
+      "movement": null,
+      "look": "Landscape",
+      "block": 970852,
+      "link": "/#b=970852&mode=map&cam=983.123,22.371,155.513,30.00,-24.00&preset=Ultra&color.measure=count&color.whiteHot=0&amp.measure=count",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T06:34:31.906Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 1,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "1ccdea3cb46aceaf"
+      }
+    },
+    {
+      "id": "still-value",
+      "title": "BTC per cell",
+      "purpose": null,
+      "kind": "still",
+      "movement": null,
+      "look": "Landscape",
+      "block": 970852,
+      "link": "/#b=970852&mode=map&cam=983.123,22.371,155.513,30.00,-24.00&preset=Ultra&color.measure=value&color.offset=1&color.upper=2000&color.whiteHot=0&amp.measure=count",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T06:34:34.300Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 1,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "31761c72f4abd664"
+      }
+    },
+    {
+      "id": "still-first-line",
+      "title": "The first line",
+      "purpose": null,
+      "kind": "still",
+      "movement": null,
+      "look": "Landscape",
+      "block": 972052,
+      "link": "/#b=972052&mode=map&cam=142.383,28.472,84.079,55.00,-24.00&preset=Ultra",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T05:37:16.459Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 1,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "d418d521ff5e5835"
+      }
+    },
+    {
+      "id": "still-towers",
+      "title": "Towers at the edge",
+      "purpose": null,
+      "kind": "still",
+      "movement": null,
+      "look": "Landscape",
+      "block": 972052,
+      "link": "/#b=972052&mode=map&cam=976.382,6.610,28.658,140.00,-5.00&preset=Ultra",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T05:37:17.324Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 1,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "86938482815c17fd"
+      }
+    },
+    {
+      "id": "still-ridge",
+      "title": "The ridge",
+      "purpose": null,
+      "kind": "still",
+      "movement": null,
+      "look": "Landscape",
+      "block": 972052,
+      "link": "/#b=972052&mode=map&cam=891.217,23.474,150.783,135.00,-28.00&preset=Ultra",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T05:37:19.605Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 1,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "a28e351d39392fb5"
+      }
+    },
+    {
+      "id": "look-landscape",
+      "title": "Landscape",
+      "purpose": null,
+      "kind": "still",
+      "movement": null,
+      "look": "Landscape",
+      "block": 972052,
+      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&preset=Ultra",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T05:37:21.088Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 1,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "27faf183e7f2b385"
+      }
+    },
+    {
+      "id": "look-bitcointimelapse-com",
+      "title": "BitcoinTimelapse.com",
+      "purpose": null,
+      "kind": "still",
+      "movement": null,
+      "look": "BitcoinTimelapse.com",
+      "block": 972052,
+      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&preset=Ultra&look=BitcoinTimelapse.com",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T05:37:21.716Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 1,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "d912895128003301"
+      }
+    },
+    {
+      "id": "look-daylight",
+      "title": "Daylight",
+      "purpose": null,
+      "kind": "still",
+      "movement": null,
+      "look": "Daylight",
+      "block": 972052,
+      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&preset=Ultra&look=Daylight",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T05:37:22.960Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 1,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "50f335610d30e057"
+      }
+    },
+    {
+      "id": "look-golden-hour",
+      "title": "Golden hour",
+      "purpose": null,
+      "kind": "still",
+      "movement": null,
+      "look": "Golden hour",
+      "block": 972052,
+      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&preset=Ultra&look=Golden+hour",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T05:37:25.880Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 1,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "be4905603165a4cf"
+      }
+    },
+    {
+      "id": "look-earth",
+      "title": "Earth",
+      "purpose": null,
+      "kind": "still",
+      "movement": null,
+      "look": "Earth",
+      "block": 972052,
+      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&preset=Ultra&look=Earth",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T05:37:27.121Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 1,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "3f8f468da303a6e4"
+      }
+    },
+    {
+      "id": "look-whales",
+      "title": "Whales",
+      "purpose": null,
+      "kind": "still",
+      "movement": null,
+      "look": "Whales",
+      "block": 972052,
+      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&preset=Ultra&look=Whales",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T05:37:28.558Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 1,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "6ed2833420a42cf7"
+      }
+    },
+    {
+      "id": "look-pulse",
+      "title": "Pulse",
+      "purpose": null,
+      "kind": "still",
+      "movement": null,
+      "look": "Pulse",
+      "block": 972052,
+      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&preset=Ultra&look=Pulse",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T05:37:29.979Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 1,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "b6303a80735d6f43"
+      }
+    },
+    {
+      "id": "look-outputs",
+      "title": "Outputs",
+      "purpose": null,
+      "kind": "still",
+      "movement": null,
+      "look": "Outputs",
+      "block": 972052,
+      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&preset=Ultra&look=Outputs",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T05:37:33.544Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 1,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "775ab029efe4daf8"
+      }
+    },
+    {
+      "id": "look-money-map",
+      "title": "Money map",
+      "purpose": null,
+      "kind": "still",
+      "movement": null,
+      "look": "Money map",
+      "block": 972052,
+      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&preset=Ultra&look=Money+map",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T05:37:35.115Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 1,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "8f24f7ab8ca063df"
+      }
+    },
+    {
+      "id": "look-linear",
+      "title": "Linear",
+      "purpose": null,
+      "kind": "still",
+      "movement": null,
+      "look": "Linear",
+      "block": 972052,
+      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&preset=Ultra&look=Linear",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T05:37:36.781Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 1,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "48f29f4aec331beb"
+      }
+    },
+    {
+      "id": "look-paper",
+      "title": "Paper",
+      "purpose": null,
+      "kind": "still",
+      "movement": null,
+      "look": "Paper",
+      "block": 972052,
+      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&preset=Ultra&look=Paper",
+      "linkAt": 0,
+      "captured": {
+        "created": "2026-10-20T05:37:38.286Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "frames": 1,
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "fb602bcffcdbc7f0"
+      }
+    }
+  ],
+  "media": [
+    {
+      "id": "bird",
+      "kind": "clip",
+      "realtime": "bird",
+      "files": {
+        "mp4": "assets/clips/bird.mp4",
+        "poster": "assets/stills/bird-poster-1600.webp"
+      },
+      "span": [
+        0,
+        8.998
+      ],
+      "timing": {
+        "frames": 539,
+        "seconds": 8.998,
+        "fps": 59.9,
+        "maxGapMs": 50,
+        "gapsOver50ms": 1,
+        "gapsOver100ms": 0
+      },
+      "source": {
+        "file": "realtime/bird/bird.mp4",
+        "sha256": "ab70ab101d05c094d6ee5a8d0e44b74178b150fb2e199fd4cb7268cf11e6e58d"
+      },
+      "bytes": 5943262
+    },
+    {
+      "id": "cell",
+      "kind": "clip",
+      "scene": "cell",
+      "files": {
+        "mp4": "assets/clips/cell.mp4",
+        "poster": "assets/stills/cell-poster-1600.webp"
+      },
+      "span": [
+        0,
+        14
+      ],
+      "posterAt": 9,
+      "source": {
+        "file": "capture/cell/cell.mp4",
+        "sha256": "59b196d67a737ddd94e4e7223f7d3ca4c7ed204f16cad71df61bb61c4a00b4b2"
+      },
+      "bytes": 3315368
+    },
+    {
+      "id": "day",
+      "kind": "clip",
+      "scene": "day",
+      "files": {
+        "mp4": "assets/clips/day.mp4",
+        "poster": "assets/stills/day-poster-1600.webp"
+      },
+      "span": [
+        0,
+        14
+      ],
+      "posterAt": 9,
+      "source": {
+        "file": "capture/day/day.mp4",
+        "sha256": "ec5a686fa5bedf5423e043a8aae46ba13ae97ccfbdc7e6a345957c04e2b5f3be"
+      },
+      "bytes": 2315014
+    },
+    {
+      "id": "earth-poster",
+      "kind": "still",
+      "scene": "earth",
+      "files": {
+        "poster": "assets/stills/earth-poster-1600.webp"
+      },
+      "posterAt": 7,
+      "source": {
+        "file": "capture/earth/earth.mp4",
+        "sha256": "6acd8a9b194b56069a41186e2706949024618ff59f133d4bf9019a0e499efe5f"
+      },
+      "bytes": 71040
+    },
+    {
+      "id": "field",
+      "kind": "clip",
+      "scene": "field",
+      "files": {
+        "mp4": "assets/clips/field.mp4",
+        "poster": "assets/stills/field-poster-1600.webp"
+      },
+      "span": [
+        0,
+        10
+      ],
+      "posterAt": 0,
+      "source": {
+        "file": "capture/field/field.mp4",
+        "sha256": "2ecaac31f41ca44623b98953721a6f8e85f8216f9bff93286f66e8c688b85c97"
+      },
+      "bytes": 5331043
+    },
+    {
+      "id": "field-tip",
+      "kind": "clip",
+      "scene": "field-tip",
+      "files": {
+        "mp4": "assets/clips/field-tip.mp4",
+        "poster": "assets/stills/field-tip-poster-1600.webp"
+      },
+      "span": [
+        0,
+        10
+      ],
+      "posterAt": 0,
+      "source": {
+        "file": "capture/field-tip/field-tip.mp4",
+        "sha256": "86081081bd4fb3e3db03c696bf58764359d0b2f7bb3b86d8c86b215a6ce582aa"
+      },
+      "bytes": 4726280
+    },
+    {
+      "id": "field-tip-still",
+      "kind": "still",
+      "scene": "field-tip",
+      "files": {
+        "800": "assets/stills/field-tip-800.webp",
+        "1600": "assets/stills/field-tip-1600.webp",
+        "3200": "assets/stills/field-tip-3200.webp"
+      },
+      "source": {
+        "file": "capture/field-tip/frame-0000.png",
+        "sha256": "f33a4fb420e7d1c8e561b23a47c756a0425e298cad19f656bd1e34ddfef81919"
+      },
+      "bytes": 835670
+    },
+    {
+      "id": "film",
+      "kind": "film",
+      "files": {
+        "mp4": "assets/film/what-remains-1080.mp4",
+        "poster": "assets/film/poster-1600.webp",
+        "vtt": "assets/film/what-remains.vtt"
+      },
+      "source": {
+        "file": "renders/film90-4k.mp4",
+        "sha256": "c27139d138bfa2ddf5224c5af5023d3ef14feae7087899fbad7cedb1e431e75c"
+      },
+      "bytes": 22429588
+    },
+    {
+      "id": "jet",
+      "kind": "clip",
+      "realtime": "jet",
+      "files": {
+        "mp4": "assets/clips/jet.mp4",
+        "poster": "assets/stills/jet-poster-1600.webp"
+      },
+      "span": [
+        0.3,
+        6.8
+      ],
+      "timing": {
+        "frames": 498,
+        "seconds": 8.399,
+        "fps": 59.29,
+        "maxGapMs": 109,
+        "gapsOver50ms": 1,
+        "gapsOver100ms": 1
+      },
+      "source": {
+        "file": "realtime/jet/jet.mp4",
+        "sha256": "21bd2e84bb8856f8dec44d69f6128ecb38ee3e666b3bd191d93ee033e8ecb73c"
+      },
+      "bytes": 6836992
+    },
+    {
+      "id": "look-bitcointimelapse-com",
+      "kind": "still",
+      "scene": "look-bitcointimelapse-com",
+      "files": {
+        "800": "assets/stills/look-bitcointimelapse-com-800.webp",
+        "1600": "assets/stills/look-bitcointimelapse-com-1600.webp",
+        "3200": "assets/stills/look-bitcointimelapse-com-3200.webp"
+      },
+      "source": {
+        "file": "capture/look-bitcointimelapse-com/look-bitcointimelapse-com.png",
+        "sha256": "1a98aff9dc31339bd3db33b74fea0349415a75ef6d656263aadadfac1d51e766"
+      },
+      "bytes": 1579358
+    },
+    {
+      "id": "look-daylight",
+      "kind": "still",
+      "scene": "look-daylight",
+      "files": {
+        "800": "assets/stills/look-daylight-800.webp",
+        "1600": "assets/stills/look-daylight-1600.webp",
+        "3200": "assets/stills/look-daylight-3200.webp"
+      },
+      "source": {
+        "file": "capture/look-daylight/look-daylight.png",
+        "sha256": "336e3830cc42d4477843dd0a201a70228ac6b3acdbe63621ef88b100147db7cb"
+      },
+      "bytes": 1022384
+    },
+    {
+      "id": "look-earth",
+      "kind": "still",
+      "scene": "look-earth",
+      "files": {
+        "800": "assets/stills/look-earth-800.webp",
+        "1600": "assets/stills/look-earth-1600.webp",
+        "3200": "assets/stills/look-earth-3200.webp"
+      },
+      "source": {
+        "file": "capture/look-earth/look-earth.png",
+        "sha256": "585cf59db06cf6138e422ba2a543a7365fa6edafdfce25acee9228affc7e5919"
+      },
+      "bytes": 910688
+    },
+    {
+      "id": "look-golden-hour",
+      "kind": "still",
+      "scene": "look-golden-hour",
+      "files": {
+        "800": "assets/stills/look-golden-hour-800.webp",
+        "1600": "assets/stills/look-golden-hour-1600.webp",
+        "3200": "assets/stills/look-golden-hour-3200.webp"
+      },
+      "source": {
+        "file": "capture/look-golden-hour/look-golden-hour.png",
+        "sha256": "c0d6128ffcbd73787a475fdf7556e627e62a1a97103d880b5432e8e0d052a2c1"
+      },
+      "bytes": 1078122
+    },
+    {
+      "id": "look-landscape",
+      "kind": "still",
+      "scene": "look-landscape",
+      "files": {
+        "800": "assets/stills/look-landscape-800.webp",
+        "1600": "assets/stills/look-landscape-1600.webp",
+        "3200": "assets/stills/look-landscape-3200.webp"
+      },
+      "source": {
+        "file": "capture/look-landscape/look-landscape.png",
+        "sha256": "b4f7fc7c5e3abc810961b1b9ce315b437f304fa62963d2a397aeb2fefd3c7c2b"
+      },
+      "bytes": 1168368
+    },
+    {
+      "id": "look-linear",
+      "kind": "still",
+      "scene": "look-linear",
+      "files": {
+        "800": "assets/stills/look-linear-800.webp",
+        "1600": "assets/stills/look-linear-1600.webp",
+        "3200": "assets/stills/look-linear-3200.webp"
+      },
+      "source": {
+        "file": "capture/look-linear/look-linear.png",
+        "sha256": "5d1307737870b21ec52f2661c6aea17d1e999840e39a079dc10e40ea418fcef0"
+      },
+      "bytes": 1646296
+    },
+    {
+      "id": "look-money-map",
+      "kind": "still",
+      "scene": "look-money-map",
+      "files": {
+        "800": "assets/stills/look-money-map-800.webp",
+        "1600": "assets/stills/look-money-map-1600.webp",
+        "3200": "assets/stills/look-money-map-3200.webp"
+      },
+      "source": {
+        "file": "capture/look-money-map/look-money-map.png",
+        "sha256": "368b001b942638639fdfd74fa01b22c0274e30fbe6e0be8f0533d00d0f8721e0"
+      },
+      "bytes": 1052988
+    },
+    {
+      "id": "look-outputs",
+      "kind": "still",
+      "scene": "look-outputs",
+      "files": {
+        "800": "assets/stills/look-outputs-800.webp",
+        "1600": "assets/stills/look-outputs-1600.webp",
+        "3200": "assets/stills/look-outputs-3200.webp"
+      },
+      "source": {
+        "file": "capture/look-outputs/look-outputs.png",
+        "sha256": "083f7c4714c65374688cd8b1066277c12078a94c2a19310d0b1350e63f0454f1"
+      },
+      "bytes": 1229704
+    },
+    {
+      "id": "look-paper",
+      "kind": "still",
+      "scene": "look-paper",
+      "files": {
+        "800": "assets/stills/look-paper-800.webp",
+        "1600": "assets/stills/look-paper-1600.webp",
+        "3200": "assets/stills/look-paper-3200.webp"
+      },
+      "source": {
+        "file": "capture/look-paper/look-paper.png",
+        "sha256": "0c1d18a7f163ac3c514a255cc7ba25ef53077a7d33d22b5e738e5cf55ec617aa"
+      },
+      "bytes": 1354126
+    },
+    {
+      "id": "look-pulse",
+      "kind": "still",
+      "scene": "look-pulse",
+      "files": {
+        "800": "assets/stills/look-pulse-800.webp",
+        "1600": "assets/stills/look-pulse-1600.webp",
+        "3200": "assets/stills/look-pulse-3200.webp"
+      },
+      "source": {
+        "file": "capture/look-pulse/look-pulse.png",
+        "sha256": "645c93df959d07b0c1c3329d41ad69d1e4b5ff19dec704f2dfe1ae4d828b8e2a"
+      },
+      "bytes": 1540700
+    },
+    {
+      "id": "look-whales",
+      "kind": "still",
+      "scene": "look-whales",
+      "files": {
+        "800": "assets/stills/look-whales-800.webp",
+        "1600": "assets/stills/look-whales-1600.webp",
+        "3200": "assets/stills/look-whales-3200.webp"
+      },
+      "source": {
+        "file": "capture/look-whales/look-whales.png",
+        "sha256": "e9bc0435474962308e12252f570ed8bcf80d8e4d7207f09143f05a90fdd69b5c"
+      },
+      "bytes": 693550
+    },
+    {
+      "id": "plane",
+      "kind": "clip",
+      "realtime": "plane",
+      "files": {
+        "mp4": "assets/clips/plane.mp4",
+        "poster": "assets/stills/plane-poster-1600.webp"
+      },
+      "span": [
+        0,
+        9.999
+      ],
+      "timing": {
+        "frames": 598,
+        "seconds": 9.999,
+        "fps": 59.81,
+        "maxGapMs": 62,
+        "gapsOver50ms": 1,
+        "gapsOver100ms": 0
+      },
+      "source": {
+        "file": "realtime/plane/plane.mp4",
+        "sha256": "111a2123a80f22a3c584359a1ce75f50e0c2f3d0b8a4313bd5b84695ec9e64d7"
+      },
+      "bytes": 7848400
+    },
+    {
+      "id": "readings",
+      "kind": "clip",
+      "scene": "readings-count",
+      "files": {
+        "mp4": "assets/clips/readings.mp4",
+        "poster": "assets/stills/readings-poster-1600.webp"
+      },
+      "edit": "readings-count 0-6 s, crossfade 5-6 s to readings-value 5-11 s",
+      "source": {
+        "file": [
+          "capture/readings-count/readings-count.mp4",
+          "capture/readings-value/readings-value.mp4"
+        ],
+        "sha256": [
+          "c6fb7250126900e1225772caa9df72b0ec6a92d229a54f7164b27a50fcf6e4ae",
+          "60363e8259f18562be6351d47cc011ed547235085b4db5fb0af224ddc78bab4d"
+        ]
+      },
+      "bytes": 3121660
+    },
+    {
+      "id": "return",
+      "kind": "clip",
+      "scene": "return",
+      "files": {
+        "mp4": "assets/clips/return.mp4",
+        "poster": "assets/stills/return-poster-1600.webp"
+      },
+      "span": [
+        0,
+        12
+      ],
+      "posterAt": 10,
+      "source": {
+        "file": "capture/return/return.mp4",
+        "sha256": "aaeaa7130d42f02cc6db3add2d921e4ae2223cc17559f37cf5a6be7e36696d2b"
+      },
+      "bytes": 5554316
+    },
+    {
+      "id": "ridge-rises-poster",
+      "kind": "still",
+      "scene": "ridge-rises",
+      "files": {
+        "poster": "assets/stills/ridge-rises-poster-1600.webp"
+      },
+      "posterAt": 11.5,
+      "source": {
+        "file": "capture/ridge-rises/ridge-rises.mp4",
+        "sha256": "47233c91b412215d3a493e9080c8a0fd4780f2914615e91acd4df34bceacb6a5"
+      },
+      "bytes": 137084
+    },
+    {
+      "id": "seventeen-years",
+      "kind": "clip",
+      "scene": "seventeen-years",
+      "files": {
+        "mp4": "assets/clips/seventeen-years.mp4",
+        "poster": "assets/stills/seventeen-years-poster-1600.webp"
+      },
+      "span": [
+        0,
+        16
+      ],
+      "posterAt": 15.5,
+      "source": {
+        "file": "capture/seventeen-years/seventeen-years.mp4",
+        "sha256": "5f3771a5805eeade39b1960bb9c909a9f1a9d9a8f4f3302bee305aa311b4dc45"
+      },
+      "bytes": 1054446
+    },
+    {
+      "id": "stack-sats",
+      "kind": "clip",
+      "realtime": "stack-sats",
+      "files": {
+        "mp4": "assets/clips/stack-sats.mp4",
+        "poster": "assets/stills/stack-sats-poster-1600.webp"
+      },
+      "span": [
+        0.4,
+        13.45
+      ],
+      "timing": {
+        "frames": 787,
+        "seconds": 13.45,
+        "fps": 58.51,
+        "maxGapMs": 250,
+        "gapsOver50ms": 2,
+        "gapsOver100ms": 1
+      },
+      "source": {
+        "file": "realtime/stack-sats/stack-sats.mp4",
+        "sha256": "5966e79df7c99a6ea64e4d883e853c0af37e2ddeff09d9c978aa2e95da6e87b2"
+      },
+      "bytes": 7314702
+    },
+    {
+      "id": "still-cell",
+      "kind": "still",
+      "scene": "still-cell",
+      "files": {
+        "800": "assets/stills/still-cell-800.webp",
+        "1600": "assets/stills/still-cell-1600.webp",
+        "3200": "assets/stills/still-cell-3200.webp"
+      },
+      "source": {
+        "file": "capture/still-cell/still-cell.png",
+        "sha256": "dbd705b4cb332c17f13b07d7604bb05f121d7410a065fe329e4b972d6a5127d2"
+      },
+      "bytes": 350360
+    },
+    {
+      "id": "still-change",
+      "kind": "still",
+      "scene": "still-change",
+      "files": {
+        "800": "assets/stills/still-change-800.webp",
+        "1600": "assets/stills/still-change-1600.webp",
+        "3200": "assets/stills/still-change-3200.webp"
+      },
+      "source": {
+        "file": "capture/still-change/still-change.png",
+        "sha256": "014137c927840acd725ee944c2f8c0d454dc313f045d3c4b5d9d857dc31c89bc"
+      },
+      "bytes": 201818
+    },
+    {
+      "id": "still-count",
+      "kind": "still",
+      "scene": "still-count",
+      "files": {
+        "800": "assets/stills/still-count-800.webp",
+        "1600": "assets/stills/still-count-1600.webp",
+        "3200": "assets/stills/still-count-3200.webp"
+      },
+      "source": {
+        "file": "capture/still-count/still-count.png",
+        "sha256": "dd2c84238df2ec7c9b65f83e733b620d4536f7d56a2f955e8e4a9cebf11a422f"
+      },
+      "bytes": 618990
+    },
+    {
+      "id": "still-field",
+      "kind": "still",
+      "scene": "still-field",
+      "files": {
+        "800": "assets/stills/still-field-800.webp",
+        "1600": "assets/stills/still-field-1600.webp",
+        "3200": "assets/stills/still-field-3200.webp"
+      },
+      "source": {
+        "file": "capture/still-field/still-field.png",
+        "sha256": "a579d64350d524d7c757104beeec29635f36dbae5eff77216c711155a73b6abc"
+      },
+      "bytes": 788870
+    },
+    {
+      "id": "still-first-line",
+      "kind": "still",
+      "scene": "still-first-line",
+      "files": {
+        "800": "assets/stills/still-first-line-800.webp",
+        "1600": "assets/stills/still-first-line-1600.webp",
+        "3200": "assets/stills/still-first-line-3200.webp"
+      },
+      "source": {
+        "file": "capture/still-first-line/still-first-line.png",
+        "sha256": "f2b753998894e7a087ce3d2150880ad62f0105f494b723f5eac9f9f4ad38a0f8"
+      },
+      "bytes": 539382
+    },
+    {
+      "id": "still-ridge",
+      "kind": "still",
+      "scene": "still-ridge",
+      "files": {
+        "800": "assets/stills/still-ridge-800.webp",
+        "1600": "assets/stills/still-ridge-1600.webp",
+        "3200": "assets/stills/still-ridge-3200.webp"
+      },
+      "source": {
+        "file": "capture/still-ridge/still-ridge.png",
+        "sha256": "6b1699f748da82b51abb67ee271dccd3c7e0cf9fbf35c9c2b10e51a58cc6cd9f"
+      },
+      "bytes": 1195908
+    },
+    {
+      "id": "still-strata",
+      "kind": "still",
+      "scene": "still-strata",
+      "files": {
+        "800": "assets/stills/still-strata-800.webp",
+        "1600": "assets/stills/still-strata-1600.webp",
+        "3200": "assets/stills/still-strata-3200.webp"
+      },
+      "source": {
+        "file": "capture/still-strata/still-strata.png",
+        "sha256": "48bcf311188895d4ebb0f56706bb41c007b3221087f1fa387adebb02ebb42bc3"
+      },
+      "bytes": 1158998
+    },
+    {
+      "id": "still-towers",
+      "kind": "still",
+      "scene": "still-towers",
+      "files": {
+        "800": "assets/stills/still-towers-800.webp",
+        "1600": "assets/stills/still-towers-1600.webp",
+        "3200": "assets/stills/still-towers-3200.webp"
+      },
+      "source": {
+        "file": "capture/still-towers/still-towers.png",
+        "sha256": "fa4a941c828920f790531c8a71a540c8f3c00ed50fe2e57b3da70008c4d33c3b"
+      },
+      "bytes": 196694
+    },
+    {
+      "id": "still-value",
+      "kind": "still",
+      "scene": "still-value",
+      "files": {
+        "800": "assets/stills/still-value-800.webp",
+        "1600": "assets/stills/still-value-1600.webp",
+        "3200": "assets/stills/still-value-3200.webp"
+      },
+      "source": {
+        "file": "capture/still-value/still-value.png",
+        "sha256": "948152c109aef52bb7e04dd898a14a2735be08d18f7245db9a57ec597f93757c"
+      },
+      "bytes": 824964
+    },
+    {
+      "id": "strata",
+      "kind": "clip",
+      "scene": "strata",
+      "files": {
+        "mp4": "assets/clips/strata.mp4",
+        "poster": "assets/stills/strata-poster-1600.webp"
+      },
+      "span": [
+        0,
+        14
+      ],
+      "posterAt": 6.5,
+      "source": {
+        "file": "capture/strata/strata.mp4",
+        "sha256": "74c4d95803f82ec2d762a477a01b57448ca0ec9cd7904288bc20736f031269f1"
+      },
+      "bytes": 6561667
+    },
+    {
+      "id": "time",
+      "kind": "clip",
+      "scene": "time",
+      "files": {
+        "mp4": "assets/clips/time.mp4",
+        "poster": "assets/stills/time-poster-1600.webp"
+      },
+      "span": [
+        0,
+        20
+      ],
+      "posterAt": 0,
+      "source": {
+        "file": "capture/time/time.mp4",
+        "sha256": "8c6debabd0ad21b2fb9eeef63a31c958427436bbdcd629236de3792496223b5e"
+      },
+      "bytes": 1634296
+    },
+    {
+      "id": "ui-app",
+      "kind": "still",
+      "realtime": "ui-app",
+      "files": {
+        "800": "assets/stills/ui-app-800.webp",
+        "1600": "assets/stills/ui-app-1600.webp"
+      },
+      "source": {
+        "file": "realtime/ui-app/ui-app.png",
+        "sha256": "bc160c38bca8e4b034ebdf08f5b33601fd34b882baa2cd1b3ba17a895f9d0c20"
+      },
+      "bytes": 88406
+    },
+    {
+      "id": "ui-inspector",
+      "kind": "still",
+      "realtime": "ui-inspector",
+      "files": {
+        "800": "assets/stills/ui-inspector-800.webp",
+        "1600": "assets/stills/ui-inspector-1600.webp"
+      },
+      "source": {
+        "file": "realtime/ui-inspector/ui-inspector.png",
+        "sha256": "d0d0b6eb76187aae430a5e888b28eebcf1f316c5fa5f6f700a9f16f429bb7a66"
+      },
+      "bytes": 131208
+    },
+    {
+      "id": "ui-phone",
+      "kind": "still",
+      "realtime": "ui-phone",
+      "files": {
+        "800": "assets/stills/ui-phone-800.webp",
+        "1600": "assets/stills/ui-phone-1600.webp"
+      },
+      "source": {
+        "file": "realtime/ui-phone/ui-phone.png",
+        "sha256": "e9425abff2162e0fa81e3b0e3c9b7f6607783d216b3b27e4ec13178ad711badf"
+      },
+      "bytes": 336078
+    },
+    {
+      "id": "ui-settings",
+      "kind": "still",
+      "realtime": "ui-settings",
+      "files": {
+        "800": "assets/stills/ui-settings-800.webp",
+        "1600": "assets/stills/ui-settings-1600.webp"
+      },
+      "source": {
+        "file": "realtime/ui-settings/ui-settings.png",
+        "sha256": "2c51b0f30b7c3d54bcee12e69d2ef8287f2964befb3425543756ac21b732a83d"
+      },
+      "bytes": 107128
+    }
+  ],
+  "provenanceNote": "source.file identifies offline production inputs; these source recordings and production files are not included in the website release."
+}

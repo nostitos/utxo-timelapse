@@ -79,3 +79,6 @@ diagnostics/
 # Curated, compact guide media are intentionally versioned
 !site/assets/clips/*.mp4
 !site/assets/clips/*.webm
+
+# Media used directly by the Bitcoin Landscape guide
+!landscape/web/guide/assets/**/*.mp4

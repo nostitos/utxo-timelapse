@@ -7,6 +7,7 @@
 | Path | Source |
 |---|---|
 | `/` and the app files | Workers Static Assets from `landscape/web`; `landscape/web/.assetsignore` leaves out `dev/`. |
+| `/guide/` | The guide, *What remains* (`landscape/web/guide/`), from the same static assets. Its films and previews (`.mp4`, `.webm`, `.m4a`, `.mp3`, `.vtt`) answer single byte ranges, 304 and HEAD with the security headers. The guide's HTML is `no-cache`; its other files are cached for an hour. |
 | `/dataset/index.json` | Names the current dataset (`src/release.js`). The app reads it on startup. |
 | `/dataset/<id>/<file>` | R2 objects `landscape/<id>/<file>`, only for the ids in `src/release.js` and the dataset's file names. Single byte ranges, ETag and 304, immutable caching, CORS `*`, and an edge cache for whole objects and ranges up to 8 MiB. |
 | `/api/landscape/cell?block&col&row` | The inspector's history index: the lifecycle of one landscape cell from the 2D explorer's history shards, through the shared `lifecycleJson` in `../utxo-video-worker/src/history.js`. Satoshi ranges come from the dataset's `rows.bin`, the compiled row table, so they equal the native explorer's on every row. Rate limit 8 requests/s, burst 20, per IP and isolate; cached 24 h per release. |

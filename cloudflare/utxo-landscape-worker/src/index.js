@@ -274,17 +274,107 @@ async function cachedCell(request, env, ctx, url) {
 
 function assetCacheControl(pathname, contentType) {
   if (/^text\/html/.test(contentType || '') || pathname === '/' || pathname.endsWith('/')) return 'no-cache';
+  if (pathname.startsWith('/guide/')) return 'public, max-age=3600';
   if (pathname === '/og.jpg' || pathname === '/favicon.svg') return 'public, max-age=86400';
   return 'public, max-age=0, must-revalidate';
 }
 
-async function serveAsset(request, env) {
-  const response = await env.ASSETS.fetch(request);
+function assetResponse(response, pathname) {
   const headers = securityHeaders(new Headers(response.headers));
   if (response.status === 200 || response.status === 304) {
-    headers.set('Cache-Control', assetCacheControl(new URL(request.url).pathname, response.headers.get('Content-Type')));
+    headers.set('Cache-Control', assetCacheControl(pathname, response.headers.get('Content-Type')));
   }
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+async function serveAsset(request, env) {
+  return assetResponse(await env.ASSETS.fetch(request), new URL(request.url).pathname);
+}
+
+// Guide media (<video>, <audio>, <track>): Workers Static Assets ignores Range, and Safari only
+// plays a <video> whose server answers byte ranges with 206, so the Worker slices these itself.
+const GUIDE_MEDIA = /^\/guide\/.+\.(?:mp4|webm|m4a|mp3|vtt)$/i;
+
+/** Passes bytes [offset, offset + length) of a byte stream through, dropping the rest. */
+function byteSlice(offset, length) {
+  let skip = offset;
+  let left = length;
+  return new TransformStream({
+    transform(chunk, controller) {
+      const bytes = chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk);
+      if (left <= 0) return;
+      let start = 0;
+      if (skip > 0) {
+        if (bytes.byteLength <= skip) { skip -= bytes.byteLength; return; }
+        start = skip;
+        skip = 0;
+      }
+      const end = Math.min(bytes.byteLength, start + left);
+      controller.enqueue(bytes.subarray(start, end));
+      left -= end - start;
+      if (left <= 0) controller.terminate();
+    },
+  });
+}
+
+async function serveGuideMedia(request, env, pathname) {
+  // Fetch the whole asset unconditionally; the ranges and validators are answered here.
+  const upstream = new Headers(request.headers);
+  for (const name of ['Range', 'If-Range', 'If-None-Match', 'If-Modified-Since']) upstream.delete(name);
+  const asset = await env.ASSETS.fetch(new Request(request.url, { method: 'GET', headers: upstream, redirect: 'manual' }));
+  if (asset.status !== 200) return assetResponse(asset, pathname);
+
+  const declared = asset.headers.get('Content-Length');
+  const streamable = !asset.headers.has('Content-Encoding') && declared !== null && /^\d+$/.test(declared);
+  let buffered = null;
+  let size;
+  if (streamable) size = Number(declared);
+  else {
+    buffered = new Uint8Array(await asset.arrayBuffer());
+    size = buffered.byteLength;
+  }
+  const drop = () => { if (!buffered && asset.body) asset.body.cancel().catch(() => {}); };
+
+  const etag = asset.headers.get('ETag');
+  const headers = new Headers(asset.headers);
+  for (const name of ['Content-Length', 'Content-Encoding', 'Content-Range', 'Transfer-Encoding']) headers.delete(name);
+  headers.set('Accept-Ranges', 'bytes');
+  headers.set('Cache-Control', assetCacheControl(pathname, headers.get('Content-Type')));
+  const reply = (status, body) => new Response(body, { status, headers: securityHeaders(headers) });
+
+  if (etag && etagMatches(request.headers.get('If-None-Match'), etag)) {
+    drop();
+    return reply(304, null);
+  }
+  // Range only applies to GET. HEAD reports the complete representation even if the
+  // caller supplied a valid or unsatisfiable range (RFC 9110 section 14.2).
+  let rangeHeader = request.method === 'GET' ? request.headers.get('Range') : null;
+  const ifRange = request.headers.get('If-Range');
+  // If-Range needs a strong match (RFC 9110 13.1.5); a date or a stale ETag gets the whole file.
+  if (rangeHeader && ifRange !== null && !(etag && !etag.startsWith('W/') && ifRange.trim() === etag)) rangeHeader = null;
+  const range = parseRange(rangeHeader, size);
+  if (range === undefined) {
+    drop();
+    return respond(null, 416, { 'Content-Range': 'bytes */' + size, 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store' });
+  }
+  if (range) headers.set('Content-Range', 'bytes ' + range.offset + '-' + (range.offset + range.length - 1) + '/' + size);
+  headers.set('Content-Length', String(range ? range.length : size));
+  const status = range ? 206 : 200;
+  if (request.method === 'HEAD') {
+    drop();
+    return reply(status, null);
+  }
+  if (buffered) return reply(status, range ? buffered.subarray(range.offset, range.offset + range.length) : buffered);
+  if (!range) return reply(status, asset.body);
+  const sliced = asset.body.pipeThrough(byteSlice(range.offset, range.length));
+  // A transformed stream has no known length; FixedLengthStream (Workers runtime) makes the
+  // response carry the exact Content-Length a 206 needs instead of chunked encoding.
+  if (typeof FixedLengthStream === 'function') {
+    const fixed = new FixedLengthStream(range.length);
+    sliced.pipeTo(fixed.writable).catch(() => {});
+    return reply(status, fixed.readable);
+  }
+  return reply(status, sliced);
 }
 
 // ---- router -------------------------------------------------------------------------------
@@ -322,6 +412,7 @@ export async function handle(request, env, ctx) {
     return cachedCell(request, env, ctx, url);
   }
   if (path.startsWith('/api/')) return json({ error: 'not found' }, 404);
+  if (GUIDE_MEDIA.test(path)) return serveGuideMedia(request, env, path);
   return serveAsset(request, env);
 }
 
