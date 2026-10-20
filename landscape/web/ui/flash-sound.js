@@ -50,7 +50,11 @@ export const EDGE_LEVEL = 0.35; // spends of coins created near the creation edg
 export const DENSITY_KNEE = 40; // energy a second (sum of level squared) above which loudness is compressed
 export const DENSITY_POWER = 0.4; // above the knee, 10x the energy is 4 dB louder instead of 10
 export const DENSITY_GAIN_MAX = 2; // how far voiced ticks may be raised to stand for unvoiced ones
-export const LEAD_S = 0.06; // ticks are scheduled at least this far ahead of the audio clock
+export const LEAD_S = 0.12; // ticks are scheduled this far ahead of the audio clock: frames may pause this long and the sound plays on
+export const LEAD_MAX_S = 0.4; // a pause that empties the schedule raises the lead, up to this
+export const LEAD_RELAX_S = 60; // and it eases back toward LEAD_S with this time constant while nothing runs dry
+export const MIN_LEAD_S = 0.015; // a schedule closer than this has run dry
+export const RESTART_S = 0.03; // and restarts this far ahead, then stretches its spans to win the lead back
 export const DRIFT_S = 0.2; // and at most this much further, when frames arrive faster than they play
 const ATTACK_S = 0.0002;
 const DECAYS = 3; // a tick lasts ATTACK_S + DECAYS x its band's decay (it is then 78 dB down)
@@ -58,7 +62,7 @@ const CLICK_PEAK = 0.65; // the white noise's peak before the gains
 const MIX_GAIN = 0.65;
 const MASTER_GAIN = 1.1;
 const FRAME_S_MIN = 1 / 240;
-const FRAME_S_MAX = 0.1; // the longest stretch one frame's ticks are spread over
+const FRAME_S_MAX = 0.25; // the longest stretch one frame's ticks are spread over (the first frame after a pause)
 export const TAIL_S = ATTACK_S + DECAYS * Math.max(...FLASH_BANDS.map((b) => b.decay));
 
 /** Index into FLASH_BANDS for coins 'age' blocks old. */
@@ -159,15 +163,26 @@ export function densityGain(energyRate, voicedRate) {
 
 /**
  * Where one frame's ticks go on the audio clock. cursor: the end of the previous frame's span
- * (or null); now: the context's currentTime; span: the time the frame stands for (s). Returns
- * {start, end}: the span starts at the cursor unless that fell behind now + LEAD_S (a stall: it
- * restarts there) or ran beyond now + LEAD_S + DRIFT_S (frames arriving faster: it is pulled in).
+ * (or null); now: the context's currentTime; span: the time the frame stands for (s), the time
+ * since the previous frame, so the frame after a pause fills the pause; lead: the lead to keep
+ * (LEAD_S, raised after the schedule ran dry). Returns {start, end}: the span starts at the
+ * cursor, so a pause shorter than the lead leaves no gap, unless the cursor came within MIN_LEAD_S
+ * of now (a longer pause: the clicks ran out, and they restart RESTART_S ahead) or ran beyond now +
+ * lead + DRIFT_S (it is pulled in); with no cursor (the first frame) it starts a full lead ahead.
+ * If the lead at the next frame, expected a frame later, would fall short, the span is stretched by
+ * up to a quarter to win it back; more than 10 ms beyond, it is tightened by up to a tenth.
  */
-export function frameSpan(cursor, now, span) {
-  const d = clamp(Number.isFinite(span) ? span : FRAME_S_MIN, FRAME_S_MIN, FRAME_S_MAX);
-  let start = Number.isFinite(cursor) ? cursor : now + LEAD_S;
-  if (start < now + LEAD_S) start = now + LEAD_S;
-  if (start > now + LEAD_S + DRIFT_S) start = now + LEAD_S + DRIFT_S;
+export function frameSpan(cursor, now, span, lead = LEAD_S) {
+  const d0 = clamp(Number.isFinite(span) ? span : FRAME_S_MIN, FRAME_S_MIN, FRAME_S_MAX);
+  let start;
+  if (!Number.isFinite(cursor)) start = now + lead;
+  else if (cursor < now + MIN_LEAD_S) start = now + RESTART_S;
+  else start = cursor;
+  if (start > now + lead + DRIFT_S) start = now + lead + DRIFT_S;
+  const ahead = start + d0 - now - Math.min(d0, 1 / 60); // the lead when the next frame comes, a frame from now
+  let d = d0;
+  if (ahead < lead) d = d0 + Math.min(0.25 * d0, lead - ahead);
+  else if (ahead > lead + 0.01) d = d0 - Math.min(0.1 * d0, ahead - lead - 0.01);
   return { start, end: start + d };
 }
 
@@ -291,11 +306,12 @@ export function createFlashSound({ sound, now = () => performance.now() } = {}) 
   let graph = null;
   let graphCtx = null;
   let lastSpawn = null;
-  let frameS = 1 / 60; // eased time between frames: the span one frame's ticks are spread over
+  let frameS = 1 / 60; // time since the previous frame: the span this frame's ticks are spread over
   let cursor = null; // audio time where the next frame's ticks start
+  let leadS = LEAD_S; // the lead kept: raised when a pause empties the schedule
   let lastFrame = null;
   const plan = createFlashPlanState();
-  const totals = { voices: 0, frames: 0, mainMs: 0 };
+  const totals = { voices: 0, frames: 0, mainMs: 0, dry: 0 };
   return {
     /** One frame's new flashes (render/terrain/flashes.js onSpawn) with the camera. */
     spawn(items, { block = NaN, reason = 'advance', camera = null } = {}) {
@@ -313,11 +329,20 @@ export function createFlashSound({ sound, now = () => performance.now() } = {}) 
       if (lastSpawn !== null) {
         const gap = (t - lastSpawn) / 1000;
         // A pause (paused playback, a seek) restarts the schedule instead of stretching the span.
-        if (gap > 0.5) cursor = null;
-        else frameS += (clamp(gap, FRAME_S_MIN, FRAME_S_MAX) - frameS) * 0.2;
+        if (gap > 0.5) {
+          cursor = null;
+          frameS = 1 / 60;
+        } else {
+          frameS = gap;
+          if (cursor !== null && cursor < ctx.currentTime + MIN_LEAD_S) {
+            // The clicks ran out before this frame came: keep more in hand from now on.
+            leadS = Math.min(LEAD_MAX_S, Math.max(1.5 * leadS, gap + 0.05));
+            totals.dry++;
+          } else leadS += (LEAD_S - leadS) * (1 - Math.exp(-gap / LEAD_RELAX_S));
+        }
       }
       lastSpawn = t;
-      const span = frameSpan(cursor, ctx.currentTime, frameS);
+      const span = frameSpan(cursor, ctx.currentTime, frameS, leadS);
       cursor = span.end;
       const d = span.end - span.start;
       const gain = densityGain(p.energy / d, p.voicedEnergy / d);
@@ -330,12 +355,12 @@ export function createFlashSound({ sound, now = () => performance.now() } = {}) 
       totals.frames++;
       totals.mainMs += mainMs;
       lastFrame = { block, candidates: items.length, onScreen: p.onScreen, voiced: p.voices.length, gain, maxLevel,
-        energyRate: p.energy / d, lead, mainMs, mode: graph.mode };
+        energyRate: p.energy / d, lead, leadTarget: leadS, mainMs, mode: graph.mode };
       return p;
     },
     get state() {
       const ctx = sound ? sound.context : null;
-      return { created: !!graph, mode: graph ? graph.mode : null, context: ctx ? ctx.state : null, dRef: plan.dRef, lastFrame,
+      return { created: !!graph, mode: graph ? graph.mode : null, context: ctx ? ctx.state : null, dRef: plan.dRef, lastFrame, leadTarget: leadS,
         totals: { ...totals } };
     },
   };

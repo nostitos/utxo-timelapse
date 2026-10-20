@@ -318,9 +318,16 @@ const CHECKS = [
       key('BracketRight', { key: ']' }); await sleep(400); const b1 = L.replay.block;
       key('BracketRight', { key: '}', shiftKey: true }); await sleep(800); await idle(); const b2 = L.replay.block;
       key('BracketLeft', { key: '[' }); await sleep(400); const b3 = L.replay.block;
-      key('Digit2', { key: '2' }); const speed = L.playback.state.speed; key('Digit1', { key: '1' });
+      const sel = document.querySelector('.tl-speed');
+      key('Digit2', { key: '2' }); const speed = L.playback.state.speed; await sleep(150); const shown2 = sel.value;
+      key('Digit0', { key: '0' }); const half = L.playback.state.speed; await sleep(150); const shownHalf = sel.value;
+      const bh0 = L.replay.block; key('Space', { key: ' ' }); await sleep(1000); const halfSecond = L.replay.block - bh0; key('Space', { key: ' ' }); await sleep(300); await idle();
+      sel.value = '5'; sel.dispatchEvent(new Event('change', { bubbles: true })); const picked = L.playback.state.speed;
+      out.menu = { options: [...sel.options].map((o) => o.textContent), shown2, half, shownHalf, halfSecond, picked, sameField: !!document.querySelector('.tl-where .tl-block') && !!document.querySelector('.tl-where .tl-date') };
+      key('Digit1', { key: '1' });
+      const b3b = L.replay.block;
       key('Space', { key: ' ' }); await sleep(1000); const playing = L.playback.state.playing; const b4 = L.replay.block; key('Space', { key: ' ' }); await sleep(300);
-      out.keys = { b0, b1, b2, b3, speed, playing, oneSecond: b4 - b3, paused: !L.playback.state.playing };
+      out.keys = { b0, b1, b2, b3, speed, playing, oneSecond: b4 - b3b, paused: !L.playback.state.playing };
       const bi = document.querySelector('.tl-block'); bi.focus(); bi.value = String(inData(200000)); bi.dispatchEvent(new Event('change', { bubbles: true })); await sleep(200); await idle();
       out.blockInput = { want: inData(200000), got: L.replay.block };
       const di = document.querySelector('.tl-date'); di.focus(); di.value = '2013-01-01'; di.dispatchEvent(new Event('change', { bubbles: true })); await sleep(200); await idle();
@@ -343,7 +350,11 @@ const CHECKS = [
       [']: +1 block exact', v.keys.b1 === v.keys.b0 + 1],
       ['Shift+]: +1,008 blocks', v.keys.b2 === v.keys.b1 + 1008],
       ['[: -1 block', v.keys.b3 === v.keys.b2 - 1],
-      ['2 selects 2x', v.keys.speed === '2'],
+      ['2 selects 2x and the speed menu shows it', v.keys.speed === '2' && v.menu.shown2 === '2'],
+      ['the speed menu lists ' + v.menu.options.join(', '), v.menu.options.join(',') === '0.5\u00d7,1\u00d7,2\u00d7,5\u00d7,Max'],
+      ['0 selects 0.5x: about 30 blocks/s (' + v.menu.halfSecond + ')', v.menu.half === '0.5' && v.menu.shownHalf === '0.5' && v.menu.halfSecond >= 24 && v.menu.halfSecond <= 36],
+      ['choosing 5x in the menu sets it', v.menu.picked === '5'],
+      ['the block and the date share one field', v.menu.sameField],
       ['Space plays about 60 blocks/s and pauses (' + v.keys.oneSecond + ')', v.keys.playing && v.keys.paused && v.keys.oneSecond >= 50 && v.keys.oneSecond <= 70],
       ['block input seeks exactly', v.blockInput.got === v.blockInput.want],
       ['UTC date matches the explorer /api/date (' + v.dateInput + ' vs ' + v.explorerDate + ')', v.explorerDate == null ? v.dateInput > 0 : v.dateInput === v.explorerDate],
@@ -604,7 +615,7 @@ const CHECKS = [
         v.on.pressed === 'true' && v.on.on && v.on.context === 'running' && v.on.stored === 'on' && /Sound on/.test(v.on.toast)],
       ['1x from above: ' + v.play.voices + ' ticks over ' + v.play.frames + ' frames (up to 4,000 a second), up to ' + v.play.onScreen + ' flashes on screen and ' + v.play.voiced + ' ticks in a frame, loudest ' + v.play.maxLevel.toFixed(2),
         v.play.voices >= 3000 && v.play.voices <= 8800 && v.play.onScreen > 0 && v.play.voiced <= 400 && v.play.maxLevel > 0 && v.play.maxLevel <= 1],
-      ['every frame of ticks is queued well ahead of the audio clock (closest ' + (v.play.minLead * 1000).toFixed(1) + ' ms; the schedule aims for 60)', v.play.minLead >= 0.05],
+      ['every frame of ticks is queued well ahead of the audio clock (closest ' + (v.play.minLead * 1000).toFixed(1) + ' ms; the schedule aims for 120 and goes on from 15)', v.play.minLead >= 0.015],
       ['ticks are synthesized on the audio thread (' + v.play.mode + ')', v.play.mode === 'worklet'],
       ['the reference distance follows the view: ' + (v.play.dRef || 0).toFixed(1) + ' from above, ' + (v.closeRef || 0).toFixed(1) + ' near the ground',
         v.play.dRef >= 1 && v.play.dRef <= 1000 && v.closeRef > 0 && v.closeRef < v.play.dRef * 0.75],

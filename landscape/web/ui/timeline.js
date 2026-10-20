@@ -1,10 +1,9 @@
-// Bottom timeline (landscape/SPEC.md §8): transport, speeds, scrubber with halving
-// marks, exact block input, UTC date input, and the Follow / Fly / Fun / Sound / Places /
+// Bottom timeline (landscape/SPEC.md §8): transport, the speed menu, scrubber with halving
+// marks, one field with the exact block and its UTC date (each editable), and the Follow / Fly / Fun / Sound / Places /
 // Settings / Help buttons (Follow toggles Follow tip, Fly flight mode and Sound the sound
 // switch, and all three show their state; Fun opens the Fun menu of crafts and Stack sats.
 // Fly and Fun only when onFly and onFun are given: touch-only devices leave them out).
-// On phones (app.css) the block and date inputs hide, Places and Settings show icons, and
-// narrow screens replace the speed buttons with one button that cycles through the speeds.
+// On phones (app.css) the block and date field hides and Places and Settings show icons.
 
 import { SPEEDS, STEP_LARGE, speedById, speedHint } from './playback.js';
 import { dateToBlock, parseUtc } from './time.js';
@@ -25,7 +24,6 @@ const ICONS = {
   sound: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 5.6h2.7L8 2.4v11.2L4.2 10.4H1.5z"/><path d="M10.2 5.2a3.6 3.6 0 0 1 0 5.6l-.9-1.1a2.2 2.2 0 0 0 0-3.4z"/><path d="M11.9 3a6.4 6.4 0 0 1 0 10l-.9-1.1a5 5 0 0 0 0-7.8z"/></svg>',
 };
 const HALVINGS = [210000, 420000, 630000, 840000];
-const speedLabel = (id) => (SPEEDS.find((s) => s.id === id) || { label: String(id) }).label;
 
 export function createTimeline({ container, tip, blocktimes, playback, onSeek, onNotice, onPlaces, onSettings, onHelp, onFollow = null, onFly = null, onFun = null, onSound = null }) {
   let tipBlock = tip;
@@ -37,14 +35,17 @@ export function createTimeline({ container, tip, blocktimes, playback, onSeek, o
     '<button type="button" class="tl-btn" data-act="fwd" title="Forward 1 block (])" aria-label="Forward 1 block">' + ICONS.fwd + '</button>' +
     '<button type="button" class="tl-btn" data-act="fwdLarge" title="Forward ' + fmtInt(STEP_LARGE) + ' blocks (Shift+])" aria-label="Forward ' + fmtInt(STEP_LARGE) + ' blocks">' + ICONS.fwdLarge + '</button>' +
     '</div>' +
-    '<div class="tl-speeds" role="radiogroup" aria-label="Playback speed">' +
-    SPEEDS.map((s, i) => '<button type="button" role="radio" data-speed="' + s.id + '" title="' + speedHint(s) + ' (key ' + (i + 1) + ')">' + s.label + '</button>').join('') +
-    '</div>' +
-    '<button type="button" class="tl-speedcycle" data-act="speed" title="Playback speed (1 to 4)">' + SPEEDS[0].label + '</button>' +
+    '<select class="tl-speed" aria-label="Playback speed">' +
+    SPEEDS.map((s, i) => '<option value="' + s.id + '" title="' + speedHint(s) + ' (key ' + i + ')">' + s.label + '</option>').join('') +
+    '</select>' +
     '<div class="tl-track"><div class="tl-marks" aria-hidden="true"></div>' +
     '<input type="range" class="tl-scrub" min="0" max="' + tipBlock + '" step="1" value="0" aria-label="Block (drag to scrub)"></div>' +
-    '<label class="tl-field tl-blockfield"><span>Block</span><input type="number" class="tl-block" min="0" max="' + tipBlock + '" step="1" inputmode="numeric" aria-label="Block height"></label>' +
-    '<label class="tl-field tl-datefield"><span>UTC</span><input type="text" class="tl-date" spellcheck="false" autocomplete="off" placeholder="YYYY-MM-DD HH:MM" aria-label="Date and time, UTC (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)"></label>' +
+    '<div class="tl-field tl-where">' +
+    '<input type="number" class="tl-block" min="0" max="' + tipBlock + '" step="1" inputmode="numeric" aria-label="Block height" title="Block height: type one and press Enter">' +
+    '<span class="tl-sep" aria-hidden="true">\u00b7</span>' +
+    '<input type="text" class="tl-date" spellcheck="false" autocomplete="off" placeholder="YYYY-MM-DD HH:MM" aria-label="Date and time, UTC (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)" title="The block\u2019s date and time, UTC: type a date and press Enter">' +
+    '<span class="tl-utc" aria-hidden="true">UTC</span>' +
+    '</div>' +
     '<div class="tl-tools">' +
     (onFollow ? '<button type="button" class="tl-text" data-act="follow" aria-pressed="false" title="Follow the tip: the camera moves with the newest block (N)">' + ICONS.follow + '<span class="tl-label">Follow</span></button>' : '') +
     (onFly ? '<button type="button" class="tl-text" data-act="fly" aria-pressed="false" title="Fly: mouse to look, W A S D to move (F)">' + ICONS.fly + '<span class="tl-label">Fly</span></button>' : '') +
@@ -60,12 +61,11 @@ export function createTimeline({ container, tip, blocktimes, playback, onSeek, o
   const blockInput = q('.tl-block');
   const dateInput = q('.tl-date');
   const playBtn = q('[data-act="play"]');
-  const speedCycle = q('[data-act="speed"]');
+  const speedSelect = q('.tl-speed');
   const followBtn = q('[data-act="follow"]');
   const flyBtn = q('[data-act="fly"]');
   const soundBtn = q('[data-act="sound"]');
   const marks = q('.tl-marks');
-  const speedBtns = [...container.querySelectorAll('[data-speed]')];
   let dragging = false;
   let shown = { block: null, playing: null, speed: null };
 
@@ -82,10 +82,6 @@ export function createTimeline({ container, tip, blocktimes, playback, onSeek, o
     fwd: () => playback.step(1),
     backLarge: () => playback.step(-STEP_LARGE),
     fwdLarge: () => playback.step(STEP_LARGE),
-    speed: () => {
-      const i = SPEEDS.findIndex((s) => s.id === playback.state.speed);
-      playback.setSpeed(SPEEDS[(i + 1) % SPEEDS.length].id);
-    },
     places: () => onPlaces && onPlaces(q('[data-act="places"]')),
     settings: () => onSettings && onSettings(),
     help: () => onHelp && onHelp(),
@@ -97,9 +93,14 @@ export function createTimeline({ container, tip, blocktimes, playback, onSeek, o
   container.addEventListener('click', (e) => {
     const btn = e.target.closest('button');
     if (!btn || !container.contains(btn)) return;
-    if (btn.dataset.speed) playback.setSpeed(btn.dataset.speed);
-    else if (actions[btn.dataset.act]) actions[btn.dataset.act]();
+    if (actions[btn.dataset.act]) actions[btn.dataset.act]();
     btn.blur();
+  });
+
+  speedSelect.addEventListener('change', () => {
+    playback.setSpeed(speedSelect.value);
+    // Back to the page, so Space and the speed keys work again.
+    speedSelect.blur();
   });
 
   scrub.addEventListener('pointerdown', () => {
@@ -188,7 +189,7 @@ export function createTimeline({ container, tip, blocktimes, playback, onSeek, o
       if (block != null && block !== shown.block) {
         if (!dragging) scrub.value = String(block);
         if (document.activeElement !== blockInput) blockInput.value = String(block);
-        if (document.activeElement !== dateInput) dateInput.value = isoUtc(blocktimes[block], { withSeconds: true }).replace(' UTC', '');
+        if (document.activeElement !== dateInput) dateInput.value = isoUtc(blocktimes[block]).replace(' UTC', '');
         shown.block = block;
         scrub.style.setProperty('--fill', ((block / Math.max(1, tipBlock)) * 100).toFixed(3) + '%');
       }
@@ -199,10 +200,8 @@ export function createTimeline({ container, tip, blocktimes, playback, onSeek, o
         shown.playing = state.playing;
       }
       if (state && state.speed !== shown.speed) {
-        speedBtns.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.speed === state.speed)));
-        speedCycle.textContent = speedLabel(state.speed);
-        speedCycle.title = speedHint(speedById(state.speed)) + '; press for the next speed';
-        speedCycle.setAttribute('aria-label', 'Playback speed ' + speedLabel(state.speed) + ', press for the next speed');
+        speedSelect.value = speedById(state.speed).id;
+        speedSelect.title = speedHint(speedById(state.speed)) + ' (keys 0 to 4)';
         shown.speed = state.speed;
       }
     },
