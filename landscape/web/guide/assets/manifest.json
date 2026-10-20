@@ -874,19 +874,24 @@
       "kind": "clip",
       "scene": "field",
       "files": {
-        "mp4": "assets/clips/field.mp4",
+        "mp4": "assets/clips/field-complete.mp4",
         "poster": "assets/stills/field-poster-1600.webp"
       },
-      "span": [
-        0,
-        10
-      ],
       "posterAt": 0,
       "source": {
-        "file": "capture/field/field.mp4",
-        "sha256": "2ecaac31f41ca44623b98953721a6f8e85f8216f9bff93286f66e8c688b85c97"
+        "file": [
+          "capture/field/field.mp4",
+          "capture/strata/strata.mp4"
+        ],
+        "sha256": [
+          "2ecaac31f41ca44623b98953721a6f8e85f8216f9bff93286f66e8c688b85c97",
+          "74c4d95803f82ec2d762a477a01b57448ca0ec9cd7904288bc20736f031269f1"
+        ]
       },
-      "bytes": 5331043
+      "bytes": 7134475,
+      "edit": "Field frames 135-299 (4.5-10 s), then Strata frames 0-209 (0-7 s). The complete continuous rise starts after a 0.5 s hold and settles for 1.5 s at the end.",
+      "duration": 12.5,
+      "playback": "once; hold the final frame until Replay"
     },
     {
       "id": "field-tip",
@@ -1191,7 +1196,8 @@
         "file": "capture/return/return.mp4",
         "sha256": "aaeaa7130d42f02cc6db3add2d921e4ae2223cc17559f37cf5a6be7e36696d2b"
       },
-      "bytes": 5554316
+      "bytes": 5554316,
+      "playback": "once; hold the final frame until Replay"
     },
     {
       "id": "ridge-rises-poster",

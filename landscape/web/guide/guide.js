@@ -25,6 +25,7 @@ const previews = [...document.querySelectorAll('[data-preview]')].map((el) => ({
   visible: 0,
   userPaused: false,
   userStarted: false,
+  completed: false,
 })).filter((p) => p.video && p.video.dataset.src);
 
 let current = null;
@@ -41,6 +42,8 @@ function setPressed(p, on) {
 }
 
 function play(p) {
+  // A finished, non-looping preview stays on its last frame until an explicit replay.
+  if (p.completed) return;
   if (current && current !== p) stop(current);
   current = p;
   const v = p.video;
@@ -85,7 +88,7 @@ function choose() {
   if (!autoplayAllowed()) return;
   let best = null;
   for (const p of previews) {
-    if (p.userPaused || p.visible < MOSTLY) continue;
+    if (p.completed || p.userPaused || p.visible < MOSTLY) continue;
     if (p.afterLoad && !pageLoaded) continue;
     if (!best || p.visible > best.visible) best = p;
   }
@@ -95,6 +98,14 @@ function choose() {
 if (previews.length) {
   for (const p of previews) {
     p.video.addEventListener('playing', () => p.el.classList.add('is-live'));
+    p.video.addEventListener('ended', () => {
+      p.completed = true;
+      p.userStarted = false;
+      stop(p);
+      const label = p.button?.querySelector('.motion-label');
+      if (label) label.textContent = 'Replay';
+      // Keep is-live: the video continues to display its final frame above the poster.
+    });
     p.video.addEventListener('error', () => {
       p.el.classList.remove('is-live');
       setPressed(p, false);
@@ -108,6 +119,12 @@ if (previews.length) {
           p.userStarted = false;
           stop(p);
         } else {
+          if (p.completed) {
+            p.completed = false;
+            p.video.currentTime = 0;
+            const label = p.button.querySelector('.motion-label');
+            if (label) label.textContent = 'Motion';
+          }
           p.userPaused = false;
           p.userStarted = true;
           if (current && current !== p) current.userStarted = false;
