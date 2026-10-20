@@ -197,9 +197,15 @@ function simWorker({ start, rate, seekMs = 60, net = null }) {
     w.calls.push({ kind: 'seek', block, from: w.block });
     w.job = { kind: 'seek', block, elapsed: 0, resolve };
   });
+  w.stallLeft = 0;
+  /** The worker does nothing for 'ms' (a busy main thread or worker, from the page's view). */
+  w.stall = (ms) => { w.stallLeft += ms; };
   w.run = async (ms) => {
     download(ms);
     let left = ms;
+    const idle = Math.min(left, w.stallLeft);
+    w.stallLeft -= idle;
+    left -= idle;
     while (left > 1e-6 && w.job) {
       const j = w.job;
       if (j.kind === 'seek') {
@@ -265,6 +271,20 @@ async function setup({ start, tip, rate, seekMs, snapshots = [], speed = '1', ne
   return { clock, w, pb, events, run };
 }
 
+// The simulated worker behind a client that holds frames for the playhead (replay.showThrough):
+// the block on screen is the worker's, but never past the last showThrough limit.
+function withDisplay(w) {
+  let limit = Infinity;
+  return new Proxy(w, {
+    get(t, k) {
+      if (k === 'block') return Math.min(t.block, limit);
+      if (k === 'workerBlock') return t.block;
+      if (k === 'showThrough') return (b) => { limit = b; };
+      return Reflect.get(t, k);
+    },
+  });
+}
+
 /** Visible motion from per-frame [ms, block] samples after fromMs: rate, longest still stretch, jumps. */
 function motion(samples, fromMs) {
   const s = samples.filter(([t]) => t >= fromMs);
@@ -284,6 +304,30 @@ function motion(samples, fromMs) {
     maxJump: Math.max(...jumps),
   };
 }
+
+test('exact speeds show one block a frame while the worker pauses 60 ms every 0.4 s', async () => {
+  const result = {};
+  for (const hold of [false, true]) {
+    const clock = { t: 0 };
+    const w = simWorker({ start: 300000, rate: 5000 });
+    const replay = hold ? withDisplay(w) : w;
+    const pb = createPlayback({ replay, tip: 966827, now: () => clock.t });
+    pb.play();
+    const samples = [];
+    for (let i = 0; i < 6 * 60; i++) {
+      clock.t += 1000 / 60;
+      if (i % 24 === 12) w.stall(60);
+      await w.run(1000 / 60);
+      pb.tick(1 / 60);
+      await flush();
+      samples.push([clock.t, replay.block]);
+    }
+    result[hold] = { ...motion(samples, 1000), ahead: w.block - replay.block };
+  }
+  assert.ok(result.false.longestStillMs >= 50 && result.false.maxJump >= 3, 'answered directly, the blocks pause and jump: ' + JSON.stringify(result.false));
+  assert.ok(result.true.longestStillMs <= 17 && result.true.maxJump === 1, 'held for the playhead, one block every frame: ' + JSON.stringify(result.true));
+  assert.ok(Math.abs(result.true.rate - 60) < 1.5 && result.true.ahead >= 2 && result.true.ahead <= 8, 'at 60 blocks/s, the worker a few blocks ahead: ' + JSON.stringify(result.true));
+});
 
 test('1x plays 60 exact blocks per second', async () => {
   const { w, pb, events, run } = await setup({ start: 300000, tip: 966827, rate: 5000, speed: '1' });
