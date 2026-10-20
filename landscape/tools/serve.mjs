@@ -42,6 +42,11 @@ export const MIME = Object.freeze({
   '.csv': 'text/csv; charset=utf-8',
   '.hdr': 'application/octet-stream',
   '.ktx2': 'image/ktx2',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.m4a': 'audio/mp4',
+  '.mp3': 'audio/mpeg',
+  '.vtt': 'text/vtt; charset=utf-8',
 });
 
 const DEFAULT_WEB = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'web');

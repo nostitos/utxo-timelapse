@@ -66,15 +66,40 @@ const ASSET_FILES = {
   '/main.js': ['text/javascript; charset=utf-8', 'export {};'],
   '/og.jpg': ['image/jpeg', 'jpg'],
   '/favicon.svg': ['image/svg+xml', '<svg/>'],
+  '/guide/': ['text/html; charset=utf-8', '<!doctype html><title>Guide</title>'],
+  '/guide/index.html': ['text/html; charset=utf-8', '<!doctype html><title>Guide</title>'],
+  '/guide/guide.css': ['text/css; charset=utf-8', 'body{}'],
+  '/guide/guide.js': ['text/javascript; charset=utf-8', 'export {};'],
+  // Binary media: 300 bytes, i & 255, streamed in uneven chunks with a Content-Length.
+  '/guide/assets/clips/sample.mp4': ['video/mp4', new Uint8Array(300).map((_, i) => i & 255), { chunk: 37 }],
+  // Captions without a Content-Length take the Worker's buffered path.
+  '/guide/assets/clips/sample.vtt': ['text/vtt; charset=utf-8', 'WEBVTT\n\n00:00.000 --> 00:01.000\nHello\n', { noLength: true }],
 };
+const assetRequests = [];
 const ASSETS = { async fetch(request) {
   const path = new URL(request.url).pathname;
+  assetRequests.push({ path, method: request.method, range: request.headers.get('Range'), ifRange: request.headers.get('If-Range') });
   const f = ASSET_FILES[path];
   if (!f) return new Response('Not Found', { status: 404 });
   const etag = '"a' + path.length + '"';
   const base = { ETag: etag, 'Cache-Control': 'public, max-age=0, must-revalidate' };
   if (request.headers.get('If-None-Match') === etag) return new Response(null, { status: 304, headers: base });
-  return new Response(request.method === 'HEAD' ? null : f[1], { headers: { ...base, 'Content-Type': f[0] } });
+  // Like Workers Static Assets today, Range is ignored: always the whole body.
+  const opts = f[2] || {};
+  const data = typeof f[1] === 'string' ? enc.encode(f[1]) : f[1];
+  let body = data;
+  if (opts.chunk) {
+    let at = 0;
+    body = new ReadableStream({ pull(c) {
+      if (at >= data.length) return c.close();
+      c.enqueue(data.slice(at, at + opts.chunk));
+      at += opts.chunk;
+    } });
+  }
+  const headers = { ...base, 'Content-Type': f[0] };
+  if (opts.chunk) headers['Content-Length'] = String(data.length);
+  if (opts.noLength) body = new Blob([data]).stream();
+  return new Response(request.method === 'HEAD' ? null : body, { headers });
 } };
 const env = { VIDEO_BUCKET, ASSETS };
 let pending = [];
@@ -287,6 +312,111 @@ await check('static app: headers, cache policy, 404 and 304 pass through', async
   const nm = await req('/main.js', { headers: { 'If-None-Match': '"a8"' } });
   assert.equal(nm.status, 304);
   assert.equal(nm.headers.get('Cache-Control'), 'public, max-age=0, must-revalidate');
+});
+
+const MP4 = '/guide/assets/clips/sample.mp4';
+const MP4_BYTES = ASSET_FILES[MP4][1];
+const MP4_ETAG = '"a' + MP4.length + '"';
+function mediaHeadersOk(res, what) {
+  securityHeadersOk(res, what);
+  assert.equal(res.headers.get('Cross-Origin-Resource-Policy'), 'same-origin', what + ' CORP');
+  assert.equal(res.headers.get('Accept-Ranges'), 'bytes', what + ' Accept-Ranges');
+}
+
+await check('guide pages: HTML no-cache, assets an hour, security headers', async () => {
+  for (const path of ['/guide/', '/guide/index.html']) {
+    const html = await req(path);
+    assert.equal(html.status, 200, path);
+    assert.equal(html.headers.get('Cache-Control'), 'no-cache', path);
+    securityHeadersOk(html, path);
+    assert.equal(html.headers.get('Cross-Origin-Resource-Policy'), 'same-origin', path);
+    assert.match(await html.text(), /<title>Guide/);
+  }
+  for (const path of ['/guide/guide.css', '/guide/guide.js']) {
+    const res = await req(path);
+    assert.equal(res.status, 200, path);
+    assert.equal(res.headers.get('Cache-Control'), 'public, max-age=3600', path);
+    securityHeadersOk(res, path);
+  }
+  const ranged = await req('/guide/guide.css', { headers: { Range: 'bytes=0-1' } });
+  assert.equal(ranged.status, 200, 'non-media guide assets ignore Range');
+  assert.equal(ranged.headers.get('Content-Range'), null);
+  assert.equal(await ranged.text(), 'body{}');
+  const js = await req('/main.js', { headers: { Range: 'bytes=0-1' } });
+  assert.equal(js.status, 200, 'app assets ignore Range');
+  assert.equal(await js.text(), 'export {};');
+  assert.equal((await req('/guide/missing.mp4', { headers: { Range: 'bytes=0-1' } })).status, 404);
+});
+
+await check('guide media: whole, closed, open, suffix and clamped ranges', async () => {
+  const whole = await req(MP4);
+  assert.equal(whole.status, 200);
+  mediaHeadersOk(whole, 'mp4 200');
+  assert.equal(whole.headers.get('Content-Type'), 'video/mp4');
+  assert.equal(whole.headers.get('Content-Length'), '300');
+  assert.equal(whole.headers.get('ETag'), MP4_ETAG);
+  assert.equal(whole.headers.get('Cache-Control'), 'public, max-age=3600');
+  assert.deepEqual(await bytes(whole), MP4_BYTES);
+  assetRequests.length = 0;
+  const cases = [['bytes=0-1', 0, 1], ['bytes=30-80', 30, 80], ['bytes=100-', 100, 299], ['bytes=-50', 250, 299],
+    ['bytes=290-999', 290, 299], ['bytes=-1000', 0, 299], ['bytes=37-73', 37, 73]];
+  for (const [range, a, b] of cases) {
+    const res = await req(MP4, { headers: { Range: range } });
+    assert.equal(res.status, 206, range);
+    mediaHeadersOk(res, range);
+    assert.equal(res.headers.get('Content-Range'), 'bytes ' + a + '-' + b + '/300', range);
+    assert.equal(res.headers.get('Content-Length'), String(b - a + 1), range);
+    assert.equal(res.headers.get('Content-Type'), 'video/mp4', range);
+    assert.equal(res.headers.get('ETag'), MP4_ETAG, range);
+    assert.deepEqual(await bytes(res), MP4_BYTES.slice(a, b + 1), range);
+  }
+  assert.ok(assetRequests.every((r) => r.range === null && r.ifRange === null && r.method === 'GET'), 'ASSETS is fetched without Range');
+  const vtt = await req('/guide/assets/clips/sample.vtt', { headers: { Range: 'bytes=0-5' } });
+  assert.equal(vtt.status, 206, 'buffered path');
+  mediaHeadersOk(vtt, 'vtt');
+  assert.equal(vtt.headers.get('Content-Range'), 'bytes 0-5/' + ASSET_FILES['/guide/assets/clips/sample.vtt'][1].length);
+  assert.equal(await vtt.text(), 'WEBVTT');
+  const multi = await req(MP4, { headers: { Range: 'bytes=0-1,5-6' } });
+  assert.equal(multi.status, 200, 'multiple ranges get the whole file');
+  assert.equal((await bytes(multi)).length, 300);
+});
+
+await check('guide media: 416, HEAD, If-None-Match and If-Range', async () => {
+  for (const range of ['bytes=300-', 'bytes=300-400', 'bytes=-0']) {
+    const bad = await req(MP4, { headers: { Range: range } });
+    assert.equal(bad.status, 416, range);
+    assert.equal(bad.headers.get('Content-Range'), 'bytes */300', range);
+    mediaHeadersOk(bad, '416');
+  }
+  const head = await req(MP4, { method: 'HEAD' });
+  assert.equal(head.status, 200);
+  assert.equal(head.headers.get('Content-Length'), '300');
+  mediaHeadersOk(head, 'HEAD');
+  assert.equal((await bytes(head)).length, 0);
+  const headRange = await req(MP4, { method: 'HEAD', headers: { Range: 'bytes=10-19' } });
+  assert.equal(headRange.status, 200);
+  assert.equal(headRange.headers.get('Content-Range'), null);
+  assert.equal(headRange.headers.get('Content-Length'), '300');
+  assert.equal((await bytes(headRange)).length, 0);
+  const headBadRange = await req(MP4, { method: 'HEAD', headers: { Range: 'bytes=999-1000' } });
+  assert.equal(headBadRange.status, 200);
+  assert.equal(headBadRange.headers.get('Content-Range'), null);
+  assert.equal(headBadRange.headers.get('Content-Length'), '300');
+  assert.equal((await bytes(headBadRange)).length, 0);
+  const nm = await req(MP4, { headers: { 'If-None-Match': MP4_ETAG, Range: 'bytes=0-1' } });
+  assert.equal(nm.status, 304);
+  assert.equal(nm.headers.get('ETag'), MP4_ETAG);
+  mediaHeadersOk(nm, '304');
+  assert.equal((await bytes(nm)).length, 0);
+  const stale = await req(MP4, { headers: { Range: 'bytes=0-1', 'If-Range': '"old"' } });
+  assert.equal(stale.status, 200, 'If-Range mismatch sends the whole file');
+  assert.equal(stale.headers.get('Content-Range'), null);
+  assert.deepEqual(await bytes(stale), MP4_BYTES);
+  const dated = await req(MP4, { headers: { Range: 'bytes=0-1', 'If-Range': 'Mon, 19 Oct 2026 00:00:00 GMT' } });
+  assert.equal(dated.status, 200, 'If-Range dates are not validated: whole file');
+  const fresh = await req(MP4, { headers: { Range: 'bytes=0-1', 'If-Range': MP4_ETAG } });
+  assert.equal(fresh.status, 206, 'If-Range match keeps the range');
+  assert.deepEqual([...await bytes(fresh)], [0, 1]);
 });
 
 console.log(passed + ' checks passed');

@@ -371,7 +371,9 @@ const CHECKS = [
       out.disabledBeyondTip = [...document.querySelectorAll('#places .pl-item')].filter((b) => b.disabled).length;
       L.ui.placesMenu.close();
       const p = await L.flyTo('btc1'); out.band = p && p.rowMin;
-      key('KeyH', { key: 'h' }); await sleep(200); out.helpOpen = L.ui.help.open; key('Escape', { key: 'Escape' }); L.ui.help.close();
+      key('KeyH', { key: 'h' }); await sleep(200); out.helpOpen = L.ui.help.open;
+      const guide = document.querySelector('#help a[href="/guide/"]'); out.helpGuide = !!guide && guide.target === '_blank' && /noopener/.test(guide.rel);
+      key('Escape', { key: 'Escape' }); L.ui.help.close();
       await L.seek(inData(314000)); await idle();
       L.controls.setMode('flight');
       const g = L.view.heightAt(150, 120); L.controls.setPose({ x: 150, y: g - 1, z: 120, yaw: 0, pitch: 0 }); await sleep(150);
@@ -384,6 +386,7 @@ const CHECKS = [
       ['places popover opens', v.placesOpen],
       ['1 BTC band resolves to a row', Number.isInteger(v.band)],
       ['help opens with H', v.helpOpen],
+      ['help links to the guide (/guide/, new tab)', v.helpGuide],
       ['flight: W moves the camera (' + v.flew.toFixed(2) + ')', v.flew > 1],
       ['flight: crosshair shown', v.crosshair && v.mode === 'flight'],
       ['flight: collision keeps the camera above the surface (' + v.clearance.toFixed(3) + ')', v.clearance >= 0.079],

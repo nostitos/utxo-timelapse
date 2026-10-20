@@ -67,6 +67,14 @@ Playback streams the change log. After block 420,000, 1× needs about 1.2–2.2 
 
 Storing the dataset costs about 1.1 USD a month in R2 (75 GB); R2 charges nothing for egress. Cloudflare Web Analytics counts visits: the zone injects its beacon into every page, and both this site's and the 2D explorer's Content Security Policy allow it.
 
+## Guide and film
+
+**https://bitcoinlandscape.com/guide/** is *What remains*, a visual essay and practical guide to the landscape (`landscape/web/guide/`). It is one static page. Six movements (Field, Strata, A cell, Time, Readings, Return) follow one column of 1 BTC outputs from a wide view down to a close-up, through 1,200 real blocks, and back. After them come the practical guide (navigation, touch, playback, looks, quality, inspector, sharing, a short technical reference), a coda with the plane, bird, jet and Stack sats, and an index of the views. The app's help dialog and loading card link to it. The 2D guide in `site/` is unchanged.
+
+Every picture is a capture of the real app at the pinned dataset, `d972052-20261018`. Each "Explore this view" link opens the app at the scene's recorded block, camera, look and settings, and `assets/manifest.json` records each scene's link and each media file's source and checksum. Previews load near the viewport, and at most one plays at a time. They pause when scrolled away or when the tab is hidden, and they start as posters under reduced motion or Save-Data. The 90-second film opens in a dialog with native controls and plays sound only after the visitor presses play. `python3 scripts/check_landscape_guide.py` checks the manifest, the links and the size budgets: the first load under 1.5 MiB, each preview under 8 MiB, the film under 24 MiB and the whole guide under 120 MiB.
+
+Only media used by the guide is included in this website release. The separate marketing package, masters, promotional edits, verticals, audio stems and production tools remain local. The public manifest keeps the dataset edition, scene links and source checksums without exposing local filesystem paths.
+
 ## Controls
 
 | Keys or gesture | Action |
@@ -591,5 +599,7 @@ In the app, 1× playback from block 314,000 advanced 602 blocks in 10.03 s witho
 | `scripts/landscape_r2_verify.py`, `scripts/check_landscape_worker.mjs`, `landscape/tools/csp-hash.mjs` | Uploaded-dataset verification, Worker checks, CSP hash of the import map |
 | `landscape/tests/` | `node --test landscape/tests/*.test.mjs` (237 tests; the dataset tests skip without a local dataset; Node 22 and later reject the directory form `node --test landscape/tests/`) and the browser checks, including the `touch` check that drives every gesture with real multi-touch input on an emulated phone, and the settings checks `quick-settings`, `looks`, `user-presets`, `advanced-needs` and the opt-in `settings-audit` (`--audit`) |
 | `landscape/tools/browser-check.mjs`, `gpu-util.mjs`, `landscape/web/dev/` | Headless Chrome checker (`--mobile` emulates a phone with touch input), GPU utilisation sampler and development harnesses |
+| `landscape/web/guide/` | The guide, *What remains*: page, styles, progressive enhancement, curated media and `assets/manifest.json` |
+| `scripts/check_landscape_guide.py` | Guide checks: manifest, links, orphan files and size budgets |
 
 The vendored three.js 0.186.0 and lil-gui 0.17 are MIT licensed ([`vendor/three/README.md`](../landscape/web/vendor/three/README.md)); the fonts keep their OFL licences. The original concept and code are by Martinus ([BitcoinUtxoVisualizer](https://github.com/martinus/BitcoinUtxoVisualizer), MIT).

@@ -77,7 +77,8 @@ export function createHelp(dialog, { touchFirst = false } = {}) {
   dialog.innerHTML =
     '<div class="help-head"><div><span class="eyebrow">UTXO Timelapse \u00b7 Landscape</span>' +
     '<h2>Every unspent output, <em>in three dimensions.</em></h2></div>' +
-    '<button type="button" class="icon-btn" data-close aria-label="Close help">\u00d7</button></div>' +
+    '<div class="help-tools"><a class="help-guide" href="/guide/" target="_blank" rel="noopener">Read the guide</a>' +
+    '<button type="button" class="icon-btn" data-close aria-label="Close help">\u00d7</button></div></div>' +
     '<p class="help-lead">Left to right: the block that created each output, one column per 64 blocks. ' +
     'Front to back: its amount, on the film\u2019s 2,072 rows, with the largest amounts farthest away. ' +
     'Height and colour measure the outputs still unspent at the current block. ' +
