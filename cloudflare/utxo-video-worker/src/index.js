@@ -10,6 +10,34 @@ const SITE_PREFIX = RELEASE.sitePrefix;
 const WORKER_VERSION = RELEASE.version;
 let cachedManifest;
 let manifestExpiresAt = 0;
+let playlistTargets;
+
+// These playlists belong to retired releases. Their surviving segment objects may still be
+// used by the current stream: redirect only the playlist, never its containing prefix.
+const RETIRED_PLAYLIST = /^\/hls\/(v[1-6]|compat[12])\/media\.m3u8$/;
+
+async function redirectRetiredPlaylist(request, env) {
+  const url = new URL(request.url);
+  const retired = RETIRED_PLAYLIST.exec(url.pathname);
+  if (!retired) return null;
+  if (!playlistTargets) {
+    playlistTargets = (async () => {
+      const object = await env.VIDEO_BUCKET.get(`${SITE_PREFIX}/info.json`);
+      if (!object) throw new Error('video info is unavailable');
+      const info = await object.json();
+      return { full: info.videoRenditions?.full?.url || info.videoUrl,
+        compat: info.videoRenditions?.compat?.url };
+    })().catch((error) => { playlistTargets = null; throw error; });
+  }
+  const targets = await playlistTargets;
+  const path = retired[1].startsWith('compat') ? targets.compat : targets.full;
+  if (!/^\/hls\/(?:v\d+|compat\d+)\/media\.m3u8$/.test(path || '') || RETIRED_PLAYLIST.test(path)) {
+    throw new Error('invalid current playlist target');
+  }
+  return withHeaders(new Response(null, { status: 307, headers: {
+    Location: new URL(path, url).href, 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*',
+  } }));
+}
 
 const CONTENT_TYPES = {
   html: "text/html; charset=utf-8",
@@ -275,6 +303,9 @@ async function handle(request, env, ctx) {
     if (!tokenBucket(ip, "txid")) return jsonError("rate limited", 429);
     return cachedApi(request, ctx, () => txidResponse(url), 2592000);
   }
+
+  const retiredPlaylist = await redirectRetiredPlaylist(request, env);
+  if (retiredPlaylist) return retiredPlaylist;
 
   // Historical fixed names and content-addressed rendition objects are both
   // private bucket keys: allow only release prefixes and exact media filenames.

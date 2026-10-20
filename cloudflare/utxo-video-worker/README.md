@@ -10,11 +10,25 @@ First-time visits to `/` show the guide. Entering `/explorer` sets the `btl_expl
 - Ten-second HEVC fragmented-MP4 HLS segments, each uploaded with a single PUT and cached independently. Packaging copies the master video bytes.
 - Historical lifecycle records split into 512-creation-block shards, sorted by exact Y row. Queries read the selected row from relevant shards.
 - Base history plus immutable later-spend patches and five full replacement/new shards for the September 10 append.
-- One [release descriptor](src/release.js) selects the UI namespace and matching history routing. The current video playlist is `/hls/v3/media.m3u8`; old segment objects are reused.
+- One [release descriptor](src/release.js) selects the UI namespace and matching history routing. `/api/info` names the current 4K and compatibility playlists; old segment objects are reused.
 - The renderer, HUD and [cloud mapper](src/mapping.js) agree on integer pixel coordinates, including 120-block smooth transitions.
 - Cloudflare Web Analytics is on for the `bitcointimelapse.com` zone. The edge injects its beacon into HTML pages, and the Content Security Policy in `src/index.js` allows the beacon script (`static.cloudflareinsights.com`) and its reports (`cloudflareinsights.com`). A release that changes only Worker code or headers keeps `sitePrefix` and takes a new `version`.
 
 The original 84 GB multipart MP4 had slow measured ranged reads. Individually uploaded HLS segments made playback and seeking practical. The legacy `/video.mp4` and `/latest-v2/video.mp4` routes remain compatibility paths.
+
+## Retention
+
+Keep every object reachable from the current and immediate rollback release: both video renditions,
+their init segments and media, the history base/patch chosen for every shard, block times and the UI.
+Do not delete a whole old `hls/` or `explorer/` prefix: its objects can still serve the newest release.
+Keep the local publication catalogue, position cache, video ledgers, source master and checkpoints;
+these make routine appends possible without rebuilding the history or the full video.
+
+The retired playlists `hls/v1` through `hls/v6` and `hls/compat1`/`hls/compat2` redirect to the
+current rendition named in the immutable release's `info.json`. Shared objects inside those prefixes
+remain available. The immediate rollback playlists `hls/v7` and `hls/compat3` remain intact. Superseded
+objects may be pruned only by an audited per-object list that excludes both releases' dependencies.
+The full MP4 and its legacy download routes are retained separately.
 
 ## UI releases
 
