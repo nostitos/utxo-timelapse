@@ -116,6 +116,7 @@ await check('health, robots and the dataset index', async () => {
   assert.equal(ix.headers.get('Cache-Control'), 'no-store');
   const body = await ix.json();
   assert.deepEqual(body.current, { id: ID, url: '/dataset/' + ID + '/', tip: RELEASE.dataset.tip });
+  assert.deepEqual(body.datasets.map((d) => d.id), [ID, ...RELEASE.retainedDatasetIds]);
 });
 
 await check('dataset objects: immutable, CORS, ETag, whole and HEAD', async () => {
@@ -193,7 +194,8 @@ await check('conditional requests and the edge cache', async () => {
 await check('dataset allowlist: unknown ids, files and traversal never reach R2', async () => {
   const before = { ...r2 };
   for (const path of [
-    '/dataset/d1-20260101/manifest.json', '/dataset/' + ID + '/secret.bin', '/dataset/' + ID + '/snapshots/123.bin',
+    '/dataset/d1-20260101/manifest.json', '/dataset/d966827-20261008/manifest.json',
+    '/dataset/d970658-20261009/chunks/00001.bin', '/dataset/' + ID + '/secret.bin', '/dataset/' + ID + '/snapshots/123.bin',
     '/dataset/' + ID + '/chunks/00001.bin.bak', '/dataset/' + ID + '/%2e%2e/explorer/v5/site/explorer.html',
     '/dataset/' + ID + '/../explorer/v5/site/explorer.html', '/dataset/', '/dataset/' + ID + '/', '/dataset/../landscape/' + ID + '/rows.bin',
   ]) {
