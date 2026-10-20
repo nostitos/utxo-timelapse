@@ -9,7 +9,7 @@
 // ?startup=adaptive|high the first-visit quality (ui/online.js). The URL hash keeps b, cam,
 // mode, follow and the settings preset and overrides.
 
-import { createPlayback, defaultStartBlock, SPEEDS, STEP_LARGE } from './ui/playback.js';
+import { createPlayback, defaultStartBlock, speedById, SPEED_KEYS, STEP_LARGE } from './ui/playback.js';
 import { createTipFollow } from './ui/follow.js';
 import { decodeHash, encodeHash } from './ui/hash.js';
 import { resolvePlace } from './ui/places.js';
@@ -662,11 +662,12 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
           e.preventDefault();
           playback.step(e.shiftKey ? STEP_LARGE : 1);
           break;
+        case 'Digit0':
         case 'Digit1':
         case 'Digit2':
         case 'Digit3':
         case 'Digit4': {
-          const s = SPEEDS[Number(e.code.slice(5)) - 1];
+          const s = speedById(SPEED_KEYS[e.code]);
           playback.setSpeed(s.id);
           notice('Speed ' + s.label, 'info', 'speed');
           break;

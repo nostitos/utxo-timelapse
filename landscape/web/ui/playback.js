@@ -1,6 +1,7 @@
 // Playback on top of the replay client (landscape/SPEC.md §5 "Playback"). Pure module:
 // no DOM, no three.js; it only calls replay.advance / replay.seek and reads replay.block.
 //
+//   0.5x = 30 blocks/s, exact
 //   1x  = 60 blocks/s, exact (every block applied by replay.advance)
 //   2x  = 120 blocks/s, exact
 //   5x  = 300 blocks/s, exact; when the worker is slower the playhead follows the
@@ -31,11 +32,15 @@ export const STEP_LARGE = 1008;
 // Play has blocks to play.
 export const START_BEFORE_TIP = 1008;
 export const SPEEDS = Object.freeze([
+  Object.freeze({ id: '0.5', label: '0.5\u00d7', rate: 30, policy: 'exact' }),
   Object.freeze({ id: '1', label: '1\u00d7', rate: 60, policy: 'exact' }),
   Object.freeze({ id: '2', label: '2\u00d7', rate: 120, policy: 'exact' }),
   Object.freeze({ id: '5', label: '5\u00d7', rate: 300, policy: 'exact' }),
   Object.freeze({ id: 'max', label: 'Max', rate: Infinity, policy: 'max' }),
 ]);
+export const DEFAULT_SPEED = '1';
+// Keys 0 to 4 choose the speeds in menu order (1 stays 1x).
+export const SPEED_KEYS = Object.freeze({ Digit0: '0.5', Digit1: '1', Digit2: '2', Digit3: '5', Digit4: 'max' });
 // While paused, gaps up to this size (steps, nudges) are covered by exact advance;
 // larger jumps seek.
 export const PAUSED_ADVANCE_LIMIT = 2016;
@@ -47,7 +52,7 @@ const PACE_SMOOTH_S = 0.5;          // the paced rate eases toward its goal with
 const FRONTIER_WAIT_MS = 1000;      // a frontier that does not move for this long is ignored
 
 export function speedById(id) {
-  return SPEEDS.find((s) => s.id === String(id)) || SPEEDS[0];
+  return SPEEDS.find((s) => s.id === String(id)) || SPEEDS.find((s) => s.id === DEFAULT_SPEED);
 }
 
 /**
@@ -127,7 +132,7 @@ export function createPlayback({ replay, tip, snapshots = [], now = () => perfor
   let tipBlock = tip;
   let snaps = snapshots;
   let playing = false;
-  let speed = '1';
+  let speed = DEFAULT_SPEED;
   let target = null; // fractional playhead while playing
   let requested = null; // desired block while paused (steps, seeks)
   let op = null; // {kind, block, promise} of the operation playback is waiting for

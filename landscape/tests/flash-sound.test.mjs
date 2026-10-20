@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   FLASH_BANDS, MAX_VOICES_FRAME, MAX_VOICES_SECOND, REF_MAX, EDGE_LEVEL, LEAD_S, DRIFT_S, HIGHPASS_HZ, DENSITY_KNEE,
-  DENSITY_GAIN_MAX, TAIL_S, FAR_DARKEN, bandIndex, distanceGain, projectPoint, flashVoices, createFlashPlanState,
+  DENSITY_GAIN_MAX, TAIL_S, FAR_DARKEN, MIN_LEAD_S, RESTART_S, bandIndex, distanceGain, projectPoint, flashVoices, createFlashPlanState,
   mixFrame, densityGain, frameSpan, createFlashSound, tickEvents, tickRenderer,
 } from '../web/ui/flash-sound.js';
 import { createSound, readSoundPref, SOUND_KEY, LEGACY_PLANE_KEY } from '../web/ui/sound.js';
@@ -178,8 +178,25 @@ test('ticks are scheduled ahead of the audio clock and spread evenly, even when 
     clump.push(s.start);
     cursor = s.end;
   }
-  assert.ok(clump.every((t, i) => i === 0 || t > clump[i - 1] + 0.016), 'a clump is spread out');
-  assert.ok(near(frameSpan(cursor, audio + 2, 1 / 60).start, audio + 2 + LEAD_S), 'after a stall it restarts ahead');
+  assert.ok(clump.every((t, i) => i === 0 || t > clump[i - 1] + 0.014), 'a clump is spread out');
+  // A pause shorter than the lead: the schedule goes on from the cursor and the next frame fills the pause.
+  const before = frameSpan(null, audio, 1 / 60);
+  const pause = 0.1;
+  const after = frameSpan(before.end, audio + 1 / 60 + pause, 1 / 60 + pause);
+  assert.ok(near(after.start, before.end) && near(after.end - after.start, 1 / 60 + pause), 'a 100 ms pause leaves no gap');
+  assert.ok(near(frameSpan(after.end, audio + 1 / 60 + pause + 1 / 60, 1 / 60).start - (audio + 1 / 60 + pause + 1 / 60), LEAD_S, 1e-9), 'and the lead is back');
+  // A longer pause runs the clicks out: they restart RESTART_S ahead, and the span stretches by a quarter to win the lead back.
+  const dry = frameSpan(cursor, audio + 2, 1 / 60);
+  assert.ok(near(dry.start, audio + 2 + RESTART_S) && near(dry.end - dry.start, 1.25 / 60), 'after a longer stall it restarts at once and stretches');
+  assert.ok(near(frameSpan(audio + MIN_LEAD_S / 2, audio, 1 / 60).start, audio + RESTART_S), 'closer than MIN_LEAD_S restarts too');
+  // A dry schedule after a 0.2 s pause wins the whole lead back with that frame's span.
+  const back = frameSpan(audio + 0.001, audio, 0.2, 0.3);
+  assert.ok(near(back.start, audio + RESTART_S) && near(back.end - back.start, 0.25), 'stretched: ' + (back.end - back.start));
+  // A raised lead (after the schedule ran dry) restarts that far ahead; when it is lowered again the
+  // spans tighten by a tenth until the schedule is back within 10 ms of it.
+  const tight = frameSpan(audio + 0.3, audio, 1 / 60, LEAD_S);
+  assert.ok(near(tight.start, audio + 0.3) && near(tight.end - tight.start, 0.9 / 60), 'tightened by a tenth');
+  assert.ok(near(frameSpan(audio + LEAD_S + 0.005, audio, 1 / 60).end - (audio + LEAD_S + 0.005), 1 / 60), 'within 10 ms: untouched');
   assert.ok(near(frameSpan(audio + 5, audio, 1 / 60).start, audio + LEAD_S + DRIFT_S), 'never more than DRIFT_S further');
 });
 

@@ -788,12 +788,18 @@ a few spends are separate clicks, and from a few hundred a second they overlap i
 Loudness follows the energy of every flash on screen (the sum of level squared a second, voiced
 or not): unchanged up to 40, above that compressed to the power 0.4 (10 times the energy is 4 dB
 louder), with the voiced ticks raised at most 2 times to stand for the rest. Each frame's ticks
-become compact events (`tickEvents`) spread over the eased time between frames, at least 60 ms
-ahead of the audio clock, and the `flash-ticks` AudioWorklet (`ui/flash-worklet.js`,
+become compact events (`tickEvents`) spread over the time since the previous frame, 120 ms ahead
+of the audio clock, and the `flash-ticks` AudioWorklet (`ui/flash-worklet.js`,
 `TickRenderer`) synthesizes them on the audio thread, so the page spends about 0.15 ms a frame
 on sound; without AudioWorklet, `mixFrame` mixes each frame on the page into one buffer with the
-same renderer. Spans follow one another, and the schedule runs at most 0.2 s further ahead, so frames that arrive in a clump are
-spread out. Two 300 Hz high-passes, a peak limiter (−6 dB, 20:1) and a 1.1 master gain follow.
+same renderer. Spans follow one another, so when frames pause (a worker stall, a slow frame, a
+busy browser) the sound plays on through the lead and the next frame fills the pause. A schedule
+that comes within 15 ms of the audio clock has run dry: it restarts 30 ms ahead, and the lead is
+raised to 1.5 times or the pause plus 50 ms, at most 0.4 s, then eases back toward 120 ms with a
+60 s time constant. A span whose next-frame lead would fall short is stretched by up to a quarter
+to win it back, and one more than 10 ms beyond is tightened by up to a tenth. It runs at most
+0.2 s beyond the lead, so frames that arrive in a clump are spread out. Two 300 Hz high-passes, a
+peak limiter (−6 dB, 20:1) and a 1.1 master gain follow.
 Keys everywhere (ignored while typing in inputs): Space play/pause, `[`/`]` ±1 block,
 Shift+`[`/`]` ±1,008, N Follow tip, M sound, I inspect at cursor (crosshair in flight, nose circle in plane mode), C next craft,
 Enter Stack sats (plane mode), Esc exits flight or plane mode/closes the drawer or a menu. Places: eras at 50,000, 210,000, 314,000, 420,000, 500,000, 630,000,
@@ -845,7 +851,7 @@ A static browser app in `landscape/web/` renders the UTXO set as a 3D landscape:
 - New C++ task `landscape_verify`: every snapshot equals a fresh replay; 20 random backward replays equal the snapshot below; history-index pass reproduces every L0 cell at blocks 210,000, 630,000 and the tip; weighted density at 965,399 matches the renderer checkpoint within 1e-6 per cell; unit case `landscape_state` covers apply/undo round trip, same-block create+spend, zero amounts skipped, exact 5 BTC boundary, level sums, tile borders, snapshot round trip, row mapping at boundary amounts.
 - Worker `landscape/web/replay.worker.js` (plain JS, no WASM in v1): decodes BLK2 (LEB128, zigzag), applies changes to all loaded levels; backward steps negate a block. Satoshi sums stay exact in doubles (< 2^53). Only tiles the viewer has requested are allocated (sparse), with a 512 MB LRU of chunk bytes. Measured in Node on this Mac: 293–378 blocks/s apply in the busiest eras, about 5,400 in 2012, 33–37M changes/s decode, exact return to zero after forward+backward.
 - Seek: pick the cheapest of current state, nearest snapshot at or below the target, or the one above with backward replay; range-request only the loaded tiles' directory entries; load L4–L6 first so an exact coarse view appears immediately, then stream finer tiles; replay the gap. A tile that becomes visible mid-playback initialises from the nearest snapshot plus cached chunks. Latest seek wins.
-- Speeds: 1× = 60 blocks/s exact; 2× = 120 blocks/s exact; 5× exact while the worker sustains ≥300 blocks/s, otherwise the HUD shows the achieved rate; Max replays with the whole frame budget, paced to the download when that is slower; only scrubbing steps snapshot to snapshot. Frame deltas go to the main thread as transferable buffers: per tile either full 258×258 values (per measure) + heat, or changed-cell lists.
+- Speeds (a menu in the timeline; keys 0 to 4): 0.5× = 30 blocks/s exact; 1× = 60 blocks/s exact; 2× = 120 blocks/s exact; 5× exact while the worker sustains ≥300 blocks/s, otherwise the HUD shows the achieved rate; Max replays with the whole frame budget, paced to the download when that is slower; only scrubbing steps snapshot to snapshot. Frame deltas go to the main thread as transferable buffers: per tile either full 258×258 values (per measure) + heat, or changed-cell lists.
 - Activity heat: during forward playback each spend adds actual BTC moved to its cell's heat; decay half-life in blocks is a setting; seeks and backward steps clear heat.
 - Cell inspection: add `GET /api/landscape/cell?block&col&row` to `src/cpp/app/utxo_explorer.cpp` (heights `col*64 … col*64+63`, satoshi range from `rowSatoshiRange`, same JSON fields as `/api/pixel`, CORS for `127.0.0.1:12990`). Run a second explorer instance from `build_local/buv` on port 12989 with `configs/buv_explorer.json`; the installed copy under `~/.local/share/buv-explorer` is untouched.
 - Local serving: `landscape/tools/serve.mjs` (Node 20, no dependencies) serves `landscape/web/` and the data directory with HTTP Range support and correct MIME types on `127.0.0.1:12990`.
@@ -859,7 +865,7 @@ A static browser app in `landscape/web/` renders the UTXO set as a 3D landscape:
 - Post chain (TSL `PostProcessing`, only enabled nodes are built; toggling rebuilds): GTAO or SSAO → SSGI → SSR → volumetric/god rays → bloom (threshold, strength, radius, mip count) → depth of field (auto-focus on crosshair, aperture) → motion blur → tone mapping (none/Linear/Reinhard/ACES/AgX/Neutral) → exposure (manual or histogram auto via compute) → colour grade (lift/gamma/gain, contrast, saturation, temperature/tint, hue shift) → 3D LUT (.cube upload) → film grain, chromatic aberration, vignette → AA (none/FXAA/SMAA/TRAA) or SSAA 2×/4×.
 - Resolution scale 0.5–2.0 of canvas size (up to 7680×4320 internal at 4K); Auto mode adjusts scale within min/max to hold a target fps. Optional Display P3 canvas where supported.
 - Performance overlay: fps, CPU ms, GPU ms total and per pass via `timestamp-query` when the adapter offers it (otherwise CPU timing only), triangles, instances, loaded tiles, worker blocks/s, memory.
-- Navigation and UI as previously planned: map mode (pan under cursor, orbit under cursor, zoom to cursor, double-click fly-to), flight mode (pointer lock, WASD/EQ, Shift 4×, speed by height), Space play/pause, `[`/`]` step 1, Shift+`[`/`]` step 1,008, I inspect; timeline with block and UTC date inputs; places (eras at 50,000, 210,000, 314,000, 420,000, 500,000, 630,000, 700,000, 840,000, 900,000, tip; amount bands 50 BTC coinbase row, ≥10 BTC, 1 BTC, 10,000 sat, 546 sat, 1–100 sat); minimap; inspection drawer with a link to the nearest 2D explorer pixel; view state in the URL hash.
+- Navigation and UI as previously planned: map mode (pan under cursor, orbit under cursor, zoom to cursor, double-click fly-to), flight mode (pointer lock, WASD/EQ, Shift 4×, speed by height), Space play/pause, `[`/`]` step 1, Shift+`[`/`]` step 1,008, I inspect; timeline with one field holding the block and UTC date inputs; places (eras at 50,000, 210,000, 314,000, 420,000, 500,000, 630,000, 700,000, 840,000, 900,000, tip; amount bands 50 BTC coinbase row, ≥10 BTC, 1 BTC, 10,000 sat, 546 sat, 1–100 sat); minimap; inspection drawer with a link to the nearest 2D explorer pixel; view state in the URL hash.
 
 ## Graphics settings
 - One schema (`landscape/web/settings.schema.js`): id, group, type, range/step or options, default, per-preset value, "requires WebGPU" flag, "rebuild" flag. The lil-gui panel, URL encoding, JSON export/import, localStorage persistence and the uniform/node updates are all generated from it. Changes to numeric/colour settings update uniforms without recompiling; structural toggles rebuild the affected pass.

@@ -7,7 +7,7 @@ import { fmtBtc, fmtAge, fmtInt, fmtCompact, fmtAmount, isoUtc, escapeHtml } fro
 import { dateToBlock, parseUtc, toDateTimeInput, blockTime } from '../web/ui/time.js';
 import { encodeHash, decodeHash, encodeCam, decodeCam } from '../web/ui/hash.js';
 import {
-  createPlayback, planPlay, snapshotAtOrBelow, speedById, defaultStartBlock, SPEEDS, STEP_LARGE,
+  createPlayback, planPlay, snapshotAtOrBelow, speedById, defaultStartBlock, SPEEDS, SPEED_KEYS, STEP_LARGE,
   START_BEFORE_TIP, speedHint, downloadPace,
 } from '../web/ui/playback.js';
 import { ERAS, BANDS, bandRows, resolvePlace, eraBlock } from '../web/ui/places.js';
@@ -510,10 +510,12 @@ test('planPlay and snapshot lookup', () => {
   assert.deepEqual(planPlay({ speed: '5', block: 0, target: 2000, tip: 5000, snapshots: snaps }), { kind: 'advance', target: 2000, budgetMs: 16 });
   assert.deepEqual(planPlay({ speed: 'max', block: 0, target: 0, tip: 5000, snapshots: snaps, frameMs: 100 }), { kind: 'advance', target: 5000, budgetMs: 50 });
   assert.equal(speedById('nope').id, '1');
-  assert.deepEqual(SPEEDS.map((s) => s.label), ['1\u00d7', '2\u00d7', '5\u00d7', 'Max']);
-  assert.deepEqual(SPEEDS.map((s) => s.rate), [60, 120, 300, Infinity]);
+  assert.deepEqual(SPEEDS.map((s) => s.label), ['0.5\u00d7', '1\u00d7', '2\u00d7', '5\u00d7', 'Max']);
+  assert.deepEqual(SPEEDS.map((s) => s.rate), [30, 60, 120, 300, Infinity]);
+  assert.deepEqual(Object.values(SPEED_KEYS), SPEEDS.map((s) => s.id), 'keys 0 to 4 in menu order');
+  assert.equal(SPEED_KEYS.Digit1, '1', '1 stays 1x');
   assert.deepEqual(SPEEDS.map((s) => speedHint(s).match(/about ([\d.]+ \w+)|([\d,]+)\u00d7 real time/g)),
-    [['about 10 hours', '36,000\u00d7 real time'], ['about 20 hours', '72,000\u00d7 real time'], ['about 2.1 days', '180,000\u00d7 real time'], null]);
+    [['about 5 hours', '18,000\u00d7 real time'], ['about 10 hours', '36,000\u00d7 real time'], ['about 20 hours', '72,000\u00d7 real time'], ['about 2.1 days', '180,000\u00d7 real time'], null]);
 });
 
 test('places resolve eras and amount bands on the film rows', () => {
