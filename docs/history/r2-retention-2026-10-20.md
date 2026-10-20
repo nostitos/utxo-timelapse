@@ -70,9 +70,13 @@ Any mismatch stopped it. There was no wildcard or bucket-wide deletion.
 - FFmpeg decoded first, middle and final fragments of both current 4K and 1440p renditions,
   plus the last fragments of both rollback streams (eight samples, three decoded frames each).
 
-Evidence and recovery archive:
+Evidence:
 `/Volumes/4T Data/buv_render/r2-retention-first-pass-20261020/`, including
 `execution.json`, `deleted-keys.jsonl`, `verified-inventory.json`,
-`archive-receipts.json`, `archived-obsolete-objects/`, API comparisons,
-browser screenshots and decoded-media receipts. The original review inventory is in
-`r2-retention-audit-20261020/`.
+`archive-receipts.json`, API comparisons, browser screenshots and decoded-media receipts.
+The original review inventory is in `r2-retention-audit-20261020/`.
+
+The subsequent [local storage cleanup](local-storage-cleanup-2026-10-20.md) intentionally
+removed `archived-obsolete-objects/` and the downloaded `decoded-media/` samples at the
+user's request to avoid retaining obsolete backups on the media drive. Hash receipts and
+verification results remain; these directories are no longer recovery copies.

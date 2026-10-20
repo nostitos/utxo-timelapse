@@ -83,7 +83,7 @@ const EXPLORER_DATES = [
   ['2009-01-09', 1], ['2010-07-17', 68607], ['2012-11-28', 209887],
   ['2013-01-01', 214563], ['2014-08-04', 313878], ['2014-11-14', 329897],
 ];
-const REAL_BLOCKTIMES = ['/Volumes/4T Data/buv_render/landscape_966827/blocktimes.bin', '/tmp/landscape_dev/blocktimes.bin'].find((p) => existsSync(p));
+const REAL_BLOCKTIMES = [process.env.LANDSCAPE_DATA && process.env.LANDSCAPE_DATA + '/blocktimes.bin', '/Volumes/4T Data/buv_render/landscape_972052/blocktimes.bin', '/tmp/landscape_dev/blocktimes.bin'].find((p) => p && existsSync(p));
 test('dateToBlock on real blocktimes.bin equals the explorer /api/date', { skip: !REAL_BLOCKTIMES && 'no dataset blocktimes.bin on this machine' }, () => {
   const buf = readFileSync(REAL_BLOCKTIMES);
   const times = new Uint32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);

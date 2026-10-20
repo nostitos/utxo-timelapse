@@ -13,7 +13,8 @@ import { rowSatoshiRange } from '../cloudflare/utxo-video-worker/src/mapping.js'
 const ID = RELEASE.dataset.id;
 const P = 'landscape/' + ID + '/';
 const enc = new TextEncoder();
-const rowsCandidates = ['/Volumes/4T Data/buv_render/landscape_966827/rows.bin', '/tmp/landscape_dev/rows.bin'];
+const localDatasetHeight = ID.slice(1).split('-')[0];
+const rowsCandidates = [`/Volumes/4T Data/buv_render/landscape_${localDatasetHeight}/rows.bin`, '/tmp/landscape_dev/rows.bin'];
 const rowsPath = rowsCandidates.find((p) => existsSync(p));
 let rowsBytes;
 if (rowsPath) rowsBytes = new Uint8Array(readFileSync(rowsPath));

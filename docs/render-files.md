@@ -6,7 +6,15 @@
 3D dataset editions and pruning an audited list of superseded objects. Current and immediate
 rollback editions, both video renditions, history dependencies and legacy MP4 downloads remain.
 No local update inputs were removed; the history-publication pointer is unchanged. See the
-[retention receipt](history/r2-retention-2026-10-20.md) for exact bytes, recovery files and checks.
+[retention receipt](history/r2-retention-2026-10-20.md) for exact bytes and verification records.
+
+**October 20 lean local cleanup completed:** freed **728.75 GB** of measured container
+space, including superseded masters, retired local 3D editions, obsolete extraction and
+renderer checkpoints, duplicate compatibility staging and film caches. Keep only the
+current full master locally. All current update inputs, the published compatibility
+`ledger/`, current and immediate rollback 3D datasets, finished captures and the complete
+film package remain in place. No backup copies were created. See the
+[local cleanup receipt](history/local-storage-cleanup-2026-10-20.md).
 
 After the September 9, 2026 cleanup, keep these working files in their existing locations. No additional backup copy of the update data is retained.
 
@@ -30,6 +38,7 @@ All large working files are in `/Volumes/4T Data/buv_render/`:
 | `update_20261023/extract/checkpoint_v3.utxo` | v3 updater checkpoint at block 972,848, matching `changes.blk1.full964k`; the next extraction resumes from it (the node's pair is older) | 11.14 GB |
 | `landscape_972848/` | Current 3D dataset, published as `d972848-20261023`; its `manifest.json` and `chunks.json` are what the next publish compares against | 76.75 GB |
 | `landscape_972052/` and `landscape_971587/` | Retained cloud editions `d972052-20261018` (the guide's capture dataset) and `d971587-20261015`; keep each until its R2 prefix is retired | 76.55 and 76.45 GB |
+| `compat1440-20260918/ledger/` | Retained published compatibility objects and original init. Duplicate `encode/` output and media in both publication staging directories were removed; small metadata remains | 19.84 GB |
 
 Render settings: `configs/buv_render_full_weighted.json`.
 Encoder/supervisor recipe: `scripts/run_full_transition_crf21.sh`.
@@ -82,7 +91,13 @@ running), so the October 15, 18 and 23 updates ran the updater on the Mac instea
 [October 15 report](history/site-update-2026-10-15.md)). Anything installed outside `/home` on the
 node disappears at the next umbrelOS update.
 
-The core working files are the latest master, local BLK/history, the Mac's updater checkpoint at 972,848 and the node BLK/checkpoint at 970,658, excluding Bitcoin Core data, software and cloud-hosted copies. Earlier masters and renderer checkpoints are no longer kept locally, except the October 18 master, its updater checkpoint and `renderer_before_970620.bin`, which remain until they are removed as superseded. They are not inputs for the next append. `renderer_checkpoint_current.json` now points to the validated rolling checkpoint before 971,460. The Mac input is a working dataset and an updater checkpoint is the updater's state; there is no extra backup pair.
+The core working files are the latest master, local BLK/history, the Mac's updater checkpoint at 972,848 and the node BLK/checkpoint at 970,658, excluding Bitcoin Core data, software and cloud-hosted copies. Earlier masters and renderer checkpoints are no longer kept locally, except the October 18 master, its updater checkpoint and `renderer_before_970620.bin`, which remain until they are removed as superseded. They are not inputs for the next append. `renderer_checkpoint_current.json` now points to the validated rolling checkpoint before 971,460. The Mac input is a working dataset and an updater checkpoint is the updater's state; there is no extra backup pair. Historical run configs, scripts, receipts and small publication metadata remain, but their old payload paths are historical records and must not be reused as current inputs.
+
+After a future update verifies, retain the new current master and current updater/renderer
+state, then remove superseded copies under the same lean policy. Retain current and supported
+rollback 3D datasets until their cloud editions retire. Keep useful append ledgers and exact
+publication catalogues. Remove disposable encoding, decoding, browser and frame-extraction
+caches after checking the finished outputs. Do not create archival copies of retired payloads.
 
 Legacy `buv_data/buv_resume.json` and `buv_data/buv_update_mac.json`, v2 presets and `buv_deploy` recipes are historical source records. Their old datasets were retired. The current local render presets and canonical v3 update configuration are the maintained paths above.
 
@@ -91,7 +106,7 @@ Legacy `buv_data/buv_resume.json` and `buv_data/buv_update_mac.json`, v2 presets
 The 1440p H.264 conversion uses fresh run directory `compat1440-20260918/` beside
 the retained masters. Its `encode/` staging, immutable `ledger/`, verification
 receipt and publication catalog are described in [compatibility operations](compat-rendition.md).
-The September 18 conversion uses the September 13 master
+The September 18 conversion used the now-retired September 13 master
 `utxo_4k_epoch105k_60fps_transition_crf21_to_966827.mp4`: 84,200,687,245 bytes,
 967,128 frames through block 966,827 plus its repeated ending, and 4:28:38.800
 at 60 fps. Its compatibility init and 4,030 segments total 19,836,027,329 bytes.

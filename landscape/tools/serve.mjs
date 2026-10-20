@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Local static server for the UTXO landscape (landscape/SPEC.md §5). Node 20, no dependencies.
 //
-//   node landscape/tools/serve.mjs --data "/Volumes/4T Data/buv_render/landscape_966827" \
+//   node landscape/tools/serve.mjs --data "/Volumes/4T Data/buv_render/landscape_972052" \
 //     [--port 12990] [--host 127.0.0.1] [--web landscape/web] [--log]
 //
 // Serves the web app at / and the dataset directory at /dataset/ with single-range Range

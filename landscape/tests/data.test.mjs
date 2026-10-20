@@ -220,7 +220,7 @@ test('blockToX equals mapping.js on many heights and blocks', () => {
   assert.equal(A.rowToImageY(1515), 1525);
 });
 
-const DATASETS = (process.env.LANDSCAPE_DATA ? [process.env.LANDSCAPE_DATA] : ['/tmp/landscape_dev_small', '/tmp/landscape_dev', '/Volumes/4T Data/buv_render/landscape_966827'])
+const DATASETS = (process.env.LANDSCAPE_DATA ? [process.env.LANDSCAPE_DATA] : ['/tmp/landscape_dev_small', '/tmp/landscape_dev', '/Volumes/4T Data/buv_render/landscape_972052', '/Volumes/4T Data/buv_render/landscape_971587'])
   .filter((d) => existsSync(d + '/rows.bin') && existsSync(d + '/manifest.json'));
 
 // The C++ tools build with -ffast-math. Their row boundaries equal the strict IEEE port

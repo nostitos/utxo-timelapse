@@ -734,7 +734,7 @@ test('seek planner picks the cheapest of current, snapshot below and snapshot ab
 
 // -------------------------------------------- independent check of a C++ build
 // LANDSCAPE_DATA=dir limits the check to one dataset; otherwise every built dataset found.
-const DATASETS = (process.env.LANDSCAPE_DATA ? [process.env.LANDSCAPE_DATA] : ['/tmp/landscape_dev_small', '/tmp/landscape_dev', '/Volumes/4T Data/buv_render/landscape_966827', '/Volumes/4T Data/buv_render/landscape_970658'])
+const DATASETS = (process.env.LANDSCAPE_DATA ? [process.env.LANDSCAPE_DATA] : ['/tmp/landscape_dev_small', '/tmp/landscape_dev', '/Volumes/4T Data/buv_render/landscape_972052', '/Volumes/4T Data/buv_render/landscape_971587'])
   .filter((d) => existsSync(d + '/manifest.json'));
 // Default: first, last and a few evenly spaced pairs per dataset; LANDSCAPE_CHECK_PAIRS=all for every pair.
 const PAIR_LIMIT = process.env.LANDSCAPE_CHECK_PAIRS === 'all' ? Infinity : Number(process.env.LANDSCAPE_CHECK_PAIRS || 4);
