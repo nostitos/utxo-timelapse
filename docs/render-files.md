@@ -2,6 +2,12 @@
 
 **October 18 site update completed:** the working BLK, exact history, both published video streams and the 3D landscape cover block 972,052. The node's v3 pair still ends at 970,658: the node VM has 20 GB of memory, too little for the updater, so the same v3 updater ran on this Mac again, resuming from its October 15 checkpoint, and its checkpoint at 972,052 stays on the Mac (see [Next update](#next-update)). The 4K and 1440p tails, the history patches and a rebuilt 3D dataset were published; earlier objects are reused, including every 3D snapshot before 971,587. See the [October 18 report](history/site-update-2026-10-18.md), the [October 15 report](history/site-update-2026-10-15.md) for the first Mac run and, for the node timing estimate, the [October 9 report](history/site-update-2026-10-09.md).
 
+**October 20 R2 first pass completed:** cloud storage is now 401.22 GB after retiring the two oldest
+3D dataset editions and pruning an audited list of superseded objects. Current and immediate
+rollback editions, both video renditions, history dependencies and legacy MP4 downloads remain.
+No local update inputs were removed; the history-publication pointer is unchanged. See the
+[retention receipt](history/r2-retention-2026-10-20.md) for exact bytes, recovery files and checks.
+
 After the September 9, 2026 cleanup, keep these working files in their existing locations. No additional backup copy of the update data is retained.
 
 ## Mac: render and publish
