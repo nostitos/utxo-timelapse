@@ -114,6 +114,9 @@ class Checker:
             if frag and frag not in ids:
                 self.err(where, 'in-page anchor #%s does not exist' % frag)
             return
+        if path == '/explorer' and attr == 'href':
+            # The Worker and local server both serve the app shell at this explicit entry.
+            return
         target = self.resolve(html_file, path)
         web = self.web.resolve()
         if target != web and web not in target.parents:

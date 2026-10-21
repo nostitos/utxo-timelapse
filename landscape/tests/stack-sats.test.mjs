@@ -252,3 +252,15 @@ test('fun memory: craft and best per craft round trip; bad data falls back', () 
   assert.deepEqual(loadFun(broken), defaultFun());
   assert.equal(saveFun(broken, data), false);
 });
+
+test('stored craft preferences fall back when the browser denies the localStorage property', () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, get() { throw new Error('storage denied'); } });
+  try {
+    assert.deepEqual(loadFun(), defaultFun());
+    assert.equal(saveFun(undefined, defaultFun()), false);
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor);
+    else delete globalThis.localStorage;
+  }
+});

@@ -82,6 +82,18 @@ test('app files: index, MIME, no-cache, isolation headers', async () => {
   assert.equal((await raw('/data/manifest.json')).status, 404);
 });
 
+test('explicit explorer entry keeps root-relative assets and query options working', async () => {
+  const app = await raw('/explorer?startup=high');
+  assert.equal(app.status, 200);
+  assert.match(app.headers['content-type'], /text\/html/);
+  assert.match(app.body.toString(), /<title>x/);
+  for (const path of ['/explorer/', '/explorer.html']) {
+    const redirect = await raw(path + '?webgl=1');
+    assert.equal(redirect.status, 302);
+    assert.equal(redirect.headers.location, '/explorer?webgl=1');
+  }
+});
+
 test('data files: ranges, HEAD, caching', async () => {
   const full = await raw('/dataset/snapshots/0000000.bin');
   assert.equal(full.status, 200);

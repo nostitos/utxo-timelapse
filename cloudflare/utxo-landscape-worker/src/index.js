@@ -412,6 +412,16 @@ export async function handle(request, env, ctx) {
     return cachedCell(request, env, ctx, url);
   }
   if (path.startsWith('/api/')) return json({ error: 'not found' }, 404);
+  if (path === '/explorer/' || path === '/explorer.html') {
+    return respond(null, 302, { Location: '/explorer' + url.search, 'Cache-Control': 'no-store' });
+  }
+  if (path === '/explorer') {
+    // Serve the same shell at a stable explicit entry. Relative module URLs still
+    // resolve from / because this URL has no trailing slash.
+    const app = new URL(request.url);
+    app.pathname = '/';
+    return serveAsset(new Request(app, request), env);
+  }
   if (GUIDE_MEDIA.test(path)) return serveGuideMedia(request, env, path);
   return serveAsset(request, env);
 }

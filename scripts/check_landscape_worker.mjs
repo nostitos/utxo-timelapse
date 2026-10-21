@@ -314,6 +314,23 @@ await check('static app: headers, cache policy, 404 and 304 pass through', async
   assert.equal(nm.headers.get('Cache-Control'), 'public, max-age=0, must-revalidate');
 });
 
+await check('explicit explorer entry serves the app shell and canonicalizes trailing paths', async () => {
+  const app = await req('/explorer?startup=high');
+  assert.equal(app.status, 200);
+  assert.equal(app.headers.get('Cache-Control'), 'no-cache');
+  assert.equal(await app.text(), '<!doctype html>');
+  securityHeadersOk(app, '/explorer');
+  const head = await req('/explorer', { method: 'HEAD' });
+  assert.equal(head.status, 200);
+  assert.equal((await bytes(head)).length, 0);
+  for (const path of ['/explorer/', '/explorer.html']) {
+    const redirect = await req(path + '?webgl=1');
+    assert.equal(redirect.status, 302);
+    assert.equal(redirect.headers.get('Location'), '/explorer?webgl=1');
+    assert.equal(redirect.headers.get('Cache-Control'), 'no-store');
+  }
+});
+
 const MP4 = '/guide/assets/clips/sample.mp4';
 const MP4_BYTES = ASSET_FILES[MP4][1];
 const MP4_ETAG = '"a' + MP4.length + '"';

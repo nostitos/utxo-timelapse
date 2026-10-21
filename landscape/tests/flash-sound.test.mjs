@@ -289,6 +289,19 @@ test('sound switch: off by default, remembered, the old plane switch carried ove
   sound.set(false);
 });
 
+test('the sound preference falls back when the browser denies access to localStorage itself', () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, get() { throw new Error('storage denied'); } });
+  try {
+    const sound = createSound({ AudioContextClass: FakeContext });
+    assert.equal(sound.on, false);
+    assert.equal(sound.context, null);
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor);
+    else delete globalThis.localStorage;
+  }
+});
+
 test('the engine and the flashes stay silent while the switch is off or the frame is a seek', () => {
   const off = createSound({ storage: memoryStorage(), AudioContextClass: FakeContext });
   const plane = createPlaneSound({ sound: off });
