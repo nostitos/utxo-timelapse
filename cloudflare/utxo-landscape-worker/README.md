@@ -7,6 +7,7 @@
 | Path | Source |
 |---|---|
 | `/` and the app files | Workers Static Assets from `landscape/web`; `landscape/web/.assetsignore` leaves out `dev/`. |
+| `/explorer` | Explicit entry to the same app shell. `/explorer/` and `/explorer.html` redirect here while preserving query options. On the public home domains, the small entry module sends new visitors to `/guide/` before loading the renderer or dataset; entering the app sets a one-year `bl_explorer` preference. Shared view hashes, app options, existing saved settings and service aliases keep direct app entry. |
 | `/guide/` | The guide, *What remains* (`landscape/web/guide/`), from the same static assets. Its films and previews (`.mp4`, `.webm`, `.m4a`, `.mp3`, `.vtt`) answer single byte ranges, 304 and HEAD with the security headers. The guide's HTML is `no-cache`; its other files are cached for an hour. |
 | `/dataset/index.json` | Names the current dataset (`src/release.js`). The app reads it on startup. |
 | `/dataset/<id>/<file>` | R2 objects `landscape/<id>/<file>`, only for the ids in `src/release.js` and the dataset's file names. Single byte ranges, ETag and 304, immutable caching, CORS `*`, and an edge cache for whole objects and ranges up to 8 MiB. |

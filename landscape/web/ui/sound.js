@@ -24,7 +24,10 @@ export function readSoundPref(storage) {
 }
 
 /** createSound() -> { on, context, set(on), toggle(), unlock(), onChange(fn), state }. */
-export function createSound({ storage = globalThis.localStorage, AudioContextClass = null } = {}) {
+export function createSound({ storage, AudioContextClass = null } = {}) {
+  if (storage === undefined) {
+    try { storage = globalThis.localStorage; } catch { storage = null; }
+  }
   let on = readSoundPref(storage);
   let ctx = null;
   let suspendTimer = 0;

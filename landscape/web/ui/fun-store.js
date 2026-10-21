@@ -44,8 +44,9 @@ export function parseFun(textValue) {
   return out;
 }
 
-export function loadFun(storage = globalThis.localStorage) {
+export function loadFun(storage) {
   try {
+    if (storage === undefined) storage = globalThis.localStorage;
     const v = storage ? storage.getItem(FUN_KEY) : null;
     return v == null ? defaultFun() : parseFun(v);
   } catch {
@@ -53,8 +54,9 @@ export function loadFun(storage = globalThis.localStorage) {
   }
 }
 
-export function saveFun(storage = globalThis.localStorage, data) {
+export function saveFun(storage, data) {
   try {
+    if (storage === undefined) storage = globalThis.localStorage;
     if (storage) storage.setItem(FUN_KEY, JSON.stringify(data));
     return true;
   } catch {

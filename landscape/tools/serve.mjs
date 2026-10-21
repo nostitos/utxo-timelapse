@@ -120,9 +120,13 @@ export function createLandscapeServer({ web = DEFAULT_WEB, data = null, log = fa
     }
     if (pathname.includes('\0') || pathname.includes('\\')) return send(400, 'bad path');
     if (pathname.split('/').some((seg) => seg === '..')) return send(403, 'forbidden');
+    if (pathname === '/explorer/' || pathname === '/explorer.html') {
+      return send(302, 'moved', { Location: '/explorer' + new URL(req.url, 'http://localhost').search });
+    }
 
     let root = webRoot;
     let rel = pathname;
+    if (pathname === '/explorer') rel = '/index.html';
     let isData = false;
     if (pathname === DATASET_PREFIX || pathname.startsWith(DATASET_PREFIX + '/')) {
       if (!dataRoot) return send(404, 'no dataset directory configured (--data)');

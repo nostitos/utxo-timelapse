@@ -31,7 +31,12 @@ const opt = (name, fallback) => {
   const i = args.indexOf('--' + name);
   return i >= 0 ? args[i + 1] : fallback;
 };
-const base = opt('url', 'http://127.0.0.1:12990/');
+const baseUrl = new URL(opt('url', 'http://127.0.0.1:12990/'));
+// These checks exercise the app; new public home visits intentionally open the guide.
+if (['bitcoinlandscape.com', 'www.bitcoinlandscape.com'].includes(baseUrl.hostname) && baseUrl.pathname === '/') {
+  baseUrl.pathname = '/explorer';
+}
+const base = baseUrl.href;
 const explorer = opt('explorer', 'http://127.0.0.1:12989').replace(/\/+$/, '');
 const shots = opt('shots', null);
 const browser = opt('browser', 'chrome');
