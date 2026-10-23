@@ -1022,23 +1022,23 @@
       },
       "remote": {
         "mp4": {
-          "url": "/guide/film/what-remains-narrated-1080-31105243.mp4",
-          "r2Key": "landscape/guide/film/what-remains-narrated-1080-31105243.mp4",
-          "bytes": 71252633,
-          "sha256": "31105243525b6b7ecc9317a446fc2a09db706d3c2a079d88fcc6c16fb1dd0d82",
+          "url": "/guide/film/what-remains-narrated-1080-fb6839e1.mp4",
+          "r2Key": "landscape/guide/film/what-remains-narrated-1080-fb6839e1.mp4",
+          "bytes": 71241555,
+          "sha256": "fb6839e113ce82adb2a2f496988dfb4421402450cd69515f97c0fc3cb61d2490",
           "video": "H.264 High 1920x1080, 30 fps, 5,760 frames, 2.79 Mbps two-pass",
           "audio": "AAC-LC 48 kHz stereo 160 kbps, -14.1 LUFS"
         },
         "mp4Portrait": {
-          "url": "/guide/film/what-remains-narrated-1080x1920-31cf3c87.mp4",
-          "r2Key": "landscape/guide/film/what-remains-narrated-1080x1920-31cf3c87.mp4",
-          "bytes": 71154785,
-          "sha256": "31cf3c87dceba2fd1b3e47b1b0211ee909398cff7c5617a897a32d395f6b2790",
+          "url": "/guide/film/what-remains-narrated-1080x1920-6776e01a.mp4",
+          "r2Key": "landscape/guide/film/what-remains-narrated-1080x1920-6776e01a.mp4",
+          "bytes": 71176606,
+          "sha256": "6776e01abc321fe58d3ea4653af843b7c683a4dec47aae20cc86f8ec79d9f2a3",
           "video": "H.264 High 1080x1920, 30 fps, 5,760 frames, 2.79 Mbps two-pass",
           "audio": "AAC-LC 48 kHz stereo 160 kbps, -14.1 LUFS",
           "source": {
             "file": "renders/narrated-v.mp4",
-            "sha256": "d776840f340349148ff62e4a3883b68e5c17f96b95c44491b10e48bd20674331"
+            "sha256": "a99ffdbb08fcde1bd3917c5c4074c09ff7e88bb5f585cc8f182fcdafae61e593"
           },
           "use": "phones held upright (the dialog picks it when the screen is portrait and at most 900 px wide)"
         }
@@ -1048,19 +1048,20 @@
       "posterAt": 12.6,
       "source": {
         "file": "renders/narrated-4k.mp4",
-        "sha256": "65c21837939fbc4c63ed1a8e155f0bd93ed0a363041ce8f7dde037870ec37d56"
+        "sha256": "cbb773ec322662339738711ec49d061b922e976bce36fbada527e87a7f89909e"
       },
       "captions": {
         "file": "marketing/films/what-remains-narrated.srt",
-        "cues": 48
+        "cues": 47
       },
       "youtube": "https://www.youtube.com/watch?v=41nViOGyF4M",
       "credits": "Narration: George (ElevenLabs Eleven v4). Music: Suno v6.",
       "bytes": {
         "poster": 151264,
-        "vtt": 3472,
+        "vtt": 3413,
         "posterPortrait": 278592
-      }
+      },
+      "edit": "Narration without a date at the newest edge and without the extra 'dot' in the closing address; no dated captions."
     },
     {
       "id": "film-above",
