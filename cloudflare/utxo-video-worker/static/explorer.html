@@ -329,7 +329,7 @@
 <div id="about" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
   <div id="aboutCard">
     <h1 id="aboutTitle">UTXO Timelapse</h1>
-    <p class="lead">Bitcoin’s unspent outputs, mapped by their creation block and amount. Many outputs can share one pixel. The published timeline runs from genesis to the data cutoff shown below. Play it as a video, pause anywhere, click any pixel to inspect the outputs represented there.</p>
+    <p class="lead">Bitcoin’s unspent outputs, mapped by their creation block and amount. Many outputs can share one pixel. The timeline runs from genesis to the latest block shown below and is updated weekly. Play it as a video, pause anywhere, click any pixel to inspect the outputs represented there.</p>
 
     <h3>Reading the picture</h3>
     <div class="grid">
@@ -348,7 +348,7 @@
     <p id="renditionNote" hidden>At 1440p, magnifier colours are resampled. Pixel coordinates and coin lookups use the 4K master grid.</p>
     <h3>Using it</h3>
     <div class="grid">
-      <span>Click a pixel</span><span>Opens the details drawer: which coins were there at that block, their amounts, when they were created, and whether they remained unspent at the published data cutoff.</span>
+      <span>Click a pixel</span><span>Opens the details drawer: which coins were there at that block, their amounts, when they were created, and whether they are still unspent in the latest data.</span>
       <span>Hover</span><span>The strip at the bottom shows the block range, dates and amount range under the cursor.</span>
       <span>Aim precisely</span><span>Pause, then use the magnifier (click inside it to pick), or nudge with <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> (<kbd>Shift</kbd> = 10 px).</span>
       <span>Move in time</span><span>Scrub the bar, type a block number, pick a date, or step with <kbd>[</kbd> <kbd>]</kbd> or use the controls to step by 1 or 20 blocks.</span>
@@ -645,7 +645,7 @@ function drawLegend() {
     note.textContent = base + (split === 0 ? "The top of the scale runs to warm white, so the densest pixels stay the brightest." : "");
   }
   const src = document.getElementById("aboutSrc");
-  if (info.tipDate) src.textContent = "Blocks 0 – " + (info.numBlocks - 1).toLocaleString("en-US") + " · data to " + info.tipDate + " · " + info.imageWidth + "×" + info.imageHeight + " @ 1 block per frame";
+  if (info.tipDate) src.textContent = "Blocks 0 – " + (info.numBlocks - 1).toLocaleString("en-US") + " · data through " + info.tipDate + " · " + info.imageWidth + "×" + info.imageHeight + " @ 1 block per frame";
 }
 
 // ---- about modal: shown once on first visit, then from the [?] button or the ? key ----
@@ -1339,7 +1339,7 @@ async function selectPixel(nx, ny) {
     html += "<div class='splitBar'><div style='width:" + gPct + "%;background:#9ece6a'></div><div style='width:" + (100-gPct) + "%;background:#7aa2f7'></div></div>";
     const stateSummary = [];
     if (stillUn > 0) {
-      stateSummary.push("<span class='unspent'>" + stillUn.toLocaleString("en-US") + " unspent at cutoff (" + fmtBtc(resp.liveUnspentSat) + ")</span>");
+      stateSummary.push("<span class='unspent'>" + stillUn.toLocaleString("en-US") + " still unspent (" + fmtBtc(resp.liveUnspentSat) + ")</span>");
     }
     if (goneLater > 0) {
       stateSummary.push("<span class='goneLater'>" + goneLater.toLocaleString("en-US") + " spent after this block (" + fmtBtc(resp.liveSat - resp.liveUnspentSat) + ")</span>");
@@ -1353,7 +1353,7 @@ async function selectPixel(nx, ny) {
   html += "<div class='secHead'>Pixel totals</div>";
   html += "<div class='statGrid'>" +
     "<span class='k'>UTXOs ever created in this range</span><span class='v'>" + everCount.toLocaleString("en-US") + " · " + fmtBtc(resp.liveSat + resp.pastSat) + "</span>" +
-    (stillUn > 0 ? "<span class='k'>unspent at cutoff</span><span class='v'>" + stillUn.toLocaleString("en-US") + " (" + survivalPct.toFixed(1) + "%)</span>" : "") +
+    (stillUn > 0 ? "<span class='k'>still unspent</span><span class='v'>" + stillUn.toLocaleString("en-US") + " (" + survivalPct.toFixed(1) + "%)</span>" : "") +
     (resp.medianStay >= 0 ? "<span class='k'>median lifespan</span><span class='v'>" + resp.medianStay.toLocaleString("en-US") + " blocks (~" + fmtAge(resp.medianStay) + ")</span>" : "") +
     "</div>";
   if (resp.pop && resp.pop.some(v => v > 0)) {
@@ -1385,7 +1385,7 @@ async function selectPixel(nx, ny) {
   };
 
   if (stayers.length) {
-    html += "<div class='fateHead unspent'>● Unspent at cutoff <span class='sub'>(" + stayers.length.toLocaleString("en-US") + ")</span></div>" + rowsOf(stayers, "stay");
+    html += "<div class='fateHead unspent'>● Still unspent <span class='sub'>(" + stayers.length.toLocaleString("en-US") + ")</span></div>" + rowsOf(stayers, "stay");
   }
   if (leavers.length) {
     html += "<div class='fateHead goneLater'>● Spent after this block <span class='sub'>(" + leavers.length.toLocaleString("en-US") + ", earliest spend first)</span></div>" + rowsOf(leavers, "leave");

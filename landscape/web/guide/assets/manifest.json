@@ -126,7 +126,7 @@
     {
       "id": "field-tip",
       "title": "The field at the newest block",
-      "purpose": "The opening composition at the last block of this edition, breathing slowly.",
+      "purpose": "The opening composition at its dataset's newest block, breathing slowly.",
       "kind": "sequence",
       "movement": null,
       "look": "Landscape",

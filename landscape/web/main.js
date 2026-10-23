@@ -452,7 +452,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     });
 
     playback.onEvent((type, detail) => {
-      if (type === 'end') notice('Reached block ' + fmtInt(detail.block) + ', the last block in this dataset', 'info', 'end');
+      if (type === 'end') notice('Reached block ' + fmtInt(detail.block) + ', the latest available block', 'info', 'end');
       if (type === 'error') notice('Playback stopped: ' + (detail && detail.message ? detail.message : String(detail)), 'error');
     });
 

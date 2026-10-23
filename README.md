@@ -5,20 +5,20 @@
 ### Bitcoin's history, written in unspent outputs.
 
 An evolving landscape of creation, survival and spending.<br>
-Explore 966,361 blocks in a 4K film. Pause any moment and inspect the outputs behind a pixel.
+Explore every block since genesis in a 4K film. Pause any moment and inspect the outputs behind a pixel.
 
 **[Read the illustrated guide](https://bitcointimelapse.com/guide/)** · **[Open the explorer](https://bitcointimelapse.com/explorer)** · **[Under the hood](https://nostitos.github.io/utxo-timelapse/technical.html)**
 
 [![A moving landscape of Bitcoin outputs, extracted from the published 4K film](site/assets/readme/hero.gif)](https://nostitos.github.io/utxo-timelapse/)
 
-**4K · 60 fps · 4h 28m · 3.65 billion historical output records**<br>
-Published data: genesis through block **966,360**, September 10, 2026.
+**4K · 60 fps · one frame per block · 3.65 billion historical output records**<br>
+Updated weekly, from genesis to the latest block.
 
 </div>
 
 ## Learn to read the landscape
 
-An output appears at its **creation block** on the horizontal axis and its **amount** on the vertical axis. It stays there until spent. Many outputs can share a pixel. Colour represents accumulated density, weighted by value in this edition; a flash marks activity.
+An output appears at its **creation block** on the horizontal axis and its **amount** on the vertical axis. It stays there until spent. Many outputs can share a pixel. Colour represents accumulated density, weighted by value in the film; a flash marks activity.
 
 The newest 105,000-block epoch receives half the plot. Older epochs compress geometrically, with a 120-block slide at each layout change. Time is deliberately uneven: the present gets room while the past remains visible.
 
@@ -30,16 +30,16 @@ The **[visual guide](https://nostitos.github.io/utxo-timelapse/)** walks through
 
 [![The explorer at block 314000, showing the lifecycle of outputs in one selected pixel](site/assets/ui/explorer-drawer.webp)](https://bitcointimelapse.com/explorer?block=314000&x=3000&y=1525)
 
-**[Open this exact view](https://bitcointimelapse.com/explorer?block=314000&x=3000&y=1525).** At block 314,000, this pixel contains two unspent outputs. One remains unspent at the published cutoff; the other was spent in 2018. The drawer shows amounts, dates, population over time and candidate transaction matches.
+**[Open this exact view](https://bitcointimelapse.com/explorer?block=314000&x=3000&y=1525).** At block 314,000, this pixel contains two unspent outputs. One was still unspent as of September 2026; the other was spent in 2018. The drawer shows amounts, dates, population over time and candidate transaction matches.
 
 - Pause, magnify and inspect native image pixels.
 - Jump by block or UTC date; step through individual frames.
-- Separate outputs still unspent at the cutoff from those spent later or earlier.
+- Separate outputs that are still unspent from those spent later or earlier.
 - Share a block-and-pixel link; resolve candidate transaction IDs when needed.
 
 The high-detail explorer targets desktop browsers with HEVC support. The guide's lighter previews work independently of the full film.
 
-## What this edition changes
+## What this project adds
 
 UTXO Timelapse builds on Martinus's original idea with a substantially expanded rendering and exploration system.
 

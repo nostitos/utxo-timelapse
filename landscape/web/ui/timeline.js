@@ -144,7 +144,7 @@ export function createTimeline({ container, tip, blocktimes, playback, onSeek, o
     }
     const b = dateToBlock(blocktimes, t, tipBlock + 1);
     if (b == null) {
-      if (onNotice) onNotice('That date is after the last block in this dataset', 'warn');
+      if (onNotice) onNotice('That date is after the latest available block', 'warn');
       return;
     }
     onSeek(b);
