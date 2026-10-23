@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { navigationRoute, explorerCookie, fetchGuide, GUIDE_ORIGIN } from '../cloudflare/utxo-video-worker/src/navigation.js';
+import worker from '../cloudflare/utxo-video-worker/src/index.js';
 
 const request = (path, cookie = '', host = 'bitcointimelapse.com') => new Request(`https://${host}${path}`, { headers: { Cookie: cookie } });
 assert.deepEqual(navigationRoute(request('/')), { kind: 'guide', path: '/index.html', entry: true });
@@ -12,11 +13,22 @@ for (const path of ['/explorer', '/explorer/', '/explorer.html']) assert.equal(n
 assert.deepEqual(navigationRoute(request('/?block=314000&x=3000&y=1525')), { kind: 'redirect', path: '/explorer?block=314000&x=3000&y=1525' });
 assert.deepEqual(navigationRoute(request('/guide/', 'btl_explorer=1')), { kind: 'guide', path: '/index.html' });
 assert.deepEqual(navigationRoute(request('/guide')), { kind: 'redirect', path: '/guide/' });
+for (const path of ['/Guide', '/GUIDE', '/Guide/', '/guide.html', '/Guide.HTM']) {
+  assert.deepEqual(navigationRoute(request(path + '?lang=en')), { kind: 'redirect', path: '/guide/?lang=en' }, path);
+}
 assert.deepEqual(navigationRoute(request('/guide/technical.html')), { kind: 'guide', path: '/technical.html' });
 assert.deepEqual(navigationRoute(request('/guide/assets/fonts/fonts.css')), { kind: 'guide', path: '/assets/fonts/fonts.css' });
 for (const path of ['/api/info', '/hls/v5/media.m3u8', '/src/index.js', '/assets/.env', '/guide//example.com']) assert.equal(navigationRoute(request(path)), null);
 assert.match(explorerCookie(request('/explorer')), /Path=\/;.*HttpOnly; Secure$/);
 assert.doesNotMatch(explorerCookie(new Request('http://localhost/explorer')), /Secure/);
+// utxo.aiception.ai reaches the Worker through a proxy as utxo-cdn.hat39.com: the redirect
+// must stay relative so the visitor keeps the hostname they typed.
+for (const [url, target] of [['https://utxo-cdn.hat39.com/GUIDE?lang=en', '/guide/?lang=en'],
+  ['https://utxo-cdn.hat39.com/guide', '/guide/'], ['https://bitcointimelapse.com/?block=314000', '/explorer?block=314000']]) {
+  const moved = await worker.fetch(new Request(url), {}, { waitUntil() {} });
+  assert.equal(moved.status, 302, url);
+  assert.equal(moved.headers.get('Location'), target, url);
+}
 
 const realFetch = globalThis.fetch;
 let observed;

@@ -813,6 +813,8 @@ page load only: main.js keeps the dismissal in memory, so nothing reaches
 the settings store, localStorage or the URL hash, and a reload shows the box again. Changing
 `display.hud`, `display.legend` or `display.minimap` clears that box's dismissal. With the HUD
 hidden, the hover card docks at the top left in its place (`#hover.undocked`).
+The brand row's wordmark, *UTXO Timelapse Landscape*, is an unstyled link to `/guide/` that opens
+in a new tab, so the replay keeps running; a pointer click leaves no focus ring behind it.
 
 Test hook: main.js sets `window.__landscape = { ready, settings, replay, view, controls,
 playback, seek(block), flyTo(place), inspect(x, y), follow: { active, lag, toggle(), set(on) },

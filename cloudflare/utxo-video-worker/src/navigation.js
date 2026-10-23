@@ -2,11 +2,13 @@
 export const GUIDE_ORIGIN = "https://nostitos.github.io/utxo-timelapse/";
 export const EXPLORER_COOKIE = "btl_explorer";
 const GUIDE_FILES = new Set(["/index.html", "/technical.html", "/styles.css", "/site.js", "/axis-mapping.mjs"]);
+// Every spelling of the guide's address opens it: /guide, /Guide/, /GUIDE and /guide.html.
+const GUIDE_ALIAS = /^\/guide(?:\/|\.html?)?$/i;
 
 export function navigationRoute(request) {
   const url = new URL(request.url);
   const publicHome = ["bitcointimelapse.com", "www.bitcointimelapse.com"].includes(url.hostname);
-  if (url.pathname === "/guide") return { kind: "redirect", path: "/guide/" + url.search };
+  if (url.pathname !== "/guide/" && GUIDE_ALIAS.test(url.pathname)) return { kind: "redirect", path: "/guide/" + url.search };
   if (["/explorer", "/explorer/", "/explorer.html"].includes(url.pathname)) return { kind: "explorer" };
   if (url.pathname === "/") {
     if (!publicHome) return { kind: "explorer" }; // Existing service aliases keep working.
