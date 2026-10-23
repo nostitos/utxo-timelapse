@@ -82,3 +82,5 @@ diagnostics/
 
 # Media used directly by the Bitcoin Landscape guide
 !landscape/web/guide/assets/**/*.mp4
+# The guide's film is served from R2 (/guide/film/); a local copy is only for the local server
+landscape/web/guide/film/

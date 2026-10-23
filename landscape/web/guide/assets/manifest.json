@@ -8,7 +8,7 @@
     "dataset": "d972052-20261018",
     "tip": 972052
   },
-  "generated": "2026-10-20T07:31:46.308Z",
+  "generated": "2026-10-23T13:27:27.000Z",
   "scenes": [
     {
       "id": "field",
@@ -30,28 +30,6 @@
         "frames": 300,
         "browser": "Chrome/155.0.8059.85",
         "defHash": "2f3162290d3114ff"
-      }
-    },
-    {
-      "id": "strata",
-      "title": "Strata",
-      "purpose": "Rise above the newest blocks to read the axes from above, then descend toward the bright band of 1 BTC outputs.",
-      "kind": "sequence",
-      "movement": "II",
-      "look": "Landscape",
-      "block": 969652,
-      "link": "/#b=969652&mode=map&cam=950.000,69.989,95.222,0.00,-89.00&preset=Ultra&camera.fov=50",
-      "linkAt": 7,
-      "captured": {
-        "created": "2026-10-20T07:18:03.469Z",
-        "viewport": {
-          "width": 1920,
-          "height": 1080,
-          "dpr": 2
-        },
-        "frames": 420,
-        "browser": "Chrome/155.0.8059.85",
-        "defHash": "96a5c7a9cfb6656d"
       }
     },
     {
@@ -190,72 +168,6 @@
       }
     },
     {
-      "id": "first-line",
-      "title": "The first line",
-      "purpose": "The 50 BTC row of 2009 and 2010: block rewards that have never been spent, a wall of light in the sparse early field.",
-      "kind": "sequence",
-      "movement": null,
-      "look": "Landscape",
-      "block": 972052,
-      "link": "/#b=972052&mode=map&cam=45.359,4.820,54.810,70.00,-10.00&preset=Ultra&camera.fov=40",
-      "linkAt": 0,
-      "captured": {
-        "created": "2026-10-20T05:19:21.895Z",
-        "viewport": {
-          "width": 1920,
-          "height": 1080,
-          "dpr": 2
-        },
-        "frames": 420,
-        "browser": "Chrome/155.0.8059.85",
-        "defHash": "23cad697afba8cb9"
-      }
-    },
-    {
-      "id": "towers",
-      "title": "Towers at the edge",
-      "purpose": "The rows of 10 BTC and more at the newest blocks, a skyline of few, large outputs.",
-      "kind": "sequence",
-      "movement": null,
-      "look": "Landscape",
-      "block": 972052,
-      "link": "/#b=972052&mode=map&cam=976.382,6.610,20.658,140.00,-5.00&preset=Ultra&camera.fov=40",
-      "linkAt": 0,
-      "captured": {
-        "created": "2026-10-20T05:21:34.218Z",
-        "viewport": {
-          "width": 1920,
-          "height": 1080,
-          "dpr": 2
-        },
-        "frames": 420,
-        "browser": "Chrome/155.0.8059.85",
-        "defHash": "aa9ff6cfe3112536"
-      }
-    },
-    {
-      "id": "dust-ridge",
-      "title": "The ridge",
-      "purpose": "The dense rows of a few hundred to a thousand satoshis, created since 2023.",
-      "kind": "sequence",
-      "movement": null,
-      "look": "Landscape",
-      "block": 972052,
-      "link": "/#b=972052&mode=map&cam=871.217,23.474,150.783,135.00,-28.00&preset=Ultra&camera.fov=40",
-      "linkAt": 0,
-      "captured": {
-        "created": "2026-10-20T05:26:23.493Z",
-        "viewport": {
-          "width": 1920,
-          "height": 1080,
-          "dpr": 2
-        },
-        "frames": 420,
-        "browser": "Chrome/155.0.8059.85",
-        "defHash": "ec4bf0a1024e7ef1"
-      }
-    },
-    {
       "id": "seventeen-years",
       "title": "Seventeen years",
       "purpose": "Sampled block states from the genesis block to the newest, about 2,000 blocks apart.",
@@ -372,28 +284,6 @@
       }
     },
     {
-      "id": "still-strata",
-      "title": "Strata from above",
-      "purpose": null,
-      "kind": "still",
-      "movement": null,
-      "look": "Landscape",
-      "block": 969652,
-      "link": "/#b=969652&mode=map&cam=950.000,69.989,95.222,0.00,-89.00&preset=Ultra",
-      "linkAt": 0,
-      "captured": {
-        "created": "2026-10-20T05:37:10.236Z",
-        "viewport": {
-          "width": 1920,
-          "height": 1080,
-          "dpr": 2
-        },
-        "frames": 1,
-        "browser": "Chrome/155.0.8059.85",
-        "defHash": "0ce9f7d01756e126"
-      }
-    },
-    {
       "id": "still-cell",
       "title": "A cell",
       "purpose": "The column of the film seen from beyond the newest block, above the field against the sky.",
@@ -479,72 +369,6 @@
         "frames": 1,
         "browser": "Chrome/155.0.8059.85",
         "defHash": "31761c72f4abd664"
-      }
-    },
-    {
-      "id": "still-first-line",
-      "title": "The first line",
-      "purpose": null,
-      "kind": "still",
-      "movement": null,
-      "look": "Landscape",
-      "block": 972052,
-      "link": "/#b=972052&mode=map&cam=142.383,28.472,84.079,55.00,-24.00&preset=Ultra",
-      "linkAt": 0,
-      "captured": {
-        "created": "2026-10-20T05:37:16.459Z",
-        "viewport": {
-          "width": 1920,
-          "height": 1080,
-          "dpr": 2
-        },
-        "frames": 1,
-        "browser": "Chrome/155.0.8059.85",
-        "defHash": "d418d521ff5e5835"
-      }
-    },
-    {
-      "id": "still-towers",
-      "title": "Towers at the edge",
-      "purpose": null,
-      "kind": "still",
-      "movement": null,
-      "look": "Landscape",
-      "block": 972052,
-      "link": "/#b=972052&mode=map&cam=976.382,6.610,28.658,140.00,-5.00&preset=Ultra",
-      "linkAt": 0,
-      "captured": {
-        "created": "2026-10-20T05:37:17.324Z",
-        "viewport": {
-          "width": 1920,
-          "height": 1080,
-          "dpr": 2
-        },
-        "frames": 1,
-        "browser": "Chrome/155.0.8059.85",
-        "defHash": "86938482815c17fd"
-      }
-    },
-    {
-      "id": "still-ridge",
-      "title": "The ridge",
-      "purpose": null,
-      "kind": "still",
-      "movement": null,
-      "look": "Landscape",
-      "block": 972052,
-      "link": "/#b=972052&mode=map&cam=891.217,23.474,150.783,135.00,-28.00&preset=Ultra",
-      "linkAt": 0,
-      "captured": {
-        "created": "2026-10-20T05:37:19.605Z",
-        "viewport": {
-          "width": 1920,
-          "height": 1080,
-          "dpr": 2
-        },
-        "frames": 1,
-        "browser": "Chrome/155.0.8059.85",
-        "defHash": "a28e351d39392fb5"
       }
     },
     {
@@ -788,9 +612,323 @@
         "browser": "Chrome/155.0.8059.85",
         "defHash": "fb602bcffcdbc7f0"
       }
+    },
+    {
+      "id": "map-chain",
+      "title": "The map: the whole chain",
+      "purpose": "The whole chain from above, a strip across the frame with every year along it; the film adds a year axis below.",
+      "kind": "still",
+      "movement": "II",
+      "look": "Landscape",
+      "block": 969652,
+      "link": "/#b=969652&mode=map&cam=486.000,639.903,114.769,0.00,-89.00&preset=Ultra&camera.fov=50",
+      "linkAt": 0,
+      "film": {
+        "at": 22.0,
+        "source": "narrated cut"
+      },
+      "captured": {
+        "created": "2026-10-23T03:55:07.455Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "268e491a2d4b97c4",
+        "scene": "n-map",
+        "frame": 228
+      }
+    },
+    {
+      "id": "map",
+      "title": "The map: every amount",
+      "purpose": "From above over the last five years, every amount row in view; the film adds an amount scale up the side.",
+      "kind": "still",
+      "movement": "II",
+      "look": "Landscape",
+      "block": 969652,
+      "link": "/#b=969652&mode=map&cam=854.957,225.014,107.528,0.00,-89.00&preset=Ultra&camera.fov=50",
+      "linkAt": 0,
+      "film": {
+        "at": 31.0,
+        "source": "narrated cut"
+      },
+      "captured": {
+        "created": "2026-10-23T03:55:07.455Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "268e491a2d4b97c4",
+        "scene": "n-map",
+        "frame": 498
+      }
+    },
+    {
+      "id": "first-line",
+      "title": "The first line",
+      "purpose": "Low along the row of about 50 BTC outputs of 2009 and 2010: 33,094 never spent at block 969,652.",
+      "kind": "still",
+      "movement": "III",
+      "look": "Landscape",
+      "block": 969652,
+      "link": "/#b=969652&mode=map&cam=68.250,16.000,70.000,-54.83,-18.37&preset=Ultra",
+      "linkAt": 0,
+      "film": {
+        "at": 57.0,
+        "source": "narrated cut"
+      },
+      "captured": {
+        "created": "2026-10-23T03:57:24.049Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "c031c684d2cb74e2",
+        "scene": "n-first-line",
+        "frame": 270
+      }
+    },
+    {
+      "id": "round",
+      "title": "Round amounts",
+      "purpose": "Over blocks 300,000 to 520,000 (2014 to 2018) in the Outputs look: the rows around 0.01, 0.1, 1 and 10 BTC each hold at least twice as many outputs as any of the two rows on either side.",
+      "kind": "still",
+      "movement": "III",
+      "look": "Outputs",
+      "block": 969652,
+      "link": "/#b=969652&mode=map&cam=418.889,70.636,129.558,0.00,-62.00&preset=Ultra&look=Outputs",
+      "linkAt": 0,
+      "film": {
+        "at": 64.0,
+        "source": "narrated cut"
+      },
+      "captured": {
+        "created": "2026-10-22T19:00:00.544Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "9fe19aa63d6b89bc",
+        "scene": "t-round",
+        "frame": 120
+      }
+    },
+    {
+      "id": "ridge",
+      "title": "The ridge",
+      "purpose": "The ridge of outputs worth a few hundred satoshis that rises from 2023, in Golden hour.",
+      "kind": "still",
+      "movement": "III",
+      "look": "Golden hour",
+      "block": 969652,
+      "link": "/#b=969652&mode=map&cam=817.188,24.000,150.000,-155.56,-30.08&preset=Ultra&look=Golden+hour",
+      "linkAt": 0,
+      "film": {
+        "at": 74.5,
+        "source": "narrated cut"
+      },
+      "captured": {
+        "created": "2026-10-22T19:03:20.088Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "92cdaf81a90e0e52",
+        "scene": "t-ridge",
+        "frame": 75
+      }
+    },
+    {
+      "id": "towers",
+      "title": "Towers",
+      "purpose": "Cell 15141:222 in Daylight: 35 outputs of exactly 1,000 BTC from blocks 969,024 to 969,087, about ten hours.",
+      "kind": "still",
+      "movement": "III",
+      "look": "Daylight",
+      "block": 969652,
+      "link": "/#b=969652&mode=map&cam=1001.606,16.193,27.646,80.50,-13.94&preset=Ultra&look=Daylight",
+      "linkAt": 0,
+      "film": {
+        "at": 80.5,
+        "source": "narrated cut"
+      },
+      "captured": {
+        "created": "2026-10-23T03:58:36.489Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "9c39143da2af1ffd",
+        "scene": "n-towers",
+        "frame": 111
+      }
+    },
+    {
+      "id": "edge",
+      "title": "The newest edge",
+      "purpose": "Along the newest edge at block 969,652, 3 October 2026, toward the 1 BTC band.",
+      "kind": "still",
+      "movement": "III",
+      "look": "Landscape",
+      "block": 969652,
+      "link": "/#b=969652&mode=map&cam=972.500,9.000,119.375,12.09,-9.52&preset=Ultra",
+      "linkAt": 0,
+      "film": {
+        "at": 86.5,
+        "source": "narrated cut"
+      },
+      "captured": {
+        "created": "2026-10-22T19:05:21.324Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "53a373ba0e0297fe",
+        "scene": "t-edge",
+        "frame": 75
+      }
+    },
+    {
+      "id": "cell-anatomy",
+      "title": "A cell, from above",
+      "purpose": "Above cell 15150:803 at the film's anatomy of a cell: 64 blocks, one amount row, 214 outputs.",
+      "kind": "still",
+      "movement": "IV",
+      "look": "Landscape",
+      "block": 969652,
+      "link": "/#b=969652&mode=map&cam=967.923,10.479,89.275,-12.00,-27.56&preset=Ultra",
+      "linkAt": 0,
+      "film": {
+        "at": 101.0,
+        "source": "narrated cut"
+      },
+      "captured": {
+        "created": "2026-10-23T04:03:39.456Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "857ee9e0f198e7e8",
+        "scene": "n-cell",
+        "frame": 366
+      }
+    },
+    {
+      "id": "above-pulse",
+      "title": "From above: Pulse",
+      "purpose": "The whole chain from above in Pulse while blocks 969,652 to 970,852 replay; each flash is a spend, placed at the year its coins were made. Static link: the starting composition; press Play.",
+      "kind": "sequence",
+      "movement": "VI",
+      "look": "Pulse",
+      "block": [
+        969652,
+        970852
+      ],
+      "link": "/#b=969652&mode=map&cam=486.000,639.903,114.770,0.00,-89.00&preset=Ultra&look=Pulse&color.heatGain=2.5&amp.heatHalfLife=100&amp.heatEdge=0.08&amp.flashSize=1.5",
+      "linkAt": 0,
+      "film": {
+        "at": 117.6,
+        "source": "narrated cut"
+      },
+      "captured": {
+        "created": "2026-10-23T04:05:21.111Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "7bca2e942280270c",
+        "scene": "n-pulse-chain",
+        "frame": 270
+      }
+    },
+    {
+      "id": "above-film",
+      "title": "From above: the film's look",
+      "purpose": "The recent field from above in the BitcoinTimelapse.com look while the same 1,200 blocks replay. Static link: the starting composition; press Play.",
+      "kind": "sequence",
+      "movement": "VI",
+      "look": "BitcoinTimelapse.com",
+      "block": [
+        969652,
+        970852
+      ],
+      "link": "/#b=969652&mode=map&cam=905.000,109.983,91.920,0.00,-89.00&preset=Ultra&look=BitcoinTimelapse.com",
+      "linkAt": 0,
+      "film": {
+        "at": 129.6,
+        "source": "narrated cut"
+      },
+      "captured": {
+        "created": "2026-10-23T04:07:20.855Z",
+        "viewport": {
+          "width": 1920,
+          "height": 1080,
+          "dpr": 2
+        },
+        "browser": "Chrome/155.0.8059.85",
+        "defHash": "f5f05869c683bd7d",
+        "scene": "n-film-recent",
+        "frame": 177
+      }
     }
   ],
   "media": [
+    {
+      "id": "above-film",
+      "kind": "still",
+      "files": {
+        "800": "assets/stills/above-film-800.webp",
+        "1600": "assets/stills/above-film-1600.webp"
+      },
+      "scene": "above-film",
+      "film": {
+        "at": 135.5
+      },
+      "source": {
+        "file": "renders/narrated-4k-picture.mp4",
+        "sha256": "af40cac66ad9522ec6fbbb40809dfbb80b691c048e98409c266c20d11165ea77",
+        "frame": 4065
+      },
+      "overlays": "the narrated film's own labels, axes and insets",
+      "bytes": 478144
+    },
+    {
+      "id": "above-pulse",
+      "kind": "still",
+      "files": {
+        "800": "assets/stills/above-pulse-800.webp",
+        "1600": "assets/stills/above-pulse-1600.webp"
+      },
+      "scene": "above-pulse",
+      "film": {
+        "at": 126.6
+      },
+      "source": {
+        "file": "renders/narrated-4k-picture.mp4",
+        "sha256": "af40cac66ad9522ec6fbbb40809dfbb80b691c048e98409c266c20d11165ea77",
+        "frame": 3798
+      },
+      "overlays": "the narrated film's own labels, axes and insets",
+      "bytes": 114112
+    },
     {
       "id": "bird",
       "kind": "clip",
@@ -818,42 +956,37 @@
       "bytes": 5943262
     },
     {
-      "id": "cell",
-      "kind": "clip",
-      "scene": "cell",
+      "id": "cell-anatomy",
+      "kind": "still",
       "files": {
-        "mp4": "assets/clips/cell.mp4",
-        "poster": "assets/stills/cell-poster-1600.webp"
+        "800": "assets/stills/cell-anatomy-800.webp",
+        "1600": "assets/stills/cell-anatomy-1600.webp"
       },
-      "span": [
-        0,
-        14
-      ],
-      "posterAt": 9,
+      "scene": "cell-anatomy",
+      "film": {
+        "at": 101.0
+      },
       "source": {
-        "file": "capture/cell/cell.mp4",
-        "sha256": "59b196d67a737ddd94e4e7223f7d3ca4c7ed204f16cad71df61bb61c4a00b4b2"
+        "file": "renders/narrated-4k-picture.mp4",
+        "sha256": "af40cac66ad9522ec6fbbb40809dfbb80b691c048e98409c266c20d11165ea77",
+        "frame": 3030
       },
-      "bytes": 3315368
+      "overlays": "the narrated film's own labels, axes and insets",
+      "bytes": 175416
     },
     {
-      "id": "day",
-      "kind": "clip",
-      "scene": "day",
+      "id": "day-poster",
+      "kind": "still",
       "files": {
-        "mp4": "assets/clips/day.mp4",
         "poster": "assets/stills/day-poster-1600.webp"
       },
-      "span": [
-        0,
-        14
-      ],
+      "scene": "day",
       "posterAt": 9,
       "source": {
         "file": "capture/day/day.mp4",
         "sha256": "ec5a686fa5bedf5423e043a8aae46ba13ae97ccfbdc7e6a345957c04e2b5f3be"
       },
-      "bytes": 2315014
+      "bytes": 122202
     },
     {
       "id": "earth-poster",
@@ -931,15 +1064,179 @@
       "id": "film",
       "kind": "film",
       "files": {
-        "mp4": "assets/film/what-remains-1080.mp4",
-        "poster": "assets/film/poster-1600.webp",
-        "vtt": "assets/film/what-remains.vtt"
+        "poster": "assets/film/narrated-poster-1920.webp",
+        "vtt": "assets/film/what-remains-narrated.vtt"
+      },
+      "remote": {
+        "mp4": {
+          "url": "/guide/film/what-remains-narrated-1080-31105243.mp4",
+          "r2Key": "landscape/guide/film/what-remains-narrated-1080-31105243.mp4",
+          "bytes": 71252633,
+          "sha256": "31105243525b6b7ecc9317a446fc2a09db706d3c2a079d88fcc6c16fb1dd0d82",
+          "video": "H.264 High 1920x1080, 30 fps, 5,760 frames, 2.79 Mbps two-pass",
+          "audio": "AAC-LC 48 kHz stereo 160 kbps, -14.1 LUFS"
+        }
+      },
+      "title": "What remains, the narrated cut",
+      "duration": 192.0,
+      "posterAt": 12.6,
+      "source": {
+        "file": "renders/narrated-4k.mp4",
+        "sha256": "65c21837939fbc4c63ed1a8e155f0bd93ed0a363041ce8f7dde037870ec37d56"
+      },
+      "captions": {
+        "file": "marketing/films/what-remains-narrated.srt",
+        "cues": 48
+      },
+      "youtube": "https://www.youtube.com/watch?v=41nViOGyF4M",
+      "credits": "Narration: George (ElevenLabs Eleven v4). Music: Suno v6.",
+      "bytes": {
+        "poster": 151264,
+        "vtt": 3472
+      }
+    },
+    {
+      "id": "film-above",
+      "kind": "clip",
+      "files": {
+        "mp4": "assets/clips/film-above.mp4",
+        "poster": "assets/stills/above-pulse-1600.webp"
+      },
+      "scene": "above-pulse",
+      "film": {
+        "span": [
+          117.6,
+          139.2
+        ],
+        "posterAt": 126.6
       },
       "source": {
-        "file": "renders/film90-4k.mp4",
-        "sha256": "c27139d138bfa2ddf5224c5af5023d3ef14feae7087899fbad7cedb1e431e75c"
+        "file": "renders/narrated-4k-picture.mp4",
+        "sha256": "af40cac66ad9522ec6fbbb40809dfbb80b691c048e98409c266c20d11165ea77"
       },
-      "bytes": 22429588
+      "edit": "The narrated film 117.6-139.2 s with its labels, scaled to 1600x900 (x264 two-pass)",
+      "duration": 21.6,
+      "playback": "once; hold the final frame until Replay",
+      "bytes": 8007489
+    },
+    {
+      "id": "film-cell",
+      "kind": "clip",
+      "files": {
+        "mp4": "assets/clips/film-cell.mp4",
+        "poster": "assets/stills/cell-anatomy-1600.webp"
+      },
+      "scene": "cell-anatomy",
+      "film": {
+        "span": [
+          88.8,
+          108.0
+        ],
+        "posterAt": 101.0
+      },
+      "source": {
+        "file": "renders/narrated-4k-picture.mp4",
+        "sha256": "af40cac66ad9522ec6fbbb40809dfbb80b691c048e98409c266c20d11165ea77"
+      },
+      "edit": "The narrated film 88.8-108.0 s with its labels, scaled to 1600x900 (x264 two-pass)",
+      "duration": 19.2,
+      "playback": "once; hold the final frame until Replay",
+      "bytes": 7602608
+    },
+    {
+      "id": "film-looks",
+      "kind": "clip",
+      "files": {
+        "mp4": "assets/clips/film-looks.mp4",
+        "poster": "assets/stills/looks-film-1600.webp"
+      },
+      "film": {
+        "span": [
+          156.0,
+          180.0
+        ],
+        "posterAt": 160.0
+      },
+      "source": {
+        "file": "renders/narrated-4k-picture.mp4",
+        "sha256": "af40cac66ad9522ec6fbbb40809dfbb80b691c048e98409c266c20d11165ea77"
+      },
+      "edit": "The narrated film 156.0-180.0 s with its labels, scaled to 1600x900 (x264 two-pass)",
+      "duration": 24.0,
+      "playback": "once; hold the final frame until Replay",
+      "bytes": 7772138
+    },
+    {
+      "id": "film-map",
+      "kind": "clip",
+      "files": {
+        "mp4": "assets/clips/film-map.mp4",
+        "poster": "assets/stills/map-years-1600.webp"
+      },
+      "scene": "map-chain",
+      "film": {
+        "span": [
+          14.4,
+          38.4
+        ],
+        "posterAt": 22.0
+      },
+      "source": {
+        "file": "renders/narrated-4k-picture.mp4",
+        "sha256": "af40cac66ad9522ec6fbbb40809dfbb80b691c048e98409c266c20d11165ea77"
+      },
+      "edit": "The narrated film 14.4-38.4 s with its labels, scaled to 1600x900 (x264 two-pass)",
+      "duration": 24.0,
+      "playback": "once; hold the final frame until Replay",
+      "bytes": 7442607
+    },
+    {
+      "id": "film-readings",
+      "kind": "clip",
+      "files": {
+        "mp4": "assets/clips/film-readings.mp4",
+        "poster": "assets/stills/readings-shares-1600.webp"
+      },
+      "scene": "readings-value",
+      "film": {
+        "span": [
+          139.2,
+          156.0
+        ],
+        "posterAt": 153.0
+      },
+      "source": {
+        "file": "renders/narrated-4k-picture.mp4",
+        "sha256": "af40cac66ad9522ec6fbbb40809dfbb80b691c048e98409c266c20d11165ea77"
+      },
+      "edit": "The narrated film 139.2-156.0 s with its labels, scaled to 1600x900 (x264 two-pass)",
+      "duration": 16.8,
+      "playback": "once; hold the final frame until Replay",
+      "bytes": 7180053
+    },
+    {
+      "id": "film-time",
+      "kind": "clip",
+      "files": {
+        "mp4": "assets/clips/film-time.mp4",
+        "poster": "assets/stills/time-spend-1600.webp"
+      },
+      "scene": "time",
+      "film": {
+        "span": [
+          108.0,
+          117.6
+        ],
+        "posterAt": 112.2
+      },
+      "source": {
+        "file": "renders/narrated-4k-picture.mp4",
+        "sha256": "af40cac66ad9522ec6fbbb40809dfbb80b691c048e98409c266c20d11165ea77"
+      },
+      "edit": "The narrated film 108.0-117.6 s with its labels, scaled to 1600x900 (x264 two-pass)",
+      "duration": 9.6,
+      "playback": "once; hold the final frame until Replay",
+      "bytes": 4070840
     },
     {
       "id": "jet",
@@ -1133,6 +1430,62 @@
       "bytes": 693550
     },
     {
+      "id": "looks-film",
+      "kind": "still",
+      "files": {
+        "1600": "assets/stills/looks-film-1600.webp"
+      },
+      "film": {
+        "at": 160.0
+      },
+      "source": {
+        "file": "renders/narrated-4k-picture.mp4",
+        "sha256": "af40cac66ad9522ec6fbbb40809dfbb80b691c048e98409c266c20d11165ea77",
+        "frame": 4800
+      },
+      "overlays": "the narrated film's own labels, axes and insets",
+      "bytes": 122312
+    },
+    {
+      "id": "map-amounts",
+      "kind": "still",
+      "files": {
+        "800": "assets/stills/map-amounts-800.webp",
+        "1600": "assets/stills/map-amounts-1600.webp",
+        "3200": "assets/stills/map-amounts-3200.webp"
+      },
+      "scene": "map",
+      "film": {
+        "at": 31.0
+      },
+      "source": {
+        "file": "renders/narrated-4k-picture.mp4",
+        "sha256": "af40cac66ad9522ec6fbbb40809dfbb80b691c048e98409c266c20d11165ea77",
+        "frame": 930
+      },
+      "overlays": "the narrated film's own labels, axes and insets",
+      "bytes": 1431826
+    },
+    {
+      "id": "map-years",
+      "kind": "still",
+      "files": {
+        "800": "assets/stills/map-years-800.webp",
+        "1600": "assets/stills/map-years-1600.webp"
+      },
+      "scene": "map-chain",
+      "film": {
+        "at": 22.0
+      },
+      "source": {
+        "file": "renders/narrated-4k-picture.mp4",
+        "sha256": "af40cac66ad9522ec6fbbb40809dfbb80b691c048e98409c266c20d11165ea77",
+        "frame": 660
+      },
+      "overlays": "the narrated film's own labels, axes and insets",
+      "bytes": 101740
+    },
+    {
       "id": "plane",
       "kind": "clip",
       "realtime": "plane",
@@ -1159,25 +1512,117 @@
       "bytes": 7848400
     },
     {
-      "id": "readings",
-      "kind": "clip",
-      "scene": "readings-count",
+      "id": "readings-shares",
+      "kind": "still",
       "files": {
-        "mp4": "assets/clips/readings.mp4",
-        "poster": "assets/stills/readings-poster-1600.webp"
+        "1600": "assets/stills/readings-shares-1600.webp"
       },
-      "edit": "readings-count 0-6 s, crossfade 5-6 s to readings-value 5-11 s",
+      "scene": "readings-value",
+      "film": {
+        "at": 153.0
+      },
       "source": {
-        "file": [
-          "capture/readings-count/readings-count.mp4",
-          "capture/readings-value/readings-value.mp4"
-        ],
-        "sha256": [
-          "c6fb7250126900e1225772caa9df72b0ec6a92d229a54f7164b27a50fcf6e4ae",
-          "60363e8259f18562be6351d47cc011ed547235085b4db5fb0af224ddc78bab4d"
-        ]
+        "file": "renders/narrated-4k-picture.mp4",
+        "sha256": "af40cac66ad9522ec6fbbb40809dfbb80b691c048e98409c266c20d11165ea77",
+        "frame": 4590
       },
-      "bytes": 3121660
+      "overlays": "the narrated film's own labels, axes and insets",
+      "bytes": 178140
+    },
+    {
+      "id": "region-edge",
+      "kind": "still",
+      "files": {
+        "800": "assets/stills/region-edge-800.webp",
+        "1600": "assets/stills/region-edge-1600.webp"
+      },
+      "scene": "edge",
+      "film": {
+        "at": 86.5
+      },
+      "source": {
+        "file": "renders/narrated-4k-picture.mp4",
+        "sha256": "af40cac66ad9522ec6fbbb40809dfbb80b691c048e98409c266c20d11165ea77",
+        "frame": 2595
+      },
+      "overlays": "the narrated film's own labels, axes and insets",
+      "bytes": 74416
+    },
+    {
+      "id": "region-first-line",
+      "kind": "still",
+      "files": {
+        "800": "assets/stills/region-first-line-800.webp",
+        "1600": "assets/stills/region-first-line-1600.webp"
+      },
+      "scene": "first-line",
+      "film": {
+        "at": 57.0
+      },
+      "source": {
+        "file": "renders/narrated-4k-picture.mp4",
+        "sha256": "af40cac66ad9522ec6fbbb40809dfbb80b691c048e98409c266c20d11165ea77",
+        "frame": 1710
+      },
+      "overlays": "the narrated film's own labels, axes and insets",
+      "bytes": 150506
+    },
+    {
+      "id": "region-ridge",
+      "kind": "still",
+      "files": {
+        "800": "assets/stills/region-ridge-800.webp",
+        "1600": "assets/stills/region-ridge-1600.webp"
+      },
+      "scene": "ridge",
+      "film": {
+        "at": 74.5
+      },
+      "source": {
+        "file": "renders/narrated-4k-picture.mp4",
+        "sha256": "af40cac66ad9522ec6fbbb40809dfbb80b691c048e98409c266c20d11165ea77",
+        "frame": 2235
+      },
+      "overlays": "the narrated film's own labels, axes and insets",
+      "bytes": 231128
+    },
+    {
+      "id": "region-round",
+      "kind": "still",
+      "files": {
+        "800": "assets/stills/region-round-800.webp",
+        "1600": "assets/stills/region-round-1600.webp"
+      },
+      "scene": "round",
+      "film": {
+        "at": 64.0
+      },
+      "source": {
+        "file": "renders/narrated-4k-picture.mp4",
+        "sha256": "af40cac66ad9522ec6fbbb40809dfbb80b691c048e98409c266c20d11165ea77",
+        "frame": 1920
+      },
+      "overlays": "the narrated film's own labels, axes and insets",
+      "bytes": 218640
+    },
+    {
+      "id": "region-towers",
+      "kind": "still",
+      "files": {
+        "800": "assets/stills/region-towers-800.webp",
+        "1600": "assets/stills/region-towers-1600.webp"
+      },
+      "scene": "towers",
+      "film": {
+        "at": 80.5
+      },
+      "source": {
+        "file": "renders/narrated-4k-picture.mp4",
+        "sha256": "af40cac66ad9522ec6fbbb40809dfbb80b691c048e98409c266c20d11165ea77",
+        "frame": 2415
+      },
+      "overlays": "the narrated film's own labels, axes and insets",
+      "bytes": 119628
     },
     {
       "id": "return",
@@ -1319,66 +1764,6 @@
       "bytes": 788870
     },
     {
-      "id": "still-first-line",
-      "kind": "still",
-      "scene": "still-first-line",
-      "files": {
-        "800": "assets/stills/still-first-line-800.webp",
-        "1600": "assets/stills/still-first-line-1600.webp",
-        "3200": "assets/stills/still-first-line-3200.webp"
-      },
-      "source": {
-        "file": "capture/still-first-line/still-first-line.png",
-        "sha256": "f2b753998894e7a087ce3d2150880ad62f0105f494b723f5eac9f9f4ad38a0f8"
-      },
-      "bytes": 539382
-    },
-    {
-      "id": "still-ridge",
-      "kind": "still",
-      "scene": "still-ridge",
-      "files": {
-        "800": "assets/stills/still-ridge-800.webp",
-        "1600": "assets/stills/still-ridge-1600.webp",
-        "3200": "assets/stills/still-ridge-3200.webp"
-      },
-      "source": {
-        "file": "capture/still-ridge/still-ridge.png",
-        "sha256": "6b1699f748da82b51abb67ee271dccd3c7e0cf9fbf35c9c2b10e51a58cc6cd9f"
-      },
-      "bytes": 1195908
-    },
-    {
-      "id": "still-strata",
-      "kind": "still",
-      "scene": "still-strata",
-      "files": {
-        "800": "assets/stills/still-strata-800.webp",
-        "1600": "assets/stills/still-strata-1600.webp",
-        "3200": "assets/stills/still-strata-3200.webp"
-      },
-      "source": {
-        "file": "capture/still-strata/still-strata.png",
-        "sha256": "48bcf311188895d4ebb0f56706bb41c007b3221087f1fa387adebb02ebb42bc3"
-      },
-      "bytes": 1158998
-    },
-    {
-      "id": "still-towers",
-      "kind": "still",
-      "scene": "still-towers",
-      "files": {
-        "800": "assets/stills/still-towers-800.webp",
-        "1600": "assets/stills/still-towers-1600.webp",
-        "3200": "assets/stills/still-towers-3200.webp"
-      },
-      "source": {
-        "file": "capture/still-towers/still-towers.png",
-        "sha256": "fa4a941c828920f790531c8a71a540c8f3c00ed50fe2e57b3da70008c4d33c3b"
-      },
-      "bytes": 196694
-    },
-    {
       "id": "still-value",
       "kind": "still",
       "scene": "still-value",
@@ -1394,42 +1779,22 @@
       "bytes": 824964
     },
     {
-      "id": "strata",
-      "kind": "clip",
-      "scene": "strata",
+      "id": "time-spend",
+      "kind": "still",
       "files": {
-        "mp4": "assets/clips/strata.mp4",
-        "poster": "assets/stills/strata-poster-1600.webp"
+        "1600": "assets/stills/time-spend-1600.webp"
       },
-      "span": [
-        0,
-        14
-      ],
-      "posterAt": 6.5,
-      "source": {
-        "file": "capture/strata/strata.mp4",
-        "sha256": "74c4d95803f82ec2d762a477a01b57448ca0ec9cd7904288bc20736f031269f1"
-      },
-      "bytes": 6561667
-    },
-    {
-      "id": "time",
-      "kind": "clip",
       "scene": "time",
-      "files": {
-        "mp4": "assets/clips/time.mp4",
-        "poster": "assets/stills/time-poster-1600.webp"
+      "film": {
+        "at": 112.2
       },
-      "span": [
-        0,
-        20
-      ],
-      "posterAt": 0,
       "source": {
-        "file": "capture/time/time.mp4",
-        "sha256": "8c6debabd0ad21b2fb9eeef63a31c958427436bbdcd629236de3792496223b5e"
+        "file": "renders/narrated-4k-picture.mp4",
+        "sha256": "af40cac66ad9522ec6fbbb40809dfbb80b691c048e98409c266c20d11165ea77",
+        "frame": 3366
       },
-      "bytes": 1634296
+      "overlays": "the narrated film's own labels, axes and insets",
+      "bytes": 44850
     },
     {
       "id": "ui-app",

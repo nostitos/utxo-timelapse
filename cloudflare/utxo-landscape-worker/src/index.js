@@ -3,7 +3,8 @@
 // Serves the static app (Workers Static Assets, binding ASSETS), the immutable landscape
 // dataset from the private R2 bucket (landscape/<id>/… at /dataset/<id>/…), and the cell
 // lifecycle API (/api/landscape/cell), which reuses the 2D explorer's history shards and
-// query code. See README.md.
+// query code. The guide's film, too large for a static asset, comes from the same bucket
+// (landscape/guide/film/… at /guide/film/…). See README.md.
 import { RELEASE } from './release.js';
 import { lifecycleJson } from '../../utxo-video-worker/src/history.js';
 import { CONFIG } from '../../utxo-video-worker/src/mapping.js';
@@ -13,9 +14,11 @@ export const ROWS = 2072;
 const EDGE_CACHE_MAX_BYTES = 8 * 1024 * 1024;
 const DATASET_ID = /^d\d{1,7}-\d{8}$/;
 const DATASET_FILE = /^(?:manifest\.json|rows\.bin|blocktimes\.bin|chunks\.json|chunks\/\d{5}\.bin|snapshots\/\d{7}\.bin)$/;
+// Films named with their content hash, so they are immutable like the dataset.
+const GUIDE_FILM = /^\/guide\/film\/([a-z0-9][a-z0-9.-]{0,120}\.mp4)$/;
 const INT64_MAX_AS_JSON = 9223372036854776000; // C++ INT64_MAX after JSON's double conversion (as /api/pixel)
 
-const CONTENT_TYPES = { json: 'application/json', bin: 'application/octet-stream' };
+const CONTENT_TYPES = { json: 'application/json', bin: 'application/octet-stream', mp4: 'video/mp4' };
 
 export function datasetIds() {
   return [RELEASE.dataset.id, ...RELEASE.retainedDatasetIds];
@@ -135,8 +138,8 @@ function explicitRange(value) {
   return Number.isSafeInteger(a) && Number.isSafeInteger(b) && b >= a ? { offset: a, length: b - a + 1 } : null;
 }
 
-async function serveDataset(request, env, ctx, id, file) {
-  const key = 'landscape/' + id + '/' + file;
+/** An immutable R2 object (a dataset file or the guide's film) with single ranges, ETag and 304. */
+async function serveObject(request, env, ctx, key, file) {
   const rangeHeader = request.headers.get('Range');
   const isGet = request.method === 'GET';
   const cache = globalThis.caches && caches.default;
@@ -403,7 +406,7 @@ export async function handle(request, env, ctx) {
   if (path.startsWith('/dataset/')) {
     const m = /^\/dataset\/([^/]+)\/(.+)$/.exec(path);
     if (!m || !DATASET_ID.test(m[1]) || !datasetIds().includes(m[1]) || !DATASET_FILE.test(m[2])) return notFound();
-    return serveDataset(request, env, ctx, m[1], m[2]);
+    return serveObject(request, env, ctx, 'landscape/' + m[1] + '/' + m[2], m[2]);
   }
   if (path === '/api/landscape/cell') {
     if (request.method !== 'GET') return json({ error: 'method not allowed' }, 405);
@@ -422,6 +425,8 @@ export async function handle(request, env, ctx) {
     app.pathname = '/';
     return serveAsset(new Request(app, request), env);
   }
+  const film = GUIDE_FILM.exec(path);
+  if (film) return serveObject(request, env, ctx, 'landscape/guide/film/' + film[1], film[1]);
   if (GUIDE_MEDIA.test(path)) return serveGuideMedia(request, env, path);
   return serveAsset(request, env);
 }

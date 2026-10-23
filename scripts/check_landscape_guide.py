@@ -9,9 +9,14 @@ web root, the parent of --root), in-page #anchors exist, GitHub blob/tree links 
 existing repository path, and <a data-scene="ID"> matches the manifest scene's link.
 assets/manifest.json: listed files exist, nothing under assets/ is unlisted (except manifest.json
 and *.svg diagrams), per-file and total size budgets, and an initial-transfer estimate.
+A media entry's "remote" files live in R2 (the film, above the static-asset size limit) and are
+served by the Worker at /guide/film/<name>: the page may reference their URLs without a local file;
+a local copy (for the local server, ignored by Git and Wrangler) must match the declared size and
+SHA-256, and does not count toward the budgets.
 Exit 0 when valid, 1 on any error, 2 when the guide directory does not exist.
 """
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -29,6 +34,7 @@ INITIAL_LIMIT = 1.5 * MIB
 URL_ATTRS = ('href', 'src', 'poster', 'data-src')
 GITHUB = re.compile(r'^https://github\.com/nostitos/utxo-timelapse/(?:blob|tree)/master/([^?#]+)')
 SCHEME = re.compile(r'^[a-zA-Z][a-zA-Z0-9+.-]*:')
+REMOTE_URL = re.compile(r'^/guide/film/([a-z0-9][a-z0-9.-]*\.mp4)$')
 
 
 class Page(HTMLParser):
@@ -70,6 +76,7 @@ class Checker:
         self.web = root.parent
         self.errors = []
         self.pages = {}
+        self.remote = {}  # URL path -> local copy Path (may not exist)
 
     def err(self, where, msg):
         self.errors.append('%s: %s' % (where, msg))
@@ -116,6 +123,9 @@ class Checker:
             return
         if path == '/explorer' and attr == 'href':
             # The Worker and local server both serve the app shell at this explicit entry.
+            return
+        if path in self.remote:
+            # Served from R2 by the Worker; checked against the manifest in check_manifest.
             return
         target = self.resolve(html_file, path)
         web = self.web.resolve()
@@ -241,6 +251,12 @@ class Checker:
                 for fname, b in declared.items():
                     if fname in sizes and b != sizes[fname]:
                         self.err(where, '"bytes".%s %r != actual %d' % (fname, b, sizes[fname]))
+            remote = e.get('remote', {})
+            if not isinstance(remote, dict):
+                self.err(where, '"remote" must be an object')
+                remote = {}
+            for fname, r in remote.items():
+                self.check_remote(where, fname, r)
         if assets.is_dir():
             for f in sorted(assets.rglob('*')):
                 if not f.is_file() or f.name.startswith('.') or f == mpath or f.suffix.lower() == '.svg':
@@ -248,6 +264,36 @@ class Checker:
                 if f.resolve() not in listed:
                     self.err(self.rel(f), 'not listed in any manifest media entry')
         return scenes, listed, len(media)
+
+    def check_remote(self, where, fname, r):
+        """A file served from R2 at /guide/film/<name> (R2 key landscape/guide/film/<name>)."""
+        if not isinstance(r, dict):
+            self.err(where, 'remote "%s" must be an object' % fname)
+            return
+        url = r.get('url')
+        m = REMOTE_URL.match(url) if isinstance(url, str) else None
+        if not m:
+            self.err(where, 'remote "%s" url %r must be /guide/film/<name>.mp4' % (fname, url))
+            return
+        if r.get('r2Key') != 'landscape/guide/film/' + m.group(1):
+            self.err(where, 'remote "%s" r2Key %r != landscape/guide/film/%s' % (fname, r.get('r2Key'), m.group(1)))
+        size, digest = r.get('bytes'), r.get('sha256')
+        if not isinstance(size, int) or isinstance(size, bool) or size <= 0:
+            self.err(where, 'remote "%s" needs a positive integer "bytes"' % fname)
+        if not isinstance(digest, str) or not re.fullmatch(r'[0-9a-f]{64}', digest):
+            self.err(where, 'remote "%s" needs a hex "sha256"' % fname)
+        local = (self.web / url.lstrip('/')).resolve()
+        self.remote[url] = local
+        if local.is_file():
+            if local.stat().st_size != size:
+                self.err(where, 'local copy %s is %d bytes, manifest says %r' % (self.rel(local), local.stat().st_size, size))
+            else:
+                h = hashlib.sha256()
+                with local.open('rb') as f:
+                    for chunk in iter(lambda: f.read(1 << 20), b''):
+                        h.update(chunk)
+                if h.hexdigest() != digest:
+                    self.err(where, 'local copy %s does not match the manifest sha256' % self.rel(local))
 
     def initial_estimate(self):
         total = 0
@@ -288,8 +334,9 @@ class Checker:
         for f in html_files:
             self.check_html(f, scenes)
         total = 0
+        remote_copies = set(self.remote.values())
         for f in self.root.rglob('*'):
-            if f.is_file() and not f.name.startswith('.'):
+            if f.is_file() and not f.name.startswith('.') and f.resolve() not in remote_copies:
                 size = f.stat().st_size
                 total += size
                 if f.resolve() not in listed and size > FILE_LIMIT:

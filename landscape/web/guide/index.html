@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>What remains · A guide to the Bitcoin Landscape</title>
-<meta name="description" content="Bitcoin’s unspent outputs, block by block: an illustrated visual essay and practical guide to the 3D Bitcoin UTXO landscape.">
+<meta name="description" content="Bitcoin’s unspent outputs, block by block: a narrated film, an illustrated visual essay and a practical guide to the 3D Bitcoin UTXO landscape.">
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#07090c">
 <link rel="icon" href="../favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../fonts/fonts.css">
-<link rel="stylesheet" href="guide.css">
+<link rel="stylesheet" href="guide.css?v=20261023-film-1">
 <link rel="preload" as="image" href="assets/stills/still-field-1600.webp" imagesrcset="assets/stills/still-field-800.webp 800w, assets/stills/still-field-1600.webp 1600w, assets/stills/still-field-3200.webp 3200w" imagesizes="100vw" fetchpriority="high">
-<script type="module" src="guide.js?v=20261020-preview-2"></script>
+<script type="module" src="guide.js?v=20261023-film-1"></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -19,6 +19,7 @@
 <header class="masthead">
 <a class="wordmark" href="#top">Bitcoin Landscape</a>
 <nav class="topnav" aria-label="Page">
+<a href="#film">Film</a>
 <a href="#movements">Movements</a>
 <a href="#guide">Guide</a>
 <a href="#views">Views</a>
@@ -34,10 +35,10 @@
 <h1 id="title">What <em>remains</em></h1>
 <div class="opening-side">
 <p class="subtitle">Bitcoin’s unspent outputs, block by block</p>
-<p class="lede">Every output Bitcoin has created and not yet spent, laid out as a landscape. Left to right is when it was made, from the first block to the newest; front to back is how much it holds, from one satoshi to thousands of bitcoin. Height and colour show how much remains in each place. Your browser replays the real chain to draw it.</p>
+<p class="lede">Every bitcoin in existence sits in an unspent output, and every one of those outputs is in this landscape. Seen from above it is a map: time runs left to right, from the first block in 2009 to the newest; amount runs upward, from dust to whole coins to thousands of bitcoin. Height and colour show how much remains in each place. Your browser replays the real chain to draw it.</p>
 <p class="actions">
 <a class="invite" href="/explorer">Explore the landscape <span aria-hidden="true">↗</span></a>
-<a class="invite ghost" href="assets/film/what-remains-1080.mp4" data-film-open><span class="play-glyph" aria-hidden="true"></span>Watch the film <span class="sep" aria-hidden="true">·</span> 90 seconds</a>
+<a class="invite ghost" href="#film" data-film-play><span class="play-glyph" aria-hidden="true"></span>Watch the film <span class="sep" aria-hidden="true">·</span> 3:12</a>
 </p>
 </div>
 </div>
@@ -51,21 +52,55 @@
 </figure>
 </section>
 
+<section class="film" id="film" aria-labelledby="film-h">
+<div class="wrap film-grid">
+<header class="film-head">
+<p class="label">The film <span aria-hidden="true">·</span> 3:12</p>
+<h2 id="film-h">Watch it <em>first</em></h2>
+<p class="film-lede">Three minutes over the landscape: how to read the map, five places on it, one cell through eight days of real blocks, and what remains. Narrated, with music.</p>
+</header>
+<figure class="film-player">
+<video class="film-video" controls playsinline preload="none" width="1920" height="1080" poster="assets/film/narrated-poster-1920.webp" src="/guide/film/what-remains-narrated-1080-31105243.mp4" aria-label="What remains, the film, 3 minutes 12 seconds, with narration and music">
+<track kind="captions" srclang="en" label="English" src="assets/film/what-remains-narrated.vtt">
+</video>
+</figure>
+<div class="film-side">
+<h3 class="label" id="chapters-h">Chapters</h3>
+<ol class="chapters" aria-labelledby="chapters-h">
+<li><a href="https://www.youtube.com/watch?v=41nViOGyF4M&amp;t=0s" data-seek="0"><span class="t">0:00</span> Arrival</a></li>
+<li><a href="https://www.youtube.com/watch?v=41nViOGyF4M&amp;t=14s" data-seek="14.4"><span class="t">0:14</span> The map</a></li>
+<li><a href="https://www.youtube.com/watch?v=41nViOGyF4M&amp;t=38s" data-seek="38.4"><span class="t">0:38</span> Seventeen years</a></li>
+<li><a href="https://www.youtube.com/watch?v=41nViOGyF4M&amp;t=48s" data-seek="48"><span class="t">0:48</span> Five places</a></li>
+<li><a href="https://www.youtube.com/watch?v=41nViOGyF4M&amp;t=88s" data-seek="88.8"><span class="t">1:28</span> A cell</a></li>
+<li><a href="https://www.youtube.com/watch?v=41nViOGyF4M&amp;t=108s" data-seek="108"><span class="t">1:48</span> Time</a></li>
+<li><a href="https://www.youtube.com/watch?v=41nViOGyF4M&amp;t=117s" data-seek="117.6"><span class="t">1:57</span> From above</a></li>
+<li><a href="https://www.youtube.com/watch?v=41nViOGyF4M&amp;t=139s" data-seek="139.2"><span class="t">2:19</span> Readings</a></li>
+<li><a href="https://www.youtube.com/watch?v=41nViOGyF4M&amp;t=156s" data-seek="156"><span class="t">2:36</span> Looks and settings</a></li>
+<li><a href="https://www.youtube.com/watch?v=41nViOGyF4M&amp;t=180s" data-seek="180"><span class="t">3:00</span> Return</a></li>
+</ol>
+<p class="film-links"><a class="explore" href="https://www.youtube.com/watch?v=41nViOGyF4M" rel="noopener">Watch in 4K on YouTube <span aria-hidden="true">↗</span></a></p>
+<p class="film-note">1080p here, with captions in the player. Narrated by George, an ElevenLabs voice; music made with Suno.</p>
+</div>
+</div>
+</section>
+
 <div class="movements">
 <nav class="index" id="movements" aria-label="Movements">
 <ol>
 <li><a href="#field"><span class="num">I</span> Field</a></li>
-<li><a href="#strata"><span class="num">II</span> Strata</a></li>
-<li><a href="#cell"><span class="num">III</span> A cell</a></li>
-<li><a href="#time"><span class="num">IV</span> Time</a></li>
-<li><a href="#readings"><span class="num">V</span> Readings</a></li>
-<li><a href="#return"><span class="num">VI</span> Return</a></li>
+<li><a href="#map"><span class="num">II</span> The map</a></li>
+<li><a href="#places"><span class="num">III</span> Five places</a></li>
+<li><a href="#cell"><span class="num">IV</span> A cell</a></li>
+<li><a href="#time"><span class="num">V</span> Time</a></li>
+<li><a href="#above"><span class="num">VI</span> From above</a></li>
+<li><a href="#readings"><span class="num">VII</span> Readings</a></li>
+<li><a href="#return"><span class="num">VIII</span> Return</a></li>
 </ol>
 </nav>
 
 <!-- I: full-bleed film, text set narrow and offset below -->
 <section class="movement m-bleed" id="field" aria-labelledby="field-h">
-<header class="wrap mhead reveal"><span class="numeral" aria-hidden="true">I</span><h2 id="field-h"><span class="vh">I. </span>Field</h2></header>
+<header class="wrap mhead reveal"><span class="numeral" aria-hidden="true">I</span><h2 id="field-h"><span class="vh">I. </span>Field</h2><a class="in-film" href="https://www.youtube.com/watch?v=41nViOGyF4M&amp;t=0s" data-seek="0"><span class="play-glyph" aria-hidden="true"></span>In the film · 0:00<span class="vh">, Field</span></a></header>
 <div class="wrap cols">
 <p class="intro reveal">Seen from beyond its newest block, the landscape runs back seventeen years to the horizon. The near edge glows where the chain is still being written. Everything behind it is what remains: outputs that were created at some block and have not been spent since.</p>
 </div>
@@ -89,29 +124,74 @@
 </section>
 
 <!-- II: narrow text column at left, plate running off the right edge -->
-<section class="movement m-offset" id="strata" aria-labelledby="strata-h">
+<section class="movement m-offset" id="map" aria-labelledby="map-h">
 <div class="offset-grid">
 <div class="offset-text">
-<header class="mhead reveal"><span class="numeral" aria-hidden="true">II</span><h2 id="strata-h"><span class="vh">II. </span>Strata</h2></header>
-<p class="intro reveal">From above the newest blocks, the field becomes a chart. Creation time runs left to right, amount runs from a single satoshi at the near side to 10,000 BTC and more at the far side. Round amounts draw bright lines across the years, because so many outputs are made for exactly 1 BTC, 0.1 BTC or 0.01 BTC.</p>
+<header class="mhead reveal"><span class="numeral" aria-hidden="true">II</span><h2 id="map-h"><span class="vh">II. </span>The map</h2></header>
+<p class="intro reveal">From above, the field becomes a map. Time runs left to right, from the first block in January 2009 to the newest, at the right edge. Amount runs upward on a scale where each step is ten times the one below: single satoshis at the bottom, whole coins in the middle, 10,000 BTC and more at the top. Every point on the map is a cell, and bright lines are amounts that many outputs share.</p>
 <figure class="mini reveal">
 <div class="preview" data-preview>
-<img class="poster" src="assets/stills/strata-poster-1600.webp" width="1600" height="900" loading="lazy" decoding="async" alt="The camera above the field, looking straight down at bright horizontal lines.">
-<video muted loop playsinline preload="none" width="1600" height="900" aria-hidden="true" tabindex="-1" data-src="assets/clips/strata.mp4" data-lazy-poster="assets/stills/strata-poster-1600.webp"></video>
-<button class="motion" type="button" aria-pressed="false" hidden><span class="motion-glyph" aria-hidden="true"></span><span class="motion-label">Motion</span><span class="vh"> in the Strata preview</span></button>
+<img class="poster" src="assets/stills/map-years-1600.webp" width="1600" height="900" loading="lazy" decoding="async" alt="The whole chain from above as a long strip, with the years from 2009 to 2026 marked along the bottom.">
+<video muted playsinline preload="none" width="1600" height="900" aria-hidden="true" tabindex="-1" data-src="assets/clips/film-map.mp4" data-lazy-poster="assets/stills/map-years-1600.webp"></video>
+<button class="motion" type="button" aria-pressed="false" hidden><span class="motion-glyph" aria-hidden="true"></span><span class="motion-label">Motion</span><span class="vh"> in the map preview</span></button>
 </div>
-<figcaption class="cap small">From the field to the overhead reading, then down toward the bright band of 1 BTC outputs.</figcaption>
+<figcaption class="cap small">From the opening view up to the whole chain, then down over every amount of the last five years.</figcaption>
 </figure>
-<a class="explore" data-scene="strata" href="/#b=969652&amp;mode=map&amp;cam=950.000,69.989,95.222,0.00,-89.00&amp;preset=Ultra&amp;camera.fov=50">Explore this view <span aria-hidden="true">↗</span></a>
+<p class="links-row"><a class="in-film" href="https://www.youtube.com/watch?v=41nViOGyF4M&amp;t=14s" data-seek="14.4"><span class="play-glyph" aria-hidden="true"></span>In the film · 0:14<span class="vh">, The map</span></a><a class="explore" data-scene="map" href="/#b=969652&amp;mode=map&amp;cam=854.957,225.014,107.528,0.00,-89.00&amp;preset=Ultra&amp;camera.fov=50">Explore this view <span aria-hidden="true">↗</span></a></p>
 </div>
 <figure class="plate offset-plate reveal">
-<img src="assets/stills/still-strata-1600.webp" srcset="assets/stills/still-strata-800.webp 800w, assets/stills/still-strata-1600.webp 1600w, assets/stills/still-strata-3200.webp 3200w" sizes="(min-width: 960px) 64vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="The field from directly overhead: a blue texture crossed by bright horizontal lines, with amount labels such as 1 BTC and 0.1 BTC beside the newest edge.">
-<figcaption class="cap"><span class="readout"><span>Overhead</span><span>Block 969,652</span></span><span class="cap-text">Overhead at block 969,652. Each bright horizontal line is a row of round amounts.</span></figcaption>
+<img src="assets/stills/map-amounts-1600.webp" srcset="assets/stills/map-amounts-800.webp 800w, assets/stills/map-amounts-1600.webp 1600w, assets/stills/map-amounts-3200.webp 3200w" sizes="(min-width: 960px) 64vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="The map from above over 2022 to 2026: years along the bottom and amounts up the right side, from 1,000 sat to 1,000 BTC, with bright horizontal lines at round amounts.">
+<figcaption class="cap"><span class="readout"><span>From above</span><span>Block 969,652</span><span>1,000 sat → 1,000 BTC</span></span><span class="cap-text">The last five years from above, with the film’s axes. Each label up the side is ten times the one below it.</span></figcaption>
 </figure>
 </div>
 </section>
 
-<!-- III: tall portrait crop beside the text -->
+<!-- III: five places from the film -->
+<section class="movement m-places" id="places" aria-labelledby="places-h">
+<div class="wrap places-head">
+<header class="mhead reveal"><span class="numeral" aria-hidden="true">III</span><h2 id="places-h"><span class="vh">III. </span>Five places</h2><a class="in-film" href="https://www.youtube.com/watch?v=41nViOGyF4M&amp;t=48s" data-seek="48"><span class="play-glyph" aria-hidden="true"></span>In the film · 0:48<span class="vh">, Five places</span></a></header>
+<p class="intro reveal">Bitcoin’s history leaves shapes on the map that you can learn to recognise. The film visits five of them, each in the look that shows it best.</p>
+</div>
+<ul class="places wrap" role="list">
+<li class="place reveal">
+<img src="assets/stills/region-first-line-1600.webp" srcset="assets/stills/region-first-line-800.webp 800w, assets/stills/region-first-line-1600.webp 1600w" sizes="(min-width: 900px) 46vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="Low over the oldest row: a long line of columns of about 50 BTC outputs runs into the distance, labelled about 50 BTC each, 2009 to 2010, 33,094 never spent.">
+<span class="readout"><span>Blocks 0 – 100,351</span><span>Landscape</span></span>
+<h3>The first line</h3>
+<p>The oldest row still standing: outputs of about 50 BTC, the block reward of 2009 and 2010. 33,094 of them have never moved; together they hold about 1.65 million BTC.</p>
+<a class="explore" data-scene="first-line" href="/#b=969652&amp;mode=map&amp;cam=68.250,16.000,70.000,-54.83,-18.37&amp;preset=Ultra">Explore this view <span aria-hidden="true">↗</span></a>
+</li>
+<li class="place reveal">
+<img src="assets/stills/region-round-1600.webp" srcset="assets/stills/region-round-800.webp 800w, assets/stills/region-round-1600.webp 1600w" sizes="(min-width: 900px) 46vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="A dark blue field crossed by bright horizontal lines labelled 10 BTC, 1 BTC, 0.1 BTC and 0.01 BTC.">
+<span class="readout"><span>Blocks 300,000 – 520,000</span><span>Outputs</span></span>
+<h3>Round amounts</h3>
+<p>Bright lines are popular amounts. From 2014 to 2018, the rows around 0.01, 0.1, 1 and 10 BTC each hold at least twice as many outputs as any of the two rows on either side.</p>
+<a class="explore" data-scene="round" href="/#b=969652&amp;mode=map&amp;cam=418.889,70.636,129.558,0.00,-62.00&amp;preset=Ultra&amp;look=Outputs">Explore this view <span aria-hidden="true">↗</span></a>
+</li>
+<li class="place reveal">
+<img src="assets/stills/region-ridge-1600.webp" srcset="assets/stills/region-ridge-800.webp 800w, assets/stills/region-ridge-1600.webp 1600w" sizes="(min-width: 900px) 30vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="In warm orange haze, a dense ridge of tall pale columns of tiny outputs.">
+<span class="readout"><span>From 2023</span><span>Golden hour</span></span>
+<h3>The ridge</h3>
+<p>From 2023, a ridge of tiny outputs piles up, worth a few hundred satoshis each.</p>
+<a class="explore" data-scene="ridge" href="/#b=969652&amp;mode=map&amp;cam=817.188,24.000,150.000,-155.56,-30.08&amp;preset=Ultra&amp;look=Golden+hour">Explore this view <span aria-hidden="true">↗</span></a>
+</li>
+<li class="place reveal">
+<img src="assets/stills/region-towers-1600.webp" srcset="assets/stills/region-towers-800.webp 800w, assets/stills/region-towers-1600.webp 1600w" sizes="(min-width: 900px) 30vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="In daylight, one cell among the rows of large amounts, labelled 35 times 1,000 BTC.">
+<span class="readout"><span>Blocks 969,024 – 969,087</span><span>Daylight</span></span>
+<h3>Towers</h3>
+<p>One cell holds 35 outputs of exactly 1,000 BTC, all made within ten hours.</p>
+<a class="explore" data-scene="towers" href="/#b=969652&amp;mode=map&amp;cam=1001.606,16.193,27.646,80.50,-13.94&amp;preset=Ultra&amp;look=Daylight">Explore this view <span aria-hidden="true">↗</span></a>
+</li>
+<li class="place reveal">
+<img src="assets/stills/region-edge-1600.webp" srcset="assets/stills/region-edge-800.webp 800w, assets/stills/region-edge-1600.webp 1600w" sizes="(min-width: 900px) 30vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="The newest edge of the field seen from the side: a wall of pale columns ending at empty ground.">
+<span class="readout"><span>Block 969,652</span><span>Landscape</span></span>
+<h3>The newest edge</h3>
+<p>3 October 2026. The field only grows here, at its right-hand edge, one block at a time.</p>
+<a class="explore" data-scene="edge" href="/#b=969652&amp;mode=map&amp;cam=972.500,9.000,119.375,12.09,-9.52&amp;preset=Ultra">Explore this view <span aria-hidden="true">↗</span></a>
+</li>
+</ul>
+</section>
+
+<!-- IV: tall portrait crop beside the text -->
 <section class="movement m-portrait" id="cell" aria-labelledby="cell-h">
 <div class="wrap portrait-grid">
 <figure class="plate portrait-plate reveal">
@@ -119,15 +199,21 @@
 <figcaption class="cap"><span class="readout"><span>Cell 15150:803</span><span>214 outputs</span><span>214.0569 BTC</span></span></figcaption>
 </figure>
 <div class="portrait-text">
-<header class="mhead reveal"><span class="numeral" aria-hidden="true">III</span><h2 id="cell-h"><span class="vh">III. </span>A cell</h2></header>
-<p class="intro reveal">Come close and the field breaks into columns. Each column is a cell: 64 blocks and one narrow band of amounts. This one holds 214 outputs of about 1 BTC each, all created in the eleven hours before this moment. Each division is one output. Its neighbours, just above and just below 1 BTC, hold 17 and 35.</p>
+<header class="mhead reveal"><span class="numeral" aria-hidden="true">IV</span><h2 id="cell-h"><span class="vh">IV. </span>A cell</h2><a class="in-film" href="https://www.youtube.com/watch?v=41nViOGyF4M&amp;t=88s" data-seek="88.8"><span class="play-glyph" aria-hidden="true"></span>In the film · 1:28<span class="vh">, A cell</span></a></header>
+<p class="intro reveal">Come close and the map breaks into columns. Each column is a cell: everything made in the same 64 blocks, about half a day, at nearly the same amount. This one holds 214 outputs of about 1 BTC each.</p>
+<dl class="anatomy reveal">
+<div><dt>Width</dt><dd>64 blocks, 969,600 to 969,663 <span class="dimmer">· 13 hours</span></dd></div>
+<div><dt>Depth</dt><dd>One amount row <span class="dimmer">· 0.997 to 1.009 BTC</span></dd></div>
+<div><dt>Divisions</dt><dd>One for each output <span class="dimmer">· 214</span></dd></div>
+<div><dt>Height</dt><dd>Grows with the count, on a logarithmic scale</dd></div>
+</dl>
 <figure class="mini reveal">
 <div class="preview" data-preview>
-<img class="poster" src="assets/stills/cell-poster-1600.webp" width="1600" height="900" loading="lazy" decoding="async" alt="One tall column of about 1 BTC outputs at the edge of the field, older columns to its left and empty ground beyond the newest block to its right.">
-<video muted loop playsinline preload="none" width="1600" height="900" aria-hidden="true" tabindex="-1" data-src="assets/clips/cell.mp4" data-lazy-poster="assets/stills/cell-poster-1600.webp"></video>
+<img class="poster" src="assets/stills/cell-anatomy-1600.webp" width="1600" height="900" loading="lazy" decoding="async" alt="Above the field near the newest edge, a line leads from one tall column to a card that reads one cell: 214 outputs, 64 blocks, 13 hours, 0.997 to 1.009 BTC.">
+<video muted playsinline preload="none" width="1600" height="900" aria-hidden="true" tabindex="-1" data-src="assets/clips/film-cell.mp4" data-lazy-poster="assets/stills/cell-anatomy-1600.webp"></video>
 <button class="motion" type="button" aria-pressed="false" hidden><span class="motion-glyph" aria-hidden="true"></span><span class="motion-label">Motion</span><span class="vh"> in the A cell preview</span></button>
 </div>
-<figcaption class="cap small">Settling beside the column, block 969,652.</figcaption>
+<figcaption class="cap small">Down to the column, with the film’s anatomy of a cell. Block 969,652.</figcaption>
 </figure>
 <a class="explore" data-scene="cell" href="/#b=969652&amp;mode=map&amp;cam=969.092,7.733,84.065,-12.00,-2.00&amp;preset=Ultra">Explore this view <span aria-hidden="true">↗</span></a>
 <details class="data"><summary>Read the data</summary><div class="data-body"><p>Cell 15150:803 covers blocks 969,600 to 969,663 and amounts from 0.99676749 to 1.00868904 BTC. At block 969,652 it holds 214 outputs, 214.0569 BTC. Height is a logarithm of weighted density, so ten times as many outputs do not stand ten times as tall; the divisions always show the exact count.</p></div></details>
@@ -135,36 +221,62 @@
 </div>
 </section>
 
-<!-- IV: text first, then a contained cinema film -->
+<!-- V: text first, then a contained cinema film -->
 <section class="movement m-cinema" id="time" aria-labelledby="time-h">
 <div class="wrap cinema-head">
-<header class="mhead reveal"><span class="numeral" aria-hidden="true">IV</span><h2 id="time-h"><span class="vh">IV. </span>Time</h2></header>
-<p class="intro reveal">Now the camera holds still and the chain moves: 1,200 real blocks, about eight days, replayed at 60 blocks a second. New columns rise on the empty ground beyond the edge; older outputs flash as they are spent. The column we read grows to 232 outputs while its last blocks are written, up to block 969,663, then only loses them, down to 94. Spending does not destroy bitcoin: a spent output leaves the unspent set and its value moves into new outputs at the edge.</p>
+<header class="mhead reveal"><span class="numeral" aria-hidden="true">V</span><h2 id="time-h"><span class="vh">V. </span>Time</h2><a class="in-film" href="https://www.youtube.com/watch?v=41nViOGyF4M&amp;t=108s" data-seek="108"><span class="play-glyph" aria-hidden="true"></span>In the film · 1:48<span class="vh">, Time</span></a></header>
+<p class="intro reveal">Now let eight days of real blocks run: 1,200 blocks, from 969,652 to 970,852, with the camera still. At block 969,912, seventeen of the cell’s outputs are spent in a single block. A spent output leaves the unspent set; its bitcoin is not destroyed but moves into new outputs at the edge. The column grows to 232 outputs while its last blocks are written, then only loses them, down to 94.</p>
 </div>
 <figure class="plate wrap cinema reveal">
 <div class="preview" data-preview>
-<img class="poster" src="assets/stills/time-poster-1600.webp" width="1600" height="900" loading="lazy" decoding="async" alt="The column at the edge of the field before the blocks replay, the empty ground to its right where new columns will rise.">
-<video muted loop playsinline preload="none" width="1600" height="900" aria-hidden="true" tabindex="-1" data-src="assets/clips/time.mp4" data-lazy-poster="assets/stills/time-poster-1600.webp"></video>
+<img class="poster" src="assets/stills/time-spend-1600.webp" width="1600" height="900" loading="lazy" decoding="async" alt="Beside the column at block 969,955: a label reads minus 17 spent above it, and a counter reads 129 outputs.">
+<video muted playsinline preload="none" width="1600" height="900" aria-hidden="true" tabindex="-1" data-src="assets/clips/film-time.mp4" data-lazy-poster="assets/stills/time-spend-1600.webp"></video>
 <button class="motion" type="button" aria-pressed="false" hidden><span class="motion-glyph" aria-hidden="true"></span><span class="motion-label">Motion</span><span class="vh"> in the Time preview</span></button>
 </div>
 <figcaption class="cap">
-<span class="readout"><span>Blocks 969,652 → 970,852</span><span>3 → 11 Oct 2026</span><span>1x · 60 blocks/s</span></span>
-<span class="cap-text">Blocks 969,652 to 970,852, 3 to 11 October 2026, at the app’s 1x speed. At block 969,912, 17 of the cell’s outputs are spent in one block.</span>
+<span class="readout"><span>Blocks 969,652 → 970,343</span><span>3 → 7 Oct 2026</span><span>72 blocks/s</span></span>
+<span class="cap-text">The first 691 of the eight days’ blocks, as in the film. The counter beside the column shows its outputs at every block; at block 969,912 it drops from 160 to 143.</span>
 </figcaption>
 </figure>
 <div class="wrap cols after">
 <div class="aside">
 <a class="explore" data-scene="time" href="/#b=969652&amp;mode=map&amp;cam=969.092,7.733,84.065,-12.00,-2.00&amp;preset=Ultra">Explore this view <span aria-hidden="true">↗</span></a>
-<details class="data"><summary>Read the data</summary><div class="data-body"><p>Flashes mark spends, brighter for more bitcoin moved; spends of coins created within the last four weeks are dimmed, because young coins move constantly.</p></div></details>
+<details class="data"><summary>Read the data</summary><div class="data-body"><p>The cell holds 214 outputs at block 969,652, 160 at block 969,911, 143 after block 969,912, 108 at block 970,345 and 94 at block 970,852. Flashes mark spends, brighter for more bitcoin moved; spends of coins created within the last four weeks are dimmed, because young coins move constantly.</p></div></details>
 </div>
 </div>
 </section>
 
-<!-- V: paired comparison -->
+<!-- VI: full-bleed film from above -->
+<section class="movement m-bleed m-above" id="above" aria-labelledby="above-h">
+<header class="wrap mhead reveal"><span class="numeral" aria-hidden="true">VI</span><h2 id="above-h"><span class="vh">VI. </span>From above</h2><a class="in-film" href="https://www.youtube.com/watch?v=41nViOGyF4M&amp;t=117s" data-seek="117.6"><span class="play-glyph" aria-hidden="true"></span>In the film · 1:57<span class="vh">, From above</span></a></header>
+<div class="wrap cols">
+<p class="intro reveal">The same eight days, from above. Each flash is a spend: outputs leaving one cell in that block, drawn where their coins were made, so the years along the bottom read as their age. Most flashes crowd the newest edge, where young coins move all the time. The rest are old coins waking up anywhere in seventeen years: 1,000 BTC made in 2018, 100 BTC from 2019.</p>
+</div>
+<figure class="plate bleed reveal">
+<div class="preview" data-preview>
+<img class="poster" src="assets/stills/above-pulse-1600.webp" width="1600" height="900" loading="lazy" decoding="async" alt="The whole chain from above in dim grey, sprinkled with amber flashes that thicken toward the newest edge, with the years 2009 to 2026 along the bottom and a label reading 100 BTC spent, coins from 2019.">
+<video muted playsinline preload="none" width="1600" height="900" aria-hidden="true" tabindex="-1" data-src="assets/clips/film-above.mp4" data-lazy-poster="assets/stills/above-pulse-1600.webp"></video>
+<button class="motion" type="button" aria-pressed="false" hidden><span class="motion-glyph" aria-hidden="true"></span><span class="motion-label">Motion</span><span class="vh"> in the From above preview</span></button>
+</div>
+<figcaption class="wrap cap">
+<span class="readout"><span>Blocks 969,652 → 970,852</span><span>Pulse · 100 blocks/s</span><span>BitcoinTimelapse.com · 125 blocks/s</span></span>
+<span class="cap-text">In Pulse the field dims to grey so only activity shows. Then the same blocks in the look of the original 2D film, over the recent years: new outputs rise at the edge while spends flicker out across the field.</span>
+</figcaption>
+</figure>
+<div class="wrap cols after">
+<div class="aside">
+<p class="pair-links"><a class="explore" data-scene="above-pulse" href="/#b=969652&amp;mode=map&amp;cam=486.000,639.903,114.770,0.00,-89.00&amp;preset=Ultra&amp;look=Pulse&amp;color.heatGain=2.5&amp;amp.heatHalfLife=100&amp;amp.heatEdge=0.08&amp;amp.flashSize=1.5">Explore Pulse from above <span aria-hidden="true">↗</span></a><a class="explore" data-scene="above-film" href="/#b=969652&amp;mode=map&amp;cam=905.000,109.983,91.920,0.00,-89.00&amp;preset=Ultra&amp;look=BitcoinTimelapse.com">Explore the film’s look <span aria-hidden="true">↗</span></a></p>
+<p class="note">Both open at block 969,652. Press Play to watch the flashes.</p>
+<details class="data"><summary>Read the data</summary><div class="data-body"><p>A flash’s brightness follows the bitcoin moved. The film’s Pulse view shortens the glow to a half-life of 100 blocks and tames the newest edge, which is spent constantly, so that eight days read clearly; the link carries those settings. The labels in the film name a few of these spends of older coins.</p></div></details>
+</div>
+</div>
+</section>
+
+<!-- VII: paired comparison -->
 <section class="movement m-pair" id="readings" aria-labelledby="readings-h">
 <div class="wrap pair-head">
-<header class="mhead reveal"><span class="numeral" aria-hidden="true">V</span><h2 id="readings-h"><span class="vh">V. </span>Readings</h2></header>
-<p class="intro reveal">The same place and the same block, read two ways. Height shows the number of outputs in both. First, colour shows that number too, and the crowded rows of small amounts burn brightest. Then colour shows the bitcoin they hold: the crowded rows go dark and the rows of large amounts light up, beyond the 5 BTC label at the newest edge.</p>
+<header class="mhead reveal"><span class="numeral" aria-hidden="true">VII</span><h2 id="readings-h"><span class="vh">VII. </span>Readings</h2><a class="in-film" href="https://www.youtube.com/watch?v=41nViOGyF4M&amp;t=139s" data-seek="139.2"><span class="play-glyph" aria-hidden="true"></span>In the film · 2:19<span class="vh">, Readings</span></a></header>
+<p class="intro reveal">Colour can answer different questions. In both views height shows the number of outputs. In the first, the warmer the colour, the more outputs: the crowded rows of small amounts burn brightest. In the second, the warmer the colour, the more bitcoin: the crowded rows go dark, and the rows above 5 BTC light up.</p>
 </div>
 <div class="pair wrap">
 <figure class="plate reveal">
@@ -177,21 +289,29 @@
 </figure>
 </div>
 <div class="wrap pair-foot">
-<p class="highlight reveal">Outputs above 5 BTC are <b>0.157%</b> of all unspent outputs and hold <b>83.7%</b> of the value.</p>
+<div class="pair-foot-text">
+<p class="highlight reveal">Fewer than two outputs in a thousand hold <b>83.7%</b> of all the bitcoin.</p>
+<figure class="shares reveal">
+<figcaption class="label">Outputs above 5 BTC at block 970,852</figcaption>
+<div class="share"><span class="share-name">Of all outputs</span><span class="share-bar" aria-hidden="true"><span class="fill outputs"></span></span><span class="share-pct">0.157%</span></div>
+<div class="share"><span class="share-name">Of all the bitcoin</span><span class="share-bar" aria-hidden="true"><span class="fill value"></span></span><span class="share-pct">83.7%</span></div>
+<p class="share-note">About 260,000 of 165,208,788 outputs, holding about 16.8 million of 20,096,387 BTC.</p>
+</figure>
+</div>
 <figure class="mini reveal">
 <div class="preview" data-preview>
-<img class="poster" src="assets/stills/readings-poster-1600.webp" width="1600" height="900" loading="lazy" decoding="async" alt="The field coloured by the bitcoin in each cell: the band of large amounts beyond the 5 BTC label lights up.">
-<video muted loop playsinline preload="none" width="1600" height="900" aria-hidden="true" tabindex="-1" data-src="assets/clips/readings.mp4" data-lazy-poster="assets/stills/readings-poster-1600.webp"></video>
+<img class="poster" src="assets/stills/readings-shares-1600.webp" width="1600" height="900" loading="lazy" decoding="async" alt="The field coloured by bitcoin per cell, with a colour legend from under 1 BTC to 2,000 BTC and more, and two bars: outputs above 5 BTC are 0.157% of all outputs and hold 83.7% of all the bitcoin.">
+<video muted playsinline preload="none" width="1600" height="900" aria-hidden="true" tabindex="-1" data-src="assets/clips/film-readings.mp4" data-lazy-poster="assets/stills/readings-shares-1600.webp"></video>
 <button class="motion" type="button" aria-pressed="false" hidden><span class="motion-glyph" aria-hidden="true"></span><span class="motion-label">Motion</span><span class="vh"> in the Readings preview</span></button>
 </div>
-<figcaption class="cap small">Readings in motion, block 970,852.</figcaption>
+<figcaption class="cap small">From outputs to bitcoin in one sweep, with the film’s legend. Block 970,852.</figcaption>
 </figure>
 </div>
 </section>
 
-<!-- VI: full-bleed film, invitation centred -->
+<!-- VIII: full-bleed film, invitation centred -->
 <section class="movement m-return" id="return" aria-labelledby="return-h">
-<header class="wrap mhead centre reveal"><span class="numeral" aria-hidden="true">VI</span><h2 id="return-h"><span class="vh">VI. </span>Return</h2></header>
+<header class="wrap mhead centre reveal"><span class="numeral" aria-hidden="true">VIII</span><h2 id="return-h"><span class="vh">VIII. </span>Return</h2><a class="in-film" href="https://www.youtube.com/watch?v=41nViOGyF4M&amp;t=180s" data-seek="180"><span class="play-glyph" aria-hidden="true"></span>In the film · 3:00<span class="vh">, Return</span></a></header>
 <figure class="plate bleed reveal">
 <div class="preview" data-preview>
 <img class="poster" src="assets/stills/return-poster-1600.webp" width="1600" height="900" loading="lazy" decoding="async" alt="The opening view again: the field from beyond its newest block, 1,200 blocks later.">
@@ -201,7 +321,7 @@
 <figcaption class="wrap cap centre"><span class="readout"><span>Block 970,852</span><span>1,200 blocks later</span></span><a class="explore" data-scene="return" href="/#b=970852&amp;mode=map&amp;cam=1070.759,57.884,82.899,96.00,-16.00&amp;preset=Ultra&amp;camera.fov=40">Explore this view <span aria-hidden="true">↗</span></a></figcaption>
 </figure>
 <div class="wrap return-text">
-<p class="intro reveal">Back at the opening view, 1,200 blocks later. From here the landscape looks unchanged, yet its edge has moved on and the column we read has lost more than half of its outputs. You can read it yourself now.</p>
+<p class="intro reveal">Back at the opening view, 1,200 blocks later. From here the landscape looks unchanged, yet its edge has moved on, and the column we read holds 94 outputs. This is what remains. You can read it yourself now.</p>
 <p class="actions centre reveal"><a class="invite large" href="/explorer">Explore the landscape <span aria-hidden="true">↗</span></a></p>
 <p class="note reveal">Every view on this page opens in the app at its exact block and camera.</p>
 </div>
@@ -224,29 +344,37 @@
 <img src="assets/stills/ui-app-1600.webp" srcset="assets/stills/ui-app-800.webp 800w, assets/stills/ui-app-1600.webp 1600w" sizes="(min-width: 960px) 60vw, 100vw" width="1600" height="900" loading="lazy" decoding="async" alt="The landscape app in a desktop browser: the field fills the window, with the block panel at the top left and the timeline along the bottom.">
 <figcaption class="cap small">The app at its first view.</figcaption>
 </figure>
-<div class="keys-grid">
-<div class="keys"><h4>Map mode</h4><dl><div><dt><span class="gesture">Drag</span></dt><dd>Pan; the grabbed point stays under the cursor</dd></div>
-<div><dt><span class="gesture">Right-drag</span> <kbd>Shift</kbd></dt><dd>Orbit around the point under the cursor</dd></div>
-<div><dt><span class="gesture">Wheel</span> <span class="gesture">Trackpad pinch</span></dt><dd>Zoom toward the cursor</dd></div>
-<div><dt><span class="gesture">Double-click</span></dt><dd>Fly to that point</dd></div>
-<div><dt><span class="gesture">Point</span></dt><dd>The card under the block shows the amount range, blocks and unspent outputs under the cursor</dd></div>
-<div><dt><span class="gesture">Click</span> <kbd>I</kbd></dt><dd>Inspect the cell under the cursor</dd></div>
-<div><dt><kbd>←</kbd> <kbd>↑</kbd> <kbd>→</kbd> <kbd>↓</kbd></dt><dd>Pan (Shift for 4×)</dd></div>
-<div><dt><kbd>Q</kbd> <kbd>E</kbd></dt><dd>Rotate around the screen centre</dd></div>
+</div>
+<details class="keyref" open data-keyref>
+<summary>Keys and mouse</summary>
+<div class="keyref-grid">
+<div class="keys"><h4>Map mode</h4><dl><div><dt><span class="gesture">Drag</span></dt><dd>Pan</dd></div>
+<div><dt><span class="gesture">Right-drag</span></dt><dd>Orbit; or Shift-drag</dd></div>
+<div><dt><span class="gesture">Wheel</span> <span class="gesture">Pinch</span></dt><dd>Zoom to the cursor</dd></div>
+<div><dt><span class="gesture">Double-click</span></dt><dd>Fly there</dd></div>
+<div><dt><span class="gesture">Point</span></dt><dd>Read the cell</dd></div>
+<div><dt><span class="gesture">Click</span> <kbd>I</kbd></dt><dd>Inspect the cell</dd></div>
+<div><dt><kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd></dt><dd>Pan; Shift 4×</dd></div>
+<div><dt><kbd>Q</kbd> <kbd>E</kbd></dt><dd>Rotate</dd></div>
 <div><dt><kbd>PgUp</kbd> <kbd>PgDn</kbd></dt><dd>Tilt</dd></div></dl></div>
-<div class="keys"><h4>Fly</h4><dl><div><dt><kbd>F</kbd> <span class="gesture">Fly button</span></dt><dd>Enter or leave flight mode</dd></div>
-<div><dt><span class="gesture">Mouse</span></dt><dd>Look (drag when pointer lock is unavailable)</dd></div>
-<div><dt><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></dt><dd>Fly; Shift for 4×</dd></div>
-<div><dt><kbd>E</kbd> <kbd>Q</kbd></dt><dd>Up and down</dd></div>
-<div><dt><span class="gesture">Wheel</span></dt><dd>Flight speed</dd></div>
-<div><dt><kbd>I</kbd></dt><dd>Inspect the cell at the crosshair</dd></div>
+<div class="keys"><h4>Fly</h4><dl><div><dt><kbd>F</kbd></dt><dd>Enter or leave</dd></div>
+<div><dt><span class="gesture">Mouse</span></dt><dd>Look</dd></div>
+<div><dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>Fly; Shift 4×</dd></div>
+<div><dt><kbd>E</kbd> <kbd>Q</kbd></dt><dd>Up, down</dd></div>
+<div><dt><span class="gesture">Wheel</span></dt><dd>Speed</dd></div>
+<div><dt><kbd>I</kbd></dt><dd>Inspect at the crosshair</dd></div>
 <div><dt><kbd>Esc</kbd></dt><dd>Back to map mode</dd></div></dl></div>
-<div class="keys"><h4>Panels</h4><dl><div><dt><kbd>G</kbd></dt><dd>Graphics settings</dd></div>
+<div class="keys"><h4>Time</h4><dl><div><dt><kbd>Space</kbd></dt><dd>Play, pause</dd></div>
+<div><dt><kbd>0</kbd> – <kbd>4</kbd></dt><dd>Speed</dd></div>
+<div><dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>One block; Shift a week</dd></div>
+<div><dt><kbd>N</kbd></dt><dd>Follow the tip</dd></div>
+<div><dt><kbd>M</kbd></dt><dd>Sound</dd></div></dl></div>
+<div class="keys"><h4>Panels</h4><dl><div><dt><kbd>G</kbd></dt><dd>Settings</dd></div>
 <div><dt><kbd>P</kbd></dt><dd>Places</dd></div>
 <div><dt><kbd>H</kbd> <kbd>?</kbd></dt><dd>Help</dd></div>
-<div><dt><kbd>Esc</kbd></dt><dd>Close the inspector or a panel</dd></div></dl></div>
+<div><dt><kbd>Esc</kbd></dt><dd>Close a panel</dd></div></dl></div>
 </div>
-</div>
+</details>
 </div>
 
 <div class="g-row" id="touch">
@@ -304,7 +432,7 @@
 <div class="g-row" id="looks">
 <h3>Looks</h3>
 <div class="g-body">
-<p>A look sets the light, palette and measure in one choice; the data stays the same. Eleven are built in, each one click away in the settings, and Save… stores your own.</p>
+<p>A look sets the light, palette and measure in one choice; the data stays the same. Eleven are built in, each one click away in the settings, and Save… stores your own. The settings also change one thing at a time: the cells’ shape (smooth, columns, boxes or stepped), how tall the big coins stand, and the time of day.</p>
 </div>
 <ul class="looks" role="list">
 <li class="look">
@@ -376,11 +504,11 @@
 </ul>
 <figure class="g-figure wide-row">
 <div class="preview" data-preview>
-<img class="poster" src="assets/stills/day-poster-1600.webp" width="1600" height="900" loading="lazy" decoding="async" alt="The same view of the field from sunrise through midday and dusk to night.">
-<video muted loop playsinline preload="none" width="1600" height="900" aria-hidden="true" tabindex="-1" data-src="assets/clips/day.mp4" data-lazy-poster="assets/stills/day-poster-1600.webp"></video>
-<button class="motion" type="button" aria-pressed="false" hidden><span class="motion-glyph" aria-hidden="true"></span><span class="motion-label">Motion</span><span class="vh"> in the A day over the field preview</span></button>
+<img class="poster" src="assets/stills/looks-film-1600.webp" width="1600" height="900" loading="lazy" decoding="async" alt="The recent field in the Daylight look, one of the eleven looks the film shows in turn over the same flight.">
+<video muted playsinline preload="none" width="1600" height="900" aria-hidden="true" tabindex="-1" data-src="assets/clips/film-looks.mp4" data-lazy-poster="assets/stills/looks-film-1600.webp"></video>
+<button class="motion" type="button" aria-pressed="false" hidden><span class="motion-glyph" aria-hidden="true"></span><span class="motion-label">Motion</span><span class="vh"> in the Looks and settings preview</span></button>
 </div>
-<figcaption class="cap small">A day over the field: time of day from sunrise to night over the same view; the data does not change.</figcaption>
+<figcaption class="cap small"><span class="cap-text">From the film: one flight over the recent field in all eleven looks, then the cells’ shape, how tall the big coins stand and the time of day. The data never changes.</span><a class="in-film" href="https://www.youtube.com/watch?v=41nViOGyF4M&amp;t=156s" data-seek="156"><span class="play-glyph" aria-hidden="true"></span>In the film · 2:36<span class="vh">, Looks and settings</span></a></figcaption>
 </figure>
 </div>
 
@@ -486,14 +614,24 @@
 <a class="explore" data-scene="field" href="/#b=969652&amp;mode=map&amp;cam=1070.759,57.884,82.899,96.00,-16.00&amp;preset=Ultra&amp;camera.fov=40">Explore<span class="vh"> Field</span> <span aria-hidden="true">↗</span></a>
 </li>
 <li class="view">
-<img src="assets/stills/still-strata-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The field from directly overhead, crossed by bright lines.">
-<span class="view-title">Strata</span>
-<a class="explore" data-scene="strata" href="/#b=969652&amp;mode=map&amp;cam=950.000,69.989,95.222,0.00,-89.00&amp;preset=Ultra&amp;camera.fov=50">Explore<span class="vh"> Strata</span> <span aria-hidden="true">↗</span></a>
+<img src="assets/stills/map-years-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The whole chain from above, with the years along the bottom.">
+<span class="view-title">The map: the whole chain</span>
+<a class="explore" data-scene="map-chain" href="/#b=969652&amp;mode=map&amp;cam=486.000,639.903,114.769,0.00,-89.00&amp;preset=Ultra&amp;camera.fov=50">Explore<span class="vh"> The map: the whole chain</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/map-amounts-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The last five years from above, with amounts up the side.">
+<span class="view-title">The map: every amount</span>
+<a class="explore" data-scene="map" href="/#b=969652&amp;mode=map&amp;cam=854.957,225.014,107.528,0.00,-89.00&amp;preset=Ultra&amp;camera.fov=50">Explore<span class="vh"> The map: every amount</span> <span aria-hidden="true">↗</span></a>
 </li>
 <li class="view">
 <img src="assets/stills/still-cell-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="One tall column among shorter neighbours.">
 <span class="view-title">A cell</span>
 <a class="explore" data-scene="cell" href="/#b=969652&amp;mode=map&amp;cam=969.092,7.733,84.065,-12.00,-2.00&amp;preset=Ultra">Explore<span class="vh"> A cell</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/cell-anatomy-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The same column from above, with the film’s anatomy of a cell.">
+<span class="view-title">A cell, from above</span>
+<a class="explore" data-scene="cell-anatomy" href="/#b=969652&amp;mode=map&amp;cam=967.923,10.479,89.275,-12.00,-27.56&amp;preset=Ultra">Explore<span class="vh"> A cell, from above</span> <span aria-hidden="true">↗</span></a>
 </li>
 <li class="view">
 <img src="assets/stills/return-poster-1600.webp" width="800" height="450" loading="lazy" decoding="async" alt="The opening view, 1,200 blocks later.">
@@ -504,19 +642,29 @@
 <h3>Places</h3>
 <ul class="view-grid" role="list">
 <li class="view">
-<img src="assets/stills/still-first-line-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The 50 BTC row of 2009 and 2010, a line of light across the sparse early field.">
+<img src="assets/stills/region-first-line-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="Low along the row of about 50 BTC outputs of 2009 and 2010.">
 <span class="view-title">The first line</span>
-<a class="explore" data-scene="first-line" href="/#b=972052&amp;mode=map&amp;cam=45.359,4.820,54.810,70.00,-10.00&amp;preset=Ultra&amp;camera.fov=40">Explore<span class="vh"> The first line</span> <span aria-hidden="true">↗</span></a>
+<a class="explore" data-scene="first-line" href="/#b=969652&amp;mode=map&amp;cam=68.250,16.000,70.000,-54.83,-18.37&amp;preset=Ultra">Explore<span class="vh"> The first line</span> <span aria-hidden="true">↗</span></a>
 </li>
 <li class="view">
-<img src="assets/stills/still-towers-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="Tall columns of large amounts at the newest blocks.">
-<span class="view-title">Towers at the edge</span>
-<a class="explore" data-scene="towers" href="/#b=972052&amp;mode=map&amp;cam=976.382,6.610,20.658,140.00,-5.00&amp;preset=Ultra&amp;camera.fov=40">Explore<span class="vh"> Towers at the edge</span> <span aria-hidden="true">↗</span></a>
+<img src="assets/stills/region-round-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="Bright lines of round amounts in the Outputs look.">
+<span class="view-title">Round amounts</span>
+<a class="explore" data-scene="round" href="/#b=969652&amp;mode=map&amp;cam=418.889,70.636,129.558,0.00,-62.00&amp;preset=Ultra&amp;look=Outputs">Explore<span class="vh"> Round amounts</span> <span aria-hidden="true">↗</span></a>
 </li>
 <li class="view">
-<img src="assets/stills/still-ridge-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="A dense ridge of rows of a few hundred satoshis.">
+<img src="assets/stills/region-ridge-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The ridge of tiny outputs in golden light.">
 <span class="view-title">The ridge</span>
-<a class="explore" data-scene="dust-ridge" href="/#b=972052&amp;mode=map&amp;cam=871.217,23.474,150.783,135.00,-28.00&amp;preset=Ultra&amp;camera.fov=40">Explore<span class="vh"> The ridge</span> <span aria-hidden="true">↗</span></a>
+<a class="explore" data-scene="ridge" href="/#b=969652&amp;mode=map&amp;cam=817.188,24.000,150.000,-155.56,-30.08&amp;preset=Ultra&amp;look=Golden+hour">Explore<span class="vh"> The ridge</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/region-towers-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The cell of 35 outputs of 1,000 BTC in daylight.">
+<span class="view-title">Towers</span>
+<a class="explore" data-scene="towers" href="/#b=969652&amp;mode=map&amp;cam=1001.606,16.193,27.646,80.50,-13.94&amp;preset=Ultra&amp;look=Daylight">Explore<span class="vh"> Towers</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/region-edge-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The newest edge of the field from the side.">
+<span class="view-title">The newest edge</span>
+<a class="explore" data-scene="edge" href="/#b=969652&amp;mode=map&amp;cam=972.500,9.000,119.375,12.09,-9.52&amp;preset=Ultra">Explore<span class="vh"> The newest edge</span> <span aria-hidden="true">↗</span></a>
 </li>
 <li class="view">
 <img src="assets/stills/field-tip-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The opening view at the last block of this edition.">
@@ -530,6 +678,16 @@
 <img src="assets/stills/still-change-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The column and its neighbours after 1,200 blocks.">
 <span class="view-title">Time</span>
 <a class="explore" data-scene="time" href="/#b=969652&amp;mode=map&amp;cam=969.092,7.733,84.065,-12.00,-2.00&amp;preset=Ultra">Explore<span class="vh"> Time</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/above-pulse-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The whole chain from above in Pulse, flashing where coins are spent.">
+<span class="view-title">From above: Pulse</span>
+<a class="explore" data-scene="above-pulse" href="/#b=969652&amp;mode=map&amp;cam=486.000,639.903,114.770,0.00,-89.00&amp;preset=Ultra&amp;look=Pulse&amp;color.heatGain=2.5&amp;amp.heatHalfLife=100&amp;amp.heatEdge=0.08&amp;amp.flashSize=1.5">Explore<span class="vh"> From above: Pulse</span> <span aria-hidden="true">↗</span></a>
+</li>
+<li class="view">
+<img src="assets/stills/above-film-800.webp" width="800" height="450" loading="lazy" decoding="async" alt="The recent field from above in the look of the original 2D film.">
+<span class="view-title">From above: the film’s look</span>
+<a class="explore" data-scene="above-film" href="/#b=969652&amp;mode=map&amp;cam=905.000,109.983,91.920,0.00,-89.00&amp;preset=Ultra&amp;look=BitcoinTimelapse.com">Explore<span class="vh"> From above: the film’s look</span> <span aria-hidden="true">↗</span></a>
 </li>
 <li class="view">
 <img src="assets/stills/seventeen-years-poster-1600.webp" width="800" height="450" loading="lazy" decoding="async" alt="The whole landscape from far above.">
@@ -632,18 +790,12 @@
 <li>Original concept and code by <a href="https://github.com/martinus/BitcoinUtxoVisualizer">Martinus</a> (BitcoinUtxoVisualizer, MIT).</li>
 <li>Part of <a href="https://github.com/nostitos/utxo-timelapse">UTXO Timelapse</a>. Rendered with three.js.</li>
 <li>Set in Instrument Serif and IBM Plex (SIL Open Font License).</li>
+<li>The film in 4K: <a href="https://www.youtube.com/watch?v=41nViOGyF4M" rel="noopener">What remains on YouTube</a>. Narration by George, an ElevenLabs voice; music made with Suno.</li>
 <li>The 2D film and its guide: <a href="https://bitcointimelapse.com/guide/">bitcointimelapse.com/guide</a>.</li>
 </ul>
-<p class="production">Every image is a capture of the landscape app with dataset d972052-20261018, blocks 0 to 972,052. The film and the studies were rendered frame by frame at the Ultra quality tier; the flight and interface clips are real-time recordings of bitcoinlandscape.com as a first-time visitor. Music: an original score synthesized for the film.</p>
+<p class="production">Every image is a capture of the landscape app with dataset d972052-20261018, blocks 0 to 972,052. The film and the studies were rendered frame by frame at the Ultra quality tier, and the film’s labels, axes and insets are drawn from the same data; the flight and interface clips are real-time recordings of bitcoinlandscape.com as a first-time visitor.</p>
 </div>
 </footer>
 
-<dialog class="film-dialog" id="film" aria-labelledby="film-title">
-<div class="film-head">
-<h2 id="film-title">What <em>remains</em> <span class="label">90 seconds</span></h2>
-<button class="film-close" type="button" data-film-close>Close <span aria-hidden="true">×</span></button>
-</div>
-<video controls playsinline preload="none" width="1920" height="1080" data-src="assets/film/what-remains-1080.mp4" data-lazy-poster="assets/film/poster-1600.webp"></video>
-</dialog>
 </body>
 </html>

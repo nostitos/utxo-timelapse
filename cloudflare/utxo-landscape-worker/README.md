@@ -8,7 +8,8 @@
 |---|---|
 | `/` and the app files | Workers Static Assets from `landscape/web`; `landscape/web/.assetsignore` leaves out `dev/`. |
 | `/explorer` | Explicit entry to the same app shell. `/explorer/` and `/explorer.html` redirect here while preserving query options. On the public home domains, the small entry module sends new visitors to `/guide/` before loading the renderer or dataset; entering the app sets a one-year `bl_explorer` preference. Shared view hashes, app options, existing saved settings and service aliases keep direct app entry. |
-| `/guide/` | The guide, *What remains* (`landscape/web/guide/`), from the same static assets. Its films and previews (`.mp4`, `.webm`, `.m4a`, `.mp3`, `.vtt`) answer single byte ranges, 304 and HEAD with the security headers. The guide's HTML is `no-cache`; its other files are cached for an hour. |
+| `/guide/` | The guide, *What remains* (`landscape/web/guide/`), from the same static assets. Its previews and captions (`.mp4`, `.webm`, `.m4a`, `.mp3`, `.vtt`) answer single byte ranges, 304 and HEAD with the security headers. The guide's HTML is `no-cache`; its other files are cached for an hour. |
+| `/guide/film/<name>.mp4` | The guide's film, R2 object `landscape/guide/film/<name>.mp4` (lowercase letters, digits, dots and hyphens). It is too large for a static asset, so it is served like the dataset: single byte ranges, ETag and 304, immutable caching. The name carries the file's content hash. |
 | `/dataset/index.json` | Names the current dataset (`src/release.js`). The app reads it on startup. |
 | `/dataset/<id>/<file>` | R2 objects `landscape/<id>/<file>`, only for the ids in `src/release.js` and the dataset's file names. Single byte ranges, ETag and 304, immutable caching, CORS `*`, and an edge cache for whole objects and ranges up to 8 MiB. |
 | `/api/landscape/cell?block&col&row` | The inspector's history index: the lifecycle of one landscape cell from the 2D explorer's history shards, through the shared `lifecycleJson` in `../utxo-video-worker/src/history.js`. Satoshi ranges come from the dataset's `rows.bin`, the compiled row table, so they equal the native explorer's on every row. Rate limit 8 requests/s, burst 20, per IP and isolate; cached 24 h per release. |
@@ -37,6 +38,18 @@ curl -fsS https://bitcoinlandscape.com/dataset/index.json
 ```
 
 A deploy uploads the working tree's `landscape/web` and bundles `../utxo-video-worker/src/history.js`, `mapping.js` and that Worker's `release.js`, so the cell API follows the history routing current at deploy time. Deploy only from master after the change has merged: a deploy from a branch that lacks another merged release rolls that release back. Responses carry `X-Worker-Version`; bump `version` in `src/release.js` for every release. `scripts/check_live_release.mjs` fails unless the checkout is the fetched `origin/master` and every hostname of both Workers answers with the version in its `release.js` (`--wait` gives aliases time to catch up). Roll back with `npx wrangler@4.86.0 rollback`.
+
+### Publish the guide's film
+
+Name a new film `what-remains-<cut>-1080-<first 8 hex digits of its SHA-256>.mp4` and upload it before deploying a guide that references it:
+
+```sh
+AWS_SHARED_CREDENTIALS_FILE=~/.config/utxo-r2/credentials aws s3 cp <file> s3://utxo-video/landscape/guide/film/<name> \
+  --content-type video/mp4 --endpoint-url https://f147815debbc98aca5b60c0caeeb29e6.r2.cloudflarestorage.com
+curl -fsS -r 0-15 https://bitcoinlandscape.com/guide/film/<name> | xxd   # after the deploy: 206 and an ftyp box
+```
+
+Record its `url`, `r2Key`, `bytes` and `sha256` under the film's `remote` entry in `landscape/web/guide/assets/manifest.json`. For the local server, keep a copy at `landscape/web/guide/film/<name>`; Git and `.assetsignore` exclude that folder, so a deploy never uploads it. Keep the previous film in R2 until the release that replaced it is no longer a rollback target.
 
 ## Publish a dataset
 
