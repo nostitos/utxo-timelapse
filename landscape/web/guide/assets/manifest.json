@@ -1017,7 +1017,8 @@
       "kind": "film",
       "files": {
         "poster": "assets/film/narrated-poster-1920.webp",
-        "vtt": "assets/film/what-remains-narrated.vtt"
+        "vtt": "assets/film/what-remains-narrated.vtt",
+        "posterPortrait": "assets/film/narrated-vertical-poster-1080.webp"
       },
       "remote": {
         "mp4": {
@@ -1027,6 +1028,19 @@
           "sha256": "31105243525b6b7ecc9317a446fc2a09db706d3c2a079d88fcc6c16fb1dd0d82",
           "video": "H.264 High 1920x1080, 30 fps, 5,760 frames, 2.79 Mbps two-pass",
           "audio": "AAC-LC 48 kHz stereo 160 kbps, -14.1 LUFS"
+        },
+        "mp4Portrait": {
+          "url": "/guide/film/what-remains-narrated-1080x1920-31cf3c87.mp4",
+          "r2Key": "landscape/guide/film/what-remains-narrated-1080x1920-31cf3c87.mp4",
+          "bytes": 71154785,
+          "sha256": "31cf3c87dceba2fd1b3e47b1b0211ee909398cff7c5617a897a32d395f6b2790",
+          "video": "H.264 High 1080x1920, 30 fps, 5,760 frames, 2.79 Mbps two-pass",
+          "audio": "AAC-LC 48 kHz stereo 160 kbps, -14.1 LUFS",
+          "source": {
+            "file": "renders/narrated-v.mp4",
+            "sha256": "d776840f340349148ff62e4a3883b68e5c17f96b95c44491b10e48bd20674331"
+          },
+          "use": "phones held upright (the dialog picks it when the screen is portrait and at most 900 px wide)"
         }
       },
       "title": "What remains, the narrated cut",
@@ -1044,7 +1058,8 @@
       "credits": "Narration: George (ElevenLabs Eleven v4). Music: Suno v6.",
       "bytes": {
         "poster": 151264,
-        "vtt": 3472
+        "vtt": 3472,
+        "posterPortrait": 278592
       }
     },
     {

@@ -41,7 +41,7 @@ A deploy uploads the working tree's `landscape/web` and bundles `../utxo-video-w
 
 ### Publish the guide's film
 
-Name a new film `what-remains-<cut>-1080-<first 8 hex digits of its SHA-256>.mp4` and upload it before deploying a guide that references it:
+Name a new film `what-remains-<cut>-1080-<first 8 hex digits of its SHA-256>.mp4` (the vertical version `what-remains-<cut>-1080x1920-<hash>.mp4`) and upload it before deploying a guide that references it:
 
 ```sh
 AWS_SHARED_CREDENTIALS_FILE=~/.config/utxo-r2/credentials aws s3 cp <file> s3://utxo-video/landscape/guide/film/<name> \

@@ -673,6 +673,10 @@ p kbd { vertical-align: 0.1em; }
 }
 .film-close:hover { border-color: var(--ivory); }
 .film-dialog video { width: 100%; max-height: calc(96vh - 60px); background: #000; aspect-ratio: 16 / 9; }
+/* The vertical film on a phone held upright: as wide as the screen allows under the header. */
+.film-dialog.is-portrait { width: min(96vw, calc((96vh - 60px) * 9 / 16)); }
+.film-dialog.is-portrait video { aspect-ratio: 9 / 16; }
+.film-dialog.is-portrait .film-head { flex-wrap: wrap; gap: 8px 16px; }
 
 /* ---------- reveal (enhancement only) ---------- */
 

@@ -178,13 +178,30 @@ if (!pageLoaded) {
 
 // ---------------------------------------------------------------------------------------------
 // The film opens from the opening button in a dialog and starts with sound, since the visitor
-// asked for it. Closing pauses it and returns focus; previews stay paused while it is open.
+// asked for it. Closing pauses it and returns focus; previews stay paused while it is open. A phone
+// held upright gets the vertical version of the same film (data-src-portrait), chosen when the
+// dialog opens; a film already started keeps playing in its own shape.
 
 const dialog = document.getElementById('film');
 if (dialog && typeof dialog.showModal === 'function') {
   const film = dialog.querySelector('video');
   const closeButton = dialog.querySelector('[data-film-close]');
+  const upright = matchMedia('(orientation: portrait) and (max-width: 900px)');
   let opener = null;
+
+  // The version to show: switch only while the film is at its start, so a paused film resumes.
+  function pick() {
+    const portrait = !!film.dataset.srcPortrait && upright.matches;
+    const src = portrait ? film.dataset.srcPortrait : film.dataset.src;
+    const poster = portrait ? film.dataset.lazyPosterPortrait : film.dataset.lazyPoster;
+    if (film.getAttribute('src') === src) return;
+    if (film.getAttribute('src') && film.currentTime > 0.5) return;
+    dialog.classList.toggle('is-portrait', portrait);
+    film.width = portrait ? 1080 : 1920;
+    film.height = portrait ? 1920 : 1080;
+    if (poster) film.setAttribute('poster', poster);
+    film.src = src;
+  }
 
   for (const a of document.querySelectorAll('[data-film-open]')) {
     a.addEventListener('click', (e) => {
@@ -193,8 +210,7 @@ if (dialog && typeof dialog.showModal === 'function') {
       opener = a;
       blocked = true;
       choose();
-      if (!film.getAttribute('poster') && film.dataset.lazyPoster) film.setAttribute('poster', film.dataset.lazyPoster);
-      if (!film.getAttribute('src')) film.src = film.dataset.src;
+      pick();
       dialog.showModal();
       closeButton.focus();
       film.muted = false;
