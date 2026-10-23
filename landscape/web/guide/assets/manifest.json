@@ -8,7 +8,7 @@
     "dataset": "d972052-20261018",
     "tip": 972052
   },
-  "generated": "2026-10-23T13:27:27.000Z",
+  "generated": "2026-10-23T14:23:06.000Z",
   "scenes": [
     {
       "id": "field",
@@ -778,15 +778,15 @@
     {
       "id": "edge",
       "title": "The newest edge",
-      "purpose": "Along the newest edge at block 969,652, 3 October 2026, toward the 1 BTC band.",
+      "purpose": "Along the newest edge at block 969,652, toward the 1 BTC band.",
       "kind": "still",
       "movement": "III",
       "look": "Landscape",
       "block": 969652,
-      "link": "/#b=969652&mode=map&cam=972.500,9.000,119.375,12.09,-9.52&preset=Ultra",
+      "link": "/#b=969652&mode=map&cam=972.500,9.000,131.875,12.09,-9.52&preset=Ultra",
       "linkAt": 0,
       "film": {
-        "at": 86.5,
+        "at": 84.5,
         "source": "narrated cut"
       },
       "captured": {
@@ -799,7 +799,7 @@
         "browser": "Chrome/155.0.8059.85",
         "defHash": "53a373ba0e0297fe",
         "scene": "t-edge",
-        "frame": 75
+        "frame": 15
       }
     },
     {
@@ -928,32 +928,6 @@
       },
       "overlays": "the narrated film's own labels, axes and insets",
       "bytes": 114112
-    },
-    {
-      "id": "bird",
-      "kind": "clip",
-      "realtime": "bird",
-      "files": {
-        "mp4": "assets/clips/bird.mp4",
-        "poster": "assets/stills/bird-poster-1600.webp"
-      },
-      "span": [
-        0,
-        8.998
-      ],
-      "timing": {
-        "frames": 539,
-        "seconds": 8.998,
-        "fps": 59.9,
-        "maxGapMs": 50,
-        "gapsOver50ms": 1,
-        "gapsOver100ms": 0
-      },
-      "source": {
-        "file": "realtime/bird/bird.mp4",
-        "sha256": "ab70ab101d05c094d6ee5a8d0e44b74178b150fb2e199fd4cb7268cf11e6e58d"
-      },
-      "bytes": 5943262
     },
     {
       "id": "cell-anatomy",
@@ -1191,30 +1165,6 @@
       "bytes": 7442607
     },
     {
-      "id": "film-readings",
-      "kind": "clip",
-      "files": {
-        "mp4": "assets/clips/film-readings.mp4",
-        "poster": "assets/stills/readings-shares-1600.webp"
-      },
-      "scene": "readings-value",
-      "film": {
-        "span": [
-          139.2,
-          156.0
-        ],
-        "posterAt": 153.0
-      },
-      "source": {
-        "file": "renders/narrated-4k-picture.mp4",
-        "sha256": "af40cac66ad9522ec6fbbb40809dfbb80b691c048e98409c266c20d11165ea77"
-      },
-      "edit": "The narrated film 139.2-156.0 s with its labels, scaled to 1600x900 (x264 two-pass)",
-      "duration": 16.8,
-      "playback": "once; hold the final frame until Replay",
-      "bytes": 7180053
-    },
-    {
       "id": "film-time",
       "kind": "clip",
       "files": {
@@ -1237,32 +1187,6 @@
       "duration": 9.6,
       "playback": "once; hold the final frame until Replay",
       "bytes": 4070840
-    },
-    {
-      "id": "jet",
-      "kind": "clip",
-      "realtime": "jet",
-      "files": {
-        "mp4": "assets/clips/jet.mp4",
-        "poster": "assets/stills/jet-poster-1600.webp"
-      },
-      "span": [
-        0.3,
-        6.8
-      ],
-      "timing": {
-        "frames": 498,
-        "seconds": 8.399,
-        "fps": 59.29,
-        "maxGapMs": 109,
-        "gapsOver50ms": 1,
-        "gapsOver100ms": 1
-      },
-      "source": {
-        "file": "realtime/jet/jet.mp4",
-        "sha256": "21bd2e84bb8856f8dec44d69f6128ecb38ee3e666b3bd191d93ee033e8ecb73c"
-      },
-      "bytes": 6836992
     },
     {
       "id": "look-bitcointimelapse-com",
@@ -1486,67 +1410,23 @@
       "bytes": 101740
     },
     {
-      "id": "plane",
-      "kind": "clip",
-      "realtime": "plane",
-      "files": {
-        "mp4": "assets/clips/plane.mp4",
-        "poster": "assets/stills/plane-poster-1600.webp"
-      },
-      "span": [
-        0,
-        9.999
-      ],
-      "timing": {
-        "frames": 598,
-        "seconds": 9.999,
-        "fps": 59.81,
-        "maxGapMs": 62,
-        "gapsOver50ms": 1,
-        "gapsOver100ms": 0
-      },
-      "source": {
-        "file": "realtime/plane/plane.mp4",
-        "sha256": "111a2123a80f22a3c584359a1ce75f50e0c2f3d0b8a4313bd5b84695ec9e64d7"
-      },
-      "bytes": 7848400
-    },
-    {
-      "id": "readings-shares",
-      "kind": "still",
-      "files": {
-        "1600": "assets/stills/readings-shares-1600.webp"
-      },
-      "scene": "readings-value",
-      "film": {
-        "at": 153.0
-      },
-      "source": {
-        "file": "renders/narrated-4k-picture.mp4",
-        "sha256": "af40cac66ad9522ec6fbbb40809dfbb80b691c048e98409c266c20d11165ea77",
-        "frame": 4590
-      },
-      "overlays": "the narrated film's own labels, axes and insets",
-      "bytes": 178140
-    },
-    {
       "id": "region-edge",
       "kind": "still",
       "files": {
-        "800": "assets/stills/region-edge-800.webp",
-        "1600": "assets/stills/region-edge-1600.webp"
+        "800": "assets/stills/region-edge2-800.webp",
+        "1600": "assets/stills/region-edge2-1600.webp"
       },
       "scene": "edge",
       "film": {
-        "at": 86.5
+        "at": 84.5
       },
       "source": {
         "file": "renders/narrated-4k-picture.mp4",
         "sha256": "af40cac66ad9522ec6fbbb40809dfbb80b691c048e98409c266c20d11165ea77",
-        "frame": 2595
+        "frame": 2535
       },
-      "overlays": "the narrated film's own labels, axes and insets",
-      "bytes": 74416
+      "overlays": "the narrated film's look label (before its dated caption appears)",
+      "bytes": 76202
     },
     {
       "id": "region-first-line",
@@ -1678,32 +1558,6 @@
       "bytes": 1054446
     },
     {
-      "id": "stack-sats",
-      "kind": "clip",
-      "realtime": "stack-sats",
-      "files": {
-        "mp4": "assets/clips/stack-sats.mp4",
-        "poster": "assets/stills/stack-sats-poster-1600.webp"
-      },
-      "span": [
-        0.4,
-        13.45
-      ],
-      "timing": {
-        "frames": 787,
-        "seconds": 13.45,
-        "fps": 58.51,
-        "maxGapMs": 250,
-        "gapsOver50ms": 2,
-        "gapsOver100ms": 1
-      },
-      "source": {
-        "file": "realtime/stack-sats/stack-sats.mp4",
-        "sha256": "5966e79df7c99a6ea64e4d883e853c0af37e2ddeff09d9c978aa2e95da6e87b2"
-      },
-      "bytes": 7314702
-    },
-    {
       "id": "still-cell",
       "kind": "still",
       "scene": "still-cell",
@@ -1811,18 +1665,36 @@
       "bytes": 88406
     },
     {
-      "id": "ui-inspector",
+      "id": "ui-hover-card",
       "kind": "still",
       "realtime": "ui-inspector",
       "files": {
-        "800": "assets/stills/ui-inspector-800.webp",
-        "1600": "assets/stills/ui-inspector-1600.webp"
+        "306": "assets/stills/ui-hover-card-306.webp",
+        "612": "assets/stills/ui-hover-card-612.webp"
       },
       "source": {
         "file": "realtime/ui-inspector/ui-inspector.png",
-        "sha256": "d0d0b6eb76187aae430a5e888b28eebcf1f316c5fa5f6f700a9f16f429bb7a66"
+        "sha256": "d0d0b6eb76187aae430a5e888b28eebcf1f316c5fa5f6f700a9f16f429bb7a66",
+        "crop": "612x300+26+602"
       },
-      "bytes": 131208
+      "note": "The card under the cursor for the same cell",
+      "bytes": 22688
+    },
+    {
+      "id": "ui-inspector-panel",
+      "kind": "still",
+      "realtime": "ui-inspector",
+      "files": {
+        "430": "assets/stills/ui-inspector-panel-430.webp",
+        "860": "assets/stills/ui-inspector-panel-860.webp"
+      },
+      "source": {
+        "file": "realtime/ui-inspector/ui-inspector.png",
+        "sha256": "d0d0b6eb76187aae430a5e888b28eebcf1f316c5fa5f6f700a9f16f429bb7a66",
+        "crop": "864x1556+2956+22"
+      },
+      "note": "The inspector drawer for cell 15150:803 at block 969,652, cropped at native resolution",
+      "bytes": 107534
     },
     {
       "id": "ui-phone",
