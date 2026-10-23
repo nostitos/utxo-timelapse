@@ -18,7 +18,7 @@ The magnifier displays resampled colours; coin lookups retain the master grid.
 Create a private JSON spec outside version control with absolute `source`, its
 `sourceSHA256`, exact `frameCount`, and a fresh absolute `destination` directory.
 The source must be the verified 3840×2160 HEVC 4:4:4, 60 fps master. For the
-September 13 edition, the frame count is 967128, including 300 ending frames.
+September 13 build, the frame count is 967128, including 300 ending frames.
 
 ```sh
 python3 scripts/compat_rendition.py build /absolute/path/build-spec.json
@@ -31,7 +31,7 @@ Encoding uses libx264 medium/CRF 20, a 20 Mbps maximum and 40 Mb VBV buffer.
 Closed GOPs have 240 frames, with B-frames disabled so presentation and decode
 timestamps agree at every four-second boundary. The fMP4 track has 15360 ticks
 per second (256 ticks per frame), square pixels, and `avc1.640033` signalling.
-The current edition has 4030 segments; the final one contains 168 frames.
+The September 13 build had 4030 segments; the final one contains 168 frames.
 
 `encode/` contains FFmpeg output; `ledger/` contains content-addressed immutable
 objects and `segments.json`. Every fragment is checked for its sample count,
@@ -63,7 +63,7 @@ AVC configuration, rebases new fragment timestamps, and removes the previous
 ending from the new playlist. The parent ledger and objects remain intact.
 This can be an `append_update.py` command stage after master assembly; workflows
 that omit the optional MP4 assembly must produce that source before this stage.
-Do not publish a new video cutoff until both renditions cover it.
+Do not publish a new video end block until both renditions cover it.
 
 ## Publish and roll back
 
@@ -82,7 +82,7 @@ or rollback for edge propagation. Pre-deploy checks remain immediate, and
 content/hash mismatches are not retried. A failed post-deployment check rolls
 back the single release pointer.
 Advertised renditions require a pinned previous frame count in the before-checks.
-If the cutoff changes, every rendition must have a staged playlist. Staged
+If the end block changes, every rendition must have a staged playlist. Staged
 durations must match the new frame count and FPS (within one millisecond for
 legacy HEVC timing). This prevents advancing 4K while retaining a stale default
 H.264 timeline.

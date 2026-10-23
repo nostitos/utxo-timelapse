@@ -8,8 +8,8 @@ Code identifiers are canonical. The [technical reference](https://nostitos.githu
 |---|---|
 | Output / UTXO | A transaction output; an unspent transaction output remains available to be spent. An output is not a person, address balance or transaction. |
 | Creation height | Block that created an output. The plotted horizontal coordinate and age calculations depend on preserving it. |
-| Spend height | Block that consumed an output. The history sentinel `UINT32_MAX` means unspent at the dataset cutoff. |
-| Data cutoff | Last block in the published edition, currently 966,360 (2026-09-10). Unspent status is relative to this cutoff. |
+| Spend height | Block that consumed an output. The history sentinel `UINT32_MAX` means unspent through the last indexed block. |
+| Latest block | Last block in the published data, updated weekly. Unspent status is relative to this block; APIs call it `cutoffBlock`. |
 | `changes.blk1` | Sequential `BLK\x02` change records, produced by `utxo_to_change`. Framing: marker, block height, payload length, encoded block metadata and deltas. See [`BlockEncoder.h`](src/cpp/app/BlockEncoder.h). |
 | Checkpoint v3 / `UTX3` | Node preprocessing state with creation heights, zero-value outputs, matching BLK byte length/tail offset/hash, and compact-prefix UTXO entries. Atomically written. Legacy formats are rejected; the old lost-creation-height caveat does not apply to v3. See [`Utxo.cpp`](src/cpp/app/Utxo.cpp). |
 | `BUVHIST1` | Historical lifecycle table with a 64-byte offset-based header and 16-byte creation/spend/amount records. Section order can change after incremental updates. See [`UtxoHistory.h`](src/cpp/app/UtxoHistory.h). |
@@ -30,7 +30,7 @@ the master pixel grid. See [operations](docs/compat-rendition.md).
 | Alive ledger | Surviving density grouped by creation height and Y row. Epoch changes rebuild the destination raster exactly from these contributions; merged contributions are **summed**, not averaged. |
 | `DensityToImage` | Logarithmic density-to-palette transfer: `log(density+30)`, scaled from density 1 to `colorUpperValueLimit` (500 in the film). |
 | `whiteHotTail` | Optional warm-white upper palette. `whiteHotTailMinSatoshi=1000000000` confines it to rows at or above 10 BTC. Lower rows retain base turbo. |
-| `amountColorFloor` | Experimental amount-dependent colour minimum. Disabled in the published edition. |
+| `amountColorFloor` | Experimental amount-dependent colour minimum. Disabled in the published film. |
 | Flash / `PixelSetWithHistory` | Transient activity at touched creation coordinates. With amount weighting, emphasis uses actual BTC moved / 5 BTC, without a per-output minimum. Older activity can use larger marks and longer fades. |
 | Flow lines | Orange marks from a rolling ten-block creation window, separated from the current column by 15 pixels. Drawn/restored without altering density. |
 | HUD | Block metadata and labels drawn over the image; the HUD's mapper stays synchronized with the renderer. |

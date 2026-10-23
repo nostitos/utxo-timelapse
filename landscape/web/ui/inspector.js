@@ -130,17 +130,17 @@ export function createInspector({
     const still = res.stillUnspent || 0;
     html += '<dl class="in-grid">' +
       '<div><dt>Alive at ' + fmtInt(block) + '</dt><dd>' + fmtInt(res.count) + '</dd></div>' +
-      '<div><dt>Unspent at cutoff</dt><dd>' + fmtInt(still) + (still ? ' \u00b7 ' + fmtBtc(res.liveUnspentSat) : '') + '</dd></div>' +
+      '<div><dt>Still unspent</dt><dd>' + fmtInt(still) + (still ? ' \u00b7 ' + fmtBtc(res.liveUnspentSat) : '') + '</dd></div>' +
       '<div><dt>Ever created</dt><dd>' + fmtInt(ever) + ' \u00b7 ' + fmtBtc((res.liveSat || 0) + (res.pastSat || 0)) + '</dd></div>' +
       '<div><dt>Median lifespan</dt><dd>' + (res.medianStay >= 0 ? fmtInt(res.medianStay) + ' blocks (' + fmtAge(res.medianStay) + ')' : '\u2014') + '</dd></div>' +
       '</dl>';
     if (Array.isArray(res.pop) && res.pop.some((v) => v > 0)) {
       html += '<div class="in-pop"><canvas width="720" height="112" aria-label="Unspent outputs in this cell over time"></canvas>' +
-        '<div class="in-popcap"><span>' + escapeHtml(res.blockDates ? res.blockDates[0] : '') + '</span><span>unspent count over time</span><span>cutoff</span></div></div>';
+        '<div class="in-popcap"><span>' + escapeHtml(res.blockDates ? res.blockDates[0] : '') + '</span><span>unspent count over time</span><span>latest</span></div></div>';
     }
     const stay = (res.utxos || []).filter((u) => u.spent == null);
     const later = (res.utxos || []).filter((u) => u.spent != null);
-    if (stay.length) html += '<h4 class="ok">Unspent at cutoff <span>' + fmtInt(stay.length) + '</span></h4>' + utxoRows(stay, 'stay');
+    if (stay.length) html += '<h4 class="ok">Still unspent <span>' + fmtInt(stay.length) + '</span></h4>' + utxoRows(stay, 'stay');
     if (later.length) html += '<h4 class="later">Spent after this block <span>' + fmtInt(later.length) + ', earliest first</span></h4>' + utxoRows(later, 'leave');
     if (res.truncated) html += '<p class="in-more">The explorer lists at most 500 live outputs.</p>';
     if (res.pastUtxos && res.pastUtxos.length) {

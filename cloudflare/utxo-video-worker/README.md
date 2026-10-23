@@ -81,7 +81,7 @@ curl -fsS https://bitcointimelapse.com/hls/v5/media.m3u8
 curl -fsS 'https://bitcointimelapse.com/api/pixel?block=314000&x=3000&y=1525'
 ```
 
-At the published cutoff, the example pixel has two outputs unspent at block 314,000, totalling 42,430 sat. One was spent at block 520,664; one remains unspent at the cutoff. Compare counts and sums with the local index when changing data routing.
+At block 314,000 the example pixel has two unspent outputs, totalling 42,430 sat. One was spent at block 520,664; the other was still unspent in the September 2026 data. Compare counts and sums with the local index when changing data routing.
 
 `/api/ranges` gives inverse coordinate bounds; `/api/date` maps a UTC date into block timestamps; `/api/txid` resolves candidate matches by creation block and amount. Compact lifecycle records do not retain full txid/vout identity, so equal-amount matches can be ambiguous. Query-list truncation is reported explicitly. See the [full API and tradeoffs reference](https://nostitos.github.io/utxo-timelapse/technical.html#api).
 

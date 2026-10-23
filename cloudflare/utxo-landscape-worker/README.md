@@ -74,15 +74,15 @@ Datasets are immutable: each one gets a new prefix `landscape/d<tip>-<yyyymmdd>`
 3. `/tmp/landscape_r2_venv/bin/python scripts/landscape_r2_verify.py "/Volumes/4T Data/buv_render/landscape_<tip>" --prefix landscape/<id> --no-manifest` checks every object's size and MD5 and that nothing else exists under the prefix.
 4. Upload `manifest.json` (`landscape_r2_publish.py` without `--no-manifest`, or `r2_upload_tree_singlepart.py` with `--include manifest.json`), then run step 3 without `--no-manifest`.
 5. In `src/release.js`, set `dataset` to the new id and tip, move the previous id to `retainedDatasetIds`, bump `version`, then deploy and verify.
-6. Keep the current edition and its immediate predecessor for rollback. After older editions have
+6. Keep the current dataset and its immediate predecessor for rollback. After older datasets have
    had a grace period of a few days, remove their ids from `retainedDatasetIds`, deploy and verify
-   both supported editions, then delete only their retired prefixes:
+   both supported datasets, then delete only their retired prefixes:
    ```sh
    AWS_SHARED_CREDENTIALS_FILE=~/.config/utxo-r2/credentials aws s3 rm s3://utxo-video/landscape/<old-id>/ --recursive \
      --endpoint-url https://f147815debbc98aca5b60c0caeeb29e6.r2.cloudflarestorage.com
    ```
 
-   Server-side copies still occupy a full dataset's storage. Do not accumulate every old edition.
+   Server-side copies still occupy a full dataset's storage. Do not accumulate every old dataset.
    Retention of the 2D stream and history follows object references in the supported playlists and
    per-shard catalogues: a prefix's age does not establish that its contents are obsolete. Preserve
    current local manifests, the publication catalogue, checkpoints and append ledgers for updates.
