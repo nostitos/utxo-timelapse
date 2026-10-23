@@ -261,8 +261,7 @@ async function handle(request, env, ctx) {
   }
   const navigation = navigationRoute(request);
   if (navigation?.kind === "redirect") {
-    // A relative Location keeps the visitor's hostname: utxo.aiception.ai reaches this Worker
-    // through a proxy as utxo-cdn.hat39.com, and an absolute URL would send visitors there.
+    // A relative Location keeps the hostname the visitor used, even behind a proxy.
     return withHeaders(new Response(null, { status: 302, headers: {
       Location: navigation.path, "Cache-Control": "no-store", Vary: "Cookie",
     } }));

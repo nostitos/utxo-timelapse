@@ -1,6 +1,6 @@
 # Append-only update — September 10, 2026
 
-Status: **completed and published** to block **966,360**. Public explorer: https://utxo.aiception.ai/ . Release `append-966360-20260910-r3`; Worker version `0c2c59b5-cfb9-4024-8912-9374c07d2d54`.
+Status: **completed and published** to block **966,360**. Public explorer: https://bitcointimelapse.com/explorer . Release `append-966360-20260910-r3`; Worker version `0c2c59b5-cfb9-4024-8912-9374c07d2d54`.
 
 - Previous video: blocks 0–964,388, plus a 300-frame ending.
 - Target: block **966,360**, captured at the start of this update (not a continually moving target).

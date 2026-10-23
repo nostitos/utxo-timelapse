@@ -457,7 +457,7 @@ function activeSharePixel(pixel, block, drawerOpen, crosshairVisible, playing, s
 }
 function buildShareUrl(href, view) {
   const source = new URL(href);
-  const publicHost = ["bitcointimelapse.com", "www.bitcointimelapse.com", "utxo.aiception.ai", "utxo-cdn.hat39.com"].includes(source.hostname);
+  const publicHost = ["bitcointimelapse.com", "www.bitcointimelapse.com", "utxo-cdn.hat39.com"].includes(source.hostname);
   const url = new URL(publicHost ? "https://bitcointimelapse.com/explorer" : href);
   url.search = ""; url.hash = "";
   url.searchParams.set("block", String(view.block));
