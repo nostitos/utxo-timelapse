@@ -4,7 +4,7 @@ The repository is now **[nostitos/utxo-timelapse](https://github.com/nostitos/ut
 
 - [Illustrated guide](https://nostitos.github.io/utxo-timelapse/)
 - [Engineering reference](https://nostitos.github.io/utxo-timelapse/technical.html)
-- [Branded explorer](https://utxo.aiception.ai/)
+- [Branded explorer](https://bitcointimelapse.com/explorer)
 
 ## What shipped
 

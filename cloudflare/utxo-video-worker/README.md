@@ -1,8 +1,8 @@
 # UTXO Timelapse cloud explorer
 
-The production explorer at **https://bitcointimelapse.com/explorer** runs independently of the rendering Mac and Bitcoin node. The legacy **https://utxo.aiception.ai/** address proxies to this Worker and remains an alias. The Worker serves the UI, APIs and video from private R2. The [illustrated guide](https://bitcointimelapse.com/guide/) is published by GitHub Pages and served through this Worker at the public domain.
+The production explorer at **https://bitcointimelapse.com/explorer** runs independently of the rendering Mac and Bitcoin node. The Worker serves the UI, APIs and video from private R2. The [illustrated guide](https://bitcointimelapse.com/guide/) is published by GitHub Pages and served through this Worker at the public domain.
 
-First-time visits to `/` show the guide. Entering `/explorer` sets the `btl_explorer` preference cookie for one year; subsequent visits to `/` redirect to `/explorer`. `/guide/` always opens the guide; `/guide`, `/Guide/`, `/GUIDE` and `/guide.html` redirect to it. Redirects carry a relative `Location`, so the `utxo.aiception.ai` alias, which reaches this Worker through a proxy as `utxo-cdn.hat39.com`, keeps its own hostname. Existing root `?block=…&x=…&y=…` links redirect straight to the explorer, preserving the query. Guide HTML is never shared from a cookie-dependent cache. Run `node scripts/check_explorer_navigation.mjs` from the repository root to verify routing and cache isolation.
+First-time visits to `/` show the guide. Entering `/explorer` sets the `btl_explorer` preference cookie for one year; subsequent visits to `/` redirect to `/explorer`. `/guide/` always opens the guide; `/guide`, `/Guide/`, `/GUIDE` and `/guide.html` redirect to it. Redirects carry a relative `Location`, so every hostname keeps its own address. Existing root `?block=…&x=…&y=…` links redirect straight to the explorer, preserving the query. Guide HTML is never shared from a cookie-dependent cache. Run `node scripts/check_explorer_navigation.mjs` from the repository root to verify routing and cache isolation.
 
 ## Current architecture
 

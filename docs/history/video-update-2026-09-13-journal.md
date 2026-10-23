@@ -5,7 +5,7 @@
 **Completed through block 966,827**, previously 966,764: **63 new blocks**
 (1.05 seconds of chain time at 60 fps). No full-chain re-render.
 
-- [Open the updated video](https://utxo.aiception.ai/?block=966827).
+- [Open the updated video](https://bitcointimelapse.com/explorer?block=966827).
 - Master: `/Volumes/4T Data/buv_render/utxo_4k_epoch105k_60fps_transition_crf21_to_966827.mp4`.
 - 84,200,687,245 bytes; **967,128 packets/frames**, including 300 ending frames.
   3840×2160, HEVC Rext `yuv444p`, `hvc1`, superfast CRF 21, nominal 60 fps.

@@ -9,7 +9,7 @@
 - 84,194,549,278 bytes; 967,065 packets/frames, including 300 ending frames;
   3840×2160, HEVC Rext `yuv444p`, `hvc1`, CRF 21, 60 fps nominal.
 - Public release: `append-966764-20260913`, `/hls/v4/media.m3u8`.
-- [Open the final block](https://utxo.aiception.ai/?block=966764).
+- [Open the final block](https://bitcointimelapse.com/explorer?block=966764).
 - All earlier full/partial renders and the old renderer checkpoint remain untouched.
 
 **Request-to-browser-verification wall time: 28m 23.52s**, from

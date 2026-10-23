@@ -9,7 +9,7 @@ Bitcoin Core REST → `utxo_to_change` → `changes.blk1`, then two paths:
 - `visualizer` → raw RGB24 over TCP → FFmpeg → HEVC master → segmented HLS.
 - `utxo_history` / `utxo_history_update` → historical lifecycle records → cloud shards and spend patches.
 
-The native explorer and the Cloudflare Worker query the same coordinate model. The public guide is static `site/`, deployed by GitHub Pages. Public URLs: `https://utxo.aiception.ai/` and `https://nostitos.github.io/utxo-timelapse/`.
+The native explorer and the Cloudflare Worker query the same coordinate model. The public guide is static `site/`, deployed by GitHub Pages. Public URLs: `https://bitcointimelapse.com/` (guide and 2D explorer), `https://bitcoinlandscape.com/` (3D landscape) and `https://nostitos.github.io/utxo-timelapse/`.
 
 ## Key sources
 

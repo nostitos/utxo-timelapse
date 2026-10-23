@@ -17,7 +17,7 @@ import { RELEASE as VIDEO } from '../cloudflare/utxo-video-worker/src/release.js
 
 export const HOSTS = Object.freeze({
   'utxo-video-cdn (2D explorer)': Object.freeze({ version: VIDEO.version, hosts: Object.freeze([
-    'bitcointimelapse.com', 'www.bitcointimelapse.com', 'utxo.aiception.ai', 'utxo-cdn.hat39.com',
+    'bitcointimelapse.com', 'www.bitcointimelapse.com', 'utxo-cdn.hat39.com',
     'utxo-video-cdn.nostisos.workers.dev']) }),
   'utxo-landscape (3D landscape)': Object.freeze({ version: LANDSCAPE.version, hosts: Object.freeze([
     'bitcoinlandscape.com', 'www.bitcoinlandscape.com', '3d.bitcointimelapse.com',
