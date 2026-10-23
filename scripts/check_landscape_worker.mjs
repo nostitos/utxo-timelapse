@@ -1,6 +1,7 @@
 // Checks the landscape Worker (cloudflare/utxo-landscape-worker) against mock R2, Cache API and
 // static assets: dataset allowlist and byte ranges, conditional requests, edge caching, the
-// cell API's validation and empty rows, the row table, and the headers on every response.
+// cell API's validation and empty rows, the row table, the guide's media and its film from R2,
+// and the headers on every response.
 //   node scripts/check_landscape_worker.mjs
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
@@ -434,6 +435,40 @@ await check('guide media: 416, HEAD, If-None-Match and If-Range', async () => {
   const fresh = await req(MP4, { headers: { Range: 'bytes=0-1', 'If-Range': MP4_ETAG } });
   assert.equal(fresh.status, 206, 'If-Range match keeps the range');
   assert.deepEqual([...await bytes(fresh)], [0, 1]);
+});
+
+const FILM = '/guide/film/what-remains-test-0123abcd.mp4';
+const FILM_BYTES = new Uint8Array(500).map((_, i) => (i * 7) & 255);
+objects.set('landscape/guide/film/what-remains-test-0123abcd.mp4', FILM_BYTES);
+await check('guide film: from R2 with ranges, immutable, never from static assets', async () => {
+  assetRequests.length = 0;
+  const whole = await req(FILM);
+  assert.equal(whole.status, 200);
+  securityHeadersOk(whole, 'film 200');
+  assert.equal(whole.headers.get('Content-Type'), 'video/mp4');
+  assert.equal(whole.headers.get('Content-Length'), '500');
+  assert.equal(whole.headers.get('Accept-Ranges'), 'bytes');
+  assert.equal(whole.headers.get('Cache-Control'), 'public, max-age=31536000, immutable');
+  assert.deepEqual(await bytes(whole), FILM_BYTES);
+  for (const [range, a, b] of [['bytes=0-1', 0, 1], ['bytes=100-', 100, 499], ['bytes=-20', 480, 499], ['bytes=450-999', 450, 499]]) {
+    const res = await req(FILM, { headers: { Range: range } });
+    assert.equal(res.status, 206, range);
+    assert.equal(res.headers.get('Content-Range'), 'bytes ' + a + '-' + b + '/500', range);
+    assert.equal(res.headers.get('Content-Length'), String(b - a + 1), range);
+    assert.deepEqual(await bytes(res), FILM_BYTES.slice(a, b + 1), range);
+  }
+  assert.equal((await req(FILM, { headers: { Range: 'bytes=500-' } })).status, 416);
+  const head = await req(FILM, { method: 'HEAD' });
+  assert.equal(head.status, 200);
+  assert.equal(head.headers.get('Content-Length'), '500');
+  assert.equal((await bytes(head)).length, 0);
+  assert.equal((await req(FILM, { headers: { 'If-None-Match': whole.headers.get('ETag') } })).status, 304);
+  assert.equal((await req('/guide/film/missing-0000.mp4')).status, 404);
+  assert.equal(assetRequests.length, 0, 'the film never comes from static assets');
+  // Other names under /guide/film/ are not R2 keys: they reach the (absent) static assets.
+  for (const path of ['/guide/film/Upper.mp4', '/guide/film/a/b.mp4', '/guide/film/x.webm']) {
+    assert.equal((await req(path)).status, 404, path);
+  }
 });
 
 console.log(passed + ' checks passed');

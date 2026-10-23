@@ -1,7 +1,8 @@
 // What remains: progressive enhancement for the guide. Everything reads without this file.
 // Previews: lazy poster and source, at most one plays, only when mostly in view, never with reduced
-// motion or Save-Data unless the viewer presses its Motion button. Film dialog, reveal motion and
-// chapter highlighting. No scroll interception.
+// motion or Save-Data unless the viewer presses its Motion button. The film plays inline, with
+// sound only when the viewer asks; chapter links seek it. Reveal motion and movement highlighting.
+// No scroll interception.
 
 const root = document.documentElement;
 root.classList.add('js');
@@ -29,7 +30,7 @@ const previews = [...document.querySelectorAll('[data-preview]')].map((el) => ({
 })).filter((p) => p.video && p.video.dataset.src);
 
 let current = null;
-let blocked = false; // the film dialog is open
+let blocked = false; // the film is playing
 
 function attachPoster(p) {
   const v = p.video;
@@ -177,58 +178,76 @@ if (!pageLoaded) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Film dialog: sound only when the viewer presses play; closing pauses and returns focus.
+// The film, inline. Its native controls do the rest; previews stay paused while it plays. Chapter
+// links (in its list and beside each movement) seek it; without this script, or with a modifier
+// key, they open the same moment on YouTube.
 
-const dialog = document.getElementById('film');
-if (dialog && typeof dialog.showModal === 'function') {
-  const film = dialog.querySelector('video');
-  const closeButton = dialog.querySelector('[data-film-close]');
-  let opener = null;
-  let trackChecked = false;
+const filmSection = document.getElementById('film');
+const film = filmSection && filmSection.querySelector('video');
+if (film) {
+  const chapters = [...filmSection.querySelectorAll('.chapters a[data-seek]')];
+  const starts = chapters.map((a) => Number(a.dataset.seek));
 
-  function prepare() {
-    if (!film.getAttribute('poster') && film.dataset.lazyPoster) film.setAttribute('poster', film.dataset.lazyPoster);
-    if (!film.getAttribute('src')) film.src = film.dataset.src;
-    if (!trackChecked) {
-      trackChecked = true;
-      const vtt = 'assets/film/what-remains.vtt';
-      fetch(vtt, { method: 'HEAD' }).then((r) => {
-        if (!r.ok || film.querySelector('track')) return;
-        const t = document.createElement('track');
-        t.kind = 'captions';
-        t.srclang = 'en';
-        t.label = 'English';
-        t.src = vtt;
-        film.appendChild(t);
-      }).catch(() => {});
-    }
-  }
-
-  for (const a of document.querySelectorAll('[data-film-open]')) {
-    a.addEventListener('click', (e) => {
-      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
-      e.preventDefault();
-      opener = a;
-      blocked = true;
-      choose();
-      prepare();
-      dialog.showModal();
-      closeButton.focus();
-    });
-  }
-
-  closeButton.addEventListener('click', () => dialog.close());
-  dialog.addEventListener('click', (e) => {
-    if (e.target === dialog) dialog.close();
-  });
-  dialog.addEventListener('close', () => {
-    film.pause();
-    blocked = false;
-    if (opener) opener.focus();
-    opener = null;
+  film.addEventListener('play', () => {
+    blocked = true;
     choose();
   });
+  film.addEventListener('pause', () => {
+    blocked = false;
+    choose();
+  });
+
+  const mark = () => {
+    let at = -1;
+    if (film.currentTime > 0 || !film.paused) {
+      for (let i = 0; i < starts.length; i++) if (film.currentTime + 0.05 >= starts[i]) at = i;
+    }
+    chapters.forEach((a, i) => {
+      if (i === at) a.setAttribute('aria-current', 'time');
+      else a.removeAttribute('aria-current');
+    });
+  };
+  film.addEventListener('timeupdate', mark);
+  film.addEventListener('seeked', mark);
+
+  // Called from a click, so the browser allows sound. A seek before the metadata has loaded
+  // waits for it (preload is none until the first play).
+  const playFrom = (t) => {
+    if (Number.isFinite(t)) {
+      if (film.readyState >= 1) film.currentTime = t;
+      else film.addEventListener('loadedmetadata', () => { film.currentTime = t; }, { once: true });
+    }
+    film.muted = false;
+    const result = film.play();
+    if (result && typeof result.catch === 'function') result.catch(() => {});
+  };
+  const show = () => {
+    film.scrollIntoView({ behavior: reduceMotion.matches ? 'auto' : 'smooth', block: 'center' });
+    film.focus({ preventScroll: true });
+  };
+  const ownClick = (e) => !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0);
+
+  for (const a of document.querySelectorAll('[data-film-play]')) {
+    a.addEventListener('click', (e) => {
+      if (!ownClick(e)) return;
+      e.preventDefault();
+      show();
+      playFrom(film.ended ? 0 : NaN);
+    });
+  }
+  for (const a of document.querySelectorAll('a[data-seek]')) {
+    a.addEventListener('click', (e) => {
+      if (!ownClick(e)) return;
+      e.preventDefault();
+      if (!filmSection.contains(a)) show();
+      playFrom(Number(a.dataset.seek));
+    });
+  }
 }
+
+// The key reference starts closed where there are no keys to press.
+const keyref = document.querySelector('[data-keyref]');
+if (keyref && matchMedia('(hover: none)').matches) keyref.open = false;
 
 // ---------------------------------------------------------------------------------------------
 // Chapter highlighting in the movement index (normal anchors; nothing intercepts scrolling).

@@ -1,0 +1,165 @@
+WEBVTT
+
+00:00:00.900 --> 00:00:04.428
+Every bitcoin in existence
+sits in an unspent output.
+
+00:00:04.428 --> 00:00:08.348
+Every one of those outputs
+is here, in this landscape.
+
+00:00:08.348 --> 00:00:10.708
+Let's learn to read it.
+
+00:00:15.200 --> 00:00:17.376
+From above, it becomes a map.
+
+00:00:17.376 --> 00:00:23.943
+Time runs left to right, from the first
+block in 2009 to the newest, at the right.
+
+00:00:25.600 --> 00:00:26.779
+Amount runs upward:
+
+00:00:26.779 --> 00:00:32.286
+dust at the bottom, whole coins
+in the middle, whales at the top.
+
+00:00:34.400 --> 00:00:36.736
+Every dot on this map is a cell.
+
+00:00:36.736 --> 00:00:38.596
+We'll come back to one.
+
+00:00:39.400 --> 00:00:41.503
+Seventeen years of blocks, sampled.
+
+00:00:41.503 --> 00:00:47.371
+The field only grows at its
+right-hand edge, one block at a time.
+
+00:00:48.800 --> 00:00:51.308
+The oldest row still standing:
+
+00:00:51.308 --> 00:00:56.825
+about fifty bitcoin each, the
+block reward of 2009 and 2010.
+
+00:00:56.825 --> 00:01:00.234
+Thirty-three thousand
+of them, never moved.
+
+00:01:00.600 --> 00:01:02.984
+Bright lines are popular amounts:
+
+00:01:02.984 --> 00:01:06.721
+a hundredth, a tenth, one whole bitcoin.
+
+00:01:08.000 --> 00:01:12.013
+Then, from 2023, a ridge of tiny outputs:
+
+00:01:12.013 --> 00:01:15.924
+a few hundred satoshis each, piled high.
+
+00:01:17.000 --> 00:01:17.920
+And here:
+
+00:01:17.920 --> 00:01:22.519
+one cell with thirty-five outputs
+of exactly one thousand bitcoin,
+
+00:01:22.519 --> 00:01:24.758
+made within ten hours.
+
+00:01:24.900 --> 00:01:27.279
+This is the newest edge:
+
+00:01:27.279 --> 00:01:29.950
+the third of October, 2026.
+
+00:01:30.000 --> 00:01:31.244
+Now, one cell:
+
+00:01:31.244 --> 00:01:34.145
+everything made in the
+same sixty-four blocks,
+
+00:01:34.145 --> 00:01:38.150
+about half a day, at
+nearly the same amount.
+
+00:01:38.200 --> 00:01:42.190
+This one holds 214 outputs
+of about one bitcoin.
+
+00:01:42.190 --> 00:01:44.407
+Each division is one output;
+
+00:01:44.407 --> 00:01:46.950
+the height is the count.
+
+00:01:47.000 --> 00:01:50.143
+Now let eight days of real blocks run.
+
+00:01:52.400 --> 00:01:55.944
+Seventeen outputs, spent
+in a single block.
+
+00:01:55.944 --> 00:01:59.382
+Spent outputs leave the unspent set.
+
+00:01:59.600 --> 00:02:02.378
+The same eight days, from above.
+
+00:02:02.378 --> 00:02:04.692
+Every flash is a spend:
+
+00:02:04.692 --> 00:02:08.333
+old coins waking up
+across seventeen years.
+
+00:02:10.200 --> 00:02:13.860
+Here they are again, in
+the original film's look.
+
+00:02:13.860 --> 00:02:15.080
+The chain breathes:
+
+00:02:15.080 --> 00:02:18.327
+in at the edge, out from everywhere.
+
+00:02:19.600 --> 00:02:21.792
+Colour can answer different questions.
+
+00:02:21.792 --> 00:02:25.700
+Here, the warmer the
+colour, the more outputs.
+
+00:02:26.400 --> 00:02:30.112
+And here, the warmer the
+colour, the more bitcoin.
+
+00:02:30.800 --> 00:02:36.477
+Fewer than two outputs in a thousand hold
+eighty-four percent of all the bitcoin.
+
+00:02:37.000 --> 00:02:39.449
+The same data, in eleven looks:
+
+00:02:39.449 --> 00:02:42.297
+some for beauty, some for measuring.
+
+00:02:50.800 --> 00:02:56.344
+Change the shape of a cell, how tall the
+big coins stand, or the time of day.
+
+00:03:00.400 --> 00:03:04.623
+Twelve hundred blocks later, our
+column holds ninety-four outputs.
+
+00:03:04.623 --> 00:03:06.750
+This is what remains.
+
+00:03:06.800 --> 00:03:11.416
+Explore it yourself, at
+bitcoinlandscape.com.
