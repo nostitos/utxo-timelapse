@@ -8,7 +8,7 @@
     "dataset": "d972052-20261018",
     "tip": 972052
   },
-  "generated": "2026-10-23T14:23:06.000Z",
+  "generated": "2026-10-23T14:33:04.000Z",
   "scenes": [
     {
       "id": "field",
@@ -121,28 +121,6 @@
         "frames": 540,
         "browser": "Chrome/155.0.8059.85",
         "defHash": "99ff15f6cf28514f"
-      }
-    },
-    {
-      "id": "return",
-      "title": "Return",
-      "purpose": "Pull back to the opening view, 1,200 blocks later.",
-      "kind": "sequence",
-      "movement": "VI",
-      "look": "Landscape",
-      "block": 970852,
-      "link": "/#b=970852&mode=map&cam=1070.759,57.884,82.899,96.00,-16.00&preset=Ultra&camera.fov=40",
-      "linkAt": 10,
-      "captured": {
-        "created": "2026-10-20T07:21:25.699Z",
-        "viewport": {
-          "width": 1920,
-          "height": 1080,
-          "dpr": 2
-        },
-        "frames": 390,
-        "browser": "Chrome/155.0.8059.85",
-        "defHash": "3c6740036d375fa0"
       }
     },
     {
@@ -1503,26 +1481,6 @@
       },
       "overlays": "the narrated film's own labels, axes and insets",
       "bytes": 119628
-    },
-    {
-      "id": "return",
-      "kind": "clip",
-      "scene": "return",
-      "files": {
-        "mp4": "assets/clips/return.mp4",
-        "poster": "assets/stills/return-poster-1600.webp"
-      },
-      "span": [
-        0,
-        12
-      ],
-      "posterAt": 10,
-      "source": {
-        "file": "capture/return/return.mp4",
-        "sha256": "aaeaa7130d42f02cc6db3add2d921e4ae2223cc17559f37cf5a6be7e36696d2b"
-      },
-      "bytes": 5554316,
-      "playback": "once; hold the final frame until Replay"
     },
     {
       "id": "ridge-rises-poster",
