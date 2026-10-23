@@ -68,7 +68,6 @@ const ASSET_FILES = {
   '/og.jpg': ['image/jpeg', 'jpg'],
   '/favicon.svg': ['image/svg+xml', '<svg/>'],
   '/guide/': ['text/html; charset=utf-8', '<!doctype html><title>Guide</title>'],
-  '/guide/index.html': ['text/html; charset=utf-8', '<!doctype html><title>Guide</title>'],
   '/guide/guide.css': ['text/css; charset=utf-8', 'body{}'],
   '/guide/guide.js': ['text/javascript; charset=utf-8', 'export {};'],
   // Binary media: 300 bytes, i & 255, streamed in uneven chunks with a Content-Length.
@@ -342,7 +341,7 @@ function mediaHeadersOk(res, what) {
 }
 
 await check('guide pages: HTML no-cache, assets an hour, security headers', async () => {
-  for (const path of ['/guide/', '/guide/index.html']) {
+  for (const path of ['/guide/']) {
     const html = await req(path);
     assert.equal(html.status, 200, path);
     assert.equal(html.headers.get('Cache-Control'), 'no-cache', path);
@@ -364,6 +363,23 @@ await check('guide pages: HTML no-cache, assets an hour, security headers', asyn
   assert.equal(js.status, 200, 'app assets ignore Range');
   assert.equal(await js.text(), 'export {};');
   assert.equal((await req('/guide/missing.mp4', { headers: { Range: 'bytes=0-1' } })).status, 404);
+});
+
+await check('guide addresses: every spelling of /guide and unknown guide pages open /guide/', async () => {
+  for (const path of ['/guide', '/Guide', '/GUIDE', '/Guide/', '/GUIDE/', '/guide.html', '/Guide.htm',
+    '/guide/index.html', '/GUIDE/Index.HTML', '/guide/views', '/guide/views/', '/Guide/places/five']) {
+    for (const method of ['GET', 'HEAD']) {
+      const res = await req(path + '?ref=qr', { method });
+      assert.equal(res.status, 302, method + ' ' + path);
+      assert.equal(res.headers.get('Location'), '/guide/?ref=qr', method + ' ' + path);
+      assert.equal(res.headers.get('Cache-Control'), 'no-store', path);
+      securityHeadersOk(res, path);
+    }
+  }
+  assert.equal((await req('/Guide')).headers.get('Location'), '/guide/', 'no query');
+  for (const path of ['/guide/missing.css', '/guide/assets/missing.webp', '/guides', '/guidebook', '/my/guide']) {
+    assert.equal((await req(path)).status, 404, path);
+  }
 });
 
 await check('guide media: whole, closed, open, suffix and clamped ranges', async () => {

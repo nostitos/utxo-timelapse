@@ -692,8 +692,8 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
           break;
         case 'Enter':
         case 'NumpadEnter':
-          // A focused button (the end card's Again, a menu item) handles Enter itself.
-          if (e.target && e.target.closest && e.target.closest('button')) break;
+          // A focused button (the end card's Again, a menu item) or link handles Enter itself.
+          if (e.target && e.target.closest && e.target.closest('a, button')) break;
           if (!touchOnly && controls.mode === 'plane') {
             e.preventDefault();
             startRun();

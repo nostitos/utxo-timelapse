@@ -2,6 +2,8 @@
 // blocks/s, totals of the exact state, the current block's activity and busy state.
 // On phones (app.css) the HUD collapses to block, date and play state; the details button
 // (hidden on larger screens) or a tap on the card shows the totals and the renderer line.
+// The wordmark is a quiet link to the guide: it looks like the wordmark and opens a new tab,
+// so the replay keeps running.
 
 import { fmtInt, fmtBtcTotal, isoUtc, fmtRate, fmtCompact } from './format.js';
 import { dismissButton } from './dismiss.js';
@@ -14,8 +16,10 @@ function mb(bytes) {
 
 export function createHud(container, { onDismiss = null } = {}) {
   container.innerHTML =
-    '<div class="brand"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>' +
-    '<span>UTXO Timelapse <em>Landscape</em></span></div>' +
+    '<div class="brand"><a class="brand-link" href="/guide/" target="_blank" rel="noopener" title="Open the guide" ' +
+    'aria-label="UTXO Timelapse Landscape guide (opens in a new tab)">' +
+    '<span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>' +
+    '<span>UTXO Timelapse <em>Landscape</em></span></a></div>' +
     '<div class="hud-block"><span class="eyebrow">Block</span><strong data-k="block">\u2014</strong></div>' +
     '<div class="hud-date" data-k="date">\u2014</div>' +
     '<div class="hud-play" data-k="play">\u2014</div>' +
@@ -29,6 +33,11 @@ export function createHud(container, { onDismiss = null } = {}) {
     '<button type="button" class="hud-more" aria-expanded="false" aria-label="Show details" title="Details">' +
     '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>';
   const el = {};
+  // A pointer click leaves no focus ring on the hidden link when the visitor comes back (as
+  // the timeline's buttons); Enter from the keyboard keeps the focus where it was.
+  container.querySelector('.brand-link').addEventListener('click', (e) => {
+    if (e.detail) e.currentTarget.blur();
+  });
   // The × at the end of the brand row hides the card until reload (main.js; not on phones).
   if (onDismiss) container.querySelector('.brand').appendChild(dismissButton('the block panel', onDismiss));
   container.querySelectorAll('[data-k]').forEach((n) => {

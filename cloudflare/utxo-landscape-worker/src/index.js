@@ -16,6 +16,9 @@ const DATASET_ID = /^d\d{1,7}-\d{8}$/;
 const DATASET_FILE = /^(?:manifest\.json|rows\.bin|blocktimes\.bin|chunks\.json|chunks\/\d{5}\.bin|snapshots\/\d{7}\.bin)$/;
 // Films named with their content hash, so they are immutable like the dataset.
 const GUIDE_FILM = /^\/guide\/film\/([a-z0-9][a-z0-9.-]{0,120}\.mp4)$/;
+// Every spelling of the guide's address opens it: /guide, /Guide/, /GUIDE, /guide.html and
+// /guide/index.html redirect to /guide/. Files under /guide/ keep their exact paths.
+const GUIDE_ALIAS = /^\/guide(?:\/(?:index\.html?)?|\.html?)?$/i;
 const INT64_MAX_AS_JSON = 9223372036854776000; // C++ INT64_MAX after JSON's double conversion (as /api/pixel)
 
 const CONTENT_TYPES = { json: 'application/json', bin: 'application/octet-stream', mp4: 'video/mp4' };
@@ -65,6 +68,14 @@ function json(value, status = 200, cache = 'no-store') {
 }
 
 const notFound = () => respond('Not found\n', 404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+
+const toGuide = (url) => respond(null, 302, { Location: '/guide/' + url.search, 'Cache-Control': 'no-store' });
+
+/** A page below /guide/ (any case) whose last segment has no extension, e.g. /guide/views. */
+export function isGuidePage(path) {
+  return path.length > 7 && path.slice(0, 7).toLowerCase() === '/guide/' &&
+    !path.slice(path.lastIndexOf('/') + 1).includes('.');
+}
 
 /**
  * Parses a Range header against an object size. Returns null for "whole object" (no header,
@@ -425,10 +436,15 @@ export async function handle(request, env, ctx) {
     app.pathname = '/';
     return serveAsset(new Request(app, request), env);
   }
+  if (path !== '/guide/' && GUIDE_ALIAS.test(path)) return toGuide(url);
   const film = GUIDE_FILM.exec(path);
   if (film) return serveObject(request, env, ctx, 'landscape/guide/film/' + film[1], film[1]);
   if (GUIDE_MEDIA.test(path)) return serveGuideMedia(request, env, path);
-  return serveAsset(request, env);
+  const asset = await serveAsset(request, env);
+  // A mistyped or retired page under the guide (/guide/views, /Guide/places/) opens the guide;
+  // a missing file such as /guide/missing.css stays a 404.
+  if (asset.status === 404 && isGuidePage(path)) return toGuide(url);
+  return asset;
 }
 
 export default {
