@@ -6,8 +6,8 @@
 // importMapHash is the CSP hash of index.html's inline import
 // map: node landscape/tools/csp-hash.mjs prints it (and --check verifies this file).
 export const RELEASE = Object.freeze({
-  version: 'landscape-20261023-youtube-1',
-  dataset: Object.freeze({ id: 'd972052-20261018', tip: 972052 }),
-  retainedDatasetIds: Object.freeze(['d971587-20261015']),
+  version: 'landscape-20261023-2',
+  dataset: Object.freeze({ id: 'd972848-20261023', tip: 972848 }),
+  retainedDatasetIds: Object.freeze(['d972052-20261018', 'd971587-20261015']),
   importMapHash: 'sha256-7QdCEdJk1SXe5Rkyh+evXtkiWImVRL5euBmglVKAwTE=',
 });
