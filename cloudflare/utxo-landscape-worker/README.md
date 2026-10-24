@@ -63,7 +63,7 @@ Datasets are immutable: each one gets a new prefix `landscape/d<tip>-<yyyymmdd>`
      "/Volumes/4T Data/buv_render/landscape_<old-tip>" --prefix landscape/<id> --old-prefix landscape/<old-id> \
      --state ~/.config/utxo-r2/landscape-<id>-publish.json --no-manifest
    ```
-   On October 9, 2026 it copied 4,382 chunks (18.3 GB) in about 3 minutes; the 1,101 snapshots still had to be uploaded (57.8 GB, 36 minutes at 27 MB/s), because their headers recorded the grid size of the dataset. Snapshots now describe their own grid: the first dataset built with that format, `d971587-20261015` on October 15, copied 4,416 chunks (18.5 GB) and uploaded its 1,103 snapshots once more with the new chunks (58.0 GB in 52 minutes at about 19 MB/s); later datasets copy every snapshot before the old tip. On October 18, `d972052-20261018` copied 5,527 files (76.4 GB) inside R2 and uploaded 10 (195 MB) in 8 minutes. For a first publication, upload everything:
+   On October 9, 2026 it copied 4,382 chunks (18.3 GB) in about 3 minutes; the 1,101 snapshots still had to be uploaded (57.8 GB, 36 minutes at 27 MB/s), because their headers recorded the grid size of the dataset. Snapshots now describe their own grid: the first dataset built with that format, `d971587-20261015` on October 15, copied 4,416 chunks (18.5 GB) and uploaded its 1,103 snapshots once more with the new chunks (58.0 GB in 52 minutes at about 19 MB/s); later datasets copy every snapshot before the old tip. On October 18, `d972052-20261018` copied 5,527 files (76.4 GB) inside R2 and uploaded 10 (195 MB) in 8 minutes. On October 23, `d972848-20261023` copied 5,532 files (76.5 GB) and uploaded 14 (295 MB) in 9 minutes. For a first publication, upload everything:
    ```sh
    export AWS_REQUEST_CHECKSUM_CALCULATION=when_required AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
    /tmp/landscape_r2_venv/bin/python scripts/r2_upload_tree_singlepart.py "/Volumes/4T Data/buv_render/landscape_<tip>" \
@@ -98,4 +98,4 @@ curl -fsS 'https://3d.bitcointimelapse.com/api/landscape/cell?block=314000&col=4
 
 The example cell returns 1 live output of 21,236 sat and 3 spent before block 314,000, the same as the native explorer. Check real playback in a browser; HTTP 200 alone does not prove the replay works.
 
-Storage is about 76 GB per dataset (1,104 snapshots and 4,430 chunks at block 972,052), roughly 1.1 USD a month in R2. Egress is free; browsers read with ranges, and the edge cache absorbs repeated ranges.
+Storage is about 76 GB per dataset (1,106 snapshots and 4,437 chunks at block 972,848), roughly 1.1 USD a month in R2. Egress is free; browsers read with ranges, and the edge cache absorbs repeated ranges.
