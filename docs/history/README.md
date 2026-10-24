@@ -10,6 +10,7 @@ These dated records preserve prior decisions and cleanup evidence. Paths, render
 - [October 9 site update and node timing estimate](site-update-2026-10-09.md)
 - [October 15 site update with the updater on the Mac](site-update-2026-10-15.md)
 - [October 18 site update, the first to reuse 3D snapshots](site-update-2026-10-18.md)
+- [October 23 site update, both releases in one PR](site-update-2026-10-23.md)
 - [Artifact manifest](cleanup-audit-2026-09-09/artifact-manifest.csv)
 - [Audit summary](cleanup-audit-2026-09-09/audit-summary.json)
 - [Completion record](cleanup-audit-2026-09-09/completion.json)
