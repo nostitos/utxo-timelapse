@@ -506,7 +506,10 @@ Landscape, else `'Look · Quality'`), `overrides()`, `baseValues(look?, quality?
 `checkNeeds(needs)` (null, or `{text}` such as 'Bloom off' naming the root cause),
 `toJSON()` (`{format, quality, look, baseLook, values, preset: quality}`), `fromJSON()`, `toURL()`
 (`preset=<quality>`, `look=<built-in look>` unless Landscape, then the url settings that differ),
-`fromURL()` (a pre-look `preset=Film` opens BitcoinTimelapse.com at High), `canonicalLook(name)`,
+`viewURL()` (the same without the quality, the settings a quality tier sets and auto scaling:
+the app's hash and share links), `fromURL(input, {view})` (a pre-look `preset=Film` opens
+BitcoinTimelapse.com; with `{view: true}` the quality and device settings stay as they are and
+`report.kept` lists the ones the link named), `isDeviceSetting(id)`, `canonicalLook(name)`,
 `load()`/`save()`
 (localStorage key `utxo-landscape-settings-v1`). Saved looks: `saveUserPreset(name)`,
 `deleteUserPreset(name)`, `restoreUserPreset(record, {activate})`, `userPresets`, `userPreset(name)`
@@ -637,7 +640,11 @@ wires frames → view, settings → consumers, and runs the rAF loop:
 follow tip → controls → playback → `view.update` → (`replay.setTiles` when desired tiles change) →
 `view.render`. `?webgl=1` forces WebGL2. URL hash keeps
 `b` (block), `cam`, `mode`, `follow=1` (Follow tip on), `cell=col,row` (one exact L0 cell),
-`play=1` (explicit autoplay for a location link), `preset` and settings overrides.
+`play=1` (explicit autoplay for a location link), `look` and the view's settings overrides
+(`store.viewURL()`). Quality belongs to the device: the hash and shared links never name it or
+the settings a quality tier sets (plus auto scaling), and `store.fromURL(hash, {view: true})`
+leaves a quality or device setting named by an older link to the device. A first visit starts
+at the adaptive quality even when it arrives through a link.
 Without `b`, the app opens at the latest snapshot at least 1,008 blocks (about a week)
 before the tip, so Play has blocks to play (`defaultStartBlock` in `ui/playback.js`).
 

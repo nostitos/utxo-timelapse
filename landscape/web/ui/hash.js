@@ -1,11 +1,12 @@
 // URL hash for the shareable view (landscape/SPEC.md §8). Pure module.
 //
-//   #b=314000&mode=map&follow=1&cam=483.120,96.400,402.000,0.00,-35.00&<settings store toURL()>
+//   #b=314000&mode=map&follow=1&cam=483.120,96.400,402.000,0.00,-35.00&<settings store viewURL()>
 //
 // b is the exact block, mode is map | flight, follow=1 turns Follow tip on (absent or any
 // other value: off), cam is x,y,z (world units) followed by yaw and pitch in degrees (yaw 0
 // looks toward -z, pitch < 0 looks down). Every other key belongs to the settings store
-// (preset and overrides) and is passed through untouched. cell=col,row reopens
+// (look and overrides; older links may also name a quality as preset, which the app leaves
+// to the device) and is passed through untouched. cell=col,row reopens
 // one exact L0 cell; play=1 autoplays a location link. Cell links always pause.
 
 const SHELL_KEYS = new Set(['b', 'mode', 'follow', 'cam', 'cell', 'play']);
@@ -40,7 +41,7 @@ function stripLead(s) {
 }
 
 /**
- * Build the hash. settingsQuery is the settings store's toURL() output (a
+ * Build the hash. settingsQuery is the settings store's viewURL() output (a
  * URLSearchParams-style string); it is appended as-is after the shell keys.
  */
 export function encodeHash({ block = null, mode = null, cam = null, follow = false, cell = null, play = false } = {}, settingsQuery = '') {

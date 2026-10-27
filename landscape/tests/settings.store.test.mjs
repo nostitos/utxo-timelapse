@@ -342,6 +342,60 @@ test('exports and links from before looks: Film loads as the BitcoinTimelapse.co
   assert.equal(mergeHash('#b=5&look=Pulse&preset=High&fx.grain=1', 'preset=Ultra'), 'b=5&preset=Ultra');
 });
 
+test('view links carry the look and its settings; the quality and device settings stay with the device', () => {
+  // A desktop at Ultra with a look, a view setting and its own device tweaks.
+  const desk = make();
+  desk.setLook('Golden hour');
+  desk.setQuality('Ultra');
+  desk.set('camera.fov', 40);
+  desk.set('color.gamma', 1.4);
+  desk.set('light.cascades', 4);
+  desk.set('display.autoScale', true);
+  const link = desk.viewURL();
+  assert.equal(link, 'look=Golden+hour&color.gamma=1.4&camera.fov=40');
+  assert.ok(desk.isDeviceSetting('light.cascades') && desk.isDeviceSetting('display.autoScale'));
+  assert.ok(!desk.isDeviceSetting('camera.fov') && !desk.isDeviceSetting('color.gamma'));
+
+  // A phone that started at Performance with auto scaling opens it: the view arrives, its quality does not.
+  const phone = make();
+  phone.setQuality('Performance');
+  phone.set('display.autoScale', true);
+  const r = phone.fromURL('#b=900000&' + link, { view: true });
+  assert.equal(r.look, 'Golden hour');
+  assert.equal(phone.quality, 'Performance');
+  assert.equal(phone.get('camera.fov'), 40);
+  assert.equal(phone.get('color.gamma'), 1.4);
+  // Every quality-tier setting is what Golden hour and the phone's own tier give it.
+  const phoneBase = phone.baseValues('Golden hour', 'Performance');
+  for (const id of Object.keys(PRESETS.Ultra)) assert.ok(valuesEqual(phone.get(id), phoneBase[id]), id);
+  assert.equal(phone.get('light.cascades'), phoneBase['light.cascades']);
+  assert.notEqual(phone.get('light.cascades'), 4);
+  assert.equal(phone.get('display.autoScale'), true, 'auto scaling is the device\'s');
+
+  // Older links name a quality and device settings: they are reported as kept, not applied.
+  const old = make();
+  old.setQuality('Balanced');
+  const report = old.fromURL('preset=Extreme&look=Pulse&light.cascades=4&fx.ssr=1&camera.fov=45', { view: true });
+  assert.equal(old.quality, 'Balanced');
+  assert.equal(old.look, 'Pulse');
+  assert.equal(old.get('light.cascades'), PRESETS.Balanced['light.cascades']);
+  assert.equal(old.get('camera.fov'), 45);
+  assert.deepEqual(report.kept.sort(), ['fx.ssr', 'light.cascades', 'preset']);
+
+  // A device setting the link's look sets follows that look; one the visitor chose stays.
+  const own = make();
+  own.setQuality('High');
+  own.set('display.scale', 0.8);
+  own.fromURL('look=BitcoinTimelapse.com', { view: true });
+  assert.equal(own.get('light.shadows'), PRESETS['BitcoinTimelapse.com']['light.shadows'] ?? own.baseValues()['light.shadows']);
+  assert.equal(own.get('display.scale'), PRESETS['BitcoinTimelapse.com']['display.scale'] ?? 0.8);
+
+  // Without {view: true} (JSON-era callers and tests) a link still sets the quality.
+  const full = make();
+  full.fromURL('preset=Ultra&look=Pulse');
+  assert.equal(full.quality, 'Ultra');
+});
+
 test('the Film look is now BitcoinTimelapse.com: links, exports, stored settings and saved looks keep working', () => {
   // A link from between looks and the rename (look=Film) opens the look; the share link uses the new name.
   const u = make();

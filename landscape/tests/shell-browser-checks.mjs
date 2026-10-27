@@ -935,7 +935,8 @@ const CHECKS = [
     script: `await idle();
       const want = Number(new URLSearchParams(location.hash.slice(1)).get('b'));
       const p = L.controls.getPose();
-      const out = { block: L.replay.block, want, look: L.settings.look, quality: L.settings.quality, pose: p };
+      const out = { block: L.replay.block, want, look: L.settings.look, quality: L.settings.quality, pose: p,
+        deviceQuality: L.startup ? L.startup.preset : 'High' };
       const json = await L.panel.exportJSON({ download: false }); out.exportView = json && json.view;
       await L.seek(inData(150000)); await idle(); L.controls.setPose({ x: 50, y: 80, z: 300, yaw: 0, pitch: -40 }); L.settings.setLook('Landscape'); L.settings.setQuality('Balanced'); await sleep(200);
       await L.panel.importJSON(json, 'check.json'); await sleep(300); await idle();
@@ -946,13 +947,34 @@ const CHECKS = [
       return out;`,
     expect: (v) => [
       ['link restores the block', v.block === v.want],
-      ['a link from before looks (preset=Film) opens BitcoinTimelapse.com at High', v.look === 'BitcoinTimelapse.com' && v.quality === 'High'],
+      ['a link from before looks (preset=Film) opens BitcoinTimelapse.com at this device\'s quality (' + v.quality + ')', v.look === 'BitcoinTimelapse.com' && v.quality === v.deviceQuality],
       ['link restores the camera', Math.abs(v.pose.x - 290) < 1e-3 && Math.abs(v.pose.yaw - 20) < 1e-3],
       ['export carries the view', !!(v.exportView && v.exportView.b === v.want)],
-      ['import restores block, look, quality and camera', v.after.block === v.want && v.after.look === 'BitcoinTimelapse.com' && v.after.quality === 'High' && Math.abs(v.after.x - 290) < 1e-3],
-      ['the share link names the look by its current name', /(^|&|#)look=BitcoinTimelapse\.com(&|$)/.test(v.hash) && /(^|&|#)preset=High(&|$)/.test(v.hash)],
+      ['import restores block, look, quality and camera', v.after.block === v.want && v.after.look === 'BitcoinTimelapse.com' && v.after.quality === v.quality && Math.abs(v.after.x - 290) < 1e-3],
+      ['the address names the look by its current name and no quality', /(^|&|#)look=BitcoinTimelapse\.com(&|$)/.test(v.hash) && !/(^|&|#)preset=/.test(v.hash)],
       ['display.hud hides the HUD', v.hudHidden],
       ['amp.measure reaches the worker', v.measures && v.measures.height === 'count'],
+    ],
+  },
+  {
+    // Guide links and links shared from a fast desktop used to force their quality on every
+    // device. A phone opening such a link keeps its own quality and display settings.
+    name: 'link-quality',
+    mobile: { width: 390, height: 844, dpr: 3 },
+    query: 'startup=adaptive',
+    hash: '#b=BLOCK&mode=map&cam=290.000,30.000,180.000,20.00,-25.00&preset=Ultra&look=Golden+hour&light.cascades=4&camera.fov=40',
+    shot: 'link-quality-phone.png',
+    script: `await idle(); await sleep(500);
+      const S = L.settings;
+      return { quality: S.quality, look: S.look, fov: S.get('camera.fov'), cascades: S.get('light.cascades'),
+        autoScale: S.get('display.autoScale'), startup: L.startup ? L.startup.preset : null, hash: L.hash(),
+        block: L.replay.block, want: Number(new URLSearchParams(location.hash.slice(1)).get('b')), frameError: L.frameError || null };`,
+    expect: (v) => [
+      ['a phone opening an Ultra link stays at its own quality (' + v.quality + ')', v.startup === 'Performance' && v.quality === 'Performance'],
+      ['the link still sets the block, look and view settings', v.block === v.want && v.look === 'Golden hour' && v.fov === 40],
+      ['device settings in the link are left to the phone', v.cascades !== 4 && v.autoScale === true],
+      ['the address names no quality', !/(^|[#&])preset=/.test(v.hash) && /look=Golden\+hour/.test(v.hash)],
+      ['no frame errors', v.frameError === null],
     ],
   },
   {

@@ -86,8 +86,10 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       : { webgpu: !forceWebGL && 'gpu' in navigator, backend: !forceWebGL && 'gpu' in navigator ? 'webgpu' : 'webgl2' };
     hook.capabilities = caps;
 
-    // Settings precedence: startup preset (High, capped on WebGL2) < localStorage < URL hash.
-    // Online, a first visit (nothing saved, nothing in the link) starts at an adaptive quality.
+    // Quality belongs to the device: startup preset (High, capped on WebGL2) < localStorage.
+    // Online, a first visit (nothing saved) starts at an adaptive quality even when it comes
+    // through a link. The URL hash then sets the view, its look and their settings, but never
+    // the quality or the device's settings (store.fromURL with {view: true}).
     const store = deps.createSettingsStore(deps.SCHEMA, deps.PRESETS, { capabilities: caps });
     let stored = false;
     try {
@@ -97,7 +99,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     }
     const initial = decodeHash(location.hash);
     const startup = chooseStartup({
-      mode: startupMode({ query, local: endpoints.local }), firstVisit: !stored && !initial.settings,
+      mode: startupMode({ query, local: endpoints.local }), firstVisit: !stored,
       backend: forceWebGL ? 'webgl2' : caps.backend || (caps.webgpu ? 'webgpu' : 'webgl2'), ...deviceTraits(),
     });
     if (startup) {
@@ -107,7 +109,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     }
     if (initial.settings) {
       try {
-        store.fromURL(location.hash);
+        store.fromURL(location.hash, { view: true });
       } catch (err) {
         notice('Some settings in the link were not applied', 'warn');
       }
@@ -371,7 +373,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         cellDescription = 'Blocks ' + fmtInt(first) + '–' + fmtInt(last) + ' · ' + amount;
       }
       const snapshot = { block: replay.block, cam: controls.getPose(), follow: follow.active,
-        settings: store.toURL(), cell, cellDescription, date: isoUtc(replay.blocktimes[replay.block]), playing: state.playing };
+        settings: store.viewURL(), cell, cellDescription, date: isoUtc(replay.blocktimes[replay.block]), playing: state.playing };
       if (pause) {
         playback.pause();
         if (controls.mode !== 'map') controls.setMode('map');
@@ -646,7 +648,8 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     // ---- URL hash ---------------------------------------------------------------------
     // Plane mode is not shared: a link made while flying opens in map mode at the camera.
     const shareMode = () => (controls.mode === 'plane' ? 'map' : controls.mode);
-    const currentHash = () => encodeHash({ block: replay.block, mode: shareMode(), cam: controls.getPose(), follow: follow.active, cell: inspector.isOpen ? inspector.selection : null }, store.toURL());
+    // The address is a link to the view: it carries the look and its settings, not the quality.
+    const currentHash = () => encodeHash({ block: replay.block, mode: shareMode(), cam: controls.getPose(), follow: follow.active, cell: inspector.isOpen ? inspector.selection : null }, store.viewURL());
     const viewState = () => ({ b: replay.block, cam: controls.getPose(), mode: shareMode(), follow: follow.active, cell: inspector.isOpen ? inspector.selection : null });
     let restoringHash = true, hashRestoreId = 0;
     async function restoreLinkedView(h) {
@@ -707,7 +710,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       if (location.hash === written) return;
       written = location.hash;
       const h = decodeHash(location.hash);
-      if (h.settings) store.fromURL(location.hash);
+      if (h.settings) store.fromURL(location.hash, { view: true });
       restoreLinkedView(h).catch(err => notice('View could not be restored: ' + err.message, 'error'));
     });
 

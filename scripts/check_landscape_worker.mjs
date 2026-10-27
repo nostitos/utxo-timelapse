@@ -68,6 +68,7 @@ const ASSET_FILES = {
   '/main.js': ['text/javascript; charset=utf-8', 'export {};'],
   '/og.jpg': ['image/jpeg', 'jpg'],
   '/favicon.svg': ['image/svg+xml', '<svg/>'],
+  '/guide/assets/social/what-remains-1200x630.jpg': ['image/jpeg', 'jpg'],
   '/guide/': ['text/html; charset=utf-8', '<!doctype html><title>Guide</title>'],
   '/guide/guide.css': ['text/css; charset=utf-8', 'body{}'],
   '/guide/guide.js': ['text/javascript; charset=utf-8', 'export {};'],
@@ -307,6 +308,10 @@ await check('static app: headers, cache policy, 404 and 304 pass through', async
   assert.equal(js.headers.get('Cache-Control'), 'public, max-age=0, must-revalidate');
   assert.equal((await req('/og.jpg')).headers.get('Cache-Control'), 'public, max-age=86400');
   assert.equal((await req('/favicon.svg')).headers.get('Cache-Control'), 'public, max-age=86400');
+  // Link-preview images load from other origins (social sites, chat apps); the app stays same-origin.
+  assert.equal((await req('/og.jpg')).headers.get('Cross-Origin-Resource-Policy'), 'cross-origin');
+  assert.equal((await req('/guide/assets/social/what-remains-1200x630.jpg')).headers.get('Cross-Origin-Resource-Policy'), 'cross-origin');
+  assert.equal(js.headers.get('Cross-Origin-Resource-Policy'), 'same-origin');
   const missing = await req('/dev/js_replay-client.html');
   assert.equal(missing.status, 404);
   securityHeadersOk(missing, '404');
