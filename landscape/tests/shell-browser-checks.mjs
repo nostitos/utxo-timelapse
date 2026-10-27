@@ -120,7 +120,29 @@ async function findCell() {
 // Injected into the page, so the same check works online where /dev/ is excluded.
 const COLUMN_COUNT_HELPERS = readFileSync(join(here, 'column-count-browser.mjs'), 'utf8');
 
+const INSPECTOR_STATES = readFileSync(join(here, 'inspector-state-browser.mjs'), 'utf8');
+
+const SHARE_CHECKS = readFileSync(join(here, 'share-browser.mjs'), 'utf8');
+
 const CHECKS = [
+  {
+    name: 'share',
+    shot: 'share.png',
+    script: `${SHARE_CHECKS} return await checkLandscapeSharing(L);`,
+    expect: (v) => v.checks,
+  },
+  {
+    name: 'share-mobile',
+    mobile: { width:390, height:844, dpr:2 },
+    shot: 'share-mobile.png',
+    script: `${SHARE_CHECKS} return await checkLandscapeSharing(L);`,
+    expect: (v) => v.checks,
+  },
+  {
+    name: 'inspector-states',
+    script: `${INSPECTOR_STATES} return await checkInspectorStates(L);`,
+    expect: (checks) => checks,
+  },
   {
     name: 'column-counts',
     timeout: 120000,
@@ -178,14 +200,40 @@ const CHECKS = [
     shot: 'inspector.png',
     script: `await L.flyTo(inData(314000)); await idle(); await sleep(1200);
       const f = await findCell(); await sleep(300);
-      const c = L.ui.inspector.current;
-      return { found: !!f, block: L.replay.block, col: c && c.col, row: c && c.row, cell: c && c.cell, api: c && c.api && { count: c.api.count, liveSat: c.api.liveSat, offline: !!c.api.offline }, match: c && c.match,
-        marker: !document.getElementById('marker').hidden, link: (document.querySelector('.in-links a') || {}).href || null };`,
+      const c = L.ui.inspector.current, el = document.getElementById('inspector');
+      const preview = el.querySelectorAll('.in-table tbody > tr:not(.in-output-detail)').length;
+      el.querySelector('[data-show-all]')?.click();
+      const all = el.querySelectorAll('.in-table tbody > tr:not(.in-output-detail)').length;
+      const firstRow = el.querySelector('.in-output-row');
+      const rowContext = firstRow?.querySelector('.in-created time') && firstRow?.querySelector('.in-held .in-cell-main') && firstRow.children.length === 4;
+      const heads = [...el.querySelectorAll('.in-table th')];
+      const aligned = firstRow && [...firstRow.children].every((td,i) => Math.abs(heads[i].getBoundingClientRect().left - td.querySelector('.in-cell-main').getBoundingClientRect().left) < 1);
+      const rowHeight = firstRow?.getBoundingClientRect().height;
+      el.querySelector('[data-tab="past"]')?.click();
+      const pastTab = el.querySelector('[data-tab="past"]')?.getAttribute('aria-selected') === 'true';
+      const pastLimit = !c?.api?.pastTruncated || el.querySelector('[role="tabpanel"]')?.textContent.includes('of ');
+      el.querySelector('[data-tab="live"]')?.click();
+      const details = el.querySelector('[data-disclosure="details"]'); if (details) details.open = true;
+      await sleep(50);
+      const diagnostics = details?.textContent.includes('Weighted density');
+      if (details) details.open = false;
+      el.scrollTop = 0;
+      return { found: !!f, block: L.replay.block, col: c && c.col, row: c && c.row, cell: c && c.cell,
+        api: c && c.api && { count: c.api.count, liveSat: c.api.liveSat, offline: !!c.api.offline }, match: c && c.match,
+        preview, all, available: c?.api?.utxos?.length, rowContext: !!rowContext, aligned, rowHeight, pastTab, pastLimit, diagnostics,
+        fits: el.scrollWidth <= el.clientWidth, marker: !document.getElementById('marker').hidden,
+        link: (document.querySelector('.in-links a') || {}).href || null };`,
     expect: (v) => [
       ['found a cell with outputs and an explorer answer', v.found],
       ['replay and history index agree (count and sats)', !!(v.match && v.match.ok)],
       ['selection marker visible', v.marker],
       ['2D explorer link present', !!v.link],
+      ['compact preview expands to every available live output', v.preview === Math.min(3, v.available) && v.all === v.available],
+      ['dates and holding time are visible in every output row', v.rowContext],
+      ['output columns align and two-line rows stay compact', v.aligned && v.rowHeight <= 46],
+      ['earlier-spend tab and index limit are available', v.pastTab && v.pastLimit],
+      ['rendering diagnostics preserved behind disclosure', v.diagnostics],
+      ['inspector has no horizontal overflow', v.fits],
     ],
   },
   {
@@ -356,7 +404,7 @@ const CHECKS = [
       ['Shift+]: +1,008 blocks', v.keys.b2 === v.keys.b1 + 1008],
       ['[: -1 block', v.keys.b3 === v.keys.b2 - 1],
       ['2 selects 2x and the speed menu shows it', v.keys.speed === '2' && v.menu.shown2 === '2'],
-      ['the speed menu lists ' + v.menu.options.join(', '), v.menu.options.join(',') === '0.5\u00d7,1\u00d7,2\u00d7,5\u00d7,Max'],
+      ['the speed menu lists ' + v.menu.options.join(', '), v.menu.options.join(',') === '0.5\u00d7,1\u00d7,2\u00d7,5\u00d7,10\u00d7,20\u00d7,Max'],
       ['0 selects 0.5x: about 30 blocks/s (' + v.menu.halfSecond + ')', v.menu.half === '0.5' && v.menu.shownHalf === '0.5' && v.menu.halfSecond >= 24 && v.menu.halfSecond <= 36],
       ['choosing 5x in the menu sets it', v.menu.picked === '5'],
       ['the block and the date share one field', v.menu.sameField],
@@ -373,9 +421,13 @@ const CHECKS = [
     script: `const out = {};
       document.querySelector('[data-act="places"]').click(); await sleep(200);
       out.placesOpen = L.ui.placesMenu.open;
-      out.disabledBeyondTip = [...document.querySelectorAll('#places .pl-item')].filter((b) => b.disabled).length;
+      out.placeItems = [...document.querySelectorAll('#places .pl-item')].map((b) => b.dataset.place);
       L.ui.placesMenu.close();
-      const p = await L.flyTo('btc1'); out.band = p && p.rowMin;
+      { const b0 = L.replay.block; const p = await L.flyTo('round'); await idle();
+        out.place = { kind: p && p.kind, kept: L.replay.block === b0, block: L.replay.block, b0 }; }
+      // A place newer than the block goes to the latest block.
+      { await L.seek(inData(300000)); await idle(); const p = await L.flyTo('dust'); await idle();
+        out.later = { kind: p && p.kind, block: L.replay.block, tip }; }
       key('KeyH', { key: 'h' }); await sleep(200); out.helpOpen = L.ui.help.open;
       const guide = document.querySelector('#help a[href="/guide/"]'); out.helpGuide = !!guide && guide.target === '_blank' && /noopener/.test(guide.rel);
       key('Escape', { key: 'Escape' }); L.ui.help.close();
@@ -389,7 +441,9 @@ const CHECKS = [
       return out;`,
     expect: (v) => [
       ['places popover opens', v.placesOpen],
-      ['1 BTC band resolves to a row', Number.isInteger(v.band)],
+      ['places lists the landmarks (' + v.placeItems.join(', ') + ')', v.placeItems.join() === 'first-line,flood-2015,round,dust,towers,tip'],
+      ['a place keeps the block (' + v.place.b0 + ' -> ' + v.place.block + ')', v.place.kind === 'place' && v.place.kept],
+      ['a place newer than the block goes to the latest block (' + v.later.block + ')', v.later.kind === 'place' && v.later.block === v.later.tip],
       ['help opens with H', v.helpOpen],
       ['help links to the guide (/guide/, new tab)', v.helpGuide],
       ['flight: W moves the camera (' + v.flew.toFixed(2) + ')', v.flew > 1],
@@ -881,7 +935,8 @@ const CHECKS = [
     script: `await idle();
       const want = Number(new URLSearchParams(location.hash.slice(1)).get('b'));
       const p = L.controls.getPose();
-      const out = { block: L.replay.block, want, look: L.settings.look, quality: L.settings.quality, pose: p };
+      const out = { block: L.replay.block, want, look: L.settings.look, quality: L.settings.quality, pose: p,
+        deviceQuality: L.startup ? L.startup.preset : 'High' };
       const json = await L.panel.exportJSON({ download: false }); out.exportView = json && json.view;
       await L.seek(inData(150000)); await idle(); L.controls.setPose({ x: 50, y: 80, z: 300, yaw: 0, pitch: -40 }); L.settings.setLook('Landscape'); L.settings.setQuality('Balanced'); await sleep(200);
       await L.panel.importJSON(json, 'check.json'); await sleep(300); await idle();
@@ -892,13 +947,34 @@ const CHECKS = [
       return out;`,
     expect: (v) => [
       ['link restores the block', v.block === v.want],
-      ['a link from before looks (preset=Film) opens BitcoinTimelapse.com at High', v.look === 'BitcoinTimelapse.com' && v.quality === 'High'],
+      ['a link from before looks (preset=Film) opens BitcoinTimelapse.com at this device\'s quality (' + v.quality + ')', v.look === 'BitcoinTimelapse.com' && v.quality === v.deviceQuality],
       ['link restores the camera', Math.abs(v.pose.x - 290) < 1e-3 && Math.abs(v.pose.yaw - 20) < 1e-3],
       ['export carries the view', !!(v.exportView && v.exportView.b === v.want)],
-      ['import restores block, look, quality and camera', v.after.block === v.want && v.after.look === 'BitcoinTimelapse.com' && v.after.quality === 'High' && Math.abs(v.after.x - 290) < 1e-3],
-      ['the share link names the look by its current name', /(^|&|#)look=BitcoinTimelapse\.com(&|$)/.test(v.hash) && /(^|&|#)preset=High(&|$)/.test(v.hash)],
+      ['import restores block, look, quality and camera', v.after.block === v.want && v.after.look === 'BitcoinTimelapse.com' && v.after.quality === v.quality && Math.abs(v.after.x - 290) < 1e-3],
+      ['the address names the look by its current name and no quality', /(^|&|#)look=BitcoinTimelapse\.com(&|$)/.test(v.hash) && !/(^|&|#)preset=/.test(v.hash)],
       ['display.hud hides the HUD', v.hudHidden],
       ['amp.measure reaches the worker', v.measures && v.measures.height === 'count'],
+    ],
+  },
+  {
+    // Guide links and links shared from a fast desktop used to force their quality on every
+    // device. A phone opening such a link keeps its own quality and display settings.
+    name: 'link-quality',
+    mobile: { width: 390, height: 844, dpr: 3 },
+    query: 'startup=adaptive',
+    hash: '#b=BLOCK&mode=map&cam=290.000,30.000,180.000,20.00,-25.00&preset=Ultra&look=Golden+hour&light.cascades=4&camera.fov=40',
+    shot: 'link-quality-phone.png',
+    script: `await idle(); await sleep(500);
+      const S = L.settings;
+      return { quality: S.quality, look: S.look, fov: S.get('camera.fov'), cascades: S.get('light.cascades'),
+        autoScale: S.get('display.autoScale'), startup: L.startup ? L.startup.preset : null, hash: L.hash(),
+        block: L.replay.block, want: Number(new URLSearchParams(location.hash.slice(1)).get('b')), frameError: L.frameError || null };`,
+    expect: (v) => [
+      ['a phone opening an Ultra link stays at its own quality (' + v.quality + ')', v.startup === 'Performance' && v.quality === 'Performance'],
+      ['the link still sets the block, look and view settings', v.block === v.want && v.look === 'Golden hour' && v.fov === 40],
+      ['device settings in the link are left to the phone', v.cascades !== 4 && v.autoScale === true],
+      ['the address names no quality', !/(^|[#&])preset=/.test(v.hash) && /look=Golden\+hour/.test(v.hash)],
+      ['no frame errors', v.frameError === null],
     ],
   },
   {

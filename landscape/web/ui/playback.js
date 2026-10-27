@@ -4,7 +4,9 @@
 //   0.5x = 30 blocks/s, exact
 //   1x  = 60 blocks/s, exact (every block applied by replay.advance)
 //   2x  = 120 blocks/s, exact
-//   5x  = 300 blocks/s, exact; when the worker is slower the playhead follows the
+//   5x  = 300 blocks/s, exact
+//   10x = 600 blocks/s, exact
+//   20x = 1200 blocks/s, exact; when the worker is slower the playhead follows the
 //         worker and state.limited reports it (the HUD shows the achieved rate)
 //   Max = exact advance toward the tip with the whole frame budget
 // Every speed replays every block. Only scrubbing seeks to snapshots: the snapshot at/below
@@ -41,10 +43,12 @@ export const SPEEDS = Object.freeze([
   Object.freeze({ id: '1', label: '1\u00d7', rate: 60, policy: 'exact' }),
   Object.freeze({ id: '2', label: '2\u00d7', rate: 120, policy: 'exact' }),
   Object.freeze({ id: '5', label: '5\u00d7', rate: 300, policy: 'exact' }),
+  Object.freeze({ id: '10', label: '10\u00d7', rate: 600, policy: 'exact' }),
+  Object.freeze({ id: '20', label: '20\u00d7', rate: 1200, policy: 'exact' }),
   Object.freeze({ id: 'max', label: 'Max', rate: Infinity, policy: 'max' }),
 ]);
 export const DEFAULT_SPEED = '1';
-// Keys 0 to 4 choose the speeds in menu order (1 stays 1x).
+// Keep the original shortcuts: 0 to 4 select 0.5x, 1x, 2x, 5x and Max.
 export const SPEED_KEYS = Object.freeze({ Digit0: '0.5', Digit1: '1', Digit2: '2', Digit3: '5', Digit4: 'max' });
 // While paused, gaps up to this size (steps, nudges) are covered by exact advance;
 // larger jumps seek.

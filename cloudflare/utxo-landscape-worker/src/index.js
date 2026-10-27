@@ -295,6 +295,8 @@ function assetCacheControl(pathname, contentType) {
 
 function assetResponse(response, pathname) {
   const headers = securityHeaders(new Headers(response.headers));
+  // Link-preview images: social sites and chat apps may load them from their own origins.
+  if (pathname === '/og.jpg' || pathname.startsWith('/guide/assets/social/')) headers.set('Cross-Origin-Resource-Policy', 'cross-origin');
   if (response.status === 200 || response.status === 304) {
     headers.set('Cache-Control', assetCacheControl(pathname, response.headers.get('Content-Type')));
   }

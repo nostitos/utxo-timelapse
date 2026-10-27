@@ -59,7 +59,7 @@ For a landscape change, run only the browser checks it touches (`landscape/tests
 
 ## Presentation and releases
 
-The guide uses real rendered frames and actual interface screenshots. Label upstream material and development comparisons. Preserve Martinus's MIT copyright and clearly credit the original concept/code; use this project's identity throughout current presentation.
+The guide uses real rendered frames and actual interface screenshots. Label upstream material and development comparisons. Preserve existing MIT copyright and license notices, archival-media provenance, and a scoped upstream acknowledgment in the technical credits. Keep product and marketing copy focused on this project's work; do not repeat upstream attribution in tweets, loading screens, help dialogs or guide footers.
 
 Keep local and cloud explorer HTML behavior/branding consistent. UI-only releases use a fresh immutable `sitePrefix` and release version while retaining video/history fields. GitHub Pages publishes only `site/`. Do not commit source datasets, full videos, private node config, credentials, diagnostics, `.wrangler/` or legacy deployment copies.
 

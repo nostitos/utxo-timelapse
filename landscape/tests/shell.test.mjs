@@ -10,7 +10,7 @@ import {
   createPlayback, planPlay, snapshotAtOrBelow, speedById, defaultStartBlock, SPEEDS, SPEED_KEYS, STEP_LARGE,
   START_BEFORE_TIP, speedHint, downloadPace,
 } from '../web/ui/playback.js';
-import { ERAS, BANDS, bandRows, resolvePlace, eraBlock } from '../web/ui/places.js';
+import { PLACES, regionRows, resolvePlace, placeFrom } from '../web/ui/places.js';
 import { buildMinAmtTable, rowOfAmount } from '../web/data/axis.js';
 import { existsSync, readFileSync } from 'node:fs';
 
@@ -83,7 +83,7 @@ const EXPLORER_DATES = [
   ['2009-01-09', 1], ['2010-07-17', 68607], ['2012-11-28', 209887],
   ['2013-01-01', 214563], ['2014-08-04', 313878], ['2014-11-14', 329897],
 ];
-const REAL_BLOCKTIMES = ['/Volumes/4T Data/buv_render/landscape_966827/blocktimes.bin', '/tmp/landscape_dev/blocktimes.bin'].find((p) => existsSync(p));
+const REAL_BLOCKTIMES = [process.env.LANDSCAPE_DATA && process.env.LANDSCAPE_DATA + '/blocktimes.bin', '/Volumes/4T Data/buv_render/landscape_972052/blocktimes.bin', '/tmp/landscape_dev/blocktimes.bin'].find((p) => p && existsSync(p));
 test('dateToBlock on real blocktimes.bin equals the explorer /api/date', { skip: !REAL_BLOCKTIMES && 'no dataset blocktimes.bin on this machine' }, () => {
   const buf = readFileSync(REAL_BLOCKTIMES);
   const times = new Uint32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
@@ -116,7 +116,7 @@ test('hash round trip keeps settings untouched', () => {
   assert.deepEqual(d.cam, { x: 483.12, y: 96.4, z: 402, yaw: -12.35, pitch: -35 });
   assert.equal(d.settings, settings);
   // Without '#', with a leading '?' settings string, and with URLSearchParams.
-  assert.deepEqual(decodeHash('b=5&mode=map'), { block: 5, mode: 'map', cam: null, follow: false, settings: '' });
+  assert.deepEqual(decodeHash('b=5&mode=map'), { block: 5, mode: 'map', cam: null, follow: false, cell: null, play: false, settings: '' });
   assert.equal(encodeHash({ block: 7 }, '?preset=High'), '#b=7&preset=High');
   assert.equal(encodeHash({ block: 7 }, new URLSearchParams({ preset: 'Ultra' })), '#b=7&preset=Ultra');
   assert.equal(encodeHash({}), '');
@@ -554,37 +554,42 @@ test('planPlay and snapshot lookup', () => {
   assert.deepEqual(planPlay({ speed: '5', block: 0, target: 2000, tip: 5000, snapshots: snaps }), { kind: 'advance', target: 2000, budgetMs: 16 });
   assert.deepEqual(planPlay({ speed: 'max', block: 0, target: 0, tip: 5000, snapshots: snaps, frameMs: 100 }), { kind: 'advance', target: 5000, budgetMs: 50 });
   assert.equal(speedById('nope').id, '1');
-  assert.deepEqual(SPEEDS.map((s) => s.label), ['0.5\u00d7', '1\u00d7', '2\u00d7', '5\u00d7', 'Max']);
-  assert.deepEqual(SPEEDS.map((s) => s.rate), [30, 60, 120, 300, Infinity]);
-  assert.deepEqual(Object.values(SPEED_KEYS), SPEEDS.map((s) => s.id), 'keys 0 to 4 in menu order');
+  assert.deepEqual(SPEEDS.map((s) => s.label), ['0.5\u00d7', '1\u00d7', '2\u00d7', '5\u00d7', '10\u00d7', '20\u00d7', 'Max']);
+  assert.deepEqual(SPEEDS.map((s) => s.rate), [30, 60, 120, 300, 600, 1200, Infinity]);
+  assert.deepEqual(Object.values(SPEED_KEYS), ['0.5', '1', '2', '5', 'max'], 'keys 0 to 4 keep their original speeds');
   assert.equal(SPEED_KEYS.Digit1, '1', '1 stays 1x');
   assert.deepEqual(SPEEDS.map((s) => speedHint(s).match(/about ([\d.]+ \w+)|([\d,]+)\u00d7 real time/g)),
-    [['about 5 hours', '18,000\u00d7 real time'], ['about 10 hours', '36,000\u00d7 real time'], ['about 20 hours', '72,000\u00d7 real time'], ['about 2.1 days', '180,000\u00d7 real time'], null]);
+    [['about 5 hours', '18,000\u00d7 real time'], ['about 10 hours', '36,000\u00d7 real time'], ['about 20 hours', '72,000\u00d7 real time'], ['about 2.1 days', '180,000\u00d7 real time'], ['about 4.2 days', '360,000\u00d7 real time'], ['about 8.3 days', '720,000\u00d7 real time'], null]);
 });
 
-test('places resolve eras and amount bands on the film rows', () => {
+test('places resolve landmarks on the film rows; blocks still seek', () => {
   const minAmt = buildMinAmtTable();
   assert.equal(minAmt.length, 2072);
-  const rows = Object.fromEntries(BANDS.map((b) => [b.id, bandRows(minAmt, b)]));
-  assert.deepEqual(rows.coinbase50, { rowMin: rowOfAmount(minAmt, 5e9), rowMax: rowOfAmount(minAmt, 5e9) });
-  assert.deepEqual(rows.whale, { rowMin: 0, rowMax: rowOfAmount(minAmt, 1e9) });
-  assert.equal(rows.sat1to100.rowMax, 2071);
-  assert.equal(rows.sat1to100.rowMin, rowOfAmount(minAmt, 100));
-  // Larger amounts sit on smaller rows.
-  const order = ['coinbase50', 'btc1', 'sat10000', 'dust546'].map((id) => rows[id].rowMin);
-  assert.deepEqual([...order].sort((a, b) => a - b), order);
-  // 50 BTC lies inside the white-hot region (>= 10 BTC).
-  assert.ok(rows.coinbase50.rowMin <= rows.whale.rowMax);
   const ctx = { tip: 966827, minAmt };
-  assert.deepEqual(resolvePlace('b314000', ctx), { kind: 'era', id: 'b314000', block: 314000, title: 'A denser field' });
-  assert.equal(resolvePlace('314000', ctx).block, 314000);
+  assert.deepEqual(PLACES.map((p) => p.id), ['first-line', 'flood-2015', 'round', 'dust', 'towers', 'tip']);
+  for (const p of PLACES) {
+    const r = resolvePlace(p.id, ctx);
+    assert.equal(r.kind, 'place', p.id);
+    assert.equal(r.from, placeFrom(p));
+    if (!p.view) { assert.ok(r.tip && r.view === null); continue; }
+    // The camera looks at a row inside the place's region and, for a fixed block, inside its blocks.
+    const span = regionRows(minAmt, p.region);
+    assert.ok(r.view.row >= span.rowMin && r.view.row <= span.rowMax, p.id + ' row ' + r.view.row);
+    if (r.view.block != null) assert.ok(r.view.block >= p.region.blocks[0] && r.view.block <= (p.region.blocks[1] === 'tip' ? ctx.tip : p.region.blocks[1]), p.id);
+  }
+  // Each exact amount has a row of its own.
+  for (const p of PLACES.filter((q) => q.region && Array.isArray(q.region.amounts))) {
+    assert.equal(new Set(regionRows(minAmt, p.region).rows).size, p.region.amounts.length, p.id);
+  }
+  assert.deepEqual(regionRows(minAmt, PLACES.find((p) => p.id === 'first-line').region), { rowMin: rowOfAmount(minAmt, 5e9), rowMax: rowOfAmount(minAmt, 5e9), rows: [rowOfAmount(minAmt, 5e9)] });
+  assert.deepEqual(regionRows(minAmt, PLACES.find((p) => p.id === 'towers').region), { rowMin: 0, rowMax: rowOfAmount(minAmt, 1e10), rows: null });
+  assert.equal(resolvePlace('first-line', { tip: 966827, minAmt: null }), null, 'a landmark needs the rows');
+  assert.equal(resolvePlace('tip', { tip: 966827, minAmt: null }).tip, true);
+  // Halvings and round block numbers are no longer places; a block still seeks (links, test hook).
+  assert.equal(resolvePlace('b210000', ctx), null);
+  assert.deepEqual(resolvePlace('314000', ctx), { kind: 'block', block: 314000, title: 'Block 314,000' });
   assert.equal(resolvePlace(210000, ctx).block, 210000);
-  assert.equal(resolvePlace('tip', ctx).block, 966827);
-  assert.equal(resolvePlace('b900000', { tip: 400000, minAmt }).block, 400000);
   assert.equal(resolvePlace(5e6, ctx).block, 966827);
-  assert.equal(resolvePlace({ band: 'btc1' }, ctx).kind, 'band');
   assert.equal(resolvePlace({ block: 50000 }, ctx).block, 50000);
   assert.equal(resolvePlace('nowhere', ctx), null);
-  assert.equal(ERAS.length, 10);
-  assert.equal(eraBlock(ERAS.at(-1), 1234), 1234);
 });

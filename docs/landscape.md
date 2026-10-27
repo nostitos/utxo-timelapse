@@ -32,7 +32,7 @@ The inspector's history section reads the native explorer's cell API. Run a seco
 ./build_local/buv -ns -tc=utxo_explorer -cfg=configs/buv_explorer.json -port=12989
 ```
 
-`?webgl=1` forces the WebGL2 fallback. Quality is then capped at High, and the features that need compute shaders (cylinder columns, SSGI, automatic exposure) are off, so the whole landscape is the heightfield. The URL hash keeps the block, camera, navigation mode, look, quality and the settings that differ from them, so a copied link reproduces the view.
+`?webgl=1` forces the WebGL2 fallback. Quality is then capped at High, and the features that need compute shaders (cylinder columns, SSGI, automatic exposure) are off, so the whole landscape is the heightfield. The URL hash keeps the block, camera, navigation mode, look and the settings that differ from the look, so a copied link reproduces the view. It leaves out the quality and the settings a quality tier sets, plus automatic resolution scaling: those belong to the device. A link that names them, such as an older link with `preset=Ultra`, opens at the quality of the device that opens it (`viewURL()` and `fromURL(…, {view: true})` in `settings.js`). A look's own value for such a setting still applies, as it does when you pick the look.
 
 ## Online
 
@@ -41,7 +41,7 @@ The landscape runs publicly at **https://bitcoinlandscape.com/**, also reachable
 Three things change online, all decided in `landscape/web/ui/online.js`:
 
 - The app loads the dataset named in `/dataset/index.json`, so a new tip only changes the Worker's release file. Each tip is a full, immutable dataset under its own prefix.
-- A first visit, with no saved settings and none in the link, starts at Balanced quality with automatic resolution scaling (target 60 fps, scale 0.5–1). A browser without WebGPU, a touch-only device or one that reports 4 GB of memory or less starts at Performance and says so. Saved and linked settings take precedence, every look and quality stays one click away, and `?startup=high` gives the local default. Choosing a quality in the panel turns automatic scaling off, so the tier renders at its own resolution; the message offers Undo, and Advanced › Display turns it back on.
+- A first visit, with no saved settings, starts at Balanced quality with automatic resolution scaling (target 60 fps, scale 0.5–1), whether or not it arrives through a link. A browser without WebGPU, a touch-only device or one that reports 4 GB of memory or less starts at Performance and says so. A saved quality takes precedence on later visits; a link sets the view and its look but never the quality. Every look and quality stays one click away, and `?startup=high` gives the local default. Choosing a quality in the panel turns automatic scaling off, so the tier renders at its own resolution; the message offers Undo, and Advanced › Display turns it back on.
 - The inspector's history section asks `/api/landscape/cell` on the same origin, and its 2D link opens https://bitcointimelapse.com/explorer at the nearest pixel.
 
 The cell API reuses the 2D explorer's lifecycle code: `lifecycleJson` was extracted from `/api/pixel` in `cloudflare/utxo-video-worker/src/history.js` and is bundled into the landscape Worker. The 2D Worker itself was not redeployed. Against the same R2 data, the refactored code answers 27 sampled `/api/pixel` queries byte-identically to the old code and to the live 2D explorer.
@@ -63,7 +63,7 @@ Measured on 2026-10-08 from this Mac over a home connection in Toronto (served f
 | Browser checks | `shell-browser-checks.mjs` passes 43 of 43 in Chrome and in Brave against https://3d.bitcointimelapse.com/. |
 | Cell API against the native explorer | 24 of 26 sampled cells identical. The other two are the densest cell at the tip (column 15,100, row 1,822), queried at the tip and with a block beyond it; they differ only in the `pop` curve, from floating-point histogram bin edges, as `/api/pixel` does against the native explorer. Median 260 ms per lookup. |
 
-Playback streams the change log. After block 420,000, 1× needs about 1.2–2.2 MiB/s, 2× twice that and 5× about 6–11 MiB/s, so 1× and 2× suit most broadband connections while 5× and Max follow the connection's speed. When the download is slower than the speed, playback is paced to it and the HUD says download-limited: the picture moves on every frame at the download rate instead of racing through each 4 MiB chunk and then waiting for the next. Each seek replays up to 16 MiB of changes from the nearest snapshot, which accounts for most of an online seek.
+Playback streams the change log. After block 420,000, 1× needs about 1.2–2.2 MiB/s, 2× twice that and 5× about 6–11 MiB/s, so 1× and 2× suit most broadband connections while 5×, 10×, 20× and Max follow the connection's speed. When the download is slower than the speed, playback is paced to it and the HUD says download-limited: the picture moves on every frame at the download rate instead of racing through each 4 MiB chunk and then waiting for the next. Each seek replays up to 16 MiB of changes from the nearest snapshot, which accounts for most of an online seek.
 
 Storing the dataset costs about 1.1 USD a month in R2 (75 GB); R2 charges nothing for egress. Cloudflare Web Analytics counts visits: the zone injects its beacon into every page, and both this site's and the 2D explorer's Content Security Policy allow it.
 
@@ -85,6 +85,7 @@ Only media used by the guide is included in this website release; the film is a 
 | `[` / `]` | Back or forward one block (exact) |
 | Shift + `[` / `]` | Back or forward 1,008 blocks (about a week) |
 | 0, 1, 2, 3, 4 | Speed 0.5×, 1×, 2×, 5×, Max (also the speed menu in the timeline) |
+| Speed menu | Also offers 10× (600 blocks/s) and 20× (1,200 blocks/s); every block is replayed |
 | N or the Follow button | Follow tip: the camera moves with the newest block, at its speed and in its direction; N again stops |
 | M or the Sound button | Sound on or off (off at first, remembered in this browser): a click for each spend flash on screen while the chain plays, and the engine in plane mode; the button stays lit while it is on |
 | Drag | Pan; the grabbed point stays under the cursor |
@@ -132,9 +133,22 @@ Pinch, twist and a two-finger drag combine in one movement, as in a map app. Mov
 
 Phones get their own layout below 700 px of width, or below 500 px of height in landscape. The HUD shrinks to the block, date and play state (tap it for the totals). The minimap, legend and the block and date field are hidden, and the timeline keeps the scrubber, transport, the speed menu, and Places, Settings and Help, with 40 px touch targets. In portrait the inspector and the settings open as sheets from the bottom; in landscape they open at the right. When the inspector's sheet would cover the tapped cell, the view slides so the cell stays visible beside it. In portrait the first view looks along the block axis from beyond the tip, so the landscape fills the screen. Safe areas such as the iPhone home indicator are respected.
 
-Places jumps to the eras at blocks 50,000, 210,000, 314,000, 420,000, 500,000, 630,000, 700,000, 840,000, 900,000 and the tip, or flies to the amount bands: the 50 BTC coinbase row, 10 BTC and up, 1 BTC, 10,000 sat, 546 sat and 1–100 sat. The timeline accepts a block height or a UTC date.
+Places (P) flies to six landmarks of the unspent set, each a creation period and an amount that stands out in the data. Measured at block 972,052 with `landscape/tools/places-survey.mjs`:
 
-A link without a block opens at the latest snapshot at least 1,008 blocks (about a week) before the last block, so Play has something to play: with snapshots about 440 blocks apart near the tip, that is 1,008 to about 1,450 blocks back, 17 to 24 seconds at 1×. The view loads straight from that snapshot without replay. Places → Latest block goes to the tip.
+| Place | Where | What the data shows |
+|---|---|---|
+| The first line | 50 BTC, blocks 0–209,999 (2009–2012, mostly 2009–2010) | 34,288 first-era block rewards still unspent, 1,714,418 BTC, 8.5% of all bitcoin |
+| The July 2015 flood | 1,000 sat, blocks 364,544–365,119 (9–13 July 2015) | 1,481,998 outputs; its six cells are the tallest columns in the landscape (167,275 to 322,302 outputs each) |
+| Round amounts | 1, 0.1 and 0.01 BTC | 10.6, 7.0 and 4.2 times as many outputs as the mean of the rows beside them |
+| The dust ridge | 546, 330 and 294 sat, the dust limits of P2PKH, Taproot and P2WPKH outputs | 63,292,219 outputs, 38.3% of all unspent outputs; 89.3% of them made since 2023 (block 769,787) |
+| Towers at the edge | 100 BTC and more | 24,000 outputs holding 58.0% of all bitcoin; 46.1% of that value created in the last 52,560 blocks |
+| The newest block | the latest block | the opening view |
+
+Halvings are not places. After the first era the block subsidy left almost no line: of the outputs created in each later era, 542 remain at 25 BTC, 95 at 12.5 BTC, 967 at 6.25 BTC and 2,013 at 3.125 BTC, against 34,288 at 50 BTC in the first. From 12.5 BTC on, the subsidy rows hold about as many outputs as the rows beside them. The other places come from how people used Bitcoin.
+
+A place keeps the current block and flies the camera there. A place newer than the current block (the dust ridge before 2023, say) goes to the latest block first, and so does The newest block. The timeline accepts a block height or a UTC date.
+
+A link without a block opens at the latest snapshot at least 1,008 blocks (about a week) before the last block, so Play has something to play: with snapshots about 440 blocks apart near the tip, that is 1,008 to about 1,450 blocks back, 17 to 24 seconds at 1×. The view loads straight from that snapshot without replay. Places → The newest block goes to the tip.
 
 ## How it works
 
@@ -304,7 +318,7 @@ Data is the second section of Settings, directly below Look and Quality. The leg
 
 The Performance section gathers what sets the GPU's work, with a live readout of its cost; the quality tier sets all of them, and the sliders adjust from there. Settings that come in degrees are sliders: the named options sit under the slider as stops, a click jumps to one, and between stops the values blend (colours mix, numbers interpolate). A quick setting shows the option or slider position the current values match, or a dash when they were set by hand in Advanced. Every built-in look reads as one option in each of them; BitcoinTimelapse.com's time of day is the exception, because that look turns the sun off (choosing a time of day turns it back on). Quick settings and Advanced settings that have no effect with the current values are dimmed, and their tooltip says why: the bloom settings with Bloom off, Shadows and the sun direction with BitcoinTimelapse.com (it has no sun), Flash trail with Flashes off, the cylinder settings with Column cells off. The conditions are `NEEDS` in `landscape/web/settings.schema.js`; a condition on a setting that itself has no effect counts as unmet, and the tooltip names the root cause.
 
-**Saving looks.** Save… beside the look stores the current settings under a name in this browser's local storage (`utxo-landscape-presets-v1`; up to 50 looks, names up to 40 characters, built-in names excluded). A saved look records its built-in look, its quality and the settings that differ from them; personal preferences such as camera feel and overlays stay out. It appears under Saved in the look list. Choosing it restores its values and quality, saving again under the same name updates it, and Delete removes it while keeping the values on screen; each offers Undo. A copied link carries the built-in look and the changed settings, so it opens the same view in any browser. An exported JSON file names the saved look; where it is not saved, the import shows its values on its built-in look and says so.
+**Saving looks.** Save… beside the look stores the current settings under a name in this browser's local storage (`utxo-landscape-presets-v1`; up to 50 looks, names up to 40 characters, built-in names excluded). A saved look records its built-in look, its quality and the settings that differ from them; personal preferences such as camera feel and overlays stay out. It appears under Saved in the look list. Choosing it restores its values and quality, saving again under the same name updates it, and Delete removes it while keeping the values on screen; each offers Undo. A copied link carries the built-in look and the changed settings, so it opens the same view in any browser, at that browser's quality. An exported JSON file names the saved look; where it is not saved, the import shows its values on its built-in look and says so.
 
 Advanced holds every setting in seven groups, with search, JSON export and import, the list of changed settings with per-setting revert, per-group reset, a gradient editor and `.cube` LUT loading. Reset returns everything to the look and quality, and Copy link copies a link to the view. While searching, the quick settings step aside so the matches sit at the top.
 
@@ -590,6 +604,7 @@ In the app, 1× playback from block 314,000 advanced 602 blocks in 10.03 s witho
 | [`src/cpp/app/landscape_tasks.cpp`](../src/cpp/app/landscape_tasks.cpp) | `landscape_state`, `landscape_build`, `landscape_verify` |
 | [`src/cpp/app/utxo_explorer.cpp`](../src/cpp/app/utxo_explorer.cpp) | `GET /api/landscape/cell`, loopback CORS and `-port=` |
 | [`landscape/tools/serve.mjs`](../landscape/tools/serve.mjs) | Local server with range requests and cross-origin isolation |
+| [`landscape/tools/places-survey.mjs`](../landscape/tools/places-survey.mjs) | Measures each place of the Places menu in a snapshot, for checking its description against new data |
 | `landscape/web/data/`, `replay/`, `replay.worker.js`, `client/` | Grid and axis maths, snapshot reader, decoder, exact state, seek planning, worker and client |
 | `landscape/web/render/` | Renderer, environment, post pipeline, overlay and resolution scaling |
 | `landscape/web/render/terrain/` | Tile atlas, level of detail, heightfield, columns, palettes, heat, labels and picking |
@@ -604,4 +619,4 @@ In the app, 1× playback from block 314,000 advanced 602 blocks in 10.03 s witho
 | `landscape/web/guide/` | The guide, *What remains*: page, styles, progressive enhancement, curated media and `assets/manifest.json` |
 | `scripts/check_landscape_guide.py` | Guide checks: manifest, links, orphan files and size budgets |
 
-The vendored three.js 0.186.0 and lil-gui 0.17 are MIT licensed ([`vendor/three/README.md`](../landscape/web/vendor/three/README.md)); the fonts keep their OFL licences. The original concept and code are by Martinus ([BitcoinUtxoVisualizer](https://github.com/martinus/BitcoinUtxoVisualizer), MIT).
+The vendored three.js 0.186.0 and lil-gui 0.17 are MIT licensed ([`vendor/three/README.md`](../landscape/web/vendor/three/README.md)); the fonts keep their OFL licences. Upstream code acknowledgments are collected in the [technical credits](../site/technical.html#credits).

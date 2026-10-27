@@ -4,19 +4,40 @@
 
 ### Bitcoin's history, written in unspent outputs.
 
-An evolving landscape of creation, survival and spending.<br>
-Explore every block since genesis in a 4K film. Pause any moment and inspect the outputs behind a pixel.
+Every unspent output since the genesis block, rebuilt exactly from the chain and shown two ways:<br>
+a 3D landscape you can fly through, and a 4K film you can pause on any block.
 
-**[Read the illustrated guide](https://bitcointimelapse.com/guide/)** · **[Open the explorer](https://bitcointimelapse.com/explorer)** · **[Under the hood](https://nostitos.github.io/utxo-timelapse/technical.html)**
+**[Explore Bitcoin Landscape](https://bitcoinlandscape.com/)** · **[Watch the 3-minute film](https://www.youtube.com/watch?v=99OAoD_ZVF0)** · **[Open the 2D explorer](https://bitcointimelapse.com/explorer)**
+
+[![Bitcoin Landscape: the unspent outputs of every block as a field of glowing columns, seen from beyond the newest block](landscape/web/guide/assets/stills/field-tip-1600.webp)](https://bitcoinlandscape.com/)
+
+</div>
+
+## Bitcoin Landscape
+
+**[bitcoinlandscape.com](https://bitcoinlandscape.com/)** turns the unspent set into terrain. Creation block runs left to right, amount front to back, and the height and colour of each cell show what is still unspent there. Your browser replays the real chain to draw it, so every block you land on is the exact unspent set after that block.
+
+- Fly over 17 years of outputs in map or flight mode, and play the chain block by block, from 30 blocks a second to as fast as your device can replay it.
+- Click any cell to see its outputs, when each was created and spent, and its full history.
+- Jump to landmarks such as the first 50 BTC rewards, the July 2015 flood or the dust ridge.
+- Share a view or a single cell: the link opens at the same block and camera, at the quality of whoever opens it.
+
+**[What remains](https://bitcoinlandscape.com/guide/)**, the landscape's guide, opens with a narrated three-minute film ([4K on YouTube](https://www.youtube.com/watch?v=99OAoD_ZVF0)) and walks through the shapes it shows. It runs best in a desktop browser with WebGPU; phones and WebGL2 browsers get a lighter quality automatically. [How the landscape works](docs/landscape.md) covers the data format, replay, rendering and deployment.
+
+<div align="center">
+
+## The 2D timelapse
 
 [![A moving landscape of Bitcoin outputs, extracted from the published 4K film](site/assets/readme/hero.gif)](https://nostitos.github.io/utxo-timelapse/)
 
 **4K · 60 fps · one frame per block · 3.65 billion historical output records**<br>
 Updated weekly, from genesis to the latest block.
 
+**[Read the illustrated guide](https://bitcointimelapse.com/guide/)** · **[Open the explorer](https://bitcointimelapse.com/explorer)** · **[Under the hood](https://nostitos.github.io/utxo-timelapse/technical.html)**
+
 </div>
 
-## Learn to read the landscape
+## Learn to read the film
 
 An output appears at its **creation block** on the horizontal axis and its **amount** on the vertical axis. It stays there until spent. Many outputs can share a pixel. Colour represents accumulated density, weighted by value in the film; a flash marks activity.
 
@@ -37,11 +58,11 @@ The **[visual guide](https://nostitos.github.io/utxo-timelapse/)** walks through
 - Separate outputs that are still unspent from those spent later or earlier.
 - Share a block-and-pixel link; resolve candidate transaction IDs when needed.
 
-The high-detail explorer targets desktop browsers with HEVC support. The guide's lighter previews work independently of the full film.
+The explorer streams a 1440p H.264 version of the film by default and offers the 4K HEVC 4:4:4 original where the browser can decode it. The guide's lighter previews work independently of the full film.
 
-## What this project adds
+## Rendering and exploration
 
-UTXO Timelapse builds on Martinus's original idea with a substantially expanded rendering and exploration system.
+UTXO Timelapse combines chain processing, exact accounting, rendering, historical exploration and cloud delivery.
 
 | Area | Implemented here |
 |---|---|
@@ -71,6 +92,8 @@ Requires a C++17 compiler, CMake, OpenCV and TBB. FFmpeg encodes the frames. Bit
 
 | Where to go | What you will find |
 |---|---|
+| [Bitcoin Landscape](https://bitcoinlandscape.com/) and [its guide](https://bitcoinlandscape.com/guide/) | The 3D landscape, the narrated film and a practical guide |
+| [How the landscape works](docs/landscape.md) | Dataset format, browser replay, rendering, settings and deployment |
 | [Illustrated guide](https://nostitos.github.io/utxo-timelapse/) | Learn the image, watch eras unfold, explore real screenshots |
 | [Technical reference](https://nostitos.github.io/utxo-timelapse/technical.html) | Data formats, rendering math, settings, API and tradeoffs |
 | [Operations index](docs/README.md) | Build, extract, render, update and publish |
@@ -79,8 +102,8 @@ Requires a C++17 compiler, CMake, OpenCV and TBB. FFmpeg encodes the frames. Bit
 | [Cloud service](cloudflare/utxo-video-worker/README.md) | HLS, history shards, releases and deployment |
 | [Guide source & media](site/README.md) | Static site, reproducible previews and provenance |
 
-## Origin & credit
+## Maintainer & license
 
-**[Martinus's BitcoinUtxoVisualizer](https://github.com/martinus/BitcoinUtxoVisualizer)** supplied the original visualization concept and code foundation. That inspiration deserves clear credit. UTXO Timelapse is maintained by **[nostitos](https://github.com/nostitos)** and has its own visual direction, accounting model, explorer, cloud delivery and update workflow.
+UTXO Timelapse is maintained by **[nostitos](https://github.com/nostitos)**.
 
-The original [MIT license and copyright](LICENSE) are preserved. Dependencies and font/media licenses are listed in the [technical credits](https://nostitos.github.io/utxo-timelapse/technical.html#credits).
+The [MIT license and copyright](LICENSE) are preserved. Upstream code acknowledgments, dependencies and font/media licenses are listed in the [technical credits](https://nostitos.github.io/utxo-timelapse/technical.html#credits).

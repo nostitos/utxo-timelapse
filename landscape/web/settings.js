@@ -24,6 +24,9 @@ export const PRESETS_FORMAT = 'utxo-landscape-presets-1';
 export const PRESETS_KEY = 'utxo-landscape-presets-v1';
 export const MAX_USER_PRESETS = 50;
 export const MAX_PRESET_NAME = 40;
+// Automatic resolution scaling belongs to the device, like every setting a quality tier sets:
+// links leave them out and a link never changes them (viewURL, fromURL with {view: true}).
+export const DEVICE_SETTINGS = Object.freeze(['display.autoScale', 'display.targetFps', 'display.scaleMin', 'display.scaleMax']);
 const MAX_SAVED_CHARS = 2000000; // larger saves drop file values (the LUT text)
 const AUTOSAVE_DELAY_MS = 250;
 
@@ -401,6 +404,11 @@ export function createSettingsStore(schema = SCHEMA, presets = PRESETS, options 
   const groupIds = new Set(entries.map((entry) => entry.group));
   const presetNames = Object.freeze(Object.keys(presets));
   const qualityNames = Object.freeze((options.qualityOrder ?? QUALITY_ORDER).filter((name) => hasOwn(presets, name)));
+  // Settings that describe how this device renders rather than what the view shows: every
+  // setting a quality tier sets, plus automatic resolution scaling. A link made on a desktop
+  // at Ultra therefore opens on a phone at the phone's own quality.
+  const deviceIds = new Set([...qualityNames.flatMap((name) => Object.keys(presets[name] ?? {})), ...DEVICE_SETTINGS]
+    .filter((id) => byId.has(id)));
   const defaultLook = options.defaultLook ?? DEFAULT_LOOK;
   const lookNames = Object.freeze([...new Set([defaultLook, ...presetNames.filter((name) => !qualityNames.includes(name))])]);
   const lookAliases = options.lookAliases ?? LOOK_ALIASES;
@@ -965,9 +973,32 @@ export function createSettingsStore(schema = SCHEMA, presets = PRESETS, options 
     return params.toString();
   }
 
-  function fromURL(input) {
+  /**
+   * Link string for a view: look (a built-in look) and the url settings that differ from it.
+   * Unlike toURL() it names no quality and leaves out the device's settings (deviceIds), so the
+   * person who opens the link keeps the quality their device chose.
+   */
+  function viewURL() {
+    const params = new URLSearchParams();
+    if (lookBuiltin !== defaultLook) params.set('look', lookBuiltin);
+    for (const entry of entries) {
+      if (!entry.url || entry.type === 'file' || deviceIds.has(entry.id)) continue;
+      const value = values.get(entry.id);
+      if (!valuesEqual(value, baseValue(entry, lookBuiltin, quality))) params.set(entry.id, encodeURLValue(entry, value));
+    }
+    return params.toString();
+  }
+
+  /**
+   * Applies settings from a link. With {view: true} (links opened in the app) the link sets the
+   * look and its settings but not the quality: a quality named in the link and the device's
+   * settings are left to this device (report.kept). A device setting the link's look sets
+   * still follows that look; one the visitor changed keeps their value.
+   */
+  function fromURL(input, { view = false } = {}) {
     const params = toSearchParams(input);
     const report = { found: false, preset: null, quality: null, look: null, applied: [], ignored: [], invalid: [] };
+    if (view) report.kept = [];
     const presetParam = params.get('preset');
     const lookParam = params.get('look');
     let found = presetParam !== null || lookParam !== null;
@@ -977,11 +1008,13 @@ export function createSettingsStore(schema = SCHEMA, presets = PRESETS, options 
     }
     if (!found) return report;
     report.found = true;
-    let wanted = startupQuality;
+    let wanted = view ? quality : startupQuality;
     let lk = defaultLook;
     if (presetParam !== null) {
-      if (isQuality(presetParam)) wanted = presetParam;
-      else if (isLook(canonicalLook(presetParam))) lk = canonicalLook(presetParam); // links from before looks: preset=Film
+      if (isQuality(presetParam)) {
+        if (view) report.kept.push('preset');
+        else wanted = presetParam;
+      } else if (isLook(canonicalLook(presetParam))) lk = canonicalLook(presetParam); // links from before looks: preset=Film
       else report.invalid.push('preset');
     }
     if (lookParam !== null) {
@@ -989,10 +1022,18 @@ export function createSettingsStore(schema = SCHEMA, presets = PRESETS, options 
       else report.invalid.push('look');
     }
     const effective = capQuality(wanted);
+    const previousLook = look;
+    const previousQuality = quality;
     setLookState(lk);
     quality = effective;
     const staged = [];
     for (const entry of entries) {
+      if (view && deviceIds.has(entry.id)) {
+        if (params.has(entry.id)) report.kept.push(entry.id);
+        const own = !valuesEqual(values.get(entry.id), baseValue(entry, previousLook, previousQuality));
+        if (lookSets(entry, lk) || !own) staged.push([entry, baseValue(entry)]);
+        continue;
+      }
       if (entry.url && entry.type !== 'file' && params.has(entry.id)) {
         const result = validateValue(entry, decodeURLValue(entry, params.get(entry.id)), caps);
         if (result.ok) {
@@ -1136,7 +1177,10 @@ export function createSettingsStore(schema = SCHEMA, presets = PRESETS, options 
     toJSON,
     fromJSON,
     toURL,
+    viewURL,
     fromURL,
+    /** True for a setting that belongs to the device (a quality tier's or auto scaling). */
+    isDeviceSetting: (id) => deviceIds.has(id),
     mergeIntoHash: (hash) => mergeHash(hash, toURL(), entries),
     load,
     save,

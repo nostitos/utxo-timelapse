@@ -18,7 +18,7 @@
       "movement": "I",
       "look": "Landscape",
       "block": 969652,
-      "link": "/#b=969652&mode=map&cam=1070.759,57.884,82.899,96.00,-16.00&preset=Ultra&camera.fov=40",
+      "link": "/#b=969652&mode=map&cam=1070.759,57.884,82.899,96.00,-16.00&camera.fov=40",
       "linkAt": 0,
       "captured": {
         "created": "2026-10-20T07:13:35.795Z",
@@ -40,7 +40,7 @@
       "movement": "III",
       "look": "Landscape",
       "block": 969652,
-      "link": "/#b=969652&mode=map&cam=969.092,7.733,84.065,-12.00,-2.00&preset=Ultra",
+      "link": "/#b=969652&mode=map&cam=969.092,7.733,84.065,-12.00,-2.00",
       "linkAt": 10,
       "captured": {
         "created": "2026-10-20T06:14:26.398Z",
@@ -65,7 +65,7 @@
         969652,
         970852
       ],
-      "link": "/#b=969652&mode=map&cam=969.092,7.733,84.065,-12.00,-2.00&preset=Ultra",
+      "link": "/#b=969652&mode=map&cam=969.092,7.733,84.065,-12.00,-2.00",
       "linkAt": 0,
       "captured": {
         "created": "2026-10-20T06:16:44.347Z",
@@ -87,7 +87,7 @@
       "movement": "V",
       "look": "Landscape",
       "block": 970852,
-      "link": "/#b=970852&mode=map&cam=983.123,22.371,155.513,30.00,-24.00&preset=Ultra&color.measure=count&color.whiteHot=0&amp.measure=count",
+      "link": "/#b=970852&mode=map&cam=983.123,22.371,155.513,30.00,-24.00&color.measure=count&color.whiteHot=0&amp.measure=count",
       "linkAt": 0,
       "captured": {
         "created": "2026-10-20T06:21:03.783Z",
@@ -109,7 +109,7 @@
       "movement": "V",
       "look": "Landscape",
       "block": 970852,
-      "link": "/#b=970852&mode=map&cam=983.123,22.371,155.513,30.00,-24.00&preset=Ultra&color.measure=value&color.offset=1&color.upper=2000&color.whiteHot=0&amp.measure=count",
+      "link": "/#b=970852&mode=map&cam=983.123,22.371,155.513,30.00,-24.00&color.measure=value&color.offset=1&color.upper=2000&color.whiteHot=0&amp.measure=count",
       "linkAt": 0,
       "captured": {
         "created": "2026-10-20T06:25:22.424Z",
@@ -126,12 +126,12 @@
     {
       "id": "field-tip",
       "title": "The field at the newest block",
-      "purpose": "The opening composition at its dataset's newest block, breathing slowly.",
+      "purpose": "The opening composition at block 972,052, breathing slowly.",
       "kind": "sequence",
       "movement": null,
       "look": "Landscape",
       "block": 972052,
-      "link": "/#b=972052&mode=map&cam=1070.759,57.884,82.899,96.00,-16.00&preset=Ultra&camera.fov=40",
+      "link": "/#b=972052&mode=map&cam=1070.759,57.884,82.899,96.00,-16.00&camera.fov=40",
       "linkAt": 0,
       "captured": {
         "created": "2026-10-20T06:34:23.262Z",
@@ -156,7 +156,7 @@
         0,
         972052
       ],
-      "link": "/#b=0&mode=map&cam=669.352,161.081,479.658,22.00,-22.00&preset=Ultra",
+      "link": "/#b=0&mode=map&cam=669.352,161.081,479.658,22.00,-22.00",
       "linkAt": 0,
       "captured": {
         "created": "2026-10-20T05:29:00.586Z",
@@ -181,7 +181,7 @@
         770000,
         835000
       ],
-      "link": "/#b=770000&mode=map&cam=835.759,22.476,224.616,40.00,-22.00&preset=Ultra",
+      "link": "/#b=770000&mode=map&cam=835.759,22.476,224.616,40.00,-22.00",
       "linkAt": 0,
       "captured": {
         "created": "2026-10-20T05:31:30.729Z",
@@ -203,7 +203,7 @@
       "movement": null,
       "look": "Landscape",
       "block": 972052,
-      "link": "/#b=972052&mode=map&cam=1027.065,33.266,157.527,70.00,-12.00&preset=Ultra&color.fog=5a3f3a&light.sunAzimuth=290&light.sunElevation=9&light.sunIntensity=4.5&light.sunColor=ffc78a&light.skyColor=f6d6b8&light.groundColor=3a2e28&light.ambient=0.5&light.stars=0",
+      "link": "/#b=972052&mode=map&cam=1027.065,33.266,157.527,70.00,-12.00&color.fog=5a3f3a&light.sunAzimuth=290&light.sunElevation=9&light.sunIntensity=4.5&light.sunColor=ffc78a&light.skyColor=f6d6b8&light.groundColor=3a2e28&light.ambient=0.5&light.stars=0",
       "linkAt": 0,
       "captured": {
         "created": "2026-10-20T05:34:40.126Z",
@@ -225,7 +225,7 @@
       "movement": null,
       "look": "Earth",
       "block": 972052,
-      "link": "/#b=972052&mode=map&cam=887.108,72.577,332.987,40.00,-14.00&preset=Ultra&look=Earth",
+      "link": "/#b=972052&mode=map&cam=887.108,72.577,332.987,40.00,-14.00&look=Earth",
       "linkAt": 0,
       "captured": {
         "created": "2026-10-20T05:37:06.358Z",
@@ -247,7 +247,7 @@
       "movement": null,
       "look": "Landscape",
       "block": 969652,
-      "link": "/#b=969652&mode=map&cam=1070.759,57.884,82.899,96.00,-16.00&preset=Ultra&camera.fov=40",
+      "link": "/#b=969652&mode=map&cam=1070.759,57.884,82.899,96.00,-16.00&camera.fov=40",
       "linkAt": 0,
       "captured": {
         "created": "2026-10-20T06:34:27.488Z",
@@ -269,7 +269,7 @@
       "movement": null,
       "look": "Landscape",
       "block": 969652,
-      "link": "/#b=969652&mode=map&cam=973.919,7.150,80.050,94.00,-2.00&preset=Ultra",
+      "link": "/#b=969652&mode=map&cam=973.919,7.150,80.050,94.00,-2.00",
       "linkAt": 0,
       "captured": {
         "created": "2026-10-20T06:34:29.982Z",
@@ -291,7 +291,7 @@
       "movement": null,
       "look": "Landscape",
       "block": 970852,
-      "link": "/#b=970852&mode=map&cam=969.092,7.733,84.065,-12.00,-2.00&preset=Ultra",
+      "link": "/#b=970852&mode=map&cam=969.092,7.733,84.065,-12.00,-2.00",
       "linkAt": 0,
       "captured": {
         "created": "2026-10-20T06:34:30.853Z",
@@ -313,7 +313,7 @@
       "movement": null,
       "look": "Landscape",
       "block": 970852,
-      "link": "/#b=970852&mode=map&cam=983.123,22.371,155.513,30.00,-24.00&preset=Ultra&color.measure=count&color.whiteHot=0&amp.measure=count",
+      "link": "/#b=970852&mode=map&cam=983.123,22.371,155.513,30.00,-24.00&color.measure=count&color.whiteHot=0&amp.measure=count",
       "linkAt": 0,
       "captured": {
         "created": "2026-10-20T06:34:31.906Z",
@@ -335,7 +335,7 @@
       "movement": null,
       "look": "Landscape",
       "block": 970852,
-      "link": "/#b=970852&mode=map&cam=983.123,22.371,155.513,30.00,-24.00&preset=Ultra&color.measure=value&color.offset=1&color.upper=2000&color.whiteHot=0&amp.measure=count",
+      "link": "/#b=970852&mode=map&cam=983.123,22.371,155.513,30.00,-24.00&color.measure=value&color.offset=1&color.upper=2000&color.whiteHot=0&amp.measure=count",
       "linkAt": 0,
       "captured": {
         "created": "2026-10-20T06:34:34.300Z",
@@ -357,7 +357,7 @@
       "movement": null,
       "look": "Landscape",
       "block": 972052,
-      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&preset=Ultra",
+      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00",
       "linkAt": 0,
       "captured": {
         "created": "2026-10-20T05:37:21.088Z",
@@ -379,7 +379,7 @@
       "movement": null,
       "look": "BitcoinTimelapse.com",
       "block": 972052,
-      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&preset=Ultra&look=BitcoinTimelapse.com",
+      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&look=BitcoinTimelapse.com",
       "linkAt": 0,
       "captured": {
         "created": "2026-10-20T05:37:21.716Z",
@@ -401,7 +401,7 @@
       "movement": null,
       "look": "Daylight",
       "block": 972052,
-      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&preset=Ultra&look=Daylight",
+      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&look=Daylight",
       "linkAt": 0,
       "captured": {
         "created": "2026-10-20T05:37:22.960Z",
@@ -423,7 +423,7 @@
       "movement": null,
       "look": "Golden hour",
       "block": 972052,
-      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&preset=Ultra&look=Golden+hour",
+      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&look=Golden+hour",
       "linkAt": 0,
       "captured": {
         "created": "2026-10-20T05:37:25.880Z",
@@ -445,7 +445,7 @@
       "movement": null,
       "look": "Earth",
       "block": 972052,
-      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&preset=Ultra&look=Earth",
+      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&look=Earth",
       "linkAt": 0,
       "captured": {
         "created": "2026-10-20T05:37:27.121Z",
@@ -467,7 +467,7 @@
       "movement": null,
       "look": "Whales",
       "block": 972052,
-      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&preset=Ultra&look=Whales",
+      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&look=Whales",
       "linkAt": 0,
       "captured": {
         "created": "2026-10-20T05:37:28.558Z",
@@ -489,7 +489,7 @@
       "movement": null,
       "look": "Pulse",
       "block": 972052,
-      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&preset=Ultra&look=Pulse",
+      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&look=Pulse",
       "linkAt": 0,
       "captured": {
         "created": "2026-10-20T05:37:29.979Z",
@@ -511,7 +511,7 @@
       "movement": null,
       "look": "Outputs",
       "block": 972052,
-      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&preset=Ultra&look=Outputs",
+      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&look=Outputs",
       "linkAt": 0,
       "captured": {
         "created": "2026-10-20T05:37:33.544Z",
@@ -533,7 +533,7 @@
       "movement": null,
       "look": "Money map",
       "block": 972052,
-      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&preset=Ultra&look=Money+map",
+      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&look=Money+map",
       "linkAt": 0,
       "captured": {
         "created": "2026-10-20T05:37:35.115Z",
@@ -555,7 +555,7 @@
       "movement": null,
       "look": "Linear",
       "block": 972052,
-      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&preset=Ultra&look=Linear",
+      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&look=Linear",
       "linkAt": 0,
       "captured": {
         "created": "2026-10-20T05:37:36.781Z",
@@ -577,7 +577,7 @@
       "movement": null,
       "look": "Paper",
       "block": 972052,
-      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&preset=Ultra&look=Paper",
+      "link": "/#b=972052&mode=map&cam=978.126,32.492,171.204,55.00,-20.00&look=Paper",
       "linkAt": 0,
       "captured": {
         "created": "2026-10-20T05:37:38.286Z",
@@ -599,7 +599,7 @@
       "movement": "II",
       "look": "Landscape",
       "block": 969652,
-      "link": "/#b=969652&mode=map&cam=486.000,639.903,114.769,0.00,-89.00&preset=Ultra&camera.fov=50",
+      "link": "/#b=969652&mode=map&cam=486.000,639.903,114.769,0.00,-89.00&camera.fov=50",
       "linkAt": 0,
       "film": {
         "at": 22.0,
@@ -626,7 +626,7 @@
       "movement": "II",
       "look": "Landscape",
       "block": 969652,
-      "link": "/#b=969652&mode=map&cam=854.957,225.014,107.528,0.00,-89.00&preset=Ultra&camera.fov=50",
+      "link": "/#b=969652&mode=map&cam=854.957,225.014,107.528,0.00,-89.00&camera.fov=50",
       "linkAt": 0,
       "film": {
         "at": 31.0,
@@ -653,7 +653,7 @@
       "movement": "III",
       "look": "Landscape",
       "block": 969652,
-      "link": "/#b=969652&mode=map&cam=68.250,16.000,70.000,-54.83,-18.37&preset=Ultra",
+      "link": "/#b=969652&mode=map&cam=68.250,16.000,70.000,-54.83,-18.37",
       "linkAt": 0,
       "film": {
         "at": 57.0,
@@ -680,7 +680,7 @@
       "movement": "III",
       "look": "Outputs",
       "block": 969652,
-      "link": "/#b=969652&mode=map&cam=418.889,70.636,129.558,0.00,-62.00&preset=Ultra&look=Outputs",
+      "link": "/#b=969652&mode=map&cam=418.889,70.636,129.558,0.00,-62.00&look=Outputs",
       "linkAt": 0,
       "film": {
         "at": 64.0,
@@ -707,7 +707,7 @@
       "movement": "III",
       "look": "Golden hour",
       "block": 969652,
-      "link": "/#b=969652&mode=map&cam=817.188,24.000,150.000,-155.56,-30.08&preset=Ultra&look=Golden+hour",
+      "link": "/#b=969652&mode=map&cam=817.188,24.000,150.000,-155.56,-30.08&look=Golden+hour",
       "linkAt": 0,
       "film": {
         "at": 74.5,
@@ -734,7 +734,7 @@
       "movement": "III",
       "look": "Daylight",
       "block": 969652,
-      "link": "/#b=969652&mode=map&cam=1001.606,16.193,27.646,80.50,-13.94&preset=Ultra&look=Daylight",
+      "link": "/#b=969652&mode=map&cam=1001.606,16.193,27.646,80.50,-13.94&look=Daylight",
       "linkAt": 0,
       "film": {
         "at": 80.5,
@@ -761,7 +761,7 @@
       "movement": "III",
       "look": "Landscape",
       "block": 969652,
-      "link": "/#b=969652&mode=map&cam=972.500,9.000,131.875,12.09,-9.52&preset=Ultra",
+      "link": "/#b=969652&mode=map&cam=972.500,9.000,131.875,12.09,-9.52",
       "linkAt": 0,
       "film": {
         "at": 84.5,
@@ -788,7 +788,7 @@
       "movement": "IV",
       "look": "Landscape",
       "block": 969652,
-      "link": "/#b=969652&mode=map&cam=967.923,10.479,89.275,-12.00,-27.56&preset=Ultra",
+      "link": "/#b=969652&mode=map&cam=967.923,10.479,89.275,-12.00,-27.56",
       "linkAt": 0,
       "film": {
         "at": 101.0,
@@ -818,7 +818,7 @@
         969652,
         970852
       ],
-      "link": "/#b=969652&mode=map&cam=486.000,639.903,114.770,0.00,-89.00&preset=Ultra&look=Pulse&color.heatGain=2.5&amp.heatHalfLife=100&amp.heatEdge=0.08&amp.flashSize=1.5",
+      "link": "/#b=969652&mode=map&cam=486.000,639.903,114.770,0.00,-89.00&look=Pulse&color.heatGain=2.5&amp.heatHalfLife=100&amp.heatEdge=0.08&amp.flashSize=1.5",
       "linkAt": 0,
       "film": {
         "at": 117.6,
@@ -848,7 +848,7 @@
         969652,
         970852
       ],
-      "link": "/#b=969652&mode=map&cam=905.000,109.983,91.920,0.00,-89.00&preset=Ultra&look=BitcoinTimelapse.com",
+      "link": "/#b=969652&mode=map&cam=905.000,109.983,91.920,0.00,-89.00&look=BitcoinTimelapse.com",
       "linkAt": 0,
       "film": {
         "at": 129.6,
@@ -1697,6 +1697,23 @@
         "sha256": "2c51b0f30b7c3d54bcee12e69d2ef8287f2964befb3425543756ac21b732a83d"
       },
       "bytes": 107128
+    },
+    {
+      "id": "social-card",
+      "kind": "still",
+      "files": {
+        "jpg": "assets/social/what-remains-1200x630.jpg"
+      },
+      "film": {
+        "at": 12.6
+      },
+      "source": {
+        "file": "assets/film/narrated-poster-1920.webp",
+        "sha256": "f0172e5fe3e7b2b5950065c1f4b66b44867758d2869b04fa1b5e6927c5c40d80"
+      },
+      "edit": "The film's poster frame scaled to 1200x675 and centre-cropped to 1200x630 (JPEG) for link previews; not shown on the page",
+      "overlays": "the narrated film's own title",
+      "bytes": 90331
     }
   ],
   "provenanceNote": "source.file identifies offline production inputs; these source recordings and production files are not included in the website release."

@@ -12,6 +12,8 @@
 import { createPlayback, defaultStartBlock, speedById, SPEED_KEYS, STEP_LARGE } from './ui/playback.js';
 import { createTipFollow } from './ui/follow.js';
 import { decodeHash, encodeHash } from './ui/hash.js';
+import { createShare } from './ui/share.js';
+import { buildShareUrl } from './ui/share-link.js';
 import { resolvePlace } from './ui/places.js';
 import { createControls, isTypingTarget } from './ui/controls.js';
 import { createPlaneHud } from './ui/plane-hud.js';
@@ -34,10 +36,10 @@ import { createHover } from './ui/hover.js';
 import { createHelp } from './ui/help.js';
 import { createToast } from './ui/toast.js';
 import { createLoading } from './ui/loading.js';
-import { fmtInt, fmtAmount, escapeHtml } from './ui/format.js';
+import { fmtInt, fmtAmount, escapeHtml, isoUtc } from './ui/format.js';
 import { resolveEndpoints, resolveDataUrl, startupMode, chooseStartup, deviceTraits } from './ui/online.js';
-import { gridFromManifest, worldX, worldZ } from './data/grid.js';
-import { FILM_AXIS } from './data/axis.js';
+import { gridFromManifest, columnBlocks, worldX, worldZ } from './data/grid.js';
+import { FILM_AXIS, rowAmountRange } from './data/axis.js';
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
@@ -84,8 +86,10 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       : { webgpu: !forceWebGL && 'gpu' in navigator, backend: !forceWebGL && 'gpu' in navigator ? 'webgpu' : 'webgl2' };
     hook.capabilities = caps;
 
-    // Settings precedence: startup preset (High, capped on WebGL2) < localStorage < URL hash.
-    // Online, a first visit (nothing saved, nothing in the link) starts at an adaptive quality.
+    // Quality belongs to the device: startup preset (High, capped on WebGL2) < localStorage.
+    // Online, a first visit (nothing saved) starts at an adaptive quality even when it comes
+    // through a link. The URL hash then sets the view, its look and their settings, but never
+    // the quality or the device's settings (store.fromURL with {view: true}).
     const store = deps.createSettingsStore(deps.SCHEMA, deps.PRESETS, { capabilities: caps });
     let stored = false;
     try {
@@ -95,7 +99,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     }
     const initial = decodeHash(location.hash);
     const startup = chooseStartup({
-      mode: startupMode({ query, local: endpoints.local }), firstVisit: !stored && !initial.settings,
+      mode: startupMode({ query, local: endpoints.local }), firstVisit: !stored,
       backend: forceWebGL ? 'webgl2' : caps.backend || (caps.webgpu ? 'webgpu' : 'webgl2'), ...deviceTraits(),
     });
     if (startup) {
@@ -105,7 +109,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     }
     if (initial.settings) {
       try {
-        store.fromURL(location.hash);
+        store.fromURL(location.hash, { view: true });
       } catch (err) {
         notice('Some settings in the link were not applied', 'warn');
       }
@@ -320,6 +324,8 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     const inspector = createInspector({
       container: $('inspector'), marker: $('marker'), replay, grid, rows: replay.rows, blocktimes: replay.blocktimes,
       axis, explorerBase, link2d: endpoints.link2d, local: endpoints.local,
+      onSelect: () => selectionChanged(), onClose: () => selectionChanged(),
+      onShare: () => openShare('cell'),
       camera: view.camera, canvas, heightAt: (x, z) => view.heightAt(x, z),
     });
     // What the pointer (the crosshair in flight mode) is aimed at, from local data only, in a
@@ -329,14 +335,14 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       mode: () => controls.mode, anchor: $('hud'), enabled: !touchOnly,
     });
     const placesMenu = createPlacesMenu({
-      container: $('places'), tip, blocktimes: replay.blocktimes, rows: replay.rows,
+      container: $('places'), getBlock: () => replay.block,
       onPlace: (id) => flyToPlace(id).catch((err) => notice(String(err.message || err), 'warn')),
     });
     const panel = deps.createPanel({
       container: $('panel'), store, schema: deps.SCHEMA, presets: deps.PRESETS, capabilities: view.capabilities,
       onExport: (json) => ({ ...json, view: viewState() }),
       onImport: (json) => restoreView(json && json.view),
-      getShareURL: () => location.origin + location.pathname + location.search + currentHash(),
+      getShareURL: () => buildShareUrl(location.href, captureShare(false), { selectedCell: inspector.isOpen }),
       // The Performance section's live readout (ui/quick.js).
       perf: () => {
         const s = view.stats || {};
@@ -351,6 +357,33 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         };
       },
     });
+    // Dev shell harnesses may predate the share dialog in index.html.
+    const shareDialog = $('share') || document.body.appendChild(Object.assign(document.createElement('dialog'), { id: 'share' }));
+    shareDialog.setAttribute('aria-labelledby', 'share-title');
+    const share = createShare({ dialog: shareDialog, getSnapshot: captureShare });
+    function captureShare(pause = true) {
+      const state = playback.state;
+      if (!Number.isInteger(replay.block) || (pause && (state.op === 'seek' || state.scrubbing))) throw new Error('Wait for the block to finish loading, then share this view.');
+      const cell = inspector.isOpen ? inspector.selection : null;
+      let cellDescription = '';
+      if (cell) {
+        const [first, last] = columnBlocks(grid, cell.col);
+        const range = rowAmountRange(replay.rows, cell.row);
+        const amount = !range ? 'No integer amount' : range.max === Infinity ? '≥ ' + fmtAmount(range.min) : fmtAmount(range.min) + '–' + fmtAmount(range.max);
+        cellDescription = 'Blocks ' + fmtInt(first) + '–' + fmtInt(last) + ' · ' + amount;
+      }
+      const snapshot = { block: replay.block, cam: controls.getPose(), follow: follow.active,
+        settings: store.viewURL(), cell, cellDescription, date: isoUtc(replay.blocktimes[replay.block]), playing: state.playing };
+      if (pause) {
+        playback.pause();
+        if (controls.mode !== 'map') controls.setMode('map');
+      }
+      return snapshot;
+    }
+    function openShare(mode = 'view') {
+      try { share.openDialog(mode); }
+      catch (err) { notice(err.message || String(err), 'info', 'share'); }
+    }
     timeline = createTimeline({
       container: $('timeline'), tip, blocktimes: replay.blocktimes, playback,
       onSeek: (b) => playback.seek(b),
@@ -370,6 +403,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         funMenu.toggle();
       },
       onSound: () => toggleSound(),
+      onShare: () => openShare(),
     });
     timeline.setSound(sound.on);
     sound.onChange((on) => timeline.setSound(on));
@@ -548,7 +582,8 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       const p = resolvePlace(place, { tip, minAmt: replay.rows });
       if (!p) throw new Error('Unknown place: ' + place);
       if (controls.mode !== 'map') controls.setMode('map');
-      if (p.kind === 'era') {
+      if (p.kind === 'block') {
+        // A block (links and the test hook): seek there and fly to its creation edge.
         const f = focus();
         const target = { x: worldX(p.block) - 9, y: 0, z: clamp(f.z, worldZ(300), worldZ(1900)) };
         target.y = ground(target.x, target.z);
@@ -556,14 +591,21 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         notice(p.title + ' \u00b7 block ' + fmtInt(p.block), 'info', 'place');
         await Promise.all([seekPlacingCamera(p.block), controls.flyTo(pose)]);
       } else {
-        const f = focus();
-        const edge = worldX((replay.block ?? tip) + 1);
-        const span = (p.rowMax - p.rowMin + 1) / 10;
-        const target = { x: clamp(f.x, 4, Math.max(4, edge - 4)), y: 0, z: worldZ((p.rowMin + p.rowMax + 1) / 2) };
-        target.y = ground(target.x, target.z);
-        const pose = controls.poseLookingAt(target, { distance: clamp(span * 3, 16, 170), yaw: 0, pitch: -26 });
-        notice(p.label + ' \u00b7 ' + (p.rowMin === p.rowMax ? 'row ' + fmtInt(p.rowMin) : 'rows ' + fmtInt(p.rowMin) + '\u2013' + fmtInt(p.rowMax)), 'info', 'place');
-        await controls.flyTo(pose);
+        // A landmark: the block stays, unless the place is newer than it (or is the newest block).
+        const now = Number.isInteger(replay.block) ? replay.block : tip;
+        const toTip = now !== tip && (p.tip || now < p.from);
+        const edge = toTip ? tip : now;
+        let pose;
+        if (p.tip) pose = overviewPose();
+        else {
+          const v = p.view;
+          const block = v.edge != null ? clamp(edge + v.edge, 0, edge) : v.block;
+          const target = { x: worldX(block), y: 0, z: worldZ(v.row + 0.5) };
+          target.y = ground(target.x, target.z);
+          pose = controls.poseLookingAt(target, { distance: v.distance, yaw: v.yaw, pitch: v.pitch });
+        }
+        notice(p.name + ' \u00b7 ' + p.where + (toTip && !p.tip ? ' \u00b7 at the latest block' : ''), 'info', 'place');
+        await Promise.all([toTip ? seekPlacingCamera(tip) : null, controls.flyTo(pose)]);
       }
       hashDirty = true;
       return p;
@@ -606,19 +648,50 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     // ---- URL hash ---------------------------------------------------------------------
     // Plane mode is not shared: a link made while flying opens in map mode at the camera.
     const shareMode = () => (controls.mode === 'plane' ? 'map' : controls.mode);
-    const currentHash = () => encodeHash({ block: replay.block, mode: shareMode(), cam: controls.getPose(), follow: follow.active }, store.toURL());
-    const viewState = () => ({ b: replay.block, cam: controls.getPose(), mode: shareMode(), follow: follow.active });
+    // The address is a link to the view: it carries the look and its settings, not the quality.
+    const currentHash = () => encodeHash({ block: replay.block, mode: shareMode(), cam: controls.getPose(), follow: follow.active, cell: inspector.isOpen ? inspector.selection : null }, store.viewURL());
+    const viewState = () => ({ b: replay.block, cam: controls.getPose(), mode: shareMode(), follow: follow.active, cell: inspector.isOpen ? inspector.selection : null });
+    let restoringHash = true, hashRestoreId = 0;
+    async function restoreLinkedView(h) {
+      const my = ++hashRestoreId;
+      restoringHash = true;
+      hook.linkReady = false;
+      playback.pause();
+      inspector.close();
+      const cell = h.cell && Number.isInteger(h.cell.col) && Number.isInteger(h.cell.row) &&
+        h.cell.col >= 0 && h.cell.col < grid.l0Columns && h.cell.row >= 0 && h.cell.row < grid.rows ? h.cell : null;
+      if (h.cell && !cell) notice('The shared cell is outside this dataset.', 'warn', 'shared-cell');
+      if (h.cam) controls.setPose(h.cam);
+      else if (cell) controls.setPose({ x: worldX((cell.col + .5) * grid.blocksPerColumn), y: 150, z: worldZ(cell.row + .5), yaw: 0, pitch: -89 });
+      controls.setMode(h.mode === 'flight' && !cell && !touchOnly ? 'flight' : 'map');
+      setFollow(!!h.follow, { quiet: true });
+      try {
+        if (Number.isInteger(h.block)) await seekPlacingCamera(clamp(h.block, 0, tip));
+        if (my !== hashRestoreId) return;
+        if (cell) await inspector.open({ l0Col: cell.col, l0Row: cell.row, shared: true,
+          x: worldX((cell.col + .5) * grid.blocksPerColumn), z: worldZ(cell.row + .5) });
+        if (my !== hashRestoreId) return;
+        if (h.play && !h.cell) playback.play();
+      } finally {
+        if (my === hashRestoreId) { restoringHash = false; hook.linkReady = true; hashDirty = true; }
+      }
+    }
     function restoreView(v) {
-      if (!v) return;
-      if (v.cam) controls.setPose(v.cam);
-      if (v.mode === 'flight' || v.mode === 'map') controls.setMode(v.mode);
-      if (typeof v.follow === 'boolean') setFollow(v.follow, { quiet: true });
-      if (Number.isInteger(v.b)) seekPlacingCamera(clamp(v.b, 0, tip));
+      if (v) restoreLinkedView({ ...v, block: v.b }).catch(err => notice('View could not be restored: ' + err.message, 'error'));
     }
     let written = location.hash;
+    function selectionChanged() {
+      hashDirty = true;
+      // Discrete selection changes must not leave a stale cell in the address bar
+      // until the throttled camera writer runs (including same-fragment navigation).
+      if (restoringHash) return;
+      const h = currentHash();
+      if (h !== written) { history.replaceState(null, '', h || location.pathname + location.search); written = h; }
+    }
     let lastHashCheck = 0;
     let lastBlockForHash = null;
     function syncHash(now) {
+      if (restoringHash) return;
       if (now - lastHashCheck < 400) return;
       lastHashCheck = now;
       const block = replay.block;
@@ -637,16 +710,13 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       if (location.hash === written) return;
       written = location.hash;
       const h = decodeHash(location.hash);
-      if (h.settings) store.fromURL(location.hash);
-      if (h.cam) controls.flyTo({ position: h.cam, yaw: h.cam.yaw, pitch: h.cam.pitch });
-      if (h.mode) controls.setMode(h.mode);
-      setFollow(h.follow, { quiet: true });
-      if (h.block != null && h.block !== replay.block) seekPlacingCamera(clamp(h.block, 0, tip));
+      if (h.settings) store.fromURL(location.hash, { view: true });
+      restoreLinkedView(h).catch(err => notice('View could not be restored: ' + err.message, 'error'));
     });
 
     // ---- keyboard -------------------------------------------------------------------
     window.addEventListener('keydown', (e) => {
-      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || share.open) return;
       if (isTypingTarget(e.target) || (e.target && e.target.closest && e.target.closest('#panel input, #panel select, #panel textarea'))) return;
       if (help.open && !['Escape', 'KeyH', 'Slash'].includes(e.code)) return;
       switch (e.code) {
@@ -767,14 +837,14 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       : defaultStartBlock(tip, replay.snapshotBlocks || []);
     stage = 'seek';
     loading.set('Replaying to block ' + fmtInt(startBlock));
-    seekPlacingCamera(startBlock).catch((err) => {
+    restoreLinkedView({ ...initial, block: startBlock }).catch((err) => {
       hook.error = String(err && err.message ? err.message : err);
       notice('Seek failed: ' + hook.error, 'error');
     });
 
     Object.assign(hook, {
       settings: store, replay, view, controls, playback, panel, manifest, grid,
-      ui: { hud, timeline, legend, minimap, inspector, hover, placesMenu, help, toast, funMenu, funCard },
+      ui: { hud, timeline, legend, minimap, inspector, share, hover, placesMenu, help, toast, funMenu, funCard },
       seek: (b) => playback.seek(b),
       flyTo: (place) => flyToPlace(place),
       inspect: (x, y) => inspectAt(x, y),

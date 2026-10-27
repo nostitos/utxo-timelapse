@@ -4,16 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
-<meta name="description" content="UTXO Timelapse Landscape: the Bitcoin UTXO set as a navigable 3D landscape, replayed exactly block by block.">
-<title>UTXO Timelapse · Landscape</title>
-<meta property="og:title" content="UTXO Timelapse · Landscape">
-<meta property="og:description" content="Every unspent Bitcoin output as a 3D landscape you can fly through, replayed exactly block by block in your browser.">
-<meta property="og:image" content="https://3d.bitcointimelapse.com/og.jpg">
+<meta name="description" content="Bitcoin Landscape: every unspent Bitcoin output since 2009 as a 3D landscape you can fly through, replayed exactly block by block in your browser.">
+<title>Bitcoin Landscape</title>
+<link rel="canonical" href="https://bitcoinlandscape.com/">
+<meta property="og:site_name" content="Bitcoin Landscape">
+<meta property="og:title" content="Bitcoin Landscape · Bitcoin’s history in 3D">
+<meta property="og:description" content="Every unspent Bitcoin output since 2009 as a landscape you can fly through. Play the chain block by block and inspect any cell.">
+<meta property="og:image" content="https://bitcoinlandscape.com/og.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:url" content="https://3d.bitcointimelapse.com/">
+<meta property="og:image:alt" content="The Bitcoin Landscape: ridges of unspent outputs running across the chain, coloured by density.">
+<meta property="og:url" content="https://bitcoinlandscape.com/">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://bitcoinlandscape.com/og.jpg">
 <link rel="icon" href="./favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="./fonts/fonts.css">
 <link rel="stylesheet" href="./app.css">
@@ -50,6 +54,7 @@
 <div id="funcard" role="dialog" aria-label="Stack sats result" hidden data-label-cover></div>
 <footer id="timeline" aria-label="Timeline" data-label-cover></footer>
 <div id="toast" role="status" aria-live="polite"></div>
+<dialog id="share" aria-labelledby="share-title"></dialog>
 <dialog id="help" aria-label="Keyboard and mouse"></dialog>
 <div id="loading" role="status" aria-live="polite">
   <div class="loading-card">
@@ -58,7 +63,7 @@
     <p class="loading-status">Starting</p>
     <div class="loading-bar"><span></span></div>
     <p class="loading-detail"></p>
-    <p class="loading-credit">Original concept and code by Martinus (BitcoinUtxoVisualizer, MIT) · <a href="/guide/" target="_blank" rel="noopener">Read the guide</a></p>
+    <p class="loading-guide"><a href="/guide/" target="_blank" rel="noopener">Read the guide</a></p>
   </div>
 </div>
 <noscript><p class="noscript">UTXO Timelapse Landscape needs JavaScript and WebGPU or WebGL2.</p></noscript>

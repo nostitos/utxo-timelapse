@@ -6,8 +6,8 @@ snapshots/*.bin) must exist under the prefix with the same size, a single-part E
 ETag equal to the local MD5; nothing else may exist under the prefix. The local copy is first
 checked against its own manifest and chunk table. Exits 1 on any difference.
 
-  python scripts/landscape_r2_verify.py "/Volumes/4T Data/buv_render/landscape_966827" \
-    --prefix landscape/d966827-20261008 [--no-manifest]
+  python scripts/landscape_r2_verify.py "/Volumes/4T Data/buv_render/landscape_972052" \
+    --prefix landscape/d972052-20261018 [--no-manifest]
 
 --no-manifest verifies the first upload pass, in which manifest.json must not be uploaded yet.
 Needs boto3 (python3 -m venv /tmp/landscape_r2_venv && /tmp/landscape_r2_venv/bin/pip install boto3).

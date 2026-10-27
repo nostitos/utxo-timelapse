@@ -69,9 +69,10 @@ export function deviceTraits(win = globalThis) {
 }
 
 /**
- * Startup quality. Only an adaptive first visit (no saved settings and none in the link)
- * changes anything: Balanced with auto resolution scaling, or Performance with a notice on a
- * WebGL2-only, touch-only or low-memory (4 GB or less) device. Returns null otherwise.
+ * Startup quality. Only an adaptive first visit (no saved settings; a link's settings do not
+ * count, since links never set the quality) changes anything: Balanced with auto resolution
+ * scaling, or Performance with a notice on a WebGL2-only, touch-only or low-memory (4 GB or
+ * less) device. Returns null otherwise.
  */
 export function chooseStartup({ mode, firstVisit, backend, coarseOnly = false, deviceMemory = NaN }) {
   if (mode !== 'adaptive' || !firstVisit) return null;

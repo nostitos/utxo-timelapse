@@ -522,7 +522,10 @@ public:
         json.append(leadFields);
     }
     json += fmt::format(
-        R"("blockRange":[{},{}],"blockDates":["{}","{}"],"satRange":[{},{}],"count":{},"stillUnspent":{},"liveSat":{},"liveUnspentSat":{},"pastSat":{},"medianStay":{},"viewBin":{},"pop":[)",
+        R"("block":{},"cutoffBlock":{},"cutoffDate":"{}","blockRange":[{},{}],"blockDates":["{}","{}"],"satRange":[{},{}],"count":{},"stillUnspent":{},"liveSat":{},"liveUnspentSat":{},"pastSat":{},"medianStay":{},"viewBin":{},"pop":[)",
+        block,
+        numBlocks - 1,
+        isoDate(hist.blockTime(numBlocks - 1)),
         h1,
         h2,
         isoDate(hist.blockTime(h1)),
