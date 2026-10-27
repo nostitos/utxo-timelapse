@@ -120,7 +120,29 @@ async function findCell() {
 // Injected into the page, so the same check works online where /dev/ is excluded.
 const COLUMN_COUNT_HELPERS = readFileSync(join(here, 'column-count-browser.mjs'), 'utf8');
 
+const INSPECTOR_STATES = readFileSync(join(here, 'inspector-state-browser.mjs'), 'utf8');
+
+const SHARE_CHECKS = readFileSync(join(here, 'share-browser.mjs'), 'utf8');
+
 const CHECKS = [
+  {
+    name: 'share',
+    shot: 'share.png',
+    script: `${SHARE_CHECKS} return await checkLandscapeSharing(L);`,
+    expect: (v) => v.checks,
+  },
+  {
+    name: 'share-mobile',
+    mobile: { width:390, height:844, dpr:2 },
+    shot: 'share-mobile.png',
+    script: `${SHARE_CHECKS} return await checkLandscapeSharing(L);`,
+    expect: (v) => v.checks,
+  },
+  {
+    name: 'inspector-states',
+    script: `${INSPECTOR_STATES} return await checkInspectorStates(L);`,
+    expect: (checks) => checks,
+  },
   {
     name: 'column-counts',
     timeout: 120000,
@@ -178,14 +200,40 @@ const CHECKS = [
     shot: 'inspector.png',
     script: `await L.flyTo(inData(314000)); await idle(); await sleep(1200);
       const f = await findCell(); await sleep(300);
-      const c = L.ui.inspector.current;
-      return { found: !!f, block: L.replay.block, col: c && c.col, row: c && c.row, cell: c && c.cell, api: c && c.api && { count: c.api.count, liveSat: c.api.liveSat, offline: !!c.api.offline }, match: c && c.match,
-        marker: !document.getElementById('marker').hidden, link: (document.querySelector('.in-links a') || {}).href || null };`,
+      const c = L.ui.inspector.current, el = document.getElementById('inspector');
+      const preview = el.querySelectorAll('.in-table tbody > tr:not(.in-output-detail)').length;
+      el.querySelector('[data-show-all]')?.click();
+      const all = el.querySelectorAll('.in-table tbody > tr:not(.in-output-detail)').length;
+      const firstRow = el.querySelector('.in-output-row');
+      const rowContext = firstRow?.querySelector('.in-created time') && firstRow?.querySelector('.in-held .in-cell-main') && firstRow.children.length === 4;
+      const heads = [...el.querySelectorAll('.in-table th')];
+      const aligned = firstRow && [...firstRow.children].every((td,i) => Math.abs(heads[i].getBoundingClientRect().left - td.querySelector('.in-cell-main').getBoundingClientRect().left) < 1);
+      const rowHeight = firstRow?.getBoundingClientRect().height;
+      el.querySelector('[data-tab="past"]')?.click();
+      const pastTab = el.querySelector('[data-tab="past"]')?.getAttribute('aria-selected') === 'true';
+      const pastLimit = !c?.api?.pastTruncated || el.querySelector('[role="tabpanel"]')?.textContent.includes('of ');
+      el.querySelector('[data-tab="live"]')?.click();
+      const details = el.querySelector('[data-disclosure="details"]'); if (details) details.open = true;
+      await sleep(50);
+      const diagnostics = details?.textContent.includes('Weighted density');
+      if (details) details.open = false;
+      el.scrollTop = 0;
+      return { found: !!f, block: L.replay.block, col: c && c.col, row: c && c.row, cell: c && c.cell,
+        api: c && c.api && { count: c.api.count, liveSat: c.api.liveSat, offline: !!c.api.offline }, match: c && c.match,
+        preview, all, available: c?.api?.utxos?.length, rowContext: !!rowContext, aligned, rowHeight, pastTab, pastLimit, diagnostics,
+        fits: el.scrollWidth <= el.clientWidth, marker: !document.getElementById('marker').hidden,
+        link: (document.querySelector('.in-links a') || {}).href || null };`,
     expect: (v) => [
       ['found a cell with outputs and an explorer answer', v.found],
       ['replay and history index agree (count and sats)', !!(v.match && v.match.ok)],
       ['selection marker visible', v.marker],
       ['2D explorer link present', !!v.link],
+      ['compact preview expands to every available live output', v.preview === Math.min(3, v.available) && v.all === v.available],
+      ['dates and holding time are visible in every output row', v.rowContext],
+      ['output columns align and two-line rows stay compact', v.aligned && v.rowHeight <= 46],
+      ['earlier-spend tab and index limit are available', v.pastTab && v.pastLimit],
+      ['rendering diagnostics preserved behind disclosure', v.diagnostics],
+      ['inspector has no horizontal overflow', v.fits],
     ],
   },
   {
@@ -356,7 +404,7 @@ const CHECKS = [
       ['Shift+]: +1,008 blocks', v.keys.b2 === v.keys.b1 + 1008],
       ['[: -1 block', v.keys.b3 === v.keys.b2 - 1],
       ['2 selects 2x and the speed menu shows it', v.keys.speed === '2' && v.menu.shown2 === '2'],
-      ['the speed menu lists ' + v.menu.options.join(', '), v.menu.options.join(',') === '0.5\u00d7,1\u00d7,2\u00d7,5\u00d7,Max'],
+      ['the speed menu lists ' + v.menu.options.join(', '), v.menu.options.join(',') === '0.5\u00d7,1\u00d7,2\u00d7,5\u00d7,10\u00d7,20\u00d7,Max'],
       ['0 selects 0.5x: about 30 blocks/s (' + v.menu.halfSecond + ')', v.menu.half === '0.5' && v.menu.shownHalf === '0.5' && v.menu.halfSecond >= 24 && v.menu.halfSecond <= 36],
       ['choosing 5x in the menu sets it', v.menu.picked === '5'],
       ['the block and the date share one field', v.menu.sameField],
@@ -373,9 +421,13 @@ const CHECKS = [
     script: `const out = {};
       document.querySelector('[data-act="places"]').click(); await sleep(200);
       out.placesOpen = L.ui.placesMenu.open;
-      out.disabledBeyondTip = [...document.querySelectorAll('#places .pl-item')].filter((b) => b.disabled).length;
+      out.placeItems = [...document.querySelectorAll('#places .pl-item')].map((b) => b.dataset.place);
       L.ui.placesMenu.close();
-      const p = await L.flyTo('btc1'); out.band = p && p.rowMin;
+      { const b0 = L.replay.block; const p = await L.flyTo('round'); await idle();
+        out.place = { kind: p && p.kind, kept: L.replay.block === b0, block: L.replay.block, b0 }; }
+      // A place newer than the block goes to the latest block.
+      { await L.seek(inData(300000)); await idle(); const p = await L.flyTo('dust'); await idle();
+        out.later = { kind: p && p.kind, block: L.replay.block, tip }; }
       key('KeyH', { key: 'h' }); await sleep(200); out.helpOpen = L.ui.help.open;
       const guide = document.querySelector('#help a[href="/guide/"]'); out.helpGuide = !!guide && guide.target === '_blank' && /noopener/.test(guide.rel);
       key('Escape', { key: 'Escape' }); L.ui.help.close();
@@ -389,7 +441,9 @@ const CHECKS = [
       return out;`,
     expect: (v) => [
       ['places popover opens', v.placesOpen],
-      ['1 BTC band resolves to a row', Number.isInteger(v.band)],
+      ['places lists the landmarks (' + v.placeItems.join(', ') + ')', v.placeItems.join() === 'first-line,flood-2015,round,dust,towers,tip'],
+      ['a place keeps the block (' + v.place.b0 + ' -> ' + v.place.block + ')', v.place.kind === 'place' && v.place.kept],
+      ['a place newer than the block goes to the latest block (' + v.later.block + ')', v.later.kind === 'place' && v.later.block === v.later.tip],
       ['help opens with H', v.helpOpen],
       ['help links to the guide (/guide/, new tab)', v.helpGuide],
       ['flight: W moves the camera (' + v.flew.toFixed(2) + ')', v.flew > 1],

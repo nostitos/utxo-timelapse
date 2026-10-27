@@ -274,6 +274,9 @@ export async function lifecycleJson(env, { block, heights, sats, row, lead = nul
   }
   return json({
     ...lead,
+    block,
+    cutoffBlock: CONFIG.numBlocks - 1,
+    cutoffDate: dateOf(times, CONFIG.numBlocks - 1),
     blockRange: heights,
     blockDates: [dateOf(times, h1), dateOf(times, Math.min(h2, CONFIG.numBlocks - 1))],
     satRange: sats,

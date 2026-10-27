@@ -359,7 +359,7 @@ cached run of chunks ahead of the state block, and the blocks per second the dow
 delivers for the chunks after it. Worker memory budget ≤ 1.5 GB.
 
 Playback (implemented by ui_shell on top of the client): 1× = 60 blocks/s exact; 2× = 120
-blocks/s exact; 5× = 300 blocks/s exact, HUD shows the achieved rate when the worker cannot
+blocks/s exact; 5× = 300, 10× = 600 and 20× = 1,200 blocks/s exact. The HUD shows the achieved rate when the worker cannot
 keep up; Max = exact advance with the whole frame budget. When the download is slower than
 the playback speed (Max online; any speed on a slow connection) playback is paced to it:
 0.7 × the download rate plus the downloaded blocks ahead spread over 3 s, eased over 0.5 s,
@@ -631,14 +631,41 @@ overlay; ui_shell ← camera.*, `display.legend/minimap/hud`.
 
 `index.html` provides the import map, `<canvas id="view">`, and containers
 `#labels`, `#overlay`, `#hud`, `#timeline`, `#panel`, `#minimap`, `#inspector`, `#hover`,
-`#legend`, `#toast`, and for plane mode `#plane-nose`, `#planehud`, `#funpops`, `#planekeys`,
+`#legend`, `#toast`, `#share` (the share dialog), and for plane mode `#plane-nose`, `#planehud`, `#funpops`, `#planekeys`,
 `#fun` (the Fun menu) and `#funcard` (the Stack sats end card). `main.js` creates the settings store, replay client and view,
 wires frames → view, settings → consumers, and runs the rAF loop:
 follow tip → controls → playback → `view.update` → (`replay.setTiles` when desired tiles change) →
 `view.render`. `?webgl=1` forces WebGL2. URL hash keeps
-`b` (block), `cam`, `mode`, `follow=1` (Follow tip on), `preset` and settings overrides.
+`b` (block), `cam`, `mode`, `follow=1` (Follow tip on), `cell=col,row` (one exact L0 cell),
+`play=1` (explicit autoplay for a location link), `preset` and settings overrides.
 Without `b`, the app opens at the latest snapshot at least 1,008 blocks (about a week)
 before the tip, so Play has blocks to play (`defaultStartBlock` in `ui/playback.js`).
+
+Cell inspector: one exact L0 cell is the primary scope, with selected-block count and
+satoshi value, a secondary BTC conversion, and a compact verification badge only when
+replay and history agree at the selected block. History responses carry `block`,
+`cutoffBlock`, and `cutoffDate` (independent of the replay dataset). The primary chart always shows the cell's
+full lifetime population samples from creation to the latest history block, including outputs spent before
+selection; the selected block has an amber marker. This aggregate chart remains available
+even when output lists are capped. A secondary After the selected block disclosure shows
+an exact survival chart from spend heights only when every live record is available. Outputs use Unspent at selection / Spent earlier tabs,
+three-row previews, expansion to all returned records, explicit API caps (500 live / 100
+past), and four aligned columns with calendar dates first, block heights second, and
+age/lifespan visible inline. Holding time uses block timestamps, or an explicitly approximate
+10-minute-per-block estimate when those timestamps are unavailable. Rendering/data details retain density,
+spending, value breakdowns and cell/pixel coordinates. Disclosure, tab and
+scroll state survive refreshes; stale history and disagreement remain visible.
+
+Sharing: a visible Share button in the timeline opens Current view / Selected cell
+choices, and Share cell in the inspector selects the latter directly. Links snapshot the
+block, camera, Follow state and appearance; view links omit any selection, while cell
+links restore the exact L0 cell and its drawer after the replay reaches the shared block.
+Cell links always open paused. Location links optionally autoplay. Copy link confirms only
+successful clipboard writes, with a selectable manual-copy fallback; X, email and the
+native share sheet are user-invoked alternatives. Public aliases share the canonical
+bitcoinlandscape.com URL; local previews keep their origin and necessary data/API query
+parameters and identify themselves as local links. Hash navigation and settings imports
+use the same restoration path; opening/closing the inspector updates the cell in the URL.
 
 Navigation: map mode (left-drag pans keeping the grabbed point under the cursor;
 right-drag or Shift-drag orbits the point under the cursor; wheel/pinch zooms toward the
@@ -802,9 +829,15 @@ to win it back, and one more than 10 ms beyond is tightened by up to a tenth. It
 peak limiter (−6 dB, 20:1) and a 1.1 master gain follow.
 Keys everywhere (ignored while typing in inputs): Space play/pause, `[`/`]` ±1 block,
 Shift+`[`/`]` ±1,008, N Follow tip, M sound, I inspect at cursor (crosshair in flight, nose circle in plane mode), C next craft,
-Enter Stack sats (plane mode), Esc exits flight or plane mode/closes the drawer or a menu. Places: eras at 50,000, 210,000, 314,000, 420,000, 500,000, 630,000,
-700,000, 840,000, 900,000 and the tip (seek + fly to that creation column); amount bands:
-50 BTC coinbase row, ≥10 BTC, 1 BTC, 10,000 sat, 546 sat, 1–100 sat (fly to that row).
+Enter Stack sats (plane mode), Esc exits flight or plane mode/closes the drawer or a menu. Places (`ui/places.js`):
+landmarks of the unspent set, each a region (creation blocks × amount rows) and a camera view
+(a target block, or blocks relative to the current block, and an amount; distance, yaw, pitch):
+the first line (50 BTC, first era), the July 2015 flood (1,000 sat, blocks 364,544–365,119),
+round amounts (1, 0.1, 0.01 BTC), the dust ridge (546, 330, 294 sat since 2023), towers at the
+edge (≥100 BTC) and the newest block (seek the tip, opening view). A place keeps the block; one
+newer than the block (block < region start) seeks the tip first. Halvings are not places: after
+the first era no subsidy row stands out. `landscape/tools/places-survey.mjs` measures each
+region in a snapshot. `flyTo(block)` on the hook still seeks a block and flies to its creation edge.
 Minimap from the always-resident L6 tile. Inspection drawer: exact worker state for the
 cell, the explorer cell API lifecycle data, and the 2D explorer link.
 The HUD's brand row (not in the phone layout) and the legend and minimap headers each end in a ×
@@ -853,8 +886,8 @@ A static browser app in `landscape/web/` renders the UTXO set as a 3D landscape:
 - New C++ task `landscape_verify`: every snapshot equals a fresh replay; 20 random backward replays equal the snapshot below; history-index pass reproduces every L0 cell at blocks 210,000, 630,000 and the tip; weighted density at 965,399 matches the renderer checkpoint within 1e-6 per cell; unit case `landscape_state` covers apply/undo round trip, same-block create+spend, zero amounts skipped, exact 5 BTC boundary, level sums, tile borders, snapshot round trip, row mapping at boundary amounts.
 - Worker `landscape/web/replay.worker.js` (plain JS, no WASM in v1): decodes BLK2 (LEB128, zigzag), applies changes to all loaded levels; backward steps negate a block. Satoshi sums stay exact in doubles (< 2^53). Only tiles the viewer has requested are allocated (sparse), with a 512 MB LRU of chunk bytes. Measured in Node on this Mac: 293–378 blocks/s apply in the busiest eras, about 5,400 in 2012, 33–37M changes/s decode, exact return to zero after forward+backward.
 - Seek: pick the cheapest of current state, nearest snapshot at or below the target, or the one above with backward replay; range-request only the loaded tiles' directory entries; load L4–L6 first so an exact coarse view appears immediately, then stream finer tiles; replay the gap. A tile that becomes visible mid-playback initialises from the nearest snapshot plus cached chunks. Latest seek wins.
-- Even pace at exact speeds: the replay client can hold the worker's frames (`showThrough(block)` delivers them in order up to a block; `client.block` is the block on screen, `client.workerBlock` the worker's). At 0.5× to 5× playback asks the worker for 0.1 s of blocks beyond the playhead and shows each block when the playhead reaches it, so a worker answer that misses a frame, or a short pause, does not stop the count; the playhead never passes the worker, so a longer pause holds it instead of making it jump. Paused, stepping, seeking, scrubbing and Max show frames as they come; pausing shows the blocks already done (at most 0.1 s of play).
-- Speeds (a menu in the timeline; keys 0 to 4): 0.5× = 30 blocks/s exact; 1× = 60 blocks/s exact; 2× = 120 blocks/s exact; 5× exact while the worker sustains ≥300 blocks/s, otherwise the HUD shows the achieved rate; Max replays with the whole frame budget, paced to the download when that is slower; only scrubbing steps snapshot to snapshot. Frame deltas go to the main thread as transferable buffers: per tile either full 258×258 values (per measure) + heat, or changed-cell lists.
+- Even pace at exact speeds: the replay client can hold the worker's frames (`showThrough(block)` delivers them in order up to a block; `client.block` is the block on screen, `client.workerBlock` the worker's). At 0.5× to 20× playback asks the worker for 0.1 s of blocks beyond the playhead and shows each block when the playhead reaches it, so a worker answer that misses a frame, or a short pause, does not stop the count; the playhead never passes the worker, so a longer pause holds it instead of making it jump. Paused, stepping, seeking, scrubbing and Max show frames as they come; pausing shows the blocks already done (at most 0.1 s of play).
+- Speeds (a menu in the timeline; keys 0 to 4 keep selecting 0.5×, 1×, 2×, 5× and Max): 0.5× = 30 blocks/s exact; 1× = 60 blocks/s exact; 2× = 120 blocks/s exact; 5× = 300 blocks/s exact; 10× = 600 blocks/s exact; 20× = 1,200 blocks/s exact; the HUD shows the achieved rate when the worker cannot keep up; Max replays with the whole frame budget, paced to the download when that is slower; only scrubbing steps snapshot to snapshot. Frame deltas go to the main thread as transferable buffers: per tile either full 258×258 values (per measure) + heat, or changed-cell lists.
 - Activity heat: during forward playback each spend adds actual BTC moved to its cell's heat; decay half-life in blocks is a setting; seeks and backward steps clear heat.
 - Cell inspection: add `GET /api/landscape/cell?block&col&row` to `src/cpp/app/utxo_explorer.cpp` (heights `col*64 … col*64+63`, satoshi range from `rowSatoshiRange`, same JSON fields as `/api/pixel`, CORS for `127.0.0.1:12990`). Run a second explorer instance from `build_local/buv` on port 12989 with `configs/buv_explorer.json`; the installed copy under `~/.local/share/buv-explorer` is untouched.
 - Local serving: `landscape/tools/serve.mjs` (Node 20, no dependencies) serves `landscape/web/` and the data directory with HTTP Range support and correct MIME types on `127.0.0.1:12990`.

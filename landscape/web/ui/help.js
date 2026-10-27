@@ -1,4 +1,4 @@
-// Touch, keyboard and mouse reference plus the about/credit line, shown in <dialog id="help">.
+// Touch, keyboard and mouse reference, shown in <dialog id="help">.
 
 // Each entry: [keys or gestures, description]. Strings starting with '~' are gestures.
 const TOUCH = ['Touch', [
@@ -16,9 +16,12 @@ const SECTIONS = [
     [['Space'], 'Play or pause'],
     [['[', ']'], 'Back or forward 1 block (exact)'],
     [['Shift', '[', ']'], 'Back or forward 1,008 blocks (about a week)'],
-    [['0', '1', '2', '3', '4'], 'Speed 0.5\u00d7, 1\u00d7, 2\u00d7, 5\u00d7, Max (or the speed menu); 1\u00d7 is 60 blocks, about 10 hours of Bitcoin, every second'],
+    [['0', '1', '2', '3', '4'], 'Speed 0.5\u00d7, 1\u00d7, 2\u00d7, 5\u00d7, Max (the speed menu also offers 10\u00d7 and 20\u00d7); 1\u00d7 is 60 blocks, about 10 hours of Bitcoin, every second'],
     [['N'], 'Follow the tip (the Follow button): the camera moves with the newest block, while playing and when you scrub or step, and you can still pan, orbit and zoom; N again stops'],
     [['M', '~Sound button'], 'Sound on or off: a click for each spend flash on screen while playing, darker for older coins, louder for more BTC and nearer the view; the engine in plane mode'],
+  ]],
+  ['Sharing', [
+    [['~Share button'], 'Copy the current location, block and appearance, or a selected cell with its details open. Cell links open paused; view links can autoplay.'],
   ]],
   ['Map mode', [
     [['~Drag'], 'Pan; the grabbed point stays under the cursor'],
@@ -55,7 +58,7 @@ const SECTIONS = [
   ], { flyOnly: true }],
   ['Panels', [
     [['G'], 'Graphics settings'],
-    [['P'], 'Places'],
+    [['P'], 'Places: fly to landmarks in the data, from the first 50 BTC rewards to the dust ridge'],
     [['H', '?'], 'This help'],
     [['Esc'], 'Close the inspector or a panel'],
   ]],
@@ -83,9 +86,7 @@ export function createHelp(dialog, { touchFirst = false } = {}) {
     'Front to back: its amount, on the film\u2019s 2,072 rows, with the largest amounts farthest away. ' +
     'Height and colour measure the outputs still unspent at the current block. ' +
     'Your browser replays that state exactly from the change log, block by block.</p>' +
-    '<div class="help-grid">' + html + '</div>' +
-    '<p class="help-credit">Original concept and code by <a href="https://github.com/martinus/BitcoinUtxoVisualizer" target="_blank" rel="noopener">Martinus</a> ' +
-    '(BitcoinUtxoVisualizer, MIT licence). The landscape, the exact browser replay and this interface are part of UTXO Timelapse.</p>';
+    '<div class="help-grid">' + html + '</div>';
   dialog.querySelector('[data-close]').addEventListener('click', () => dialog.close());
   dialog.addEventListener('click', (e) => {
     if (e.target === dialog) dialog.close();

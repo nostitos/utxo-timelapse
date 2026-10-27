@@ -5,7 +5,8 @@
 // Fly and Fun only when onFly and onFun are given: touch-only devices leave them out).
 // On phones (app.css) the block and date field hides and Places and Settings show icons.
 
-import { SPEEDS, STEP_LARGE, speedById, speedHint } from './playback.js';
+import { SHARE_ICON } from './share.js';
+import { SPEEDS, SPEED_KEYS, STEP_LARGE, speedById, speedHint } from './playback.js';
 import { dateToBlock, parseUtc } from './time.js';
 import { fmtInt, isoUtc } from './format.js';
 
@@ -25,7 +26,7 @@ const ICONS = {
 };
 const HALVINGS = [210000, 420000, 630000, 840000];
 
-export function createTimeline({ container, tip, blocktimes, playback, onSeek, onNotice, onPlaces, onSettings, onHelp, onFollow = null, onFly = null, onFun = null, onSound = null }) {
+export function createTimeline({ container, tip, blocktimes, playback, onSeek, onNotice, onPlaces, onSettings, onHelp, onFollow = null, onFly = null, onFun = null, onSound = null, onShare = null }) {
   let tipBlock = tip;
   container.innerHTML =
     '<div class="tl-transport">' +
@@ -36,7 +37,10 @@ export function createTimeline({ container, tip, blocktimes, playback, onSeek, o
     '<button type="button" class="tl-btn" data-act="fwdLarge" title="Forward ' + fmtInt(STEP_LARGE) + ' blocks (Shift+])" aria-label="Forward ' + fmtInt(STEP_LARGE) + ' blocks">' + ICONS.fwdLarge + '</button>' +
     '</div>' +
     '<select class="tl-speed" aria-label="Playback speed">' +
-    SPEEDS.map((s, i) => '<option value="' + s.id + '" title="' + speedHint(s) + ' (key ' + i + ')">' + s.label + '</option>').join('') +
+    SPEEDS.map((s) => {
+      const key = Object.keys(SPEED_KEYS).find((code) => SPEED_KEYS[code] === s.id);
+      return '<option value="' + s.id + '" title="' + speedHint(s) + (key ? ' (key ' + key.slice(5) + ')' : '') + '">' + s.label + '</option>';
+    }).join('') +
     '</select>' +
     '<div class="tl-track"><div class="tl-marks" aria-hidden="true"></div>' +
     '<input type="range" class="tl-scrub" min="0" max="' + tipBlock + '" step="1" value="0" aria-label="Block (drag to scrub)"></div>' +
@@ -46,6 +50,7 @@ export function createTimeline({ container, tip, blocktimes, playback, onSeek, o
     '<input type="text" class="tl-date" spellcheck="false" autocomplete="off" placeholder="YYYY-MM-DD HH:MM" aria-label="Date and time, UTC (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)" title="The block\u2019s date and time, UTC: type a date and press Enter">' +
     '<span class="tl-utc" aria-hidden="true">UTC</span>' +
     '</div>' +
+    (onShare ? '<button type="button" class="tl-text tl-share" data-act="share" aria-haspopup="dialog" aria-label="Share this view" title="Share this view or selected cell">' + SHARE_ICON + '<span class="tl-label">Share</span></button>' : '') +
     '<div class="tl-tools">' +
     (onFollow ? '<button type="button" class="tl-text" data-act="follow" aria-pressed="false" title="Follow the tip: the camera moves with the newest block (N)">' + ICONS.follow + '<span class="tl-label">Follow</span></button>' : '') +
     (onFly ? '<button type="button" class="tl-text" data-act="fly" aria-pressed="false" title="Fly: mouse to look, W A S D to move (F)">' + ICONS.fly + '<span class="tl-label">Fly</span></button>' : '') +
@@ -89,6 +94,7 @@ export function createTimeline({ container, tip, blocktimes, playback, onSeek, o
     fly: () => onFly && onFly(),
     fun: () => onFun && onFun(),
     sound: () => onSound && onSound(),
+    share: () => onShare && onShare(),
   };
   container.addEventListener('click', (e) => {
     const btn = e.target.closest('button');
@@ -96,6 +102,8 @@ export function createTimeline({ container, tip, blocktimes, playback, onSeek, o
     if (actions[btn.dataset.act]) actions[btn.dataset.act]();
     btn.blur();
   });
+
+  q('[data-act="share"]')?.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') e.stopPropagation(); });
 
   speedSelect.addEventListener('change', () => {
     playback.setSpeed(speedSelect.value);
@@ -201,7 +209,7 @@ export function createTimeline({ container, tip, blocktimes, playback, onSeek, o
       }
       if (state && state.speed !== shown.speed) {
         speedSelect.value = speedById(state.speed).id;
-        speedSelect.title = speedHint(speedById(state.speed)) + ' (keys 0 to 4)';
+        speedSelect.title = speedSelect.selectedOptions[0].title;
         shown.speed = state.speed;
       }
     },

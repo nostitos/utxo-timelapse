@@ -32,7 +32,7 @@ Requires FFmpeg, cwebp and ImageMagick. Existing outputs are retained unless `--
 
 `assets/ui/` contains actual browser captures of the branded explorer, verified against the production video/history. Screenshot source and states are recorded in `assets/ui/provenance.json`. `assets/readme/annotated-frame.jpg` uses a real frame with editorial labels. `assets/readme/social.jpg` is a social preview crop. `assets/diagrams/` contains authored explanatory SVGs. No generated illustration stands in for observed blockchain data.
 
-`assets/upstream/` preserves two archival images and an animation from **[Martinus's BitcoinUtxoVisualizer](https://github.com/martinus/BitcoinUtxoVisualizer)** under the repository's original MIT license. Development palette comparisons are labelled separately.
+`assets/upstream/` preserves two archival images and an animation from [BitcoinUtxoVisualizer](https://github.com/martinus/BitcoinUtxoVisualizer) under its MIT license. This is source provenance for those archival assets. Development palette comparisons are labelled separately.
 
 ## Asset budgets and licenses
 

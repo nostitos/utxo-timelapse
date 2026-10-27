@@ -39,9 +39,9 @@ The **[visual guide](https://nostitos.github.io/utxo-timelapse/)** walks through
 
 The high-detail explorer targets desktop browsers with HEVC support. The guide's lighter previews work independently of the full film.
 
-## What this project adds
+## Rendering and exploration
 
-UTXO Timelapse builds on Martinus's original idea with a substantially expanded rendering and exploration system.
+UTXO Timelapse combines chain processing, exact accounting, rendering, historical exploration and cloud delivery.
 
 | Area | Implemented here |
 |---|---|
@@ -79,8 +79,8 @@ Requires a C++17 compiler, CMake, OpenCV and TBB. FFmpeg encodes the frames. Bit
 | [Cloud service](cloudflare/utxo-video-worker/README.md) | HLS, history shards, releases and deployment |
 | [Guide source & media](site/README.md) | Static site, reproducible previews and provenance |
 
-## Origin & credit
+## Maintainer & license
 
-**[Martinus's BitcoinUtxoVisualizer](https://github.com/martinus/BitcoinUtxoVisualizer)** supplied the original visualization concept and code foundation. That inspiration deserves clear credit. UTXO Timelapse is maintained by **[nostitos](https://github.com/nostitos)** and has its own visual direction, accounting model, explorer, cloud delivery and update workflow.
+UTXO Timelapse is maintained by **[nostitos](https://github.com/nostitos)**.
 
-The original [MIT license and copyright](LICENSE) are preserved. Dependencies and font/media licenses are listed in the [technical credits](https://nostitos.github.io/utxo-timelapse/technical.html#credits).
+The [MIT license and copyright](LICENSE) are preserved. Upstream code acknowledgments, dependencies and font/media licenses are listed in the [technical credits](https://nostitos.github.io/utxo-timelapse/technical.html#credits).
