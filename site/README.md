@@ -1,6 +1,6 @@
 # The illustrated guide
 
-Published by GitHub Pages at **https://nostitos.github.io/utxo-timelapse/** and served publicly at **https://bitcointimelapse.com/**. Plain HTML, CSS and ES modules; no package install or build step. `index.html` is the visual guide and `technical.html` the engineering reference. First-time visitors see the guide; after opening the explorer, a browser cookie makes later home visits go to **https://bitcointimelapse.com/explorer**. **https://bitcointimelapse.com/guide/** always opens the guide.
+Published by GitHub Pages at **https://nostitos.github.io/utxo-timelapse/** and served publicly at **https://bitcointimelapse.com/guide/**. Plain HTML, CSS and ES modules; no package install or build step. `index.html` is the visual guide and `technical.html` the engineering reference. A first visit to **https://bitcointimelapse.com/** opens the explorer behind a welcome dialog whose **About this site** button leads here; later home visits go straight to **https://bitcointimelapse.com/explorer**. **https://bitcointimelapse.com/guide/** always opens the guide.
 
 ## Preview and validate
 

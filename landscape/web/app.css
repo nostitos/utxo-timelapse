@@ -665,6 +665,53 @@ kbd {
 .gesture { margin-right: 8px; font: 11px var(--mono); color: var(--amber); }
 .help-credit { margin: 20px 0 0; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
 
+/* ---- welcome: a first visit to the bare domain (ui/welcome.js) ------------------------------ */
+#welcome {
+  width: min(600px, calc(100vw - 32px));
+  max-height: calc(var(--full-h) - 32px);
+  overflow: auto;
+  padding: 0;
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  background: #0a0e11;
+  color: var(--ink);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55);
+}
+#welcome::backdrop { background: rgba(3, 5, 6, 0.45); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+.welcome-card { padding: 30px 32px 32px; }
+.welcome-card:focus { outline: none; }
+.welcome-card h2 { margin: 10px 0 12px; font: 400 42px/1.04 var(--display); letter-spacing: -0.02em; }
+.welcome-card h2 em { font-style: italic; color: var(--mint); }
+.welcome-card p { max-width: 510px; margin: 0 0 26px; font-size: 14px; line-height: 1.6; color: var(--muted); }
+.welcome-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.welcome-choice {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 5px;
+  min-height: 80px;
+  padding: 15px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(237, 236, 228, 0.03);
+  color: var(--ink);
+  text-align: left;
+  text-decoration: none;
+}
+.welcome-choice strong { font-size: 15px; font-weight: 500; }
+.welcome-choice span { font-size: 12px; line-height: 1.4; color: var(--muted); }
+.welcome-choice:hover { border-color: var(--muted); background: rgba(237, 236, 228, 0.07); }
+.welcome-choice.primary { border-color: var(--mint); background: var(--mint); color: #0d1f15; }
+.welcome-choice.primary span { color: rgba(13, 31, 21, 0.72); }
+.welcome-choice.primary:hover { border-color: #c4e5cc; background: #c4e5cc; }
+@media (max-width: 560px) {
+  .welcome-card { padding: 22px 18px 20px; }
+  .welcome-card h2 { font-size: 32px; }
+  .welcome-choices { grid-template-columns: 1fr; }
+  .welcome-choice { min-height: 64px; }
+}
+
 /* ---- loading and fatal ------------------------------------------------------------------ */
 #loading {
   position: fixed;

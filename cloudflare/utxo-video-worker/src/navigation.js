@@ -1,6 +1,9 @@
 // The guide remains published by GitHub Pages; the Worker provides its public URL.
 export const GUIDE_ORIGIN = "https://nostitos.github.io/utxo-timelapse/";
 export const EXPLORER_COOKIE = "btl_explorer";
+// The explorer's own address options (explorer.html: readSharedView and the quality choice).
+// A link that carries one opens that view directly; campaign tags and other parameters do not.
+const EXPLORER_OPTIONS = ["block", "x", "y", "autoplay", "quality"];
 const GUIDE_FILES = new Set(["/index.html", "/technical.html", "/styles.css", "/site.js", "/axis-mapping.mjs"]);
 // Every spelling of the guide's address opens it: /guide, /Guide/, /GUIDE and /guide.html.
 const GUIDE_ALIAS = /^\/guide(?:\/|\.html?)?$/i;
@@ -13,10 +16,11 @@ export function navigationRoute(request) {
   if (url.pathname === "/") {
     if (!publicHome) return { kind: "explorer" }; // Existing service aliases keep working.
     const remembered = (request.headers.get("Cookie") || "").split(";").some(c => c.trim() === EXPLORER_COOKIE + "=1");
-    if (url.searchParams.has("block") || url.searchParams.has("x") || url.searchParams.has("y") || remembered) {
+    if (remembered || EXPLORER_OPTIONS.some(name => url.searchParams.has(name))) {
       return { kind: "redirect", path: "/explorer" + url.search };
     }
-    return { kind: "guide", path: "/index.html", entry: true };
+    // A first visit to the bare domain: the explorer opens behind a choice between the guide and the explorer.
+    return { kind: "explorer", welcome: true };
   }
   const path = url.pathname.startsWith("/guide/") ? url.pathname.slice(6) : url.pathname;
   if (path === "/") return { kind: "guide", path: "/index.html" };
@@ -30,6 +34,11 @@ export function navigationRoute(request) {
 export function explorerCookie(request) {
   return EXPLORER_COOKIE + "=1; Path=/; Max-Age=31536000; SameSite=Lax; HttpOnly" +
     (new URL(request.url).protocol === "https:" ? "; Secure" : "");
+}
+
+/** The explorer page marked for a first visit: explorer.html then opens its welcome dialog. */
+export function welcomeHtml(html) {
+  return html.replace(/<html\b/i, "<html data-welcome");
 }
 
 export async function fetchGuide(request, route) {
@@ -47,10 +56,7 @@ export async function fetchGuide(request, route) {
   }
   const output = new Headers(source.headers);
   output.delete("Set-Cookie");
-  if (route.entry) {
-    output.set("Cache-Control", "no-store");
-    output.set("Vary", "Cookie");
-  } else if (route.path.endsWith(".html")) output.set("Cache-Control", "no-cache");
+  if (html) output.set("Cache-Control", "no-cache");
   let body = source.body;
   if (html) for (const name of ["Content-Length", "Content-Encoding", "ETag"]) output.delete(name);
   if (html && request.method === "GET" && source.ok) {

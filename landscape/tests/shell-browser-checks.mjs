@@ -32,7 +32,7 @@ const opt = (name, fallback) => {
   return i >= 0 ? args[i + 1] : fallback;
 };
 const baseUrl = new URL(opt('url', 'http://127.0.0.1:12990/'));
-// These checks exercise the app; new public home visits intentionally open the guide.
+// These checks exercise the app; a first visit to the bare public domain shows the welcome dialog.
 if (['bitcoinlandscape.com', 'www.bitcoinlandscape.com'].includes(baseUrl.hostname) && baseUrl.pathname === '/') {
   baseUrl.pathname = '/explorer';
 }
