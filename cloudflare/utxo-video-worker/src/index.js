@@ -1,5 +1,5 @@
 import { RELEASE } from './release.js';
-import { navigationRoute, explorerCookie, fetchGuide } from './navigation.js';
+import { navigationRoute, explorerCookie, fetchGuide, welcomeHtml } from './navigation.js';
 import { txidResponse } from "./bitcoin.js";
 import { dateResponse, pixelResponse, rangesResponse } from "./history.js";
 
@@ -177,6 +177,23 @@ async function cachedApi(request, ctx, producer, seconds) {
   return response;
 }
 
+// The explorer page. A first visit to the bare public domain gets the same page marked to open
+// with the welcome choice; that answer depends on the cookie, so it is never cached.
+async function serveExplorer(request, env, ctx, welcome) {
+  const key = SITE_PREFIX + "/explorer.html";
+  const cookie = { "Set-Cookie": explorerCookie(request) };
+  if (!welcome) {
+    const response = await serveR2(request, env, ctx, key, { contentType: CONTENT_TYPES.html, cacheControl: "no-store" });
+    return response.ok ? withHeaders(response, cookie) : response;
+  }
+  const object = await env.VIDEO_BUCKET.get(key);
+  if (!object) return new Response("Not found\n", { status: 404 });
+  const html = welcomeHtml(await object.text());
+  return withHeaders(new Response(request.method === "HEAD" ? null : html, { headers: {
+    "Content-Type": CONTENT_TYPES.html, "Cache-Control": "no-store", Vary: "Cookie", ...cookie,
+  } }));
+}
+
 async function getVideoTarget(bucket) {
   const now = Date.now();
   if (cachedManifest && now < manifestExpiresAt) return cachedManifest;
@@ -267,13 +284,7 @@ async function handle(request, env, ctx) {
     } }));
   }
   if (navigation?.kind === "guide") return withHeaders(await fetchGuide(request, navigation));
-  if (navigation?.kind === "explorer") {
-    const response = await serveR2(request, env, ctx, `${SITE_PREFIX}/explorer.html`, {
-      contentType: CONTENT_TYPES.html,
-      cacheControl: "no-store",
-    });
-    return response.ok ? withHeaders(response, { "Set-Cookie": explorerCookie(request) }) : response;
-  }
+  if (navigation?.kind === "explorer") return serveExplorer(request, env, ctx, navigation.welcome);
   if (url.pathname === "/hls.min.js") {
     return serveR2(request, env, ctx, `${SITE_PREFIX}/hls.min.js`, {
       contentType: CONTENT_TYPES.js,

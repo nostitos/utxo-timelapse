@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>UTXO Timelapse</title>
+<meta name="description" content="Bitcoin's unspent outputs, one block at a time: a 4K timelapse from the genesis block to the latest data. Pause anywhere and click a pixel to see the coins behind it.">
+<meta property="og:title" content="UTXO Timelapse — A living history of Bitcoin"><meta property="og:description" content="Bitcoin, block by block. An evolving picture of outputs created, held and spent."><meta property="og:image" content="https://nostitos.github.io/utxo-timelapse/assets/readme/social.jpg"><meta property="og:type" content="website"><meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23080b0e'/%3E%3Cg fill='%23a8d6b3'%3E%3Crect x='3' y='22.5' width='4' height='6'/%3E%3Crect x='8.5' y='17.5' width='4' height='11'/%3E%3Crect x='14' y='12.5' width='4' height='16'/%3E%3Crect x='19.5' y='7.5' width='4' height='21'/%3E%3C/g%3E%3Crect x='25' y='3.5' width='4' height='25' fill='%23edbf76'/%3E%3C/svg%3E" type="image/svg+xml">
 <style>
   :root { color-scheme: dark; }
@@ -257,6 +259,26 @@
     }
     #controls #controlOptions.open { width:min(560px,calc(100vw - 24px)); max-height:calc(100dvh - 68px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
   }
+
+  /* Welcome: a first visit to the bare domain (the Worker marks <html data-welcome>) offers the guide or the explorer. */
+  #welcome { width:min(540px,calc(100% - 28px)); max-height:calc(100dvh - 28px); overflow:auto; margin:auto; padding:0; background:#101720; color:#e4eaf0; border:1px solid #354452; border-radius:22px; box-shadow:0 28px 100px #000b; }
+  #welcome::backdrop { background:#03060999; -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); }
+  .welcomeCard { padding:28px; }
+  .welcomeCard:focus { outline:none; }
+  .welcomeCard h2 { margin:0 0 10px; font-size:30px; font-weight:650; letter-spacing:-.04em; line-height:1.1; }
+  .welcomeCard p { margin:0 0 24px; color:#a9b6c2; font-size:14px; line-height:1.55; }
+  .welcomeChoices { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .welcomeChoice { display:flex; flex-direction:column; justify-content:center; align-items:flex-start; gap:4px; min-height:78px; padding:14px 16px; border:1px solid #31404e; border-radius:12px; background:#151f2a; color:inherit; font:inherit; text-align:left; text-decoration:none; cursor:pointer; }
+  .welcomeChoice strong { font-size:15px; font-weight:600; }
+  .welcomeChoice small { color:#9fadb9; font-size:12px; line-height:1.4; }
+  .welcomeChoice:hover { background:#1d2a37; border-color:#587080; }
+  .welcomeChoice.primary { background:#a8d6b3; border-color:#a8d6b3; color:#12221b; }
+  .welcomeChoice.primary small { color:#2f5039; }
+  .welcomeChoice.primary:hover { background:#c4e5cc; border-color:#c4e5cc; }
+  @media (max-width:480px) {
+    .welcomeCard { padding:22px 18px 18px; }.welcomeCard h2 { font-size:25px; }
+    .welcomeChoices { grid-template-columns:1fr; }.welcomeChoice { min-height:64px; }
+  }
 </style>
 </head>
 <body>
@@ -379,6 +401,17 @@
     <a id="shareX" target="_blank" rel="noopener noreferrer" aria-label="Share on X.com"><svg viewBox="0 0 24 24" aria-hidden="true" class="xLogo"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.64 7.584H.47l8.6-9.835L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg><span>X.com</span></a>
     <a id="shareEmail" aria-label="Share by email"><svg viewBox="0 0 24 24" aria-hidden="true" ><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m3 7 9 6 9-6"/></svg><span>Email</span></a>
     <button id="shareNative" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true" ><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg><span>More options</span></button>
+  </div>
+</dialog>
+<dialog id="welcome" aria-labelledby="welcomeTitle" aria-describedby="welcomeLead">
+  <div class="welcomeCard" tabindex="-1" autofocus>
+    <span class="shareEyebrow">Bitcoin Timelapse</span>
+    <h2 id="welcomeTitle">Bitcoin, block by block.</h2>
+    <p id="welcomeLead">A film of every unspent bitcoin output, from the first block in 2009 to the latest. Pause anywhere and click a pixel to see the coins behind it.</p>
+    <div class="welcomeChoices">
+      <a class="welcomeChoice" href="/guide/"><strong>About this site</strong><small>How to read the picture</small></a>
+      <button class="welcomeChoice primary" id="welcomeExplore" type="button"><strong>Use the explorer</strong><small>Go straight to the timelapse</small></button>
+    </div>
   </div>
 </dialog>
 <script src="/hls.min.js"></script>
@@ -657,6 +690,14 @@ document.getElementById("helpBtn").onclick = showAbout;
 document.getElementById("aboutClose").onclick = hideAbout;
 about.addEventListener("click", e => { if (e.target === about) hideAbout(); });
 // Help remains available from [?]; keep the initial playback visible.
+
+// ---- welcome: the Worker marks a first visit to the bare domain; read about the site or use the explorer ----
+const welcome = document.getElementById("welcome");
+document.getElementById("welcomeExplore").onclick = () => welcome.close();
+welcome.addEventListener("click", e => { if (e.target === welcome) welcome.close(); }); // the backdrop
+// The page's shortcuts (Space, F, ?, [ ], arrows) wait for the choice; Tab, Enter and Esc work in the dialog.
+window.addEventListener("keydown", e => { if (welcome.open) e.stopPropagation(); }, true);
+if (document.documentElement.hasAttribute("data-welcome") && typeof welcome.showModal === "function") welcome.showModal();
 
 // Link to the 3D landscape preview, opened at the current block.
 const landscapeLink = document.getElementById("landscapeLink");

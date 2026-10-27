@@ -1576,8 +1576,8 @@ export const RELEASE = Object.freeze({
     1882
   ],
   "numBlocks": 972849,
-  "sitePrefix": "explorer/append972848-20261023/site",
-  "version": "append-972848-20261023",
+  "sitePrefix": "explorer/explorer-welcome-20261027/site",
+  "version": "explorer-welcome-20261027",
   "historyBlockTimesKey": "explorer/append972848-20261023/history/block_times.bin",
   "historyShardSources": {
     "0": {
