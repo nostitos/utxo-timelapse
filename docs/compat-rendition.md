@@ -19,6 +19,9 @@ Create a private JSON spec outside version control with absolute `source`, its
 `sourceSHA256`, exact `frameCount`, and a fresh absolute `destination` directory.
 The source must be the verified 3840×2160 HEVC 4:4:4, 60 fps master. For the
 September 13 build, the frame count is 967128, including 300 ending frames.
+For an append, the source can be a window of the master that starts at a keyframe
+at or before the package start: set `sourceStartFrame` to its first block and keep
+`frameCount` the full total.
 
 ```sh
 python3 scripts/compat_rendition.py build /absolute/path/build-spec.json

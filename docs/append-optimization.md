@@ -98,6 +98,9 @@ python3 scripts/append_update.py run /absolute/path/new-run
 The source manifest supplies absolute `master`, `blk`, `history`, `config`,
 `buv` and fresh `runPath` paths, explicit `oldEndBlock`/`newEndBlock`, port,
 ending frame count, and optional `{path,nextHeight}` renderer checkpoint.
+Optional `masterStartFrame` is the block of the master's first frame, so the
+retained master can be a window: old frames from a keyframe before the join
+followed by the tails since (see [render files](render-files.md)).
 The planner measures a real closed-GOP IDR in the retained master; it does not
 infer the join from filename or assume every keyframe flag is an IDR. The new
 tail includes the overlap at JOIN and replaces all old ending frames.
