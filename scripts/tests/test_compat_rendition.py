@@ -20,7 +20,7 @@ class RealRenditionTest(unittest.TestCase):
                 p = root/name
                 subprocess.run(['ffmpeg','-nostdin','-v','error','-f','lavfi','-i',
                     'testsrc2=size=384x216:rate=60','-frames:v',str(count),'-c:v',
-                    'libx264','-preset','ultrafast','-bf','0',str(p)],check=True)
+                    'libx264','-preset','ultrafast','-bf','0','-g','240','-sc_threshold','0',str(p)],check=True)
                 return p
             def spec(src, count, name):
                 return dict(source=str(src),sourceSHA256=cr.digest(src),frameCount=count,destination=str(root/name))
@@ -44,6 +44,18 @@ class RealRenditionTest(unittest.TestCase):
             self.assertEqual(ledger['segments'][2]['startTicks'],480*256)
             self.assertEqual(sum(e['durationTicks'] for e in ledger['segments']),720*256)
             cr.verify(root/'new-run')
+            # A window of the source cut at a keyframe encodes the same segments.
+            window=root/'window.mp4'
+            subprocess.run(['ffmpeg','-nostdin','-v','error','-ss','4','-i',str(new_source),
+                '-c','copy',str(window)],check=True)
+            windowed=dict(new,source=str(window),sourceSHA256=cr.digest(window),
+                          sourceStartFrame=240,destination=str(root/'window-run'))
+            self.assertEqual(cr.execute(windowed,fixture_dimensions=(256,144))['startFrame'],480)
+            self.assertEqual(json.loads((root/'window-run/ledger/segments.json').read_text())['segments'],
+                             ledger['segments'])
+            late=dict(windowed,sourceStartFrame=600,destination=str(root/'late-run'))
+            with self.assertRaisesRegex(ValueError,'frame count mismatch'):
+                cr.execute(late,fixture_dimensions=(256,144))
             prepare(root/'new-run/ledger',root/'new-stage',object_prefix='hls/compat2',previous=previous)
             playlist=(root/'new-stage/media.m3u8').read_text()
             self.assertIn('/hls/compat1/',playlist)

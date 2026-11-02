@@ -157,6 +157,23 @@ class PlanningTests(unittest.TestCase):
         with patch.object(au, 'probe_json', side_effect=[{'streams': [stream]}, {'packets': [packet]}]):
             self.assertEqual(au.inspect_master(s)['keyframes'], [966360])
 
+    def test_window_master_frames_are_offset(self):
+        s = dict(self.source(), masterStartFrame=966000)
+        extra = bytearray(23)
+        extra[0], extra[21] = 1, 3
+        stream = dict(width=3840, height=2160, pix_fmt='yuv444p', r_frame_rate='60/1',
+                      codec_name='hevc', start_time='0', nb_frames='661',
+                      extradata='\n00000000: '+extra.hex()+'  ignored')
+        packets = [dict(flags='K_', pts_time=str(t/60), dts_time='0', data='\n00000000: 000000022601  ignored')
+                   for t in (300, 360, 420)]
+        with patch.object(au, 'probe_json', side_effect=[{'streams': [stream]}, {'packets': packets}]) as probe:
+            self.assertEqual(au.inspect_master(s)['keyframes'], [966360])
+        self.assertIn('4.0%+4', probe.call_args_list[1][0][0])
+        short = dict(stream, nb_frames='360')
+        with patch.object(au, 'probe_json', side_effect=[{'streams': [short]}]):
+            with self.assertRaisesRegex(au.GateError, 'lacks real frames'):
+                au.inspect_master(s)
+
 
 class ProgressTests(unittest.TestCase):
     def setUp(self):

@@ -5,6 +5,8 @@ build SPEC.json | append SPEC.json | verify RUN_DIRECTORY
 Spec: source (absolute MP4), sourceSHA256, frameCount, destination (fresh absolute
 directory). Append also requires previousManifest, previousSHA256, previousInit,
 and joinFrame (the master append's first changed frame, before the old ending).
+Optional sourceStartFrame: the source is a window of the master starting at that
+frame (a keyframe at or before the package start); frameCount stays the full total.
 No network operations. publish_append.prepare consumes the resulting ledger/.
 """
 import argparse
@@ -149,11 +151,13 @@ def execute(spec, *, fixture_dimensions=None):
     require(not run.exists(), 'fresh destination required')
     frames = spec['frameCount']
     require(type(frames) is int and frames > 0, 'positive frameCount required')
+    first = spec.get('sourceStartFrame', 0)
+    require(type(first) is int and 0 <= first < frames, 'invalid sourceStartFrame')
     before = source_stat(source)
     require(re.fullmatch('[0-9a-f]{64}', spec['sourceSHA256']), 'source SHA256 required')
     require(digest(source) == spec['sourceSHA256'], 'source SHA256 mismatch')
     stream = probe(source)
-    require(Fraction(stream['r_frame_rate']) == FPS and int(stream['nb_frames']) == frames,
+    require(Fraction(stream['r_frame_rate']) == FPS and int(stream['nb_frames']) == frames-first,
             'source FPS/frame count mismatch')
     dimensions = fixture_dimensions or DIMENSIONS
     if fixture_dimensions is None:
@@ -170,10 +174,11 @@ def execute(spec, *, fixture_dimensions=None):
                               segment_frames=SEGMENT_FRAMES, fps_num=FPS)
         require(digest(spec['previousInit']) == previous['init']['sha256'], 'previous init mismatch')
     start = layout['packageStartFrame']
+    require(start >= first, 'source window starts after the package start')
     run.mkdir(parents=True, exist_ok=False)
     (run/'encode').mkdir()
     fm.atomic_json(run/'spec.json', spec)
-    argv = encode_argv(source, run/'encode', start, frames-start, dimensions)
+    argv = encode_argv(source, run/'encode', start-first, frames-start, dimensions)
     fm.atomic_json(run/'command.json', argv)
     started = time.time()
     fm.atomic_json(run/'status.json', dict(phase='encoding', startFrame=start, expectedFrames=frames-start))

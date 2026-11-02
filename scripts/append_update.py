@@ -4,7 +4,8 @@
 CLI: plan SOURCE.json | prepare SOURCE.json | run RUN [--retry]
 Required source keys: master, oldEndBlock, newEndBlock, blk, history, config,
 runPath, buv, repeatLastBlockTimes, port. Paths must be absolute; runPath fresh.
-Optional: rendererCheckpoint={path,nextHeight}, ffmpeg, ffprobe, timeoutSeconds,
+Optional: rendererCheckpoint={path,nextHeight}, masterStartFrame (the block of a
+window master's first frame; default 0), ffmpeg, ffprobe, timeoutSeconds,
 commands=[{name,argv,dependsOn,outputs,successContains,retrySafe,validateArgv}].
 Commands use literal argv (no shell or substitutions); `render` is reserved.
 renderDependsOn lists prerequisite commands. Independent history commands can
@@ -148,18 +149,20 @@ def is_idr(packet, length_size):
 
 def inspect_master(source):
     ff = source.get('ffprobe', 'ffprobe')
+    first = source.get('masterStartFrame', 0)
+    require(type(first) is int and 0 <= first <= source['oldEndBlock'], 'invalid masterStartFrame')
     common = [ff, '-v', 'error', '-select_streams', 'v:0']
     meta = probe_json(common + ['-show_streams', '-show_data', '-of', 'json', source['master']])
     s = meta['streams'][0]
     for key, expected in dict(width=3840, height=2160, pix_fmt='yuv444p',
                               r_frame_rate='60/1', codec_name='hevc').items():
         require(s.get(key) == expected, f'master mismatch: {key}')
-    require(abs(float(s.get('start_time', 0))) < 1e-6, 'master must start at block zero')
-    require(int(s['nb_frames']) >= source['oldEndBlock']+1, 'master lacks real frames')
+    require(abs(float(s.get('start_time', 0))) < 1e-6, 'master must start at masterStartFrame')
+    require(first+int(s['nb_frames']) >= source['oldEndBlock']+1, 'master lacks real frames')
     extra = hex_dump(s['extradata'])
     require(len(extra) >= 23 and extra[0] == 1, 'HEVC configuration required')
     length_size = (extra[21] & 3)+1
-    start = max(0, source['oldEndBlock']-120)/60
+    start = max(0, source['oldEndBlock']-120-first)/60
     packets = probe_json(common + ['-read_intervals', f'{start}%+4', '-show_packets',
                                    '-show_data', '-of', 'json', source['master']])['packets']
     keys = []
@@ -168,8 +171,8 @@ def inspect_master(source):
             continue
         frame = float(packet['pts_time'])*60
         require(abs(frame-round(frame)) < .01, 'nonintegral keyframe timestamp')
-        if round(frame) <= source['oldEndBlock']:
-            keys.append((round(frame), packet))
+        if first+round(frame) <= source['oldEndBlock']:
+            keys.append((first+round(frame), packet))
     require(keys, 'no keyframe near old endpoint')
     join, packet = max(keys, key=lambda pair: pair[0])
     require(is_idr(packet, length_size), 'last keyframe is not closed-GOP IDR')
