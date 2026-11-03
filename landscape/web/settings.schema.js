@@ -52,6 +52,7 @@ export const GROUPS = Object.freeze([
   Object.freeze({ id: 'fx', label: 'Effects' }),
   Object.freeze({ id: 'camera', label: 'Camera' }),
   Object.freeze({ id: 'display', label: 'Display' }),
+  Object.freeze({ id: 'owners', label: 'Owners' }),
 ]);
 
 export const TYPES = Object.freeze(['number', 'int', 'bool', 'enum', 'color', 'gradient', 'file']);
@@ -547,6 +548,11 @@ const ENTRIES = [
     help: 'Overview map with the camera footprint.' },
   { id: 'display.hud', section: 'Overlays', label: 'HUD', type: 'bool', default: true, url: false, preset: false,
     help: 'Block, date and playback readout.' },
+
+  // Owners: the owner layer (Owners button), which lights the outputs paying known addresses
+  // of the chosen exchanges.
+  { id: 'owners.dim', label: 'Dim the rest', type: 'number', min: 0, max: 1, step: 0.01, default: 0.2, preset: false,
+    help: 'While owners are lit, brightness of every cell and column layer no lit owner holds: 0 is black, 1 leaves them unchanged. Spend flashes keep their brightness.' },
 ];
 
 function deepFreeze(value) {

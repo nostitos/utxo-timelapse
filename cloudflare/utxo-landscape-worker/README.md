@@ -12,8 +12,10 @@
 | `/guide/film/<name>.mp4` | The guide's film, R2 object `landscape/guide/film/<name>.mp4` (lowercase letters, digits, dots and hyphens). It is too large for a static asset, so it is served like the dataset: single byte ranges, ETag and 304, immutable caching. The name carries the file's content hash. |
 | `/dataset/index.json` | Names the current dataset (`src/release.js`). The app reads it on startup. |
 | `/dataset/<id>/<file>` | R2 objects `landscape/<id>/<file>`, only for the ids in `src/release.js` and the dataset's file names. Single byte ranges, ETag and 304, immutable caching, CORS `*`, and an edge cache for whole objects and ranges up to 8 MiB. |
+| `/owners/index.json` | Names the current owner highlight data, `{id, url, tip}` from `owners` in `src/release.js`, `no-store`. While `owners` is `null` it is a 404, and the app hides its Owners view. |
+| `/owners/<id>/<file>` | R2 objects `landscape/owners/<id>/<file>` (`owners.json`, `long.bin`, `short/NNNN.bin`), only for the current and retained owner ids in `src/release.js`, served like the dataset. |
 | `/api/landscape/cell?block&col&row` | The inspector's history index: the lifecycle of one landscape cell from the 2D explorer's history shards, through the shared `lifecycleJson` in `../utxo-video-worker/src/history.js`. Satoshi ranges come from the dataset's `rows.bin`, the compiled row table, so they equal the native explorer's on every row. Rate limit 8 requests/s, burst 20, per IP and isolate; cached 24 h per release. |
-| `/health`, `/robots.txt` | Liveness and crawler rules (`/dataset/` and `/api/` disallowed). |
+| `/health`, `/robots.txt` | Liveness and crawler rules (`/dataset/`, `/owners/` and `/api/` disallowed). |
 
 Every response carries a Content Security Policy that allows the inline import map by hash (`importMapHash` in `src/release.js`), `data:` fonts (lil-gui embeds its icon font that way) and Cloudflare's analytics beacon, plus `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp` and frame denial. Changing the import map in `index.html` requires a new hash: `node landscape/tools/csp-hash.mjs` prints it and `--check` compares it with `release.js`.
 
@@ -86,6 +88,38 @@ Datasets are immutable: each one gets a new prefix `landscape/d<tip>-<yyyymmdd>`
    Retention of the 2D stream and history follows object references in the supported playlists and
    per-shard catalogues: a prefix's age does not establish that its contents are obsolete. Preserve
    current local manifests, the publication catalogue, checkpoints and append ledgers for updates.
+
+## Publish owner data
+
+Owner data (`docs/landscape-owners.md`) is immutable like a dataset: each build gets a new prefix `landscape/owners/o<tip>-<yyyymmdd>`. It is small, so every build is uploaded whole.
+
+1. Build it for the published dataset's tip (`docs/landscape-owners.md`) and check it against that dataset:
+   ```sh
+   node landscape/tools/owners-check.mjs --data "/Volumes/4T Data/buv_render/landscape_<tip>" --owners "/Volumes/4T Data/buv_owners/<id>"
+   ```
+2. Upload the directory's `owners.json` and `.bin` files:
+   ```sh
+   export AWS_REQUEST_CHECKSUM_CALCULATION=when_required AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
+   /tmp/landscape_r2_venv/bin/python scripts/r2_upload_tree_singlepart.py "/Volumes/4T Data/buv_owners/<id>" \
+     --prefix landscape/owners/<id> --endpoint https://f147815debbc98aca5b60c0caeeb29e6.r2.cloudflarestorage.com \
+     --credentials ~/.config/utxo-r2/credentials --state ~/.config/utxo-r2/landscape-owners-<id>-state.json \
+     --workers 8 --include owners.json .bin
+   ```
+3. Verify the upload before switching: the listing must hold exactly `owners.json`, `long.bin` and the `short/` files that `owners.json` lists, with the byte counts it gives (`files.long.bytes`, `files.short[].bytes`):
+   ```sh
+   AWS_SHARED_CREDENTIALS_FILE=~/.config/utxo-r2/credentials aws s3 ls s3://utxo-video/landscape/owners/<id>/ --recursive \
+     --endpoint-url https://f147815debbc98aca5b60c0caeeb29e6.r2.cloudflarestorage.com
+   ```
+4. In `src/release.js`, set `owners` to `Object.freeze({ id: '<id>', tip: <tip> })`, move the previous owners id (if any) to `retainedOwnersIds`, bump `version`, then deploy (see Deploy).
+5. Check it live. The index must name the new id, and `long.bin` must have the `bytes` and `sha256` of `files.long` in `owners.json`:
+   ```sh
+   curl -fsS https://bitcoinlandscape.com/owners/index.json
+   curl -fsS -o /tmp/owners-long.bin https://bitcoinlandscape.com/owners/<id>/long.bin
+   wc -c < /tmp/owners-long.bin && shasum -a 256 /tmp/owners-long.bin
+   ```
+   Then open `https://bitcoinlandscape.com/#own=binance` and check the highlight while playing.
+
+To roll back, set `owners` to the previous id (kept in `retainedOwnersIds`), or to `null` to hide the Owners view, bump `version` and deploy; `npx wrangler@4.86.0 rollback` also returns the previous release. Retained ids stay servable for open tabs. Retire an old id as with datasets: remove it from `retainedOwnersIds`, deploy, then delete `landscape/owners/<old-id>/`.
 
 ## Verify
 

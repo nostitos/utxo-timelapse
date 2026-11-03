@@ -79,6 +79,14 @@ export async function createReplayClient(opts = {}) {
       post({ type: 'setChunkCacheMB', mb: Number(mb) });
     },
     /**
+     * Owner layer (replay/owners.js): url of an owner dataset directory, its parsed owners.json
+     * and the indices of the entities to show; an empty list turns it off. Frames then carry
+     * owner words (frame.owners), meta.owners has per-entity totals, and cell() adds owners.
+     */
+    setOwners({ url = null, manifest = null, visible = [] } = {}) {
+      post({ type: 'setOwners', url: url ? new URL(url, base).href : null, manifest, visible: Array.from(visible, Number) });
+    },
+    /**
      * Deliver held frames up to 'block' (Infinity: all, and no holding); later advance frames
      * wait, and frames of any kind behind them keep their order.
      */

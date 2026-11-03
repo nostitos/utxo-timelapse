@@ -33,6 +33,7 @@ const REQUIRED = {
   camera: ['fov', 'flySpeed', 'sensitivity', 'invertY', 'damping', 'collision'],
   display: ['scale', 'autoScale', 'targetFps', 'scaleMin', 'scaleMax', 'aa', 'ssaa', 'overlay', 'labels',
     'grid', 'legend', 'minimap', 'hud'],
+  owners: ['dim'],
 };
 const REQUIRED_IDS = Object.entries(REQUIRED).flatMap(([group, names]) => names.map((n) => group + '.' + n));
 
@@ -44,7 +45,7 @@ function specRequiredIds() {
   const end = spec.indexOf('Look intent', start);
   assert.ok(start > 0 && end > start, 'SPEC.md section 7 required-id block not found');
   const ids = [];
-  for (const m of spec.slice(start, end).matchAll(/\x60((?:color|amp|geo|light|fx|camera|display)\.[A-Za-z0-9]+)\x60/g)) {
+  for (const m of spec.slice(start, end).matchAll(/\x60((?:color|amp|geo|light|fx|camera|display|owners)\.[A-Za-z0-9]+)\x60/g)) {
     ids.push(m[1]);
   }
   return ids;
@@ -61,7 +62,7 @@ test('schema ids: exactly the SPEC section 7 required ids, unique, grouped by pr
     assert.ok(groupIds.includes(e.group), e.id + ' group');
     assert.equal(SCHEMA_BY_ID.get(e.id), e);
   }
-  assert.equal(SCHEMA.length, 146);
+  assert.equal(SCHEMA.length, 147);
 });
 
 test('schema entries: types, labels, help, flags and ranges are well formed', () => {
@@ -133,7 +134,7 @@ test('schema flags: compute-dependent entries need WebGPU; preferences stay out 
   assert.deepEqual(preferences, ['camera.collision', 'camera.damping', 'camera.flySpeed', 'camera.fov',
     'camera.invertY', 'camera.sensitivity', 'color.lut', 'display.autoScale', 'display.hud', 'display.labels',
     'display.legend', 'display.minimap', 'display.overlay', 'display.scaleMax', 'display.scaleMin',
-    'display.targetFps', 'geo.wireframe']);
+    'display.targetFps', 'geo.wireframe', 'owners.dim']);
   const notInUrl = SCHEMA.filter((e) => !e.url).map((e) => e.id).sort();
   assert.deepEqual(notInUrl, ['camera.collision', 'camera.damping', 'camera.flySpeed', 'camera.invertY',
     'camera.sensitivity', 'color.lut', 'display.hud', 'display.legend', 'display.minimap', 'display.overlay']);

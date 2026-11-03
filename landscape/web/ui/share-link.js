@@ -13,6 +13,6 @@ export function buildShareUrl(href, snapshot, { selectedCell = false, autoplay =
   }
   const cell = selectedCell ? snapshot.cell : null;
   url.hash = encodeHash({ block: snapshot.block, cam: snapshot.cam, mode: 'map',
-    follow: snapshot.follow, cell, play: !cell && autoplay }, snapshot.settings);
+    follow: snapshot.follow, cell, play: !cell && autoplay, own: snapshot.own || null }, snapshot.settings);
   return url.href;
 }

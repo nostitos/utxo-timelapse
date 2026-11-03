@@ -1,10 +1,13 @@
 // Checks the landscape Worker (cloudflare/utxo-landscape-worker) against mock R2, Cache API and
 // static assets: dataset allowlist and byte ranges, conditional requests, edge caching, the
 // cell API's validation and empty rows, the row table, the guide's media and its film from R2,
-// and the headers on every response.
+// owner data unpublished and published, and the headers on every response.
 //   node scripts/check_landscape_worker.mjs
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import worker, { parseRange, rowRange, contentSecurityPolicy, ROWS } from '../cloudflare/utxo-landscape-worker/src/index.js';
 import { RELEASE } from '../cloudflare/utxo-landscape-worker/src/release.js';
 import { RELEASE as VIDEO_RELEASE } from '../cloudflare/utxo-video-worker/src/release.js';
@@ -106,8 +109,8 @@ const ASSETS = { async fetch(request) {
 const env = { VIDEO_BUCKET, ASSETS };
 let pending = [];
 const ctx = { waitUntil: (p) => pending.push(p) };
-async function req(path, init = {}) {
-  const res = await worker.fetch(new Request('https://3d.bitcointimelapse.com' + path, init), env, ctx);
+async function req(path, init = {}, w = worker) {
+  const res = await w.fetch(new Request('https://3d.bitcointimelapse.com' + path, init), env, ctx);
   await Promise.all(pending);
   pending = [];
   return res;
@@ -138,6 +141,7 @@ await check('health, robots and the dataset index', async () => {
   securityHeadersOk(h, '/health');
   const robots = await (await req('/robots.txt')).text();
   assert.match(robots, /Disallow: \/dataset\//);
+  assert.match(robots, /Disallow: \/owners\//);
   assert.match(robots, /Disallow: \/api\//);
   const ix = await req('/dataset/index.json');
   assert.equal(ix.headers.get('Cache-Control'), 'no-store');
@@ -491,6 +495,102 @@ await check('guide film: from R2 with ranges, immutable, never from static asset
   for (const path of ['/guide/film/Upper.mp4', '/guide/film/a/b.mp4', '/guide/film/x.webm']) {
     assert.equal((await req(path)).status, 404, path);
   }
+});
+
+// Owner data in both release states: the same Worker source, loaded from a temporary copy
+// whose release.js overrides owners and retainedOwnersIds of the real release.
+async function workerWith(owners, retainedOwnersIds) {
+  const src = new URL('../cloudflare/utxo-landscape-worker/src/', import.meta.url);
+  const dir = mkdtempSync(join(tmpdir(), 'landscape-worker-check-'));
+  writeFileSync(join(dir, 'release.js'), 'import { RELEASE as REAL } from ' + JSON.stringify(new URL('release.js', src).href) + ';\n' +
+    'export const RELEASE = Object.freeze({ ...REAL, owners: ' + (owners ? 'Object.freeze(' + JSON.stringify(owners) + ')' : 'null') +
+    ', retainedOwnersIds: Object.freeze(' + JSON.stringify(retainedOwnersIds) + ') });\n');
+  const code = readFileSync(new URL('index.js', src), 'utf8').replaceAll("from '../../", "from '" + new URL('../../', src).href);
+  writeFileSync(join(dir, 'index.js'), code);
+  const loaded = (await import(pathToFileURL(join(dir, 'index.js')).href)).default;
+  rmSync(dir, { recursive: true, force: true });
+  return loaded;
+}
+const OWNERS_ID = /^o\d{1,7}-\d{8}$/;
+const OWNER = 'o974310-20261102';
+const OLD_OWNER = 'o972848-20261023';
+const O = 'landscape/owners/' + OWNER + '/';
+const LONG = new Uint8Array(40).map((_, i) => 255 - i);
+objects.set(O + 'owners.json', enc.encode('{"format":"utxo-landscape-owners-1"}'));
+objects.set(O + 'long.bin', LONG);
+objects.set(O + 'short/0241.bin', new Uint8Array(16));
+objects.set('landscape/owners/' + OLD_OWNER + '/long.bin', new Uint8Array(8));
+
+await check('owner data: the release names a valid state', async () => {
+  const o = RELEASE.owners;
+  assert.ok(o === null || (Object.isFrozen(o) && OWNERS_ID.test(o.id) && Number.isInteger(o.tip) && o.tip <= RELEASE.dataset.tip), 'RELEASE.owners');
+  assert.ok(Object.isFrozen(RELEASE.retainedOwnersIds));
+  for (const id of RELEASE.retainedOwnersIds) assert.ok(OWNERS_ID.test(id) && id !== (o && o.id), 'retained owners id ' + id);
+});
+
+const unpublished = await workerWith(null, []);
+await check('owner data unpublished: /owners/ is 404 and never reaches R2', async () => {
+  const before = { ...r2 };
+  for (const path of ['/owners/index.json', '/owners/' + OWNER + '/owners.json', '/owners/' + OWNER + '/long.bin', '/owners/']) {
+    for (const method of ['GET', 'HEAD']) {
+      const res = await req(path, { method }, unpublished);
+      assert.equal(res.status, 404, method + ' ' + path);
+      assert.equal(res.headers.get('Cache-Control'), 'no-store', path);
+      securityHeadersOk(res, path);
+    }
+  }
+  assert.deepEqual(r2, before);
+  assert.equal((await req('/dataset/index.json', {}, unpublished)).status, 200, 'the dataset is unaffected');
+});
+
+const published = await workerWith({ id: OWNER, tip: 974310 }, [OLD_OWNER]);
+await check('owner data published: the index, then files like the dataset', async () => {
+  const ix = await req('/owners/index.json', {}, published);
+  assert.equal(ix.status, 200);
+  assert.equal(ix.headers.get('Content-Type'), 'application/json');
+  assert.equal(ix.headers.get('Cache-Control'), 'no-store');
+  securityHeadersOk(ix, 'owners index');
+  assert.deepEqual(await ix.json(), { id: OWNER, url: '/owners/' + OWNER + '/', tip: 974310 });
+  const meta = await req('/owners/' + OWNER + '/owners.json', {}, published);
+  assert.equal(meta.status, 200);
+  assert.equal(meta.headers.get('Content-Type'), 'application/json');
+  assert.equal(meta.headers.get('Cache-Control'), 'public, max-age=31536000, immutable');
+  assert.equal(meta.headers.get('ETag'), etagOf(O + 'owners.json'));
+  assert.equal(meta.headers.get('Access-Control-Allow-Origin'), '*');
+  assert.equal(meta.headers.get('Cross-Origin-Resource-Policy'), 'cross-origin');
+  securityHeadersOk(meta, 'owners.json');
+  assert.equal(await meta.text(), '{"format":"utxo-landscape-owners-1"}');
+  const part = await req('/owners/' + OWNER + '/long.bin', { headers: { Range: 'bytes=4-7' } }, published);
+  assert.equal(part.status, 206);
+  assert.equal(part.headers.get('Content-Type'), 'application/octet-stream');
+  assert.equal(part.headers.get('Content-Range'), 'bytes 4-7/40');
+  assert.deepEqual([...await bytes(part)], [251, 250, 249, 248]);
+  const before = { ...r2 };
+  const again = await req('/owners/' + OWNER + '/long.bin', { headers: { Range: 'bytes=4-7' } }, published);
+  assert.deepEqual([...await bytes(again)], [251, 250, 249, 248]);
+  assert.deepEqual(r2, before, 'a cached owner range needs no R2 call');
+  assert.equal((await req('/owners/' + OWNER + '/long.bin', { headers: { 'If-None-Match': etagOf(O + 'long.bin') } }, published)).status, 304);
+  assert.equal((await req('/owners/' + OWNER + '/long.bin', { headers: { Range: 'bytes=40-' } }, published)).status, 416);
+  const head = await req('/owners/' + OWNER + '/short/0241.bin', { method: 'HEAD' }, published);
+  assert.equal(head.status, 200);
+  assert.equal(head.headers.get('Content-Length'), '16');
+  assert.equal((await bytes(head)).length, 0);
+  assert.equal((await req('/owners/' + OLD_OWNER + '/long.bin', {}, published)).status, 200, 'a retained owners id stays servable');
+  assert.equal((await req('/owners/' + OWNER + '/short/0242.bin', {}, published)).status, 404, 'an allowed name missing from R2');
+});
+
+await check('owner allowlist: unknown ids, files and traversal never reach R2', async () => {
+  const before = { ...r2 };
+  const dir = '/owners/' + OWNER + '/';
+  for (const path of [dir + 'records.csv.gz', dir + 'extract.json', dir + 'short/241.bin', dir + 'short/0241.bin.bak', dir + 'short/',
+    dir + 'long.bin/x', dir, '/owners/', '/owners/o1-20260101/long.bin', '/owners/O974310-20261102/long.bin', '/owners/' + ID + '/long.bin',
+    dir + '%2e%2e/%2e%2e/' + ID + '/rows.bin', dir + '..%2f..%2f' + ID + '%2frows.bin', '/owners/index.json/x']) {
+    const res = await req(path, {}, published);
+    assert.equal(res.status, 404, path);
+    securityHeadersOk(res, path);
+  }
+  assert.equal((await req('/dataset/' + OWNER + '/owners.json', {}, published)).status, 404, 'owner ids are not dataset ids');
+  assert.deepEqual(r2, before);
 });
 
 console.log(passed + ' checks passed');

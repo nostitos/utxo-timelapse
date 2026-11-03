@@ -59,6 +59,26 @@ class AddressValidationTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 labels.normalize_address(value)
 
+    def test_address_script_vectors(self):
+        # Bitcoin wiki P2PKH/P2SH examples; BIP173/BIP350 scriptPubKey vectors.
+        for value, script in (
+            ("1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2", "76a91477bff20c60e522dfaa3350c39b030a5d004e839a88ac"),
+            ("3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy", "a914b472a266d0bd89c13706a4132ccfb16f7c3b9fcb87"),
+            ("BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4", "0014751e76e8199196d454941c45d1b3a323f1433bd6"),
+            ("bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3",
+             "00201863143c14c5166804bd19203356da136c985678cd4d27a1b8c6329604903262"),
+            ("bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj0",
+             "512079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"),
+            ("BC1SW50QGDZ25J", "6002751e"),
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(labels.address_script(value).hex(), script)
+        for value in ("1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN3", "3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLz",
+                      "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t5",
+                      "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj1"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                labels.address_script(value)
+
 
 class EvidenceTests(unittest.TestCase):
     def test_aliases_do_not_create_conflicts_but_other_entities_do(self):

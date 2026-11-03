@@ -1,0 +1,16 @@
+{
+  "format": "utxo-landscape-owner-entities-1",
+  "entities": [
+    {
+      "id": "binance",
+      "name": "Binance",
+      "color": "#F0B90B",
+      "catalogEntity": "Binance",
+      "evidenceTypes": [
+        "service_disclosure",
+        "service_disclosure_via_graphsense",
+        "third_party_exact_tag_via_graphsense"
+      ]
+    }
+  ]
+}

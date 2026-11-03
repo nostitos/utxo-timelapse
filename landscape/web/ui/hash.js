@@ -1,16 +1,24 @@
 // URL hash for the shareable view (landscape/SPEC.md §8). Pure module.
 //
-//   #b=314000&mode=map&follow=1&cam=483.120,96.400,402.000,0.00,-35.00&<settings store viewURL()>
+//   #b=314000&mode=map&follow=1&cam=483.120,96.400,402.000,0.00,-35.00&own=binance&<settings store viewURL()>
 //
 // b is the exact block, mode is map | flight, follow=1 turns Follow tip on (absent or any
 // other value: off), cam is x,y,z (world units) followed by yaw and pitch in degrees (yaw 0
 // looks toward -z, pitch < 0 looks down). Every other key belongs to the settings store
 // (look and overrides; older links may also name a quality as preset, which the app leaves
 // to the device) and is passed through untouched. cell=col,row reopens
-// one exact L0 cell; play=1 autoplays a location link. Cell links always pause.
+// one exact L0 cell; play=1 autoplays a location link. Cell links always pause. own lists the
+// owners lit by the owner layer (owners.json entity ids, comma-separated).
 
-const SHELL_KEYS = new Set(['b', 'mode', 'follow', 'cam', 'cell', 'play']);
+const SHELL_KEYS = new Set(['b', 'mode', 'follow', 'cam', 'cell', 'play', 'own']);
 export const MODES = Object.freeze(['map', 'flight']);
+const OWNER_ID = /^[a-z0-9-]{1,32}$/;
+
+/** Valid, distinct owner ids of a list or comma-separated string. */
+export function ownerIds(value) {
+  const list = Array.isArray(value) ? value : String(value || '').split(',');
+  return [...new Set(list.map((s) => String(s).trim()).filter((s) => OWNER_ID.test(s)))];
+}
 
 function num(v, digits) {
   const s = v.toFixed(digits);
@@ -44,7 +52,7 @@ function stripLead(s) {
  * Build the hash. settingsQuery is the settings store's viewURL() output (a
  * URLSearchParams-style string); it is appended as-is after the shell keys.
  */
-export function encodeHash({ block = null, mode = null, cam = null, follow = false, cell = null, play = false } = {}, settingsQuery = '') {
+export function encodeHash({ block = null, mode = null, cam = null, follow = false, cell = null, play = false, own = null } = {}, settingsQuery = '') {
   const parts = [];
   if (Number.isInteger(block) && block >= 0) parts.push('b=' + block);
   if (MODES.includes(mode)) parts.push('mode=' + mode);
@@ -54,6 +62,8 @@ export function encodeHash({ block = null, mode = null, cam = null, follow = fal
   const selected = cell && [cell.col, cell.row].every(n => Number.isSafeInteger(n) && n >= 0);
   if (selected) parts.push('cell=' + cell.col + ',' + cell.row);
   if (play === true && !selected) parts.push('play=1');
+  const owners = ownerIds(own || []);
+  if (owners.length) parts.push('own=' + owners.join(','));
   const rest = stripLead(settingsQuery instanceof URLSearchParams ? settingsQuery.toString() : settingsQuery);
   if (rest) parts.push(rest);
   return parts.length ? '#' + parts.join('&') : '';
@@ -61,7 +71,7 @@ export function encodeHash({ block = null, mode = null, cam = null, follow = fal
 
 /** Parse a hash (with or without '#'). Unknown or invalid shell values become null. */
 export function decodeHash(hash) {
-  const out = { block: null, mode: null, cam: null, follow: false, cell: null, play: false, settings: '' };
+  const out = { block: null, mode: null, cam: null, follow: false, cell: null, play: false, own: [], settings: '' };
   const body = stripLead(hash);
   if (!body) return out;
   const rest = [];
@@ -95,6 +105,8 @@ export function decodeHash(hash) {
       out.cell = coordinates.length === 2 && coordinates.every(Number.isSafeInteger) ? { col: coordinates[0], row: coordinates[1] } : null;
     } else if (key === 'play') {
       out.play = value === '1';
+    } else if (key === 'own') {
+      out.own = ownerIds(value);
     }
   }
   if (out.cell) out.play = false; // Inspection links always open paused.

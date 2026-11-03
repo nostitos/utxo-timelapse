@@ -55,6 +55,7 @@ export function createShading({ rows }) {
     skirt: uniform(1),
     skirtDepth: uniform(0.02),
     columnFocus: uniform(new Vector3(0, 0, 0)), // (x, z, radius) in world units; radius 0 = off
+    ownersDim: uniform(0.2 ** 2.2), // owner layer: linear-light factor for the cells and layers no shown entity holds
   };
 
   // Palette LUT: row 0 base palette, row 1 white-hot palette (sRGB bytes).
@@ -75,6 +76,25 @@ export function createShading({ rows }) {
   gridRows.minFilter = gridRows.magFilter = NearestFilter;
   gridRows.generateMipmaps = false;
   gridRows.colorSpace = NoColorSpace;
+  // Owner colours by owner code (replay/owners.js): code e + 1 is entity e, 255 several entities.
+  const ownerData = new Uint8Array(256 * 4).fill(255);
+  const ownerPalette = new DataTexture(ownerData, 256, 1, RGBAFormat, UnsignedByteType);
+  ownerPalette.minFilter = ownerPalette.magFilter = NearestFilter;
+  ownerPalette.generateMipmaps = false;
+  ownerPalette.colorSpace = NoColorSpace;
+  ownerPalette.needsUpdate = true;
+
+  /** Entity colours (sRGB hex, in entity order) for the owner layer. */
+  function setOwnerColors(list) {
+    ownerData.fill(255);
+    (list || []).slice(0, 254).forEach((hex, e) => {
+      const rgb = parseColor(hex) || [255, 255, 255];
+      ownerData.set([rgb[0], rgb[1], rgb[2], 255], (e + 1) * 4);
+    });
+    ownerPalette.needsUpdate = true;
+  }
+  /** Linear RGB of an owner code (float node). */
+  const ownerColor = (code) => sRGBTransferEOTF(textureLoad(ownerPalette, ivec2(clamp(int(code), int(0), int(255)), int(0))).xyz);
 
   const state = {
     palette: 'film', gradient: null, reverse: false, whiteHot: true, whiteHotBTC: 10,
@@ -281,6 +301,8 @@ export function createShading({ rows }) {
       case 'light.metalness': u.metalness.value = value; break;
       case 'display.grid': u.grid.value = value ? 1 : 0; break;
       case 'geo.skirts': u.skirt.value = value ? 1 : 0; break;
+      // The factor scales linear light, so owners.dim ** 2.2 makes the slider's value the displayed brightness.
+      case 'owners.dim': u.ownersDim.value = Math.min(1, Math.max(0, Number(value))) ** 2.2; break;
       default: return false;
     }
     return true;
@@ -294,9 +316,9 @@ export function createShading({ rows }) {
   }
 
   return {
-    uniforms: u, textures: { lut, thresholds, gridRows }, state,
+    uniforms: u, textures: { lut, thresholds, gridRows, ownerPalette }, state,
     heightOf, paletteIndex, cellColor, heatEmissive, heatDecayed, heatIntensity, heatEmissiveOf, edgeGlow, gridLines, rimTerm,
-    set, heightParams, setGridRows,
-    dispose() { lut.dispose(); thresholds.dispose(); gridRows.dispose(); },
+    set, heightParams, setGridRows, setOwnerColors, ownerColor,
+    dispose() { lut.dispose(); thresholds.dispose(); gridRows.dispose(); ownerPalette.dispose(); },
   };
 }

@@ -40,7 +40,7 @@ The landscape runs publicly at **https://bitcoinlandscape.com/**, also reachable
 
 Three things change online, all decided in `landscape/web/ui/online.js`:
 
-- The app loads the dataset named in `/dataset/index.json`, so a new tip only changes the Worker's release file. Each tip is a full, immutable dataset under its own prefix.
+- The app loads the dataset named in `/dataset/index.json`, so a new tip only changes the Worker's release file. Each tip is a full, immutable dataset under its own prefix. Owner data for the Owners view works the same way through `/owners/index.json`; while the release names none, the Owners button stays hidden.
 - A first visit, with no saved settings, starts at Balanced quality with automatic resolution scaling (target 60 fps, scale 0.5–1), whether or not it arrives through a link. A browser without WebGPU, a touch-only device or one that reports 4 GB of memory or less starts at Performance and says so. A saved quality takes precedence on later visits; a link sets the view and its look but never the quality. Every look and quality stays one click away, and `?startup=high` gives the local default. Choosing a quality in the panel turns automatic scaling off, so the tier renders at its own resolution; the message offers Undo, and Advanced › Display turns it back on.
 - The inspector's history section asks `/api/landscape/cell` on the same origin, and its 2D link opens https://bitcointimelapse.com/explorer at the nearest pixel.
 
@@ -97,6 +97,7 @@ Only media used by the guide is included in this website release; the film is a 
 | Arrows, Q/E, PgUp/PgDn | Pan, rotate, tilt |
 | F or the Fly button | Flight mode: mouse look, WASD, E/Q up and down, Shift 4×, wheel sets speed; the button stays lit while it is on; Esc returns to map mode |
 | T or the Fun button | Plane mode in the chosen craft (plane, bird or jet): the mouse is a stick (sideways banks, up raises the nose) and the bank turns the craft; A/D and ←/→ bank, ↑/↓ nose up and down, W/S speed, Shift boost, wheel sets the camera distance, C next craft, Enter Stack sats, M sound; Esc or T returns to map mode |
+| O or the Owners button | Owners: light the outputs paying an exchange's known addresses in its colour and dim the rest (shown when owner data exists) |
 | G, P, H or ? | Graphics settings, places, help |
 
 Follow tip keeps the camera moving with the tip, the edge where new outputs are created. Turning it on (N or the Follow button) leaves the camera where it is; from then on, while the blocks advance, the camera slides along the block axis by the same distance (one block is 0.001 units, so 1× moves it 0.06 units a second) and keeps its height, depth and direction. The worker delivers blocks in small bursts, so the camera eases after the tip with a quarter-second time constant: it glides on every frame, trails the tip by about a quarter second of blocks while playing and settles exactly as far as the tip went once playback stops. Moving through time any other way moves it too: the single-block and 1,008-block steps, dragging the scrubber and the block and date fields glide the camera to the new tip, as far as the tip went, in about a second. Places, links and imported views set the camera themselves, so following starts again from where they put it. Following works in map and flight mode; you can still pan, orbit, zoom and fly, and every gesture and animation in progress moves with it. Plane mode pauses it, and it resumes from wherever the plane lands. Links and exported views record it as `follow=1`.
@@ -150,6 +151,12 @@ A place keeps the current block and flies the camera there. A place newer than t
 
 A link without a block opens at the latest snapshot at least 1,008 blocks (about a week) before the last block, so Play has something to play: with snapshots about 440 blocks apart near the tip, that is 1,008 to about 1,450 blocks back, 17 to 24 seconds at 1×. The view loads straight from that snapshot without replay. Places → The newest block goes to the tip.
 
+Owners (O, or the **Owners** button in the bar at the bottom) lights the outputs that pay an exchange's known addresses in that exchange's colour and dims every other cell and column. Binance, in yellow, is the only exchange so far. The button appears only when owner data exists: locally with `serve.mjs --owners`, online once the release names it. Its menu has a checkbox per exchange with its colour and the outputs and BTC it holds at the current block, a **Dim the rest** slider (`owners.dim`, 20% by default) and a note on where the addresses come from. Nothing is downloaded until the view is first turned on.
+
+The highlight is exact at every block. The replay worker follows each output from the block that created it to the block that spent it, so stepping or playing through history lights exactly the outputs those addresses held at that block. On the heightfield and distant columns, a cell holding at least one lit output takes the exchange's colour with a glow. Near columns draw one layer per output, so they colour as many top layers as the cell has lit outputs, and the cap. A cell holding outputs of more than one lit exchange turns white. Spend flashes are unchanged. The hover card and the inspector add a line for each lit exchange with its outputs and BTC in the cell, and the legend lists the lit exchanges. Links carry the selection as `own=binance` (several ids separated by commas) and a changed dim value. After the owner data's last block nothing is lit, and the menu says so.
+
+Only exact addresses are followed, with no clustering. Binance's 92 addresses are the 84 in its monthly proof-of-reserves lists (February 2023 to October 2026), one more it published in November 2022, and 7 that only others attribute to it, among them its old hot wallet `1NDyJtNTjmwk5xPNhjgAMu4HDHigtobu1s`, first used in 2017. List rows naming a third-party custodian such as Ceffu are left out. An address counts across its whole history. Customer deposit addresses and wallets known only by inference are missing, so the highlight is a lower bound. [landscape-owners.md](landscape-owners.md) covers the sources, the build, updating it with each site update and adding an exchange.
+
 ## How it works
 
 ### Grid and measures
@@ -178,6 +185,8 @@ A cell stores four exact integers: the count and satoshi sum of outputs up to 5 
 | `snapshots/` | 1,092 `BUVLSN1` snapshots of the exact state, after block 0, then every 16 MiB of change data, and at the tip |
 
 A snapshot stores every level. A per-tile directory with CRC-32 checksums lets the browser fetch only the tiles it needs with HTTP range requests. Each snapshot describes the grid of blocks 0 through its own block, so a block's snapshot is byte-identical in every dataset that contains it; readers place its tiles by level and position in the larger dataset grid (`landscape/SPEC.md` §4). Snapshots written before October 9, 2026 record their dataset's block count and remain readable.
+
+The Owners view reads a separate, much smaller owner dataset (`o<tip>-<date>/`): which outputs paid the listed addresses, when each was created and spent, and how many satoshis it held. Its format is in `landscape/SPEC.md` §4 and its build in [landscape-owners.md](landscape-owners.md).
 
 ### Exact replay in the browser
 
@@ -362,7 +371,7 @@ The full results are in `settings-audit.json` in the `--shots` directory.
 
 ## Settings reference
 
-The tables below are generated from `landscape/web/settings.schema.js` by `node landscape/tools/settings-reference.mjs`: 146 settings in seven groups. The default is the Landscape look at High quality; the fourth column lists the looks and quality tiers whose value differs from it. Personal preferences such as camera feel and overlays are never changed by looks or quality. "Has an effect with" names the conditions under which a setting changes the image; otherwise the panel dims it.
+The tables below are generated from `landscape/web/settings.schema.js` by `node landscape/tools/settings-reference.mjs`: 147 settings in eight groups. The default is the Landscape look at High quality; the fourth column lists the looks and quality tiers whose value differs from it. Personal preferences such as camera feel and overlays are never changed by looks or quality. "Has an effect with" names the conditions under which a setting changes the image; otherwise the panel dims it.
 
 ### Colour
 
@@ -545,6 +554,12 @@ The tables below are generated from `landscape/web/settings.schema.js` by `node 
 | Minimap <br><code>display.minimap</code> | bool | on | — | personal preference. Overview map with the camera footprint. |
 | HUD <br><code>display.hud</code> | bool | on | — | personal preference. Block, date and playback readout. |
 
+### Owners
+
+| Setting | Range / options | Default (Landscape, High) | Looks and quality that change it | Notes |
+|---|---|---|---|---|
+| Dim the rest <br><code>owners.dim</code> | 0–1 | 0.2 | — | personal preference. While owners are lit, brightness of every cell and column layer no lit owner holds: 0 is black, 1 leaves them unchanged. Spend flashes keep their brightness. |
+
 ## Measurements
 
 All figures were measured on 2026-10-07 on this Mac (M4 Max, 40-core GPU, 64 GB, macOS 27.0.1) with the dataset on the PCIe SSD `/Volumes/4T Data`.
@@ -612,9 +627,11 @@ In the app, 1× playback from block 314,000 advanced 602 blocks in 10.03 s witho
 | `landscape/web/ui/panel.js`, `ui/quick.js`, `landscape/tools/settings-reference.mjs` | Settings panel, its quick settings, and the generator of the settings reference tables |
 | `landscape/web/index.html`, `main.js`, `ui/` | App shell, first-visit welcome (`entry.js`, `ui/entry.js`, `ui/welcome.js`), navigation, playback, timeline, places, minimap, inspector, legend, HUD and sound (`ui/sound.js`, `ui/flash-sound.js` with its AudioWorklet `ui/flash-worklet.js`, `ui/plane-sound.js`) |
 | `landscape/web/ui/online.js` | Online versus local: dataset index, cell API and 2D link, first-visit quality |
+| `landscape/web/replay/owners.js`, `landscape/web/ui/owners-menu.js` | Owners view: owner record reader, the ledger of held outputs per level and the owner words; the Owners menu |
+| [`scripts/landscape_owners.py`](../scripts/landscape_owners.py), [`scripts/landscape_owners_entities.json`](../scripts/landscape_owners_entities.json), [`landscape/tools/owners-check.mjs`](../landscape/tools/owners-check.mjs) | Owner data: reserve-list supplement, extraction and build; the entity spec; the check against the landscape dataset ([landscape-owners.md](landscape-owners.md)) |
 | [`cloudflare/utxo-landscape-worker/`](../cloudflare/utxo-landscape-worker/README.md) | The online Worker: static app, dataset from R2, cell API, deploy and publish procedure |
 | `scripts/landscape_r2_verify.py`, `scripts/check_landscape_worker.mjs`, `landscape/tools/csp-hash.mjs` | Uploaded-dataset verification, Worker checks, CSP hash of the import map |
-| `landscape/tests/` | `node --test landscape/tests/*.test.mjs` (237 tests; the dataset tests skip without a local dataset; Node 22 and later reject the directory form `node --test landscape/tests/`) and the browser checks, including the `touch` check that drives every gesture with real multi-touch input on an emulated phone, and the settings checks `quick-settings`, `looks`, `user-presets`, `advanced-needs` and the opt-in `settings-audit` (`--audit`) |
+| `landscape/tests/` | `node --test landscape/tests/*.test.mjs` (276 tests; the dataset tests skip without a local dataset; Node 22 and later reject the directory form `node --test landscape/tests/`) and the browser checks, including the `touch` check that drives every gesture with real multi-touch input on an emulated phone, and the settings checks `quick-settings`, `looks`, `user-presets`, `advanced-needs` and the opt-in `settings-audit` (`--audit`) |
 | `landscape/tools/browser-check.mjs`, `gpu-util.mjs`, `landscape/web/dev/` | Headless Chrome checker (`--mobile` emulates a phone with touch input), GPU utilisation sampler and development harnesses |
 | `landscape/web/guide/` | The guide, *What remains*: page, styles, progressive enhancement, curated media and `assets/manifest.json` |
 | `scripts/check_landscape_guide.py` | Guide checks: manifest, links, orphan files and size budgets |

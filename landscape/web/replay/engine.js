@@ -11,6 +11,8 @@ import { LandscapeState } from './state.js';
 import { FrameBuilder, measureCode } from './pack.js';
 import { ChunkStore } from './chunks.js';
 import { planSeek, snapshotAtOrBelow } from './planner.js';
+import { OwnerLedger } from './owners.js';
+import { httpSource } from '../data/source.js';
 
 export const COARSE_LEVEL = 4;       // levels >= this load first on a snapshot seek
 const SLICE_MS = 8;                  // catch-up slice while playback runs
@@ -46,9 +48,10 @@ function ema(prev, next, k = 0.3) {
 
 export class ReplayEngine {
   /**
-   * @param {{source: object, post: (msg: object, transfer?: ArrayBuffer[]) => void, yieldTask?: () => Promise<void>}} o
+   * @param {{source: object, post: (msg: object, transfer?: ArrayBuffer[]) => void, yieldTask?: () => Promise<void>,
+   *   ownersSource?: (url: string) => object}} o  ownersSource: data source for an owner dataset URL
    */
-  constructor({ source, post, yieldTask }) {
+  constructor({ source, post, yieldTask, ownersSource }) {
     this.source = source;
     this.post = post;
     this.yieldTask = yieldTask || makeYield();
@@ -74,6 +77,14 @@ export class ReplayEngine {
     this.phase = 'init';
     this.failedTiles = new Map();  // id -> retry-after time
     this.loopError = null;
+    // Owner layer (replay/owners.js): off until setOwners names visible entities.
+    this.ownersSourceFor = ownersSource || ((url) => httpSource(url));
+    this.owners = null;
+    this.ownersUrl = null;
+    this.ownersOn = false;
+    this.ownersDirty = false;
+    this.ownersSeek = null;
+    this.ownersError = null;
   }
 
   // ---------------------------------------------------------------- init
@@ -173,6 +184,9 @@ export class ReplayEngine {
         this.requestedCacheBytes = Math.max(16, Number(m.mb) || 512) * 1048576;
         this.fitMemory();
         break;
+      case 'setOwners':
+        this.setOwners(m);
+        break;
       case 'dispose':
         this.disposed = true;
         break;
@@ -195,6 +209,78 @@ export class ReplayEngine {
     }
     this.desiredIds = list.slice(0, this.maxResident);
     this.residencyDirty = true;
+  }
+
+  // ---------------------------------------------------------------- owners
+  /** {url, manifest, visible: entity indices}; an empty list turns the owner layer off. */
+  setOwners({ url = null, manifest = null, visible = [] }) {
+    const want = Array.isArray(visible) ? visible.filter((e) => Number.isInteger(e) && e >= 0) : [];
+    this.ownersError = null;
+    try {
+      if (want.length && url && manifest && (this.owners === null || this.ownersUrl !== url)) {
+        const source = this.ownersSourceFor(url);
+        this.owners = new OwnerLedger({ grid: this.grid, minAmt: this.rows, manifest, fetchFile: (entry) => this.fetchOwnerFile(source, entry) });
+        this.ownersUrl = url;
+      }
+      if (this.owners) this.owners.setVisible(want);
+      this.ownersOn = want.length > 0 && this.owners !== null;
+      this.ownersDirty = this.ownersOn;
+    } catch (err) {
+      this.failOwners(err);
+    }
+  }
+
+  async fetchOwnerFile(source, entry) {
+    if (!entry || !/^(?:long\.bin|short\/\d{4}\.bin)$/.test(String(entry.file))) throw new Error('owners.json: bad file entry');
+    const bytes = await source.bytes(entry.file);
+    if (bytes.byteLength !== entry.bytes) throw new Error(entry.file + ': ' + bytes.byteLength + ' bytes, owners.json says ' + entry.bytes);
+    const subtle = globalThis.crypto && globalThis.crypto.subtle;
+    if (subtle) {
+      const digest = new Uint8Array(await subtle.digest('SHA-256', bytes));
+      let hex = '';
+      for (const b of digest) hex += b.toString(16).padStart(2, '0');
+      if (hex !== entry.sha256) throw new Error(entry.file + ': SHA-256 mismatch');
+    }
+    return bytes;
+  }
+
+  failOwners(err) {
+    this.ownersOn = false;
+    this.ownersDirty = false;
+    this.ownersError = String((err && err.message) || err);
+    this.post({ type: 'error', message: 'owner data: ' + this.ownersError });
+  }
+
+  /** Turning the layer on or changing its entities: owner planes for every delivered tile. */
+  async runOwners() {
+    this.ownersDirty = false;
+    if (!this.ownersOn) return;
+    const st = this.state;
+    try {
+      await this.owners.ensure(st.block);
+    } catch (err) {
+      this.failOwners(err);
+      return;
+    }
+    if (this.seekReq || this.ownersDirty || !this.ownersOn) return;
+    this.owners.moveTo(st.block);
+    const { frame, transfer } = this.builder.ownerFrame(st, this.owners, st.block);
+    this.postFrame(frame, transfer, 0, 0);
+  }
+
+  /** Seeks wait for the owner files their block needs before their first frame. */
+  async settleOwners() {
+    const p = this.ownersSeek;
+    if (!p) return;
+    this.ownersSeek = null;
+    const err = await p;
+    if (err) this.failOwners(err);
+  }
+
+  /** Owner breakdown of a cell at the state block, or null while the layer is off. */
+  ownerCell(level, col, row) {
+    const o = this.owners;
+    return this.ownersOn && o !== null && o.block === this.state.block ? o.cell(level, col, row) : null;
   }
 
   kick() {
@@ -227,6 +313,7 @@ export class ReplayEngine {
           continue;
         }
         if (this.measureDirty) { this.runMeasures(); continue; }
+        if (this.ownersDirty) { await this.runOwners(); continue; }
         if (this.advanceReq) { await this.runAdvance(); continue; }
         if (this.cellReqs.length) { this.runCells(); continue; }
         if (await this.runTileWork()) continue;
@@ -276,6 +363,7 @@ export class ReplayEngine {
     if (this.chunks) b += this.chunks.usedBytes;
     if (this.group && this.group.slots) for (const s of this.group.slots.values()) b += s.memoryBytes;
     if (this.blocktimes) b += this.blocktimes.byteLength + this.rows.byteLength;
+    if (this.owners) b += this.owners.memoryBytes;
     return b;
   }
 
@@ -572,6 +660,7 @@ export class ReplayEngine {
     const st = this.state;
     const T = Math.max(0, Math.min(this.grid.tip, Math.floor(Number(req.block) || 0)));
     const cancelled = () => this.seekReq !== null || this.disposed;
+    this.ownersSeek = this.ownersOn ? this.owners.ensure(T).then(() => null, (err) => err) : null;
     this.dropGroup();
     if (this.advanceReq) {
       this.post({ type: 'advanceDone', id: this.advanceReq.id, cancelled: true });
@@ -603,6 +692,7 @@ export class ReplayEngine {
         return;
       }
       await this.updateMeta(T);
+      await this.settleOwners();
       this.emit('seek');
       this.answerPendingCells();
       this.post({ type: 'seekDone', id: req.id, block: T, ms: now() - t0,
@@ -661,6 +751,7 @@ export class ReplayEngine {
     for (const s of slots.values()) st.attach(s);
     if (!fine.length) return true;
     await this.updateMeta(T);
+    await this.settleOwners();
     this.emit('seek', { partial: true });
     return this.loadAndAttach(fine, plan.snapshotIndex, T, cancelled, (p) => this.setStatus('seek', { target: T, progress: 0.5 + 0.5 * p }));
   }
@@ -688,12 +779,24 @@ export class ReplayEngine {
     this.advanceReq = null;
     const st = this.state;
     const t0 = now();
-    const target = Math.max(0, Math.min(this.grid.tip, Math.floor(Number(req.target))));
+    let target = Math.max(0, Math.min(this.grid.tip, Math.floor(Number(req.target))));
     if (!Number.isFinite(target)) {
       this.post({ type: 'advanceDone', id: req.id, error: 'bad target ' + req.target });
       return;
     }
     const from = st.block;
+    if (this.ownersOn && target !== from) {
+      // Owner files load ahead of playback; wait here only when the next one is missing.
+      const span = this.owners.life;
+      target = target > from ? Math.min(target, from + span) : Math.max(target, from - span);
+      if (!this.owners.ready(from, target)) {
+        try {
+          await this.owners.ensure(from, target);
+        } catch (err) {
+          this.failOwners(err);
+        }
+      }
+    }
     if (target === from) {
       this.post({ type: 'advanceDone', id: req.id, block: from, reached: true, blocks: 0, ms: now() - t0 });
       return;
@@ -722,6 +825,7 @@ export class ReplayEngine {
     if (reached !== from) {
       await this.updateMeta(reached, forward ? this.dec : null);
       this.chunks.readAhead(reached, forward ? 1 : -1, forward ? PLAY_AHEAD_CHUNKS : 2);
+      if (this.ownersOn) this.owners.prefetch(reached, reached + (forward ? 1 : -1) * (this.owners.life >> 1));
       this.emit('advance');
     }
     this.post({ type: 'advanceDone', id: req.id, block: reached, reached: reached === target, blocks: Math.abs(reached - from), ms: now() - t0,
@@ -800,7 +904,7 @@ export class ReplayEngine {
       const tile = Number.isInteger(level) && level >= 0 && level < this.grid.levels.length ? tileOfCell(this.grid, level, col, row) : -1;
       if (tile < 0) { this.post({ type: 'cellResult', id: req.id, cell: null }); continue; }
       if (st.slotOf[tile] !== null) {
-        this.post({ type: 'cellResult', id: req.id, cell: { ...st.cellAt(level, col, row), block: st.block } });
+        this.post({ type: 'cellResult', id: req.id, cell: { ...st.cellAt(level, col, row), block: st.block, owners: this.ownerCell(level, col, row) } });
         continue;
       }
       if (req.load === false) { this.post({ type: 'cellResult', id: req.id, cell: null }); continue; }
@@ -821,7 +925,7 @@ export class ReplayEngine {
     const keep = [];
     for (const c of this.pendingCells) {
       if (st.slotOf[c.tile] !== null && st.block !== null) {
-        this.post({ type: 'cellResult', id: c.id, cell: { ...st.cellAt(c.level, c.col, c.row), block: st.block } });
+        this.post({ type: 'cellResult', id: c.id, cell: { ...st.cellAt(c.level, c.col, c.row), block: st.block, owners: this.ownerCell(c.level, c.col, c.row) } });
       } else if (!st.pinned[c.tile]) {
         this.post({ type: 'cellResult', id: c.id, cell: null });
       } else {
@@ -842,13 +946,28 @@ export class ReplayEngine {
   emit(reason, { partial = false, skipEmpty = false } = {}) {
     const st = this.state;
     const t0 = now();
-    const { frame, transfer, deltaCells } = this.builder.build(st, this.hm, this.cm, reason, st.block, partial);
+    let owners = null;
+    if (this.ownersOn && st.block !== null) {
+      if (this.owners.ready(st.block)) {
+        this.owners.moveTo(st.block);
+        owners = this.owners;
+      } else {
+        // Not loaded yet (seek and playback normally wait): refresh the planes once it is.
+        this.owners.prefetch(st.block);
+        this.ownersDirty = true;
+      }
+    }
+    const { frame, transfer, deltaCells } = this.builder.build(st, this.hm, this.cm, reason, st.block, partial, owners);
     if (skipEmpty && !frame.full.length && !frame.evicted.length && deltaCells === 0) {
       this.builder.seq--;
       return null;
     }
+    return this.postFrame(frame, transfer, deltaCells, now() - t0);
+  }
+
+  postFrame(frame, transfer, deltaCells, packMs) {
+    const st = this.state;
     const c = this.counters;
-    const packMs = now() - t0;
     frame.stats = {
       blocksApplied: c.blocks,
       changesApplied: c.changes,
@@ -864,7 +983,8 @@ export class ReplayEngine {
       chunkCacheBytes: this.chunks.usedBytes,
       memoryBytes: this.memoryBytes(),
     };
-    frame.meta = this.meta;
+    frame.meta = this.ownersOn ? { ...this.meta, owners: this.owners.meta() }
+      : this.ownersError ? { ...this.meta, owners: { error: this.ownersError, active: false } } : this.meta;
     this.counters = { blocks: 0, changes: 0, applyMs: 0, workMs: 0 };
     this.post({ type: 'frame', frame }, transfer);
     return frame;

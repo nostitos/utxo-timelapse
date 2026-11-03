@@ -257,6 +257,34 @@ countSmall > 0, then `varuint countLarge, varuint satsLarge` if countLarge > 0.
 Every level is stored in full (coarse levels are exact sums of L0). Totals equal the sum
 of any level.
 
+### Owner data (`o<tip>-<yyyymmdd>/`; pipeline in docs/landscape-owners.md)
+
+Which outputs pay known addresses of an owner (an exchange), written by
+`scripts/landscape_owners.py build` and served beside the dataset at `/owners/<id>/`; `/owners/index.json`
+names the current one (`{"id", "url": "/owners/<id>/", "tip"}`: the online Worker from `release.js`,
+`serve.mjs --owners DIR` locally). Immutable like a dataset: a new tip or a new owner is a new id.
+
+```
+owners.json          {"format": "utxo-landscape-owners-1", "id", "createdUtc", "tip", "tipHash" (RPC byte order),
+                      "shortLife": 4032, "entities": [{"id", "name", "color" (#rrggbb), "addresses", "records",
+                      "unspent", "unspentSats", "evidence": [{"type", "addresses", "sources", "firstObserved",
+                      "lastObserved"}]}], "files": {"long": {file, records, bytes, sha256},
+                      "short": [{chunk, file, records, bytes, sha256}]}, "source": {...}}
+long.bin             records unspent at the owner tip or alive longer than shortLife blocks
+short/NNNN.bin       the rest, chunk k = created in [k * shortLife, (k + 1) * shortLife)
+```
+
+Record files: `"BUVOWN1\0"`, u32 version = 1, u32 record count, then records sorted by
+(created, entity, sats, life), each `varuint created delta` (from the previous record; the first
+from 0), `varuint life` (0 = unspent at the owner tip, else spent − created ≥ 1), `varuint sats`
+(1..2.1e15), `varuint entity` (index into entities, < 254). An output is held at block B when
+created ≤ B < spent, as in the landscape: outputs spent in the block that created them and
+zero-amount outputs are not recorded. A short record can only be held at B if created in
+(B − shortLife, B], so a block needs long.bin and at most two chunks. After the owner tip nothing
+is held. Every record's creation and spend is a change of the dataset's BLK2 log
+(`landscape/tools/owners-check.mjs` checks it).
+
+
 ## 5. Worker and client protocol
 
 ### 5.0 Shared pure modules (owner js_replay, delivered first)
@@ -388,6 +416,28 @@ from the repository root. Link to the 2D explorer as
 `http://127.0.0.1:12989/?block=B&x=X&y=Y` with `X = blockToX(midHeight, B)` (port of
 `cloudflare/utxo-video-worker/src/mapping.js`) and `Y = row + 10`.
 
+### 5.1 Owners (owner layer)
+
+`replay.setOwners({url, manifest, visible})`: `url` of an owner data directory, its parsed
+owners.json and the entity indices to light; `visible: []` turns the layer off. Nothing loads until
+the first call that lights an entity. The worker (`replay/owners.js` `OwnerLedger`) fetches
+long.bin and the short chunks a block needs, checks each file's size and SHA-256, and keeps per
+level a sparse map of the held outputs' count and sats per entity, moved block by block
+(rebuilt after a jump of more than shortLife blocks). A seek waits for its chunks before its first
+frame; playback waits only when the next chunk has not arrived (it is fetched half a chunk ahead).
+Turning the layer on or changing its entities sends one `reason: 'owners'` frame with
+`ownerTiles: [{id, owners}]` for every delivered tile, without tile data. While the layer is on,
+`frame.owners` is true, every full tile carries `owners` (a Uint32Array of 258 × 258 owner
+words, or null when none of its cells holds an owner's output) and `deltas.owners` carries a word
+per delta cell; border cells take the word of the same source cell as the floats. Owner word:
+bits 0–23 the outputs the lit entities hold in the cell (capped at 2^24 − 1), bits 24–31 the code
+(0 none, entity index + 1 for one lit entity, 255 for several). `meta.owners` =
+`{tip, active, block, entities: [{count, sats}]}` (held at the block; `active` false after the tip),
+or `{error, active: false}` when owner data failed to load (the layer turns off). `cell()` adds
+`owners: [{entity, count, sats}]` for the entities holding outputs in the cell, or null while
+the layer is off.
+
+
 ## 6. Rendering contract
 
 Render modules use `three/webgpu` + `three/tsl` (import map in index.html):
@@ -466,6 +516,17 @@ gaussian before compositing; a per-frame dither sparkled during motion), god ray
 RenderPipeline chain (AO → SSGI → SSR → volumetrics/god rays →
 bloom → DOF → motion blur → tone mapping → exposure → grade → LUT → grain/CA/vignette →
 AA/SSAA), resolution scale and auto scale, Display P3, perf overlay, GPU timing.
+
+Owner layer (`view.setOwners(colours | null)`, colours in owners.json order): the atlas allocates
+an owner plane (a uint storage buffer written by the delta scatter on WebGPU, an RGBA8
+DataArrayTexture of the same bytes on WebGL2) and frees it when the layer turns off; both
+rebuild the materials. Cells of the heightfield (the exact cell when stepped, the nearest cell when
+smooth) and far columns that hold a lit entity's output take its colour (owner code 255: white) with
+an emissive lift (`OWNER_LIFT` 0.6); near columns colour exactly their top `owned` layers and,
+when one output is owned, the cap. Everything else multiplies its colour, edge glow and rim by
+`owners.dim`^2.2, a linear-light factor, so the slider reads as displayed brightness. Heat (spend flashes) and the grid are unchanged; with the layer off the materials are
+the same as before.
+
 
 ## 7. Settings
 
@@ -594,6 +655,8 @@ ui_settings with the consumers):
   `display.scaleMin`, `display.scaleMax`, `display.aa` (none, fxaa, smaa, traa),
   `display.ssaa` (1, 2, 4), `display.overlay`, `display.labels`, `display.grid`,
   `display.legend`, `display.minimap`, `display.hud`.
+- Owners: `owners.dim` (0–1, default 0.2), the brightness of everything no lit owner holds
+  while the owner layer is on (§4 owner files, §5 owners).
 
 Look intent: **Landscape** is the schema defaults. **BitcoinTimelapse.com** (named Film until
 October 2026) reproduces the film's colours
@@ -834,6 +897,13 @@ raised to 1.5 times or the pause plus 50 ms, at most 0.4 s, then eases back towa
 to win it back, and one more than 10 ms beyond is tightened by up to a tenth. It runs at most
 0.2 s beyond the lead, so frames that arrive in a clump are spread out. Two 300 Hz high-passes, a
 peak limiter (−6 dB, 20:1) and a 1.1 master gain follow.
+Owners (`ui/owners-menu.js`, `#owners`; O or the timeline's Owners button between Places and Settings, shown
+once `/owners/index.json` names owner data): a checkbox per owner with its colour and the outputs and BTC
+it holds at the block (`meta.owners`), the Dim the rest slider (`owners.dim`), and where the addresses
+come from (owners.json evidence: the owner's own published lists and their months, addresses
+attributed by others and their sources). The legend gains an Owners row, the hover card and the
+inspector a line per lit owner (`cell().owners`), and the hash `own=id[,id]` (lit owners, also in
+shared links and exported views).
 Keys everywhere (ignored while typing in inputs): Space play/pause, `[`/`]` ±1 block,
 Shift+`[`/`]` ±1,008, N Follow tip, M sound, I inspect at cursor (crosshair in flight, nose circle in plane mode), C next craft,
 Enter Stack sats (plane mode), Esc exits flight or plane mode/closes the drawer or a menu. Places (`ui/places.js`):
@@ -876,6 +946,8 @@ node --test landscape/tests/*.test.mjs
 ./build_local/buv -ns -tc=landscape_verify -cfg=configs/buv_explorer.json -data="/Volumes/4T Data/buv_render/landscape_966827" -checkpoint="/Volumes/4T Data/buv_render/renderer_before_965400.bin"
 ./build_local/buv -ns '-tc=density_palette,epoch_transition_mapping,checkpoint_v3'
 node landscape/tools/serve.mjs --data "/Volumes/4T Data/buv_render/landscape_966827"
+node landscape/tools/owners-check.mjs --data "/Volumes/4T Data/buv_render/landscape_974310" --owners "/Volumes/4T Data/buv_owners/o974310-20261102"
+node landscape/tools/serve.mjs --data "/Volumes/4T Data/buv_render/landscape_974310" --owners "/Volumes/4T Data/buv_owners/o974310-20261102"
 ```
 
 

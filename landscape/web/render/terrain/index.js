@@ -44,8 +44,9 @@ export const TERRAIN_DEFAULTS = Object.freeze({
   'light.roughness': 0.65, 'light.metalness': 0.05, 'light.floorReflection': 0,
   'geo.groundHorizon': false,
   'display.labels': true, 'display.grid': false,
+  'owners.dim': 0.2,
 });
-const CONSUMED_PREFIXES = ['color.', 'amp.', 'geo.', 'light.', 'display.'];
+const CONSUMED_PREFIXES = ['color.', 'amp.', 'geo.', 'light.', 'display.', 'owners.'];
 
 export function createTerrain({ renderer, scene, camera, settings, manifest, rows, blocktimes, capabilities = {}, labelsElement = null }) {
   const grid = gridFromManifest(manifest);
@@ -779,6 +780,15 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     return () => flashListeners.delete(fn);
   }
 
+  /**
+   * Owner layer: entity colours (sRGB hex, in owners.json order) turn it on, null turns it
+   * off. The atlas gains or frees its owner plane and the materials rebuild on the next update.
+   */
+  function setOwners(colors) {
+    shading.setOwnerColors(colors || []);
+    atlas.setOwners(!!colors);
+  }
+
   function dispose() {
     if (unsubscribe) unsubscribe();
     object3d.removeFromParent();
@@ -795,7 +805,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
   }
 
   return {
-    object3d, applyFrame, setBlock, update, pick, heightAt, focusDistance, setDetailAhead, onFlashes, stats, dispose,
+    object3d, applyFrame, setBlock, update, pick, heightAt, focusDistance, setDetailAhead, onFlashes, setOwners, stats, dispose,
     // extras for dev pages and tests
     atlas, shading, grid, cellAt, get mode() { return mode; }, get drawn() { return drawn; },
     get meshes() { return { heightfield: [...hfLevels.values()].map((L) => L.mesh), floor, nowPlane, columns: columns ? columns.mesh : null }; },

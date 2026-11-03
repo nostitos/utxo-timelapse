@@ -1082,6 +1082,94 @@ const CHECKS = [
     ],
   },
   {
+    name: 'owners',
+    shot: 'owners.png',
+    timeout: 120000,
+    // The owner layer, when the server has owner data (serve.mjs --owners, or the Worker's
+    // /owners/index.json); without it the check only confirms the Owners button stays hidden.
+    script: `
+      const out = {};
+      const t0 = performance.now();
+      while (!L.owners.manifest && performance.now() - t0 < 8000) await sleep(100);
+      const btn = document.querySelector('#timeline [data-act="owners"]');
+      out.available = !!L.owners.manifest;
+      out.buttonShown = !!btn && !btn.hidden;
+      if (!out.available) return out;
+      const ent = L.owners.manifest.entities[0];
+      out.entity = ent.id;
+      await L.seek(tip); await idle();
+      L.controls.setPose(POSES.map);
+      const off = await settled(800, 15000);
+      const mean = (g) => g.reduce((a, v) => a + v, 0) / g.length;
+      btn.click(); await sleep(250);
+      out.menuOpen = !document.getElementById('owners').hidden;
+      document.querySelector('#owners [data-owner="' + ent.id + '"]').click();
+      const t1 = performance.now();
+      while (!(L.replay.meta && L.replay.meta.owners && L.replay.meta.owners.active) && performance.now() - t1 < 30000) await sleep(100);
+      const meta = L.replay.meta && L.replay.meta.owners;
+      out.active = !!(meta && meta.active);
+      out.totals = meta && meta.entities ? meta.entities[0] : null;
+      out.menuText = document.getElementById('owners').innerText;
+      btn.click(); await sleep(100);
+      const lit = await settled(800, 15000);
+      out.hash = location.hash.includes('own=' + ent.id);
+      out.legend = (document.querySelector('#legend .lg-owners') || {}).innerText || '';
+      out.meanOff = Math.round(mean(off)); out.meanLit = Math.round(mean(lit));
+      // A cell on screen that holds the owner's outputs: its pixel moves toward the owner's colour.
+      let hit = null;
+      for (let y = 60; y <= 820 && !hit; y += 10) for (let x = 40; x <= 1560 && !hit; x += 10) {
+        const h = L.view.pick(x, y); if (!h) continue;
+        const c = await L.replay.cell(h.level || 0, h.col, h.row, { load: false });
+        if (c && c.owners && c.owners.some((o) => o.entity === 0)) hit = { x, y, level: h.level || 0, col: h.col, row: h.row };
+      }
+      out.found = !!hit;
+      if (hit) {
+        const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+        const chroma = (c) => { const s = c[0] + c[1] + c[2] || 1; return c.map((v) => v / s); };
+        const away = (p) => { const a = chroma(p); const b = chroma(rgb(ent.color)); return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]); };
+        const pixel = async () => { const d = (await frameImage(1600, 900)).getContext('2d').getImageData(hit.x, hit.y, 1, 1).data; return [d[0], d[1], d[2]]; };
+        out.pixelLit = await pixel();
+        canvas.dispatchEvent(new PointerEvent('pointermove', { clientX: hit.x, clientY: hit.y, pointerId: 9, pointerType: 'mouse', bubbles: true }));
+        for (let i = 0; i < 6; i++) { await frame(); await sleep(60); }
+        out.hover = (L.ui.hover.current && L.ui.hover.current.text) || '';
+        // The inspector shows one L0 cell: one of the merged cell's that holds the owner's outputs.
+        const Lv = L.grid.levels[hit.level];
+        let l0 = null;
+        for (let dc = 0; dc < 2 ** Lv.columnShift && !l0; dc++) for (let dr = 0; dr < 2 ** Lv.rowShift && !l0; dr++) {
+          const col = hit.col * 2 ** Lv.columnShift + dc; const row = hit.row * 2 ** Lv.rowShift + dr;
+          const c = await L.replay.cell(0, col, row);
+          if (c && c.owners && c.owners.some((o) => o.entity === 0)) l0 = { col, row };
+        }
+        if (l0) {
+          await L.ui.inspector.open({ l0Col: l0.col, l0Row: l0.row, shared: true, x: (l0.col + 0.5) * 0.064, z: (l0.row + 0.5) * 0.1 });
+          await sleep(800);
+        }
+        out.inspector = (document.querySelector('#inspector .in-owners') || {}).innerText || '';
+        L.ui.inspector.close();
+        L.owners.set([]);
+        await sleep(300);
+        const after = await settled(800, 15000);
+        out.restored = Math.round(gridDiff(off, after) * 100) / 100;
+        out.pixelOff = await pixel();
+        out.closer = away(out.pixelLit) < away(out.pixelOff);
+      }
+      return out;`,
+    expect: (v) => !v.available ? [['no owner data served: the Owners button stays hidden', !v.buttonShown]] : [
+      ['the Owners button shows when owner data is served', v.buttonShown],
+      ['the menu opens and its checkbox lights ' + v.entity, v.menuOpen && v.active],
+      ['meta reports the owner\u2019s outputs at the tip: ' + JSON.stringify(v.totals), !!v.totals && v.totals.count > 0 && v.totals.sats > 0],
+      ['the menu lists the totals', /outputs \u00b7 /.test(v.menuText || '')],
+      ['the link keeps own=', v.hash],
+      ['the legend names the owner: ' + JSON.stringify(v.legend), v.legend.length > 0],
+      ['the rest dims (' + v.meanOff + ' \u2192 ' + v.meanLit + ' mean RGB)', v.meanLit < v.meanOff * 0.8],
+      ['an owned cell is on screen', v.found],
+      ['its pixel moves toward the owner colour: ' + JSON.stringify(v.pixelOff) + ' \u2192 ' + JSON.stringify(v.pixelLit), !!v.closer],
+      ['the hover card lists the owner', /output/.test(v.hover || '') && (v.hover || '').toUpperCase().includes((v.entity || '').toUpperCase())],
+      ['the inspector lists the owner: ' + JSON.stringify(v.inspector), /of .* outputs/.test(v.inspector || '')],
+      ['turning it off restores the image (mean RGB difference ' + v.restored + ')', v.restored < 3],
+    ],
+  },
+  {
     name: 'webgl2-fallback',
     query: '?webgl=1',
     shot: 'webgl2.png',

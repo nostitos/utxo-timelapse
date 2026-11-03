@@ -2,15 +2,18 @@
 // Local static server for the UTXO landscape (landscape/SPEC.md §5). Node 20, no dependencies.
 //
 //   node landscape/tools/serve.mjs --data "/Volumes/4T Data/buv_render/landscape_972052" \
-//     [--port 12990] [--host 127.0.0.1] [--web landscape/web] [--log]
+//     [--owners "/Volumes/4T Data/buv_owners/o974310-20261102"] [--port 12990] [--host 127.0.0.1] \
+//     [--web landscape/web] [--log]
 //
 // Serves the web app at / and the dataset directory at /dataset/ with single-range Range
 // support (including open and suffix ranges, 416 when unsatisfiable), HEAD, MIME types,
 // path-traversal protection, COOP/COEP (cross-origin isolation for the worker), immutable
 // caching for /dataset/ binaries and no-cache for app files and JSON entry points.
+// --owners serves owner data (docs/landscape-owners.md) the same way: /owners/index.json names
+// it, as the online Worker does, and /owners/<id>/ holds owners.json, long.bin and short/NNNN.bin.
 // (/data/ is an ordinary app path: landscape/web/data/ holds the shared JS modules.)
 import { createServer } from 'node:http';
-import { createReadStream } from 'node:fs';
+import { createReadStream, readFileSync } from 'node:fs';
 import { stat, realpath } from 'node:fs/promises';
 import { resolve, sep, extname, dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -51,6 +54,18 @@ export const MIME = Object.freeze({
 
 const DEFAULT_WEB = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'web');
 export const DATASET_PREFIX = '/dataset';
+export const OWNERS_PREFIX = '/owners';
+const OWNERS_ID = /^o\d{1,7}-\d{8}$/;
+const OWNERS_FILE = /^(?:owners\.json|long\.bin|short\/\d{4}\.bin)$/;
+
+/** The /owners/index.json of an owner directory; throws unless DIR/owners.json is owner data. */
+function ownersIndex(dir) {
+  const meta = JSON.parse(readFileSync(join(dir, 'owners.json'), 'utf8'));
+  if (meta.format !== 'utxo-landscape-owners-1') throw new Error('owners.json: format ' + JSON.stringify(meta.format) + ' is not utxo-landscape-owners-1');
+  if (typeof meta.id !== 'string' || !OWNERS_ID.test(meta.id)) throw new Error('owners.json: id ' + JSON.stringify(meta.id) + ' is not o<tip>-<yyyymmdd>');
+  if (!Number.isInteger(meta.tip) || meta.tip < 0) throw new Error('owners.json: tip ' + JSON.stringify(meta.tip) + ' is not a block height');
+  return { id: meta.id, url: OWNERS_PREFIX + '/' + meta.id + '/', tip: meta.tip };
+}
 
 /**
  * Parses a Range header against a file size.
@@ -84,12 +99,15 @@ function within(root, p) {
 }
 
 /**
- * Creates (but does not start) the server. Options: {web, data, log}.
+ * Creates (but does not start) the server. Options: {web, data, owners, log}. Throws when
+ * 'owners' is not an owner directory.
  * @returns {import('node:http').Server}
  */
-export function createLandscapeServer({ web = DEFAULT_WEB, data = null, log = false } = {}) {
+export function createLandscapeServer({ web = DEFAULT_WEB, data = null, owners = null, log = false } = {}) {
   const webRoot = resolve(web);
   const dataRoot = data ? resolve(data) : null;
+  const ownersRoot = owners ? resolve(owners) : null;
+  const index = ownersRoot ? ownersIndex(ownersRoot) : null;
   const realRoots = new Map();
   async function realRoot(root) {
     if (!realRoots.has(root)) realRoots.set(root, await realpath(root).catch(() => root));
@@ -132,6 +150,16 @@ export function createLandscapeServer({ web = DEFAULT_WEB, data = null, log = fa
       if (!dataRoot) return send(404, 'no dataset directory configured (--data)');
       root = dataRoot;
       rel = pathname.slice(DATASET_PREFIX.length) || '/';
+      isData = true;
+    } else if (pathname === OWNERS_PREFIX || pathname.startsWith(OWNERS_PREFIX + '/')) {
+      if (!index) return send(404, 'no owner directory configured (--owners)');
+      if (pathname === OWNERS_PREFIX + '/index.json') {
+        return send(200, JSON.stringify(index), { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-cache' });
+      }
+      const name = pathname.slice(index.url.length);
+      if (!pathname.startsWith(index.url) || !OWNERS_FILE.test(name)) return send(404, 'not found');
+      root = ownersRoot;
+      rel = '/' + name;
       isData = true;
     }
     let file = resolve(root, '.' + rel);
@@ -210,7 +238,7 @@ export function createLandscapeServer({ web = DEFAULT_WEB, data = null, log = fa
 }
 
 function parseArgs(argv) {
-  const o = { port: 12990, host: '127.0.0.1', data: null, web: DEFAULT_WEB, log: false };
+  const o = { port: 12990, host: '127.0.0.1', data: null, owners: null, web: DEFAULT_WEB, log: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const eq = a.indexOf('=');
@@ -220,10 +248,11 @@ function parseArgs(argv) {
       case '--port': o.port = Number(val()); break;
       case '--host': o.host = val(); break;
       case '--data': o.data = val(); break;
+      case '--owners': o.owners = val(); break;
       case '--web': o.web = val(); break;
       case '--log': o.log = true; break;
       case '--help': case '-h':
-        console.log('usage: node landscape/tools/serve.mjs --data DIR [--port 12990] [--host 127.0.0.1] [--web DIR] [--log]');
+        console.log('usage: node landscape/tools/serve.mjs --data DIR [--owners DIR] [--port 12990] [--host 127.0.0.1] [--web DIR] [--log]');
         process.exit(0);
         break;
       default: throw new Error('unknown argument ' + a);
@@ -244,10 +273,17 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       process.exit(2);
     }
   }
-  const server = createLandscapeServer(opts);
+  let server;
+  try {
+    server = createLandscapeServer(opts);
+  } catch (err) {
+    console.error('--owners ' + opts.owners + ': ' + err.message);
+    process.exit(2);
+  }
   server.listen(opts.port, opts.host, () => {
     const addr = server.address();
-    console.log('UTXO landscape: http://' + opts.host + ':' + addr.port + '/  web=' + resolve(opts.web) + (opts.data ? '  /dataset/=' + resolve(opts.data) : '  (no --data, /dataset/ is 404)'));
+    console.log('UTXO landscape: http://' + opts.host + ':' + addr.port + '/  web=' + resolve(opts.web) + (opts.data ? '  /dataset/=' + resolve(opts.data) : '  (no --data, /dataset/ is 404)') +
+      (opts.owners ? '  /owners/=' + resolve(opts.owners) : ''));
   });
   const stop = () => server.close(() => process.exit(0));
   process.on('SIGINT', stop);
