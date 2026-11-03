@@ -36,7 +36,7 @@ export const TERRAIN_DEFAULTS = Object.freeze({
   'amp.nowPlane': 0.15,
   'geo.smoothing': 'bilinear', 'geo.stepped': false, 'geo.steppedWhales': true, 'geo.subdivision': 1, 'geo.columns': true,
   'geo.uniform': false, 'geo.uniformLevel': 1,
-  'geo.columnRadius': 4096, 'geo.instanceBudget': 1000000, 'geo.columnGap': 0, 'geo.lodBias': 0,
+  'geo.columnRadius': 4096, 'geo.instanceBudget': 1000000, 'geo.columnGap': 0, 'geo.columnWidth': 1, 'geo.lodBias': 0,
   'geo.columnShape': 'oval', 'geo.cylinderSides': 12, 'geo.farColumns': 'prism', 'geo.farShadows': true,
   'geo.columnPixels': 4,
   'geo.pixelsPerCell': 3, 'geo.tileBudget': 225, 'geo.skirts': true, 'geo.wireframe': false,
@@ -511,7 +511,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     if (mode.columns) {
       ensureColumns().update({
         enabled: true, focus: region.focus, eye: region.eye, radiusCells: region.radiusCells, nearCells: region.nearCells,
-        budget: Math.round(get('geo.instanceBudget')), gap: get('geo.columnGap'), dataVersion: atlas.version,
+        budget: Math.round(get('geo.instanceBudget')), gap: get('geo.columnGap'), width: get('geo.columnWidth'), dataVersion: atlas.version,
         shape: get('geo.columnShape'), sides: Number(get('geo.cylinderSides')),
         farStyle: get('geo.farColumns'), farShadows: !!get('geo.farShadows'),
       });

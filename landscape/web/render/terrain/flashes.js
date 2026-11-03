@@ -20,7 +20,7 @@ import { noGBufferWrites } from '../gbuffer.js';
 export const FLASH_CAPACITY = 32768;
 export const FLASH_LIFE_MS = 1400;
 export const FLASH_MAX_NEW = 400;
-export const FLASH_YOUNG_SHARE = 0.25; // at most this share of a frame's new flashes for creation-edge spends
+export const FLASH_YOUNG_SHARE = 0.25; // at most this share of a frame's new flashes for creation-edge spends (none while owners are lit)
 export const OWNER_FLASH_SIZE = 2.5;   // owner layer: its flashes' size and minimum pixels, against an old-coin flash
 export { flashLook };
 
@@ -78,8 +78,9 @@ export function createFlashes({ shading, capacity = FLASH_CAPACITY, onSpawn = nu
    * xEnd = the cell's newest block; btcCell = BTC per L0 cell, which sizes the flash). Old
    * coins (cells whose newest block is more than edgeBlocks before 'block') outrank
    * creation-edge spends, which get at most FLASH_YOUNG_SHARE of the slots.
-   * owners: the owner layer is on, so these are the lit owners' few spends: each is OWNER_FLASH_SIZE
-   * times larger, lasts twice as long and keeps full brightness near the creation edge, where an
+   * owners: the owner layer is on, so these are the lit owners' few spends: creation-edge spends
+   * may take every slot (a drained hot wallet is fresh coins), and each is OWNER_FLASH_SIZE times
+   * larger, lasts twice as long and keeps full brightness near the creation edge, where an
    * exchange's hot wallet spends its own change every block (it keeps the smaller young size).
    */
   function spawn(items, { size = 1, reference = 100, edge = 0.3, block = Infinity, edgeBlocks = 1008, now = performance.now(), maxNew = FLASH_MAX_NEW, reason = null, owners = false } = {}) {
@@ -92,7 +93,7 @@ export function createFlashes({ shading, capacity = FLASH_CAPACITY, onSpawn = nu
     const old = [];
     const young = [];
     for (const it of items) (it.old ? old : young).push(it);
-    const youngSlots = Math.max(1, Math.floor(maxNew * FLASH_YOUNG_SHARE));
+    const youngSlots = owners ? maxNew : Math.max(1, Math.floor(maxNew * FLASH_YOUNG_SHARE));
     const pickYoung = topByWeight(young, Math.min(youngSlots, maxNew));
     const chosen = topByWeight(old, maxNew - pickYoung.length).concat(pickYoung);
     let oldCount = 0;

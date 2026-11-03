@@ -547,6 +547,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         sendOwners();
         ownersMenu.update(ownersState());
       }
+      if (ids.has('owners.dim')) ownersMenu.update(ownersState());
       if (ids.has('geo.tileBudget')) replay.setMaxResidentTiles(store.get('geo.tileBudget'));
       if (ids.has('display.hud')) dismissed.delete('hud');
       if (ids.has('display.legend')) dismissed.delete('legend');

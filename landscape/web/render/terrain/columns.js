@@ -184,6 +184,7 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
   const uNear2 = uniform(0);
   const uBudget = uniform(0, 'uint');
   const uGap = uniform(0);
+  const uWidth = uniform(1);
 
   const tilesNode = storage(tilesAttr, 'vec4', MAX_COLUMN_TILES).toReadOnly();
   const counterAtomic = storage(counterAttr, 'uint', 3).toAtomic();
@@ -288,8 +289,10 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
     const ref = instRead.element(slot);
     const raw = atlas.readNode.element(int(ref.x));
     // Footprint (world units): an oval or a box filling the cell, or a round cylinder as wide as
-    // the cell (its narrower side, 64 blocks); geo.columnGap (0 by default) trims a margin.
-    const w = float(1).sub(uGap);
+    // the cell (its narrower side, 64 blocks); geo.columnGap (0 by default) trims a margin and
+    // geo.columnWidth (1) widens it past the cell.
+    // shortcut: hover and picking still hit the cell footprint, not a widened column; widen intersect() if wide columns become a common view.
+    const w = float(1).sub(uGap).mul(uWidth);
     const sx = w.mul(COL_W);
     const sz = shape === 'cylinder' ? sx : w.mul(ROW_D);
     m.positionNode = Fn(() => {
@@ -442,9 +445,10 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
    * 'cylinder' | 'oval' | 'box'; sides: cylinder sides; farStyle: one of FAR_STYLES; farShadows:
    * whether the far level casts shadows.
    */
-  function update({ enabled, focus, eye = focus, radiusCells, nearCells = Infinity, budget, gap, dataVersion, shape = 'cylinder',
+  function update({ enabled, focus, eye = focus, radiusCells, nearCells = Infinity, budget, gap, width = 1, dataVersion, shape = 'cylinder',
     sides = 12, farStyle = 'prism', farShadows = true }) {
     uGap.value = gap;
+    uWidth.value = width;
     state.enabled = !!enabled;
     if (!enabled) {
       group.visible = false;

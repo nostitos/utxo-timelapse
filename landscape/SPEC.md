@@ -640,7 +640,7 @@ ui_settings with the consumers):
   `geo.subdivision` (1, 2, 4), `geo.columns`, `geo.columnShape` (cylinder, oval, box),
   `geo.cylinderSides` (6–32),
   `geo.columnRadius` (L0 cells), `geo.columnPixels` (px),
-  `geo.instanceBudget` (≤ 8,000,000), `geo.columnGap`, `geo.farColumns` (prism, card, flat,
+  `geo.instanceBudget` (≤ 8,000,000), `geo.columnGap`, `geo.columnWidth` (1–4×), `geo.farColumns` (prism, card, flat,
   cross), `geo.farShadows`, `geo.lodBias`,
   `geo.pixelsPerCell`, `geo.tileBudget` (32–400), `geo.uniform`, `geo.uniformLevel` (0–4), `geo.skirts`,
   `geo.groundHorizon`, `geo.wireframe`.

@@ -1110,6 +1110,10 @@ const CHECKS = [
       out.active = !!(meta && meta.active);
       out.totals = meta && meta.entities ? meta.entities[0] : null;
       out.menuText = document.getElementById('owners').innerText;
+      // The open menu follows Dim the rest when it changes elsewhere (a link, a film capture).
+      L.settings.set('owners.dim', 0.5); await sleep(150);
+      out.dimShown = (document.querySelector('#owners .ow-dim output') || {}).textContent || '';
+      L.settings.set('owners.dim', 0.2); await sleep(150);
       btn.click(); await sleep(100);
       const lit = await settled(800, 15000);
       out.hash = location.hash.includes('own=' + ent.id);
@@ -1152,6 +1156,15 @@ const CHECKS = [
         const only = await settled(800, 15000);
         out.onlyHash = location.hash.includes('owners.only=');
         out.onlyChanged = Math.round(gridDiff(lit, only) * 100) / 100;
+        // Column width: over the newest edge, wider columns put more of the owner's outputs on screen.
+        const pose0 = L.controls.getPose();
+        const pw = L.controls.poseLookingAt({ x: tip / 1000 - 0.4, y: 0, z: 54 }, { distance: 14, yaw: 25, pitch: -38 });
+        L.controls.setPose({ x: pw.position.x, y: pw.position.y, z: pw.position.z, yaw: pw.yaw, pitch: pw.pitch });
+        // Pixels in the owner's hue (red and blue well above green): the sky, the ground and white labels do not count.
+        const litPx = async () => { const d = (await frameImage(1600, 900)).getContext('2d').getImageData(0, 0, 1600, 900).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] > 1.2 * d[i + 1] && d[i + 2] > 1.1 * d[i + 1] && d[i] + d[i + 2] > 160) n++; return n; };
+        await settled(800, 15000); out.widthPx1 = await litPx();
+        L.settings.set('geo.columnWidth', 2.5); await settled(800, 15000); out.widthPx25 = await litPx();
+        L.settings.set('geo.columnWidth', 1); L.controls.setPose(pose0); await settled(800, 15000);
         L.settings.set('owners.only', false);
         await sleep(300);
         out.onlyBack = Math.round(gridDiff(lit, await settled(800, 15000)) * 100) / 100;
@@ -1180,6 +1193,20 @@ const CHECKS = [
       const t3 = performance.now();
       while (!(L.replay.meta && L.replay.meta.owners && L.replay.meta.owners.active) && performance.now() - t3 < 30000) await sleep(100);
       ({ n: out.flashesLit, px: out.flashPxLit } = await playFor());
+      // A drained hot wallet is fresh coins, and every spent cell flashes: Binance's 2026 hack spent
+      // 513 outputs in 305 cells of block 973,732, where the share kept for young coins allowed 100.
+      if (ent.id === 'binance' && tip >= 973732) {
+        await L.seek(973731); await idle();
+        const pd = L.controls.poseLookingAt({ x: 973.6, y: 0, z: 54 }, { distance: 14, yaw: 25, pitch: -38 });
+        L.controls.setPose({ x: pd.position.x, y: pd.position.y, z: pd.position.z, yaw: pd.yaw, pitch: pd.pitch });
+        await settled(800, 15000);
+        flashes = 0;
+        L.playback.step(1);
+        const t4 = performance.now();
+        while (L.replay.block !== 973732 && performance.now() - t4 < 15000) await sleep(50);
+        for (let i = 0; i < 10; i++) { await frame(); await sleep(30); }
+        out.drainFlashes = flashes;
+      }
       L.owners.set([]);
       unsubscribe();
       return out;`,
@@ -1201,6 +1228,9 @@ const CHECKS = [
       ['turning it off restores the image (mean RGB difference ' + v.restored + ')', v.restored < 3],
       ['only the owner\u2019s spends flash: ' + v.flashesLit + ' flashes with it lit, ' + v.flashesAll + ' without', v.flashesAll > 0 && v.flashesLit * 3 < v.flashesAll],
       ['its flashes are larger: ' + v.flashPxLit + ' px minimum on average, against ' + v.flashPxAll + ' px', v.flashPxLit > 2 * v.flashPxAll],
+      ['the open menu follows Dim the rest (' + v.dimShown + ')', v.dimShown === '50%'],
+      ['wider columns cover more of the screen: ' + v.widthPx1 + ' \u2192 ' + v.widthPx25 + ' owner-coloured pixels at width 1 and 2.5', v.widthPx1 > 1000 && v.widthPx25 > 1.3 * v.widthPx1],
+      ['every spent cell of a drained hot wallet flashes (' + v.drainFlashes + ' at block 973,732)', v.drainFlashes === undefined || v.drainFlashes > 100],
     ],
   },
   {
