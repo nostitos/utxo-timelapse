@@ -218,7 +218,7 @@ def cache_entry(txid: str, height: int, raw: bytes, scripts: dict[bytes, int], h
         raise ValueError(f"REST returned transaction {parsed} for {txid}")
     return dict(t=txid, h=height, g=len(scripts),
                 o=[[vout, sats, scripts[script]] for vout, (sats, script) in enumerate(outputs) if script in scripts],
-                i=[[prev, vout] for prev, vout in inputs if prev in history])
+                i=[[sys.intern(prev), vout] for prev, vout in inputs if prev in history])
 
 
 # --- extraction ------------------------------------------------------------------------
@@ -361,7 +361,8 @@ def load_cache(path: Path) -> dict[str, tuple]:
             if not line.endswith(b"\n"):
                 break
             entry = json.loads(line)
-            cache[entry["t"]] = (entry["g"], entry["o"], entry["i"])
+            # One str per txid, shared by histories, cache keys and inputs: about 10 GB less at 686,000 addresses.
+            cache[sys.intern(entry["t"])] = (entry["g"], entry["o"], [[sys.intern(prev), vout] for prev, vout in entry["i"]])
             good += len(line)
         stream.truncate(good)
     return cache
@@ -454,7 +455,7 @@ class Extraction:
         histories = fulcrum_map(self.make_client, addresses, lambda client, address: update_history(
             client, self.work / "history", address, self.sh[address], tip + 1), self.connections)
         for address, (items, first) in zip(addresses, histories):
-            self.history[address], self.first_use[address] = items, first
+            self.history[address], self.first_use[address] = [(height, sys.intern(txid)) for height, txid in items], first
         height_of, required = {}, {}
         for address, items in self.history.items():
             generation = self.index[address] + 1
@@ -572,6 +573,7 @@ def extract(args) -> int:
     log(f"Fulcrum tip {tip} {tip_hash}")
     run.update(tip)
     records, problems = build_records(run.history, run.cache, run.scripts_list, selected, tip)
+    run.cache.clear()  # the records hold what verification needs; this frees most of the memory
     if problems:
         write_json(args.work / "extract-problems.json", problems)
         log(f"{len(problems)} consistency problems, first: {problems[0]}")

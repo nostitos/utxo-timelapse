@@ -95,6 +95,10 @@ activity stays dark until a monthly list names it.
   ```
 - Python 3.10+ with PyYAML, which the label script needs: `'/Volumes/4T Data/buv_coverage/.venv/bin/python'`,
   and `pdftotext` (Poppler) for KuCoin's PDF reports.
+- **Memory**: `extract` holds every history, the transaction cache and the records at once. A pass over
+  the 686,380 addresses selected from `labels-20261103` (26.4 million transactions, 38.7 million history
+  items) needs about 31 GB at its peak, while it builds the records, estimated from the measured 640 bytes
+  per cached transaction and 92 per history item. Check `memory_pressure` first and quit large apps.
 
 ## Commands
 
