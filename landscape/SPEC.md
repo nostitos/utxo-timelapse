@@ -418,12 +418,15 @@ from the repository root. Link to the 2D explorer as
 
 ### 5.1 Owners (owner layer)
 
-`replay.setOwners({url, manifest, visible, only})`: `url` of an owner data directory, its parsed
-owners.json and the entity indices to light; `visible: []` turns the layer off. Nothing loads until
+`replay.setOwners({url, manifest, visible, slots, only})`: `url` of an owner data directory, its parsed
+owners.json and the entity indices to light; `visible: []` turns the layer off. `slots` (one per
+entity, or null) lights a group as one owner: each member counts toward its group's first member,
+whose code it takes (the app's Other exchanges, §8). Nothing loads until
 the first call that lights an entity. The worker (`replay/owners.js` `OwnerLedger`) fetches
 long.bin and the short chunks a block needs, checks each file's size and SHA-256, and keeps per
-level a sparse map of the held outputs per entity (count and sats of outputs up to and above 5 BTC,
-as the cells), moved block by block
+level a sparse map of cells, each listing only the entities holding outputs there with their count
+and sats of outputs up to and above 5 BTC (as the cells), so memory follows the owners present in a
+cell rather than the number of entities; moved block by block
 (rebuilt after a jump of more than shortLife blocks). A seek waits for its chunks before its first
 frame; playback waits only when the next chunk has not arrived (it is fetched half a chunk ahead).
 Turning the layer on or changing its entities sends one `reason: 'owners'` frame with
@@ -432,7 +435,8 @@ Turning the layer on or changing its entities sends one `reason: 'owners'` frame
 words, or null when none of its cells holds an owner's output) and `deltas.owners` carries a word
 per delta cell; border cells take the word of the same source cell as the floats. Owner word:
 bits 0–23 the outputs the lit entities hold in the cell (capped at 2^24 − 1), bits 24–31 the code
-(0 none, else index + 1 of the lit entity holding the most outputs there, the lower index on a tie). `meta.owners` =
+(0 none, else slot + 1 of the lit slot holding the most outputs there, the lower slot on a tie; without
+`slots` every entity is its own slot). `meta.owners` =
 `{tip, active, block, entities: [{count, sats}]}` (held at the block; `active` false after the tip),
 or `{error, active: false}` when owner data failed to load (the layer turns off). `cell()` adds
 `owners: [{entity, count, sats}]` for the entities holding outputs in the cell, or null while
@@ -911,12 +915,16 @@ to win it back, and one more than 10 ms beyond is tightened by up to a tenth. It
 peak limiter (−6 dB, 20:1) and a 1.1 master gain follow.
 Owners (`ui/owners-menu.js`, `#owners`; O or the timeline's Owners button between Places and Settings, shown
 once `/owners/index.json` names owner data): a checkbox per owner with its colour and the outputs and BTC
-it holds at the block (`meta.owners`), the Hide the rest checkbox (`owners.only`), the Dim the rest
+it holds at the block (`meta.owners`). Owners holding under 1% of all the outputs in the owner data
+(owners.json `entities[].records`) share one row, Other exchanges, when at least two do (`ownerGroup`):
+it lights them together in one grey (`#B7B7B7`, `slots` in §5.1), its total is theirs, and the sources
+name them in one line. Then the Hide the rest checkbox (`owners.only`), the Dim the rest
 slider (`owners.dim`, off while the rest is hidden), and where the addresses
 come from (owners.json evidence: the owner's own published lists and their months, addresses
-attributed by others and their sources). The legend gains an Owners row, the hover card and the
-inspector a line per lit owner (`cell().owners`), and the hash `own=id[,id]` (lit owners, also in
-shared links and exported views).
+attributed by others and their sources). The legend gains an Owners row (Other exchanges once), the
+hover card and the inspector a line per lit owner (`cell().owners`, a group member under its own name
+in the group's grey), and the hash `own=id[,id]` (lit owners, the group as `other-exchanges`, which
+like any member's id lights the whole group; also in shared links and exported views).
 Keys everywhere (ignored while typing in inputs): Space play/pause, `[`/`]` ±1 block,
 Shift+`[`/`]` ±1,008, N Follow tip, M sound, I inspect at cursor (crosshair in flight, nose circle in plane mode), C next craft,
 Enter Stack sats (plane mode), Esc exits flight or plane mode/closes the drawer or a menu. Places (`ui/places.js`):

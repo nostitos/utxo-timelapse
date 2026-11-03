@@ -80,12 +80,15 @@ export async function createReplayClient(opts = {}) {
     },
     /**
      * Owner layer (replay/owners.js): url of an owner dataset directory, its parsed owners.json
-     * and the indices of the entities to show; an empty list turns it off. Frames then carry
-     * owner words (frame.owners), meta.owners has per-entity totals, and cell() adds owners.
+     * and the indices of the entities to show; an empty list turns it off. slots (one per
+     * entity) lights groups as one: members share their first member's index and colour.
+     * Frames then carry owner words (frame.owners), meta.owners has per-entity totals, and
+     * cell() adds owners.
      * only: tiles carry just those entities' outputs, so everything else disappears.
      */
-    setOwners({ url = null, manifest = null, visible = [], only = false } = {}) {
-      post({ type: 'setOwners', url: url ? new URL(url, base).href : null, manifest, visible: Array.from(visible, Number), only: !!only });
+    setOwners({ url = null, manifest = null, visible = [], slots = null, only = false } = {}) {
+      post({ type: 'setOwners', url: url ? new URL(url, base).href : null, manifest, visible: Array.from(visible, Number),
+        slots: slots ? Array.from(slots, Number) : null, only: !!only });
     },
     /**
      * Deliver held frames up to 'block' (Infinity: all, and no holding); later advance frames

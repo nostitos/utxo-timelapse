@@ -1234,6 +1234,77 @@ const CHECKS = [
     ],
   },
   {
+    name: 'owners-group',
+    shot: 'owners-group.png',
+    timeout: 120000,
+    // The small owners' shared row (ui/owners-menu.js ownerGroup), when the served owner data has
+    // one: one row, one grey, one legend entry and one own= id for all of them.
+    script: `
+      const out = { members: [] };
+      const t0 = performance.now();
+      while (!L.owners.manifest && performance.now() - t0 < 8000) await sleep(100);
+      if (!L.owners.manifest) return out;
+      const ents = L.owners.manifest.entities;
+      const total = ents.reduce((n, e) => n + (e.records || 0), 0);
+      out.members = ents.flatMap((e, i) => (total && (e.records || 0) < total * 0.01 ? [i] : []));
+      if (out.members.length < 2) return out;
+      await L.seek(tip); await idle();
+      L.controls.setPose(POSES.map);
+      await settled(800, 15000);
+      const btn = document.querySelector('#timeline [data-act="owners"]');
+      btn.click(); await sleep(250);
+      out.rows = document.querySelectorAll('#owners .ow-item').length;
+      out.memberRows = out.members.filter((i) => document.querySelector('#owners [data-owner="' + ents[i].id + '"]')).length;
+      document.querySelector('#owners [data-owner="other-exchanges"]').click();
+      const t1 = performance.now();
+      while (!(L.replay.meta && L.replay.meta.owners && L.replay.meta.owners.active) && performance.now() - t1 < 30000) await sleep(100);
+      await sleep(300);
+      out.visible = L.owners.visible.length;
+      out.row = (document.querySelector('#owners [data-owner="other-exchanges"]').closest('.ow-item') || {}).innerText || '';
+      btn.click(); await sleep(100);
+      await settled(800, 15000);
+      out.hash = (location.hash.match(/own=([^&]*)/) || [])[1] || '';
+      out.legend = (document.querySelector('#legend .lg-owners') || {}).innerText || '';
+      // A cell only group members hold: its pixel turns toward the group's grey and the hover card names its exchange.
+      let hit = null;
+      for (let y = 60; y <= 820 && !hit; y += 10) for (let x = 40; x <= 1560 && !hit; x += 10) {
+        const h = L.view.pick(x, y); if (!h) continue;
+        const c = await L.replay.cell(h.level || 0, h.col, h.row, { load: false });
+        if (c && c.owners && c.owners.length && c.owners.every((o) => out.members.includes(o.entity))) hit = { x, y, names: c.owners.map((o) => ents[o.entity].name) };
+      }
+      out.found = !!hit;
+      if (hit) {
+        const pixel = async () => { const d = (await frameImage(1600, 900)).getContext('2d').getImageData(hit.x, hit.y, 1, 1).data; return [d[0], d[1], d[2]]; };
+        const spread = (p) => Math.max(...p) - Math.min(...p);
+        out.pixelLit = await pixel();
+        canvas.dispatchEvent(new PointerEvent('pointermove', { clientX: hit.x, clientY: hit.y, pointerId: 9, pointerType: 'mouse', bubbles: true }));
+        for (let i = 0; i < 6; i++) { await frame(); await sleep(60); }
+        const hover = (L.ui.hover.current && L.ui.hover.current.text) || '';
+        out.hoverNames = hit.names.filter((n) => hover.toUpperCase().includes(n.toUpperCase()));
+        L.owners.set([]); await sleep(300); await settled(800, 15000);
+        out.pixelOff = await pixel();
+        out.greyer = spread(out.pixelLit) < spread(out.pixelOff);
+      }
+      // A link naming the group, or any member, lights all of them.
+      L.owners.set(['other-exchanges']); await sleep(200);
+      out.fromLink = L.owners.visible.length;
+      L.owners.set([ents[out.members[0]].id]); await sleep(200);
+      out.fromMember = L.owners.visible.length;
+      L.owners.set([]);
+      return out;`,
+    expect: (v) => v.members.length < 2 ? [['no group in the served owner data (fewer than two owners under 1% of the outputs)', true]] : [
+      ['one row stands for the ' + v.members.length + ' small owners (' + v.rows + ' rows)', v.memberRows === 0 && v.rows < v.members.length],
+      ['the row lights all of them', v.visible === v.members.length],
+      ['the row shows what they hold: ' + JSON.stringify(v.row), /outputs \u00b7 /.test(v.row)],
+      ['the link names the group once: own=' + v.hash, v.hash === 'other-exchanges'],
+      ['the legend names it once: ' + JSON.stringify(v.legend), (v.legend.match(/Other exchanges/g) || []).length === 1],
+      ['a cell only they hold is on screen', v.found],
+      ['its pixel turns toward grey: ' + JSON.stringify(v.pixelOff) + ' \u2192 ' + JSON.stringify(v.pixelLit), !!v.greyer],
+      ['the hover card names its exchange: ' + JSON.stringify(v.hoverNames), (v.hoverNames || []).length > 0],
+      ['own=other-exchanges or a member lights all of them', v.fromLink === v.members.length && v.fromMember === v.members.length],
+    ],
+  },
+  {
     name: 'webgl2-fallback',
     query: '?webgl=1',
     shot: 'webgl2.png',

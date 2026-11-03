@@ -214,10 +214,12 @@ export class ReplayEngine {
 
   // ---------------------------------------------------------------- owners
   /**
-   * {url, manifest, visible: entity indices, only}; an empty list turns the owner layer off.
+   * {url, manifest, visible: entity indices, slots, only}; an empty list turns the owner layer off.
+   * slots: per entity, the index whose owner code it counts toward (a group lit as one colour
+   * shares its first member's index); null or absent: each entity is its own.
    * only: tiles hold just the visible entities' outputs, so everything else disappears.
    */
-  setOwners({ url = null, manifest = null, visible = [], only = false }) {
+  setOwners({ url = null, manifest = null, visible = [], slots = null, only = false }) {
     const want = Array.isArray(visible) ? visible.filter((e) => Number.isInteger(e) && e >= 0) : [];
     const wasOnly = this.ownersOnly;
     this.ownersError = null;
@@ -227,7 +229,7 @@ export class ReplayEngine {
         this.owners = new OwnerLedger({ grid: this.grid, minAmt: this.rows, manifest, fetchFile: (entry) => this.fetchOwnerFile(source, entry) });
         this.ownersUrl = url;
       }
-      if (this.owners) this.owners.setVisible(want);
+      if (this.owners) this.owners.setVisible(want, slots);
       this.ownersOn = want.length > 0 && this.owners !== null;
       this.ownersOnly = this.ownersOn && !!only;
       this.ownersDirty = this.ownersOn;

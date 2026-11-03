@@ -59,7 +59,7 @@ const SECTIONS = [
   ['Panels', [
     [['G'], 'Graphics settings'],
     [['P'], 'Places: fly to landmarks in the data, from the first 50 BTC rewards to the dust ridge'],
-    [['O'], 'Owners: light up the outputs held by known exchange addresses, in each exchange\u2019s colour', { owners: true }],
+    [['O'], 'Owners: light up the outputs held by known exchange addresses, in each exchange\u2019s colour (the small ones together in grey)', { owners: true }],
     [['H', '?'], 'This help'],
     [['Esc'], 'Close the inspector or a panel'],
   ]],
