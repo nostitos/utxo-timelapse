@@ -56,6 +56,7 @@ export function createShading({ rows }) {
     skirtDepth: uniform(0.02),
     columnFocus: uniform(new Vector3(0, 0, 0)), // (x, z, radius) in world units; radius 0 = off
     ownersDim: uniform(0.2 ** 2.2), // owner layer: linear-light factor for the cells and layers no shown entity holds
+    ownersOn: uniform(0),            // owner layer on (1) or off (0); the floor dims with the rest while it is on
   };
 
   // Palette LUT: row 0 base palette, row 1 white-hot palette (sRGB bytes).

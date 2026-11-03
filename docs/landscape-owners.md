@@ -184,6 +184,6 @@ Follow "Publish owner data" in [cloudflare/utxo-landscape-worker/README.md](../c
 | `<work>/txs.jsonl` | Transaction cache: `t` txid, `h` height, `g` script count when parsed, `o` listed outputs, `i` history inputs |
 | `<work>/records.csv.gz`, `extract.json` | One row per output, and the extraction summary |
 | `labels-<date>/research/binance_por/` | Monthly archives, `binance_por_labels.csv` and `binance_por_supplement.json` |
-| `o<tip>-<date>/` | `owners.json`, `long.bin` and `short/NNNN.bin` (25 MB for `o974310-20261102`) |
+| `o<tip>-<date>/` | `owners.json`, `long.bin` and `short/NNNN.bin` (51 MB for `o974310-20261103`, Binance and OKX) |
 
 Generated data lives under `/Volumes/4T Data/buv_owners/` and is never committed.

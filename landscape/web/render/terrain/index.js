@@ -138,8 +138,10 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
   const floorReflection = uniform(0);
   const floorMat = new MeshStandardNodeMaterial();
   floorMat.name = 'TerrainFloor';
-  floorMat.colorNode = vec4(U.ground.mul(U.albedo), 1);
-  floorMat.emissiveNode = U.ground.mul(U.emissive);
+  // Tiles without data are floor; while the owner layer is on, it dims like the empty cells.
+  const floorDim = mix(float(1), U.ownersDim, U.ownersOn);
+  floorMat.colorNode = vec4(U.ground.mul(U.albedo).mul(floorDim), 1);
+  floorMat.emissiveNode = U.ground.mul(U.emissive).mul(floorDim);
   floorMat.metalnessNode = floorReflection;
   floorMat.roughnessNode = mix(float(1), float(0.04), floorReflection);
   floorMat.fog = true;
@@ -786,6 +788,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
    */
   function setOwners(colors) {
     shading.setOwnerColors(colors || []);
+    U.ownersOn.value = colors ? 1 : 0;
     atlas.setOwners(!!colors);
   }
 
