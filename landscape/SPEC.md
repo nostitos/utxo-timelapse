@@ -418,11 +418,12 @@ from the repository root. Link to the 2D explorer as
 
 ### 5.1 Owners (owner layer)
 
-`replay.setOwners({url, manifest, visible})`: `url` of an owner data directory, its parsed
+`replay.setOwners({url, manifest, visible, only})`: `url` of an owner data directory, its parsed
 owners.json and the entity indices to light; `visible: []` turns the layer off. Nothing loads until
 the first call that lights an entity. The worker (`replay/owners.js` `OwnerLedger`) fetches
 long.bin and the short chunks a block needs, checks each file's size and SHA-256, and keeps per
-level a sparse map of the held outputs' count and sats per entity, moved block by block
+level a sparse map of the held outputs per entity (count and sats of outputs up to and above 5 BTC,
+as the cells), moved block by block
 (rebuilt after a jump of more than shortLife blocks). A seek waits for its chunks before its first
 frame; playback waits only when the next chunk has not arrived (it is fetched half a chunk ahead).
 Turning the layer on or changing its entities sends one `reason: 'owners'` frame with
@@ -431,11 +432,21 @@ Turning the layer on or changing its entities sends one `reason: 'owners'` frame
 words, or null when none of its cells holds an owner's output) and `deltas.owners` carries a word
 per delta cell; border cells take the word of the same source cell as the floats. Owner word:
 bits 0–23 the outputs the lit entities hold in the cell (capped at 2^24 − 1), bits 24–31 the code
-(0 none, entity index + 1 for one lit entity, 255 for several). `meta.owners` =
+(0 none, else index + 1 of the lit entity holding the most outputs there, the lower index on a tie). `meta.owners` =
 `{tip, active, block, entities: [{count, sats}]}` (held at the block; `active` false after the tip),
 or `{error, active: false}` when owner data failed to load (the layer turns off). `cell()` adds
 `owners: [{entity, count, sats}]` for the entities holding outputs in the cell, or null while
 the layer is off.
+
+While the layer is on, only the lit entities' spends heat cells: forward playback passes each
+block's owner spends (`OwnerLedger.spendsAt`: amount → creation heights) with the heat, and a
+spend heats its cells only when it matches one. Outputs with the same amount and creation height
+share every cell, so the cell heat is exact; the glow, the flash sprites and their sound follow it.
+`only: true` is the owner-only view: the tile floats and counts come from the lit entities'
+outputs alone (`OwnerLedger.values` at the same source cell as the floats), so heights, columns,
+picking and flashes show nothing else. Entering it, changing its entities or crossing the owner tip
+resends every delivered tile, and leaving it resends them with the full data; in that view a frame
+waits for the owner data rather than show the full data.
 
 
 ## 6. Rendering contract
@@ -521,10 +532,10 @@ Owner layer (`view.setOwners(colours | null)`, colours in owners.json order): th
 an owner plane (a uint storage buffer written by the delta scatter on WebGPU, an RGBA8
 DataArrayTexture of the same bytes on WebGL2) and frees it when the layer turns off; both
 rebuild the materials. Cells of the heightfield (the exact cell when stepped, the nearest cell when
-smooth) and far columns that hold a lit entity's output take its colour (owner code 255: white) with
+smooth) and far columns that hold a lit entity's output take its colour with
 an emissive lift (`OWNER_LIFT` 0.6); near columns colour exactly their top `owned` layers and,
 when one output is owned, the cap. Everything else multiplies its colour, edge glow and rim by
-`owners.dim`^2.2, a linear-light factor, so the slider reads as displayed brightness. Heat (spend flashes) and the grid are unchanged; with the layer off the materials are
+`owners.dim`^2.2, a linear-light factor, so the slider reads as displayed brightness. The grid is unchanged and the worker limits heat (spend flashes) to the lit owners (§5.1); with the layer off the materials are
 the same as before.
 
 
@@ -656,7 +667,8 @@ ui_settings with the consumers):
   `display.ssaa` (1, 2, 4), `display.overlay`, `display.labels`, `display.grid`,
   `display.legend`, `display.minimap`, `display.hud`.
 - Owners: `owners.dim` (0–1, default 0.2), the brightness of everything no lit owner holds
-  while the owner layer is on (§4 owner files, §5 owners).
+  while the owner layer is on, and `owners.only` (bool, default off), the owner-only view that
+  hides everything else (§4 owner files, §5 owners).
 
 Look intent: **Landscape** is the schema defaults. **BitcoinTimelapse.com** (named Film until
 October 2026) reproduces the film's colours
@@ -899,7 +911,8 @@ to win it back, and one more than 10 ms beyond is tightened by up to a tenth. It
 peak limiter (−6 dB, 20:1) and a 1.1 master gain follow.
 Owners (`ui/owners-menu.js`, `#owners`; O or the timeline's Owners button between Places and Settings, shown
 once `/owners/index.json` names owner data): a checkbox per owner with its colour and the outputs and BTC
-it holds at the block (`meta.owners`), the Dim the rest slider (`owners.dim`), and where the addresses
+it holds at the block (`meta.owners`), the Hide the rest checkbox (`owners.only`), the Dim the rest
+slider (`owners.dim`, off while the rest is hidden), and where the addresses
 come from (owners.json evidence: the owner's own published lists and their months, addresses
 attributed by others and their sources). The legend gains an Owners row, the hover card and the
 inspector a line per lit owner (`cell().owners`), and the hash `own=id[,id]` (lit owners, also in

@@ -1,7 +1,8 @@
 // Tests for the owner layer (replay/owners.js and its use in the replay engine): record
 // parsing against the golden vector shared with scripts/landscape_owners.py, the ledger's
-// per-level maps against brute force on random walks, and the owner planes the engine sends
-// (full tiles, deltas, owner refresh frames) against brute force on a synthetic chain.
+// per-level maps against brute force on random walks, and what the engine sends against brute
+// force on a synthetic chain: owner planes (full tiles, deltas, owner refresh frames), flashes
+// only for owner spends, and the owner-only view's tile data.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
@@ -11,7 +12,7 @@ import { createHash } from 'node:crypto';
 import { gridFromManifest, SLOT, SLOT_CELLS, tileInfo } from '../web/data/grid.js';
 import { rowOfAmount } from '../web/data/axis.js';
 import {
-  parseOwnerRecords, OwnerLedger, ownerWord, chunkRange, checkOwnerManifest, UNSPENT, SEVERAL, OWNER_COUNT_MAX,
+  parseOwnerRecords, OwnerLedger, ownerWord, chunkRange, checkOwnerManifest, UNSPENT, OWNER_COUNT_MAX,
 } from '../web/replay/owners.js';
 import { ReplayEngine } from '../web/replay/engine.js';
 import { rng, writeDataset, fileSource, cppLikeRows, syntheticChain } from './replay-fixtures.mjs';
@@ -106,7 +107,7 @@ function lifecycles(blocks) {
   return out;
 }
 
-/** Brute force: per level, Map cellKey -> Float64Array(2E) of the records alive at b. */
+/** Brute force: per level, Map cellKey -> Float64Array(4E) of the records alive at b (layout of ownerWord). */
 function bruteCells(grid, rows, records, b, E, tip) {
   const maps = grid.levels.map(() => new Map());
   if (b > tip) return maps;
@@ -117,12 +118,28 @@ function bruteCells(grid, rows, records, b, E, tip) {
     grid.levels.forEach((L, l) => {
       const key = (c0 >>> L.columnShift) * 4096 + (r0 >>> L.rowShift);
       let e = maps[l].get(key);
-      if (!e) maps[l].set(key, (e = new Float64Array(2 * E)));
-      e[r.entity] += 1;
-      e[E + r.entity] += r.sats;
+      if (!e) maps[l].set(key, (e = new Float64Array(4 * E)));
+      const o = 4 * r.entity + (r.sats > 5e8 ? 2 : 0);
+      e[o] += 1;
+      e[o + 1] += r.sats;
     });
   }
   return maps;
+}
+
+/** Count of the visible entities' outputs in a brute-force entry. */
+const countOf = (e, visible) => visible.reduce((n, x) => n + e[4 * x] + e[4 * x + 2], 0);
+
+/** Per level, the set of cell keys holding a visible record spent in blocks a+1..b. */
+function bruteSpendCells(grid, rows, records, a, b, visible) {
+  const sets = grid.levels.map(() => new Set());
+  for (const r of records) {
+    if (!(r.spent > a && r.spent <= b && visible.includes(r.entity))) continue;
+    const c0 = Math.floor(r.created / 64);
+    const r0 = rowOfAmount(rows, r.sats);
+    grid.levels.forEach((L, l) => sets[l].add((c0 >>> L.columnShift) * 4096 + (r0 >>> L.rowShift)));
+  }
+  return sets;
 }
 
 test('record files: golden vector, encoder and malformed input', () => {
@@ -150,13 +167,17 @@ test('record files: golden vector, encoder and malformed input', () => {
 
 test('owner words and chunk ranges', () => {
   const vis = Uint8Array.from([1, 1, 0]);
-  assert.equal(ownerWord(Float64Array.from([0, 0, 0, 0, 0, 0]), vis), 0);
-  assert.equal(ownerWord(Float64Array.from([3, 0, 0, 9, 0, 0]), vis), 1 * 16777216 + 3);
-  assert.equal(ownerWord(Float64Array.from([0, 2, 0, 0, 9, 0]), vis), 2 * 16777216 + 2);
-  assert.equal(ownerWord(Float64Array.from([1, 2, 0, 9, 9, 0]), vis), SEVERAL * 16777216 + 3);
-  assert.equal(ownerWord(Float64Array.from([0, 0, 7, 0, 0, 9]), vis), 0, 'hidden entity');
-  assert.equal(ownerWord(Float64Array.from([2e7, 0, 0, 1, 0, 0]), vis), 16777216 + OWNER_COUNT_MAX, 'capped count');
-  assert.equal(ownerWord(Float64Array.from([1, 1, 0, 1, 1, 0]), vis) >>> 24, SEVERAL);
+  // Per entity [countSmall, satsSmall, countLarge, satsLarge].
+  const entry = (...perEntity) => Float64Array.from(perEntity.flat());
+  const none = [0, 0, 0, 0];
+  assert.equal(ownerWord(entry(none, none, none), vis), 0);
+  assert.equal(ownerWord(entry([3, 9, 0, 0], none, none), vis), 1 * 16777216 + 3);
+  assert.equal(ownerWord(entry(none, [0, 0, 2, 2e9], none), vis), 2 * 16777216 + 2);
+  assert.equal(ownerWord(entry([2, 9, 3, 3e9], none, none), vis), 1 * 16777216 + 5, 'small and large outputs both count');
+  assert.equal(ownerWord(entry([1, 9, 0, 0], [0, 0, 2, 2e9], none), vis), 2 * 16777216 + 3, 'the entity with most outputs colours the cell');
+  assert.equal(ownerWord(entry([1, 9, 0, 0], [1, 9, 0, 0], none), vis), 1 * 16777216 + 2, 'a tie goes to the lower index');
+  assert.equal(ownerWord(entry(none, none, [7, 9, 0, 0]), vis), 0, 'hidden entity');
+  assert.equal(ownerWord(entry([2e7, 9, 0, 0], [1, 9, 0, 0], none), vis), 16777216 + OWNER_COUNT_MAX, 'capped count');
   assert.deepEqual(chunkRange(0, 0, 100), { from: 0, to: 0 });
   assert.deepEqual(chunkRange(150, 150, 100), { from: 0, to: 1 });
   assert.deepEqual(chunkRange(199, 199, 100), { from: 1, to: 1 });
@@ -184,7 +205,7 @@ test('ledger maps equal brute force on random walks (forward, backward, jumps, p
   let fetches = 0;
   const ledger = new OwnerLedger({ grid, minAmt: rows, manifest, fetchFile: async (entry) => { fetches++; return files.get(entry.file); } });
   ledger.setVisible([0, 1]);
-  const check = (b) => {
+  const check = async (b) => {
     const want = bruteCells(grid, rows, kept, b, 2, tip);
     grid.levels.forEach((L, l) => {
       assert.equal(ledger.cells[l].size, want[l].size, 'cells at level ' + l + ' block ' + b);
@@ -193,8 +214,24 @@ test('ledger maps equal brute force on random walks (forward, backward, jumps, p
     const m = ledger.meta();
     assert.equal(m.active, b <= tip);
     let n0 = 0;
-    for (const e of want[0].values()) n0 += e[0];
+    for (const e of want[0].values()) n0 += e[0] + e[2];
     assert.equal(m.entities[0].count, n0);
+    // values(): the visible entities' sums of a cell.
+    const out = [0, 0, 0, 0];
+    for (const [key, e] of [...want[3]].slice(0, 40)) {
+      assert.equal(ledger.values(3, Math.floor(key / 4096), key % 4096, out), countOf(e, [0, 1]) > 0);
+      assert.deepEqual(out, [0, 1, 2, 3].map((k) => e[k] + e[4 + k]), 'values of ' + key + ' at ' + b);
+    }
+    // spendsAt(): amount -> creation heights of the outputs spent in a block.
+    for (const s of [b, b + 1]) {
+      if (s > numBlocks - 1) continue;
+      await ledger.ensure(Math.max(0, s - 1), s);
+      const exp = new Map();
+      if (s <= tip) for (const rec of kept) if (rec.spent === s) exp.set(rec.sats, [...(exp.get(rec.sats) || []), rec.created]);
+      const got = ledger.spendsAt(s);
+      for (const list of [...exp.values(), ...got.values()]) list.sort((x, y) => x - y);
+      assert.deepEqual(got, exp, 'spends in block ' + s);
+    }
   };
   let b = 0;
   const steps = [1, 1, 5, 17, 64, 299, 300, 301, 650, -1, -7, -300, -301, -650, 2500, -4000, 40];
@@ -204,13 +241,13 @@ test('ledger maps equal brute force on random walks (forward, backward, jumps, p
     await ledger.ensure(b, next);
     ledger.moveTo(next);
     b = next;
-    check(b);
+    await check(b);
   }
   for (const target of [tip, tip + 1, numBlocks - 1, tip - 3]) {
     await ledger.ensure(b, target);
     ledger.moveTo(target);
     b = target;
-    check(b);
+    await check(b);
   }
   assert.ok(fetches >= 3, 'loads long.bin and several chunks');
   assert.ok(ledger.chunks.size <= 16 + 3);
@@ -233,6 +270,37 @@ function applyOwnerFrame(planes, f) {
     }
   }
   for (const t of f.ownerTiles || []) planes.set(t.id, t.owners ? t.owners.slice() : new Uint32Array(SLOT_CELLS));
+}
+
+/** Applies frames' tile data like the atlas does: tile id -> {data: [h, heat, heatBlock, colour] per cell, counts}. */
+function applyDataFrame(tiles, f) {
+  for (const id of f.evicted || []) tiles.delete(id);
+  for (const t of f.full) {
+    if (t.empty) tiles.delete(t.id);
+    else tiles.set(t.id, { data: t.data.slice(), counts: t.counts.slice() });
+  }
+  const d = f.deltas;
+  for (let k = 0; d && k < d.ids.length; k++) {
+    let t = tiles.get(d.ids[k]);
+    if (!t) tiles.set(d.ids[k], (t = { data: new Float32Array(SLOT_CELLS * 4), counts: new Uint32Array(SLOT_CELLS) }));
+    for (let i = d.offsets[k]; i < d.offsets[k + 1]; i++) {
+      t.data.set(d.data.subarray(i * 4, i * 4 + 4), d.index[i] * 4);
+      t.counts[d.index[i]] = d.counts[i];
+    }
+  }
+}
+
+/** fn(level, cellKey, data, o, count) for every interior cell of the delivered tiles. */
+function eachCell(grid, tiles, fn) {
+  for (const [id, t] of tiles) {
+    const info = tileInfo(grid, id);
+    for (let ly = 0; ly < info.rows; ly++) {
+      for (let lx = 0; lx < info.cols; lx++) {
+        const ci = (ly + 1) * SLOT + lx + 1;
+        fn(info.level, (info.col0 + lx) * 4096 + info.row0 + ly, t.data, ci * 4, t.counts[ci]);
+      }
+    }
+  }
 }
 
 function expectedWords(grid, rows, records, b, visible, tip) {
@@ -291,11 +359,15 @@ test('engine frames carry owner words equal to brute force after seeks, playback
       }
     };
     const planes = new Map();
+    const tiles = new Map();
     let read = 0;
     const drain = () => {
       for (; read < msgs.length; read++) {
         const m = msgs[read];
-        if (m.type === 'frame') applyOwnerFrame(planes, m.frame);
+        if (m.type === 'frame') {
+          applyOwnerFrame(planes, m.frame);
+          applyDataFrame(tiles, m.frame);
+        }
         if (m.type === 'error') assert.fail('engine error: ' + m.message);
       }
     };
@@ -324,11 +396,36 @@ test('engine frames carry owner words equal to brute force after seeks, playback
     };
     let visible = [0, 1];
     const verify = (b, label) => checkPlanes(grid, planes, expectedWords(grid, rows, records, b, visible, tip), label);
+    // Cells whose flash (heat) is from blocks a+1..b, per level.
+    const heatCells = (a, b) => {
+      const got = grid.levels.map(() => new Set());
+      eachCell(grid, tiles, (l, key, data, o) => { if (data[o + 1] > 0 && data[o + 2] > a && data[o + 2] <= b) got[l].add(key); });
+      return got;
+    };
+    // Each cell's raw count, and height only where outputs are, against the given records.
+    const checkCounts = (b, recs, vis, label) => {
+      const want = bruteCells(grid, rows, recs, b, 2, Infinity);
+      let n = 0;
+      eachCell(grid, tiles, (l, key, data, o, count) => {
+        const e = want[l].get(key);
+        const exp = e ? countOf(e, vis) : 0;
+        if (count !== exp || (data[o] !== 0) !== (exp !== 0)) assert.fail(label + ': level ' + l + ' cell ' + key + ' count ' + count + ' != ' + exp + ', height ' + data[o]);
+        if (exp) n++;
+      });
+      return n;
+    };
+    const everyone = all.map((rec) => ({ ...rec, entity: 0 }));
 
     await seek(3200);
     assert.ok(verify(3200, 'seek 3200') > 0, 'some owned cells');
     await advance(3260);
     verify(3260, 'forward 60');
+    // While the layer is on, only the lit owners' spends flash.
+    const ownerSpends = bruteSpendCells(grid, rows, records, 3200, 3260, [0, 1]);
+    const hot = heatCells(3200, 3260);
+    grid.levels.forEach((L, l) => assert.deepEqual([...hot[l]].sort(), [...ownerSpends[l]].sort(), 'flashing cells at level ' + l));
+    assert.ok(ownerSpends[0].size > 0, 'owner spends in blocks 3201..3260');
+    assert.ok(bruteSpendCells(grid, rows, everyone, 3200, 3260, [0])[0].size > ownerSpends[0].size, 'other spends there too');
     await advance(3000);
     verify(3000, 'back 260');
     await seek(6100);
@@ -356,10 +453,28 @@ test('engine frames carry owner words equal to brute force after seeks, playback
     send({ type: 'cell', id: cid, level: 0, col: Math.floor(key / 4096), row: key % 4096 });
     const res = await until((m) => m.type === 'cellResult' && m.id === cid);
     const counts = res.cell.owners.map((o) => [o.entity, o.count, o.sats]);
-    assert.deepEqual(counts, [0, 1].filter((x) => e[x] > 0).map((x) => [x, e[x], e[2 + x]]));
+    assert.deepEqual(counts, [0, 1].filter((x) => countOf(e, [x]) > 0).map((x) => [x, countOf(e, [x]), e[4 * x + 1] + e[4 * x + 3]]));
     const meta = msgs.filter((m) => m.type === 'frame').pop().frame.meta.owners;
     assert.equal(meta.active, true);
     assert.equal(meta.tip, tip);
+
+    // Owner-only view: the tiles carry the lit owners' outputs alone, through seeks and playback.
+    send({ type: 'setOwners', url: 'file:///owners/', manifest, visible: [0, 1], only: true });
+    await until((m) => m.type === 'frame' && m.frame.reason === 'owners' && m.frame.full.length > 0 && msgs.indexOf(m) >= read);
+    drain();
+    assert.ok(checkCounts(tip, records, [0, 1], 'owner-only at the tip') > 0);
+    await seek(3200);
+    checkCounts(3200, records, [0, 1], 'owner-only after a seek');
+    await advance(3260);
+    checkCounts(3260, records, [0, 1], 'owner-only after playback');
+    send({ type: 'setOwners', url: 'file:///owners/', manifest, visible: [1], only: true });
+    await until((m) => m.type === 'frame' && m.frame.reason === 'owners' && m.frame.full.length > 0 && msgs.indexOf(m) >= read);
+    drain();
+    checkCounts(3260, records, [1], 'owner-only, one entity');
+    send({ type: 'setOwners', url: 'file:///owners/', manifest, visible: [1], only: false });
+    await until((m) => m.type === 'frame' && m.frame.reason === 'measure' && msgs.indexOf(m) >= read);
+    drain();
+    checkCounts(3260, everyone, [0], 'every output again');
     engine.dispose();
   } finally {
     rmSync(dir, { recursive: true, force: true });

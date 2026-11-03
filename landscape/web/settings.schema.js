@@ -552,7 +552,9 @@ const ENTRIES = [
   // Owners: the owner layer (Owners button), which lights the outputs paying known addresses
   // of the chosen exchanges.
   { id: 'owners.dim', label: 'Dim the rest', type: 'number', min: 0, max: 1, step: 0.01, default: 0.2, preset: false,
-    help: 'While owners are lit, brightness of every cell and column layer no lit owner holds: 0 is black, 1 leaves them unchanged. Spend flashes keep their brightness.' },
+    help: 'While owners are lit, brightness of every cell and column layer no lit owner holds: 0 is black, 1 leaves them unchanged. Only the lit owners\u2019 spends flash.' },
+  { id: 'owners.only', label: 'Hide the rest', type: 'bool', default: false, preset: false,
+    help: 'While owners are lit, show their outputs alone: every other output disappears, and heights, columns and flashes count only the lit owners.' },
 ];
 
 function deepFreeze(value) {

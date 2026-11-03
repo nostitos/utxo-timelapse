@@ -29,12 +29,15 @@ function zero4(out, o) {
   out[o] = 0; out[o + 1] = 0; out[o + 2] = 0; out[o + 3] = 0;
 }
 
+const OWN4 = new Float64Array(4); // scratch: the lit owners' values of one cell (owner-only view)
+
 /**
  * Writes the packed floats of slot coordinate (sx, sy) of 'slot' into out[o..o+3].
  * Handles interior cells, borders (resident neighbour or nearest interior copy) and cells
- * outside the grid. Returns true when any value is non-zero.
+ * outside the grid. Returns true when any value is non-zero. With owners (the owner-only
+ * view), the cell's counts and sums are the lit owners' (OwnerLedger.values) at that cell.
  */
-export function resolveCell(slotOf, slot, sx, sy, hm, cm, out, o, counts = null, ci = o / 4) {
+export function resolveCell(slotOf, slot, sx, sy, hm, cm, out, o, counts = null, ci = o / 4, owners = null) {
   if (counts) counts[ci] = 0;
   let lx = sx - 1;
   let ly = sy - 1;
@@ -61,8 +64,14 @@ export function resolveCell(slotOf, slot, sx, sy, hm, cm, out, o, counts = null,
   const area = slot.colW[ax] * slot.rowH[ay];
   if (area === 0) { zero4(out, o); return false; }
   const li = (ly << 8) | lx;
-  const c = src.cells;
-  const co = li << 2;
+  let c = src.cells;
+  let co = li << 2;
+  if (owners !== null) {
+    c = OWN4;
+    co = 0;
+    OWN4.fill(0);
+    owners.values(src.level, src.col0 + lx, src.row0 + ly, OWN4);
+  }
   let heat = 0;
   let hb = 0;
   if (src.heatActive) {
@@ -119,6 +128,17 @@ export function packFull(slotOf, slot, hm, cm, counts = null) {
   for (let sy = 1; sy < SLOT - 1; sy++) {
     if (resolveCell(slotOf, slot, 0, sy, hm, cm, out, (sy * SLOT) << 2, counts)) any = true;
     if (resolveCell(slotOf, slot, SLOT - 1, sy, hm, cm, out, (sy * SLOT + SLOT - 1) << 2, counts)) any = true;
+  }
+  return any ? out : null;
+}
+
+/** packFull for the owner-only view: every slot cell holds the lit owners' outputs alone. */
+export function packOwnerFull(owners, slotOf, slot, hm, cm, counts) {
+  const out = new Float32Array(SLOT_CELLS * 4);
+  let any = false;
+  for (let ci = 0; ci < SLOT_CELLS; ci++) {
+    const sy = (ci / SLOT) | 0;
+    if (resolveCell(slotOf, slot, ci - sy * SLOT, sy, hm, cm, out, ci * 4, counts, ci, owners)) any = true;
   }
   return any ? out : null;
 }
@@ -243,9 +263,11 @@ export class FrameBuilder {
    * Builds one frame and resets the dirty bookkeeping of every resident slot.
    * owners: the owner ledger at this block while the owner layer is on, else null. Then every
    * full tile carries an owner plane (null when it holds none) and the deltas their words.
+   * only (with owners): the owner-only view, whose tile data are the lit owners' outputs alone.
    * @returns {{frame:object, transfer:ArrayBuffer[]}} frame without stats/meta.
    */
-  build(state, hm, cm, reason, block, partial = false, owners = null) {
+  build(state, hm, cm, reason, block, partial = false, owners = null, only = false) {
+    const source = owners !== null && only ? owners : null;
     const slotOf = state.slotOf;
     const delivered = state.delivered;
     const desired = state.desired;
@@ -355,7 +377,7 @@ export class FrameBuilder {
       for (let i = dOffsets[k]; i < dOffsets[k + 1]; i++) {
         const idx = dIndex[i];
         const sy = (idx / SLOT) | 0;
-        resolveCell(slotOf, s, idx - sy * SLOT, sy, hm, cm, dData, i * 4, dCounts);
+        resolveCell(slotOf, s, idx - sy * SLOT, sy, hm, cm, dData, i * 4, dCounts, i, source);
         if (dOwners) dOwners[i] = ownerWordAt(owners, slotOf, s, idx - sy * SLOT, sy);
       }
     }
@@ -366,7 +388,7 @@ export class FrameBuilder {
     for (const id of fullIds) {
       const s = slotOf[id];
       const counts = new Uint32Array(SLOT_CELLS);
-      const data = packFull(slotOf, s, hm, cm, counts);
+      const data = source ? packOwnerFull(source, slotOf, s, hm, cm, counts) : packFull(slotOf, s, hm, cm, counts);
       const ownerPlane = owners && data !== null ? packOwners(owners, slotOf, s) : null;
       full.push({ id, level: s.level, tx: s.tx, ty: s.ty, empty: data === null, data, counts: data === null ? null : counts, owners: ownerPlane });
       if (data !== null) transfer.push(data.buffer, counts.buffer);

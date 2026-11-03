@@ -82,6 +82,7 @@ export class ReplayEngine {
     this.owners = null;
     this.ownersUrl = null;
     this.ownersOn = false;
+    this.ownersOnly = false;            // owner-only view: tiles carry the lit owners' outputs alone
     this.ownersDirty = false;
     this.ownersSeek = null;
     this.ownersError = null;
@@ -212,9 +213,13 @@ export class ReplayEngine {
   }
 
   // ---------------------------------------------------------------- owners
-  /** {url, manifest, visible: entity indices}; an empty list turns the owner layer off. */
-  setOwners({ url = null, manifest = null, visible = [] }) {
+  /**
+   * {url, manifest, visible: entity indices, only}; an empty list turns the owner layer off.
+   * only: tiles hold just the visible entities' outputs, so everything else disappears.
+   */
+  setOwners({ url = null, manifest = null, visible = [], only = false }) {
     const want = Array.isArray(visible) ? visible.filter((e) => Number.isInteger(e) && e >= 0) : [];
+    const wasOnly = this.ownersOnly;
     this.ownersError = null;
     try {
       if (want.length && url && manifest && (this.owners === null || this.ownersUrl !== url)) {
@@ -224,10 +229,13 @@ export class ReplayEngine {
       }
       if (this.owners) this.owners.setVisible(want);
       this.ownersOn = want.length > 0 && this.owners !== null;
+      this.ownersOnly = this.ownersOn && !!only;
       this.ownersDirty = this.ownersOn;
     } catch (err) {
       this.failOwners(err);
     }
+    // Leaving the owner-only view: every delivered tile needs its full data again.
+    if (wasOnly && !this.ownersOnly) this.measureDirty = true;
   }
 
   async fetchOwnerFile(source, entry) {
@@ -245,7 +253,9 @@ export class ReplayEngine {
   }
 
   failOwners(err) {
+    if (this.ownersOnly) this.measureDirty = true;
     this.ownersOn = false;
+    this.ownersOnly = false;
     this.ownersDirty = false;
     this.ownersError = String((err && err.message) || err);
     this.post({ type: 'error', message: 'owner data: ' + this.ownersError });
@@ -264,6 +274,12 @@ export class ReplayEngine {
     }
     if (this.seekReq || this.ownersDirty || !this.ownersOn) return;
     this.owners.moveTo(st.block);
+    if (this.ownersOnly) {
+      // The owner-only view changes tile data too: resend every delivered tile.
+      for (let id = 0; id < this.grid.tiles; id++) if (st.delivered[id] && st.slotOf[id] !== null) st.wantFull[id] = 1;
+      this.emit('owners');
+      return;
+    }
     const { frame, transfer } = this.builder.ownerFrame(st, this.owners, st.block);
     this.postFrame(frame, transfer, 0, 0);
   }
@@ -593,7 +609,13 @@ export class ReplayEngine {
       }
       decodeBlock(rec.u8, rec.pos, dec);
       if (forward) {
-        changes += st.apply(dec, 1, slotOf, heat ? st.heatFor(blk) : null, totals);
+        let h = null;
+        if (heat) {
+          h = st.heatFor(blk);
+          // Owner layer: flashes (cell heat, flash sprites, their sound) show only the lit owners' spends.
+          if (this.ownersOn) h.owners = this.owners.spendsAt(blk);
+        }
+        changes += st.apply(dec, 1, slotOf, h, totals);
         b = blk;
       } else {
         changes += st.apply(dec, -1, slotOf, null, totals);
@@ -949,15 +971,21 @@ export class ReplayEngine {
     let owners = null;
     if (this.ownersOn && st.block !== null) {
       if (this.owners.ready(st.block)) {
+        const was = this.owners.block !== null && this.owners.block <= this.owners.tip;
         this.owners.moveTo(st.block);
+        // Crossing the owner tip clears or restores every owner cell at once: resend the tiles.
+        if (was !== st.block <= this.owners.tip) {
+          for (let id = 0; id < this.grid.tiles; id++) if (st.delivered[id] && st.slotOf[id] !== null) st.wantFull[id] = 1;
+        }
         owners = this.owners;
       } else {
         // Not loaded yet (seek and playback normally wait): refresh the planes once it is.
         this.owners.prefetch(st.block);
         this.ownersDirty = true;
+        if (this.ownersOnly) return null; // never show the full data in the owner-only view
       }
     }
-    const { frame, transfer, deltaCells } = this.builder.build(st, this.hm, this.cm, reason, st.block, partial, owners);
+    const { frame, transfer, deltaCells } = this.builder.build(st, this.hm, this.cm, reason, st.block, partial, owners, this.ownersOnly);
     if (skipEmpty && !frame.full.length && !frame.evicted.length && deltaCells === 0) {
       this.builder.seq--;
       return null;

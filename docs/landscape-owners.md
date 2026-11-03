@@ -1,7 +1,8 @@
 # Landscape owner data
 
 The 3D landscape's **Owners** view lights the outputs that pay an exchange's known
-addresses at the current block and dims everything else. It follows each output from the
+addresses at the current block and dims everything else, or hides it with Hide the rest; only
+the lit exchanges' spends flash. It follows each output from the
 block that created it to the block that spent it, so the highlight stays exact while you
 step or play through history. The data is built offline by `scripts/landscape_owners.py`
 from exact listed addresses. Nothing is clustered or inferred: an address the evidence does
@@ -15,11 +16,11 @@ evidence types it accepts. It contains no addresses. Addresses come from the lab
 that `scripts/address_coverage_labels.py` builds (see [address-coverage-labels.md](address-coverage-labels.md));
 the extraction reads its `labels_extended_resolved.csv`, in which conflicting addresses are already excluded.
 
-| `evidence_type` | Binance source | Meaning |
+| `evidence_type` | Sources | Meaning |
 | --- | --- | --- |
-| `service_disclosure` | Binance's monthly proof-of-reserves lists, plus the archived September 2026 list in the primary exchange supplement | Exact address published by the operator |
-| `service_disclosure_via_graphsense` | Binance's November 2022 transparency post, as transcribed in the pinned GraphSense pack | Exact address published by the operator, via a transcription |
-| `third_party_exact_tag_via_graphsense` | WalletExplorer, Chain.info and BitInfoCharts tags in the pinned GraphSense snapshot | Exact address reported by a third party; the provider may have inferred it |
+| `service_disclosure` | Binance's monthly proof-of-reserves lists, plus the archived September 2026 list in the primary exchange supplement; six of OKX's monthly lists (March to August 2026) in that supplement | Exact address published by the operator |
+| `service_disclosure_via_graphsense` | Binance's November 2022 transparency post and OKX's November 2022 announcement, as transcribed in the pinned GraphSense pack | Exact address published by the operator, via a transcription |
+| `third_party_exact_tag_via_graphsense` | WalletExplorer, Chain.info and BitInfoCharts tags in the pinned GraphSense snapshot (Binance only) | Exact address reported by a third party; the provider may have inferred it |
 
 `por-binance` downloads `https://public.bnbstatic.com/static/proof-of-reserve/wallet_address_YYYYMM01.zip`
 for every month. A 403 or 404 means that month was not published: November 2022 to January 2023
@@ -42,6 +43,13 @@ A listed address counts as the entity's across its whole history, before and aft
 names it. A snapshot is not proof of control outside it, and customer deposit addresses and wallets
 known only by inference are absent, so the highlight shows a lower bound of what the exchange holds.
 The app's provenance note says the same.
+
+The same catalog selects 8,404 OKX addresses, from six of OKX's monthly proof-of-reserves lists
+(March to August 2026, archived with their SHA-256 in the primary exchange supplement) and its
+November 2022 announcement. OKX names its lists `https://static.okx.com/cdn/okx/por/chain/por_csv_<YYYYMMDDHH>_V<n>.zip`,
+with an hour and a version that cannot be guessed, so they are found on its download page
+(https://www.okx.com/en-gb/proof-of-reserves/download). Its lists before March 2026 are not fetched
+yet, so OKX wallets emptied before then are missing.
 
 Binance's main hot wallet, `bc1qm34lsc65zpw79lxes69zkqmk6ee3ewf0j77s3h`, went quiet around block
 973,750 (late October 2026). It had about 1,400 history items every 250 blocks before then and 14
@@ -156,7 +164,10 @@ Tests: `"$PY" -m unittest scripts/tests/test_landscape_owners.py scripts/tests/t
    a supplement with archived sources (see [address-coverage-labels.md](address-coverage-labels.md)).
 2. Append an entity to the spec: `id` (`[a-z0-9-]{1,32}`, used in links as `#own=<id>`),
    `name`, `color` (`#RRGGBB`), `catalogEntity` and `evidenceTypes`. Up to 254 entities fit
-   the record format; the spec's order is the entity index.
+   the record format; the spec's order is the entity index. Pick a colour far from the others and
+   from every look's spend-flash colour (warm white and gold, red in Paper): Binance is magenta
+   `#FF2BD6` and OKX cyan `#22D3EE`. `build` copies the colours from the extraction summary, so
+   a colour change needs `extract` (which then fetches nothing new) before `build`.
 3. Rerun `extract` with the same work directory, then `build`. No code changes. An address whose
    history exceeds Fulcrum's history cap fails loudly; raise the cap rather than skipping it.
 

@@ -1146,6 +1146,15 @@ const CHECKS = [
         }
         out.inspector = (document.querySelector('#inspector .in-owners') || {}).innerText || '';
         L.ui.inspector.close();
+        // Hide the rest: only the owner's outputs stay; unticking it brings back the dimmed view.
+        L.settings.set('owners.only', true);
+        await sleep(300);
+        const only = await settled(800, 15000);
+        out.onlyHash = location.hash.includes('owners.only=');
+        out.onlyChanged = Math.round(gridDiff(lit, only) * 100) / 100;
+        L.settings.set('owners.only', false);
+        await sleep(300);
+        out.onlyBack = Math.round(gridDiff(lit, await settled(800, 15000)) * 100) / 100;
         L.owners.set([]);
         await sleep(300);
         const after = await settled(800, 15000);
@@ -1153,6 +1162,25 @@ const CHECKS = [
         out.pixelOff = await pixel();
         out.closer = away(out.pixelLit) < away(out.pixelOff);
       }
+      // Flashes over the same blocks and view: with the owner lit, only its spends flash.
+      let flashes = 0;
+      const unsubscribe = L.view.onFlashes((list) => { flashes += list.length; });
+      L.controls.setPose({ x: 960, y: 150, z: 104, yaw: 0, pitch: -89 });
+      const playFor = async () => {
+        await L.seek(tip - 2400); await idle(); await sleep(500);
+        flashes = 0;
+        L.playback.setSpeed('1'); L.playback.play();
+        await sleep(4000);
+        L.playback.pause(); await idle();
+        return flashes;
+      };
+      out.flashesAll = await playFor();
+      L.owners.set([ent.id]);
+      const t3 = performance.now();
+      while (!(L.replay.meta && L.replay.meta.owners && L.replay.meta.owners.active) && performance.now() - t3 < 30000) await sleep(100);
+      out.flashesLit = await playFor();
+      L.owners.set([]);
+      unsubscribe();
       return out;`,
     expect: (v) => !v.available ? [['no owner data served: the Owners button stays hidden', !v.buttonShown]] : [
       ['the Owners button shows when owner data is served', v.buttonShown],
@@ -1166,7 +1194,11 @@ const CHECKS = [
       ['its pixel moves toward the owner colour: ' + JSON.stringify(v.pixelOff) + ' \u2192 ' + JSON.stringify(v.pixelLit), !!v.closer],
       ['the hover card lists the owner', /output/.test(v.hover || '') && (v.hover || '').toUpperCase().includes((v.entity || '').toUpperCase())],
       ['the inspector lists the owner: ' + JSON.stringify(v.inspector), /of .* outputs/.test(v.inspector || '')],
+      ['Hide the rest changes the view (mean RGB difference ' + v.onlyChanged + ')', v.onlyChanged > 1],
+      ['the link keeps owners.only', !!v.onlyHash],
+      ['unticking Hide the rest restores the dimmed view (difference ' + v.onlyBack + ')', v.onlyBack < 3],
       ['turning it off restores the image (mean RGB difference ' + v.restored + ')', v.restored < 3],
+      ['only the owner\u2019s spends flash: ' + v.flashesLit + ' flashes with it lit, ' + v.flashesAll + ' without', v.flashesAll > 0 && v.flashesLit * 3 < v.flashesAll],
     ],
   },
   {

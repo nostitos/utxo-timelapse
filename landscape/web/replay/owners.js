@@ -13,13 +13,13 @@
 // (b - shortLife, b], so a block needs long.bin and at most two chunks.
 import { tileOfCell } from '../data/grid.js';
 import { rowOfAmount } from '../data/axis.js';
+import { WEIGHT_THRESHOLD } from './state.js';
 
 export const OWNER_MAGIC = Object.freeze([0x42, 0x55, 0x56, 0x4f, 0x57, 0x4e, 0x31, 0x00]); // "BUVOWN1\0"
 export const OWNER_HEADER_BYTES = 16;
 export const UNSPENT = 0xffffffff;          // spent height of an output unspent at the owner tip
-export const MAX_ENTITIES = 254;            // owner word codes 1..254; 255 marks several entities
+export const MAX_ENTITIES = 254;            // owner word codes 1..254
 export const OWNER_FORMAT = 'utxo-landscape-owners-1';
-export const SEVERAL = 255;                 // owner word code of a cell held by several visible entities
 export const OWNER_COUNT_MAX = 0xffffff;    // owned count bits of an owner word
 const MAX_SATS = 2100000000000000;
 const ROW_KEY = 4096;                       // cell key = col * ROW_KEY + row (rows < 4096)
@@ -78,18 +78,21 @@ export function parseOwnerRecords(buffer) {
 
 /**
  * Owner word of a cell: the count of outputs held by visible entities in bits 0-23 (capped),
- * and in bits 24-31 the code: 0 none, entity index + 1 for one visible entity, SEVERAL for more.
- * entry = [count per entity..., sats per entity...].
+ * and in bits 24-31 the code: 0 none, else index + 1 of the visible entity holding the most
+ * outputs there (the lowest index on a tie). entry = per entity [countSmall, satsSmall,
+ * countLarge, satsLarge], small meaning at most 5 BTC as in the landscape state.
  */
 export function ownerWord(entry, visible) {
-  const E = visible.length;
   let owned = 0;
+  let best = 0;
   let code = 0;
-  for (let e = 0; e < E; e++) {
-    const n = entry[e];
-    if (n > 0 && visible[e]) {
-      owned += n;
-      code = code === 0 ? e + 1 : SEVERAL;
+  for (let e = 0; e < visible.length; e++) {
+    if (!visible[e]) continue;
+    const n = entry[4 * e] + entry[4 * e + 2];
+    owned += n;
+    if (n > best) {
+      best = n;
+      code = e + 1;
     }
   }
   return owned === 0 ? 0 : code * 16777216 + Math.min(owned, OWNER_COUNT_MAX);
@@ -177,7 +180,7 @@ export class OwnerLedger {
     this.chunks = new Map();     // chunk -> record set
     this.loading = new Map();    // 'long' | chunk -> Promise
     this.visible = new Uint8Array(this.E);
-    this.cells = grid.levels.map(() => new Map());  // per level: cell key -> Float64Array(2E)
+    this.cells = grid.levels.map(() => new Map());  // per level: cell key -> Float64Array(4E), see ownerWord
     this.tiles = grid.levels.map(() => new Map());  // per level: tile id -> Set of cell keys
     this.totals = new Float64Array(2 * this.E);
     this.block = null;           // block the maps describe; null before the first move
@@ -309,6 +312,7 @@ export class OwnerLedger {
     const E = this.E;
     const e = set.entity[i];
     const s = set.sats[i] * sign;
+    const o = 4 * e + (set.sats[i] > WEIGHT_THRESHOLD ? 2 : 0);
     this.totals[e] += sign;
     this.totals[E + e] += s;
     const levels = this.grid.levels;
@@ -323,17 +327,17 @@ export class OwnerLedger {
       let entry = cells.get(key);
       if (entry === undefined) {
         if (sign < 0) throw new Error('owner ledger: removing an output that was never added (cell ' + l + '/' + col + '/' + row + ')');
-        entry = new Float64Array(2 * E);
+        entry = new Float64Array(4 * E);
         cells.set(key, entry);
         let keys = this.tiles[l].get(tile);
         if (keys === undefined) this.tiles[l].set(tile, (keys = new Set()));
         keys.add(key);
       }
-      entry[e] += sign;
-      entry[E + e] += s;
-      if (sign < 0 && entry[e] === 0) {
+      entry[o] += sign;
+      entry[o + 1] += s;
+      if (sign < 0 && entry[o] === 0) {
         let empty = true;
-        for (let k = 0; k < E; k++) if (entry[k] !== 0) { empty = false; break; }
+        for (let k = 0; k < 4 * E; k += 2) if (entry[k] !== 0) { empty = false; break; }
         if (empty) {
           cells.delete(key);
           const keys = this.tiles[l].get(tile);
@@ -367,7 +371,47 @@ export class OwnerLedger {
     const entry = this.cells[level] && this.cells[level].get(col * ROW_KEY + row);
     const out = [];
     if (entry === undefined) return out;
-    for (let e = 0; e < this.E; e++) if (entry[e] > 0) out.push({ entity: e, count: entry[e], sats: entry[this.E + e] });
+    for (let e = 0; e < this.E; e++) {
+      const count = entry[4 * e] + entry[4 * e + 2];
+      if (count > 0) out.push({ entity: e, count, sats: entry[4 * e + 1] + entry[4 * e + 3] });
+    }
+    return out;
+  }
+
+  /**
+   * The visible entities' [countSmall, satsSmall, countLarge, satsLarge] in a cell, summed into
+   * out (a length-4 array); false, leaving out as it was, when they hold nothing there.
+   */
+  values(level, col, row, out) {
+    const entry = this.cells[level].get(col * ROW_KEY + row);
+    if (entry === undefined) return false;
+    let any = false;
+    out[0] = out[1] = out[2] = out[3] = 0;
+    for (let e = 0; e < this.E; e++) {
+      if (!this.visible[e]) continue;
+      for (let k = 0; k < 4; k++) out[k] += entry[4 * e + k];
+      if (entry[4 * e] + entry[4 * e + 2] > 0) any = true;
+    }
+    return any;
+  }
+
+  /**
+   * Amount (sats) -> creation heights of the visible entities' outputs spent in block b, for
+   * the replay's heat filter; empty when nothing for b is loaded or b is past the owner tip.
+   */
+  spendsAt(b) {
+    const out = new Map();
+    if (b > this.tip || !this.ready(Math.max(0, b - 1), b)) return out;
+    for (const set of this.#sets(Math.max(0, b - 1), b)) {
+      const j1 = upperSpent(set.spent, set.bySpent, b);
+      for (let j = upperSpent(set.spent, set.bySpent, b - 1); j < j1; j++) {
+        const i = set.bySpent[j];
+        if (!this.visible[set.entity[i]]) continue;
+        const list = out.get(set.sats[i]);
+        if (list === undefined) out.set(set.sats[i], [set.created[i]]);
+        else list.push(set.created[i]);
+      }
+    }
     return out;
   }
 
@@ -382,7 +426,7 @@ export class OwnerLedger {
   get memoryBytes() {
     let b = this.long ? this.long.bytes : 0;
     for (const s of this.chunks.values()) b += s.bytes;
-    for (const m of this.cells) b += m.size * (48 + 16 * this.E);
+    for (const m of this.cells) b += m.size * (48 + 32 * this.E);
     return b;
   }
 }

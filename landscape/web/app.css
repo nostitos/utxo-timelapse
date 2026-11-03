@@ -603,6 +603,9 @@ body.plane #legend { display: none; }
 .ow-swatch, .hv-swatch, .in-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35); }
 .hv-swatch, .in-swatch { margin-right: 6px; vertical-align: -1px; }
 .ow-dim { display: grid; grid-template-columns: auto 1fr 40px; gap: 10px; align-items: center; margin: 10px 8px 4px; font: 10.5px var(--mono); color: var(--dim); }
+.ow-dim.off { opacity: 0.4; }
+.ow-only { display: flex; gap: 9px; align-items: center; margin: 10px 8px 0; font: 10.5px var(--mono); color: var(--dim); cursor: pointer; }
+.ow-only input { margin: 0; accent-color: var(--mint); }
 .ow-dim input { width: 100%; accent-color: var(--mint); }
 .ow-dim output { text-align: right; color: var(--ink); }
 .ow-note { margin: 6px 8px; font-size: 12px; color: #f7b45a; }

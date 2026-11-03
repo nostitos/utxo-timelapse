@@ -60,10 +60,12 @@ export function createOwnersMenu({ container, store, onToggle }) {
     }).join('');
     const dim = Number(store.get('owners.dim'));
     const pct = Math.round((Number.isFinite(dim) ? dim : 0.2) * 100);
+    const only = !!store.get('owners.only');
     const out =
-      '<div class="pl-col"><h3>Owners <span>Outputs paying addresses known to belong to an exchange, lit in its colour at the current block.</span></h3>' +
+      '<div class="pl-col"><h3>Owners <span>Outputs paying addresses known to belong to an exchange, lit in its colour at the current block. Only their spends flash.</span></h3>' +
       rows +
-      '<label class="ow-dim"><span>Dim the rest</span><input type="range" min="0" max="1" step="0.05" value="' + (pct / 100) + '" data-dim aria-label="Brightness of everything else">' +
+      '<label class="ow-only"><input type="checkbox" data-only' + (only ? ' checked' : '') + '><span>Hide the rest</span></label>' +
+      '<label class="ow-dim' + (only ? ' off' : '') + '"><span>Dim the rest</span><input type="range" min="0" max="1" step="0.05" value="' + (pct / 100) + '" data-dim aria-label="Brightness of everything else"' + (only ? ' disabled' : '') + '>' +
       '<output>' + pct + '%</output></label>' +
       (past ? '<p class="ow-note">This block is after the owner data, which ends at block ' + fmtInt(manifest.tip) + '; nothing is lit here.</p>' : '') +
       '<ul class="ow-sources">' + sources + '<li>Only the exact outputs paying those addresses, from the block that created each to the block that spent it. Deposit addresses and wallets found only by inference are not included, so this is a lower bound. Owner data runs through block ' + fmtInt(manifest.tip) + '.</li></ul></div>';
@@ -79,6 +81,7 @@ export function createOwnersMenu({ container, store, onToggle }) {
   container.addEventListener('change', (e) => {
     const box = e.target.closest('[data-owner]');
     if (box) onToggle(box.dataset.owner, box.checked);
+    if (e.target.matches('[data-only]')) store.set('owners.only', e.target.checked);
     if (e.target.matches('[data-dim]')) {
       e.target.blur();
       render();

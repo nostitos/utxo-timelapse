@@ -356,6 +356,9 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       return { manifest: owners.manifest, visible: new Set(owners.visible), meta: meta && !meta.error ? meta : null, block: replay.block,
         loading: owners.visible.length > 0 && !(meta && meta.active !== undefined) };
     }
+    // The worker's owner layer: the lit entities and whether the rest is hidden (owners.only).
+    const sendOwners = () => replay.setOwners({ url: owners.url, manifest: owners.manifest, visible: owners.visible.map(ownerIndex),
+      only: owners.visible.length > 0 && !!store.get('owners.only') });
     /** Lights exactly these owners (entity ids; unknown ones are ignored). */
     function setOwnersVisible(ids) {
       if (!owners.manifest) {
@@ -366,7 +369,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       if (list.join(',') === owners.visible.join(',')) return;
       owners.visible = list;
       const indices = list.map(ownerIndex);
-      replay.setOwners({ url: owners.url, manifest: owners.manifest, visible: indices });
+      sendOwners();
       view.setOwners(indices.length ? owners.manifest.entities.map((e) => e.color) : null);
       legend.setOwners(list.map((id) => owners.manifest.entities[ownerIndex(id)]));
       if (timeline) timeline.setOwners(indices.length > 0);
@@ -540,6 +543,10 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       if (ids.has('amp.measure') || ids.has('color.measure')) applyMeasures();
       if (ids.has('color.ground')) applyLabelInk();
       if (ids.has('amp.heatHalfLife')) replay.setHeatHalfLife(store.get('amp.heatHalfLife'));
+      if (ids.has('owners.only') && owners.visible.length) {
+        sendOwners();
+        ownersMenu.update(ownersState());
+      }
       if (ids.has('geo.tileBudget')) replay.setMaxResidentTiles(store.get('geo.tileBudget'));
       if (ids.has('display.hud')) dismissed.delete('hud');
       if (ids.has('display.legend')) dismissed.delete('legend');

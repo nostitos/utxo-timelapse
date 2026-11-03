@@ -76,7 +76,7 @@ export function createShading({ rows }) {
   gridRows.minFilter = gridRows.magFilter = NearestFilter;
   gridRows.generateMipmaps = false;
   gridRows.colorSpace = NoColorSpace;
-  // Owner colours by owner code (replay/owners.js): code e + 1 is entity e, 255 several entities.
+  // Owner colours by owner code (replay/owners.js): code e + 1 is entity e.
   const ownerData = new Uint8Array(256 * 4).fill(255);
   const ownerPalette = new DataTexture(ownerData, 256, 1, RGBAFormat, UnsignedByteType);
   ownerPalette.minFilter = ownerPalette.magFilter = NearestFilter;

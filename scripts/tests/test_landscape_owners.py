@@ -430,16 +430,22 @@ class ReserveListTests(unittest.TestCase):
 class SpecTests(unittest.TestCase):
     def test_committed_spec_and_address_selection(self):
         entities = owners.load_spec(Path(__file__).resolve().parents[1] / "landscape_owners_entities.json")
-        self.assertEqual([(e["id"], e["name"], e["color"]) for e in entities], [("binance", "Binance", "#F0B90B")])
+        self.assertEqual([(e["id"], e["name"], e["color"]) for e in entities],
+                         [("binance", "Binance", "#FF2BD6"), ("okx", "OKX", "#22D3EE")])
+        okx = "34xp4vRoCGJym3xR7yCVPFHoCNxv4Twseo"
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "labels.csv"
             write_labels(path, [(A, "Binance", "service_disclosure", "2023-02-01"),
                                 (A, "Binance", "service_disclosure", "2023-03-01"),
                                 (B, "Binance", "unreviewed_type", "2023-02-01"),
-                                ("34xp4vRoCGJym3xR7yCVPFHoCNxv4Twseo", "OKX", "service_disclosure", "2023-02-01")])
+                                (B, "Kraken", "service_disclosure", "2023-02-01"),
+                                (okx, "OKX", "service_disclosure", "2026-03-03"),
+                                (okx, "OKX", "third_party_exact_tag_via_graphsense", "2021-11-09")])
             selected = owners.select_addresses(entities, path)
-        self.assertEqual(list(selected), [A])
+        self.assertEqual(sorted(selected), sorted([A, okx]))
         self.assertEqual(len(selected[A]["evidence"]), 2)
+        self.assertEqual(selected[okx]["entity"], "okx")
+        self.assertEqual([e["type"] for e in selected[okx]["evidence"]], ["service_disclosure"])
         for change in (dict(id="Bad Id"), dict(color="yellow")):
             with self.subTest(change=change), tempfile.TemporaryDirectory() as tmp:
                 path = Path(tmp) / "spec.json"

@@ -82,9 +82,10 @@ export async function createReplayClient(opts = {}) {
      * Owner layer (replay/owners.js): url of an owner dataset directory, its parsed owners.json
      * and the indices of the entities to show; an empty list turns it off. Frames then carry
      * owner words (frame.owners), meta.owners has per-entity totals, and cell() adds owners.
+     * only: tiles carry just those entities' outputs, so everything else disappears.
      */
-    setOwners({ url = null, manifest = null, visible = [] } = {}) {
-      post({ type: 'setOwners', url: url ? new URL(url, base).href : null, manifest, visible: Array.from(visible, Number) });
+    setOwners({ url = null, manifest = null, visible = [], only = false } = {}) {
+      post({ type: 'setOwners', url: url ? new URL(url, base).href : null, manifest, visible: Array.from(visible, Number), only: !!only });
     },
     /**
      * Deliver held frames up to 'block' (Infinity: all, and no holding); later advance frames
