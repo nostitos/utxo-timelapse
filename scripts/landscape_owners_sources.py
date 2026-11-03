@@ -1589,8 +1589,8 @@ def coverage_report(catalog: Path, registry: Path, research: Path, out: Path) ->
                   or "named by a seed list only; no retained source lists its addresses")
         without.append(dict(name=candidate["name"], seeds=sorted({seed["seed"] for seed in candidate["seeds"]}),
                             reason=reason))
-    custody = [dict(item, source_id=supplement.get("source_id")) for supplement in supplements
-               for item in supplement.get("excluded", [])]
+    custody = [dict(item, source_id=supplement.get("source_id") or Path(supplement["manifest_path"]).stem)
+               for supplement in supplements for item in supplement.get("excluded", [])]
     result = dict(
         generated_at=now(), catalog=str(catalog), catalog_manifest_sha256=labels.sha256(catalog / "sources_manifest.json"),
         counts=manifest["counts"], entities=report,
@@ -1605,7 +1605,8 @@ def coverage_report(catalog: Path, registry: Path, research: Path, out: Path) ->
                        if supplement.get("missing")},
         source_failures={ident: item["error"] for ident, item in fetched.items() if not item.get("ok")},
         blocked_sources=[dict(id=source["id"], entity=source.get("entity"), status=source["status"],
-                              note=source.get("note")) for source in sources if source["status"].startswith("blocked")],
+                              note=source.get("note")) for source in sources
+                         if source["status"].startswith("blocked") or source["status"] == "deferred"],
         candidates_without_addresses=without)
     write_json(out, result)
     out.with_suffix(".md").write_text(coverage_markdown(result))
@@ -1639,10 +1640,10 @@ def coverage_markdown(result: dict) -> str:
     for conflict in result["conflicts"][:300]:
         lines.append(f"- {conflict['address']}: " + "; ".join(
             f"{e['entity']} ({e['evidence_type']}, {e['observed']}, {e['source']})" for e in conflict["evidence"]))
-    lines += ["", "## Custodian exclusions", ""]
+    lines += ["", f"## Custodian exclusions ({len(result['custodian_exclusions'])} rows)", ""]
     for item in result["custodian_exclusions"][:300]:
         lines.append(f"- {item.get('address')}: {item.get('custodian') or item.get('reason')} "
-                     f"({item.get('source_id')}, {item.get('list')}, {item.get('observed', '')})")
+                     f"({item.get('source_id')}, {item.get('list') or item.get('source')}, {item.get('observed', '')})")
     lines += ["", "## BTC rows on other networks (dropped)", ""]
     for ident, counts in result["dropped_other_networks"].items():
         lines.append(f"- {ident}: " + ", ".join(f"{key} {value}" for key, value in counts.items()))
@@ -1655,7 +1656,7 @@ def coverage_markdown(result: dict) -> str:
                      + (" …" if len(missing) > 24 else "") + ")")
     lines += ["", "## Sources that failed", ""]
     lines += [f"- {ident}: {error}" for ident, error in result["source_failures"].items()] or ["- none"]
-    lines += ["", "## Blocked sources", ""]
+    lines += ["", "## Blocked or deferred sources", ""]
     lines += [f"- {item['id']} ({item['entity']}): {item['status']}. {item.get('note') or ''}"
               for item in result["blocked_sources"]] or ["- none"]
     lines += ["", f"## Candidates without usable public addresses ({len(result['candidates_without_addresses'])})", ""]
