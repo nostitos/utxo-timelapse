@@ -325,7 +325,7 @@ class PreflightTests(unittest.TestCase):
             cached = json.dumps(dict(t=ids["V"], h=120, g=1, o=[], i=[]), separators=(",", ":")) + "\n"
             (work / "txs.jsonl").write_text(cached)
             args = SimpleNamespace(spec=spec_path, labels=root / "labels.csv", fulcrum="fake:1", work=work,
-                                   out=root / "preflight.json")
+                                   out=root / "preflight.json", fulcrum_connections=2)
             with mock.patch.object(owners, "running_jobs", lambda folder: ["extract.pid (1)"]), \
                     self.assertRaisesRegex(SystemExit, "running"):
                 owners.preflight(args)
@@ -344,7 +344,7 @@ class PreflightTests(unittest.TestCase):
 class ExtractTests(unittest.TestCase):
     def run_extract(self, fake, work, label_path, spec_path):
         args = SimpleNamespace(spec=spec_path, labels=label_path, fulcrum="fake:1", rest="http://fake",
-                               work=work, concurrency=4)
+                               work=work, concurrency=4, fulcrum_connections=2)
         with mock.patch.object(owners, "Fulcrum", lambda address: fake), \
                 mock.patch.object(owners, "Rest", lambda base: fake), mock.patch.object(owners, "log"):
             return owners.extract(args)
