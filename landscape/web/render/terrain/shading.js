@@ -3,13 +3,16 @@
 import { Color, Vector3, DataTexture, RGBAFormat, FloatType, UnsignedByteType, NearestFilter, NoColorSpace } from 'three/webgpu';
 import {
   Fn, uniform, float, int, ivec2, vec3, select, log, pow, exp2, log2, clamp, min, max, abs, floor,
-  round, smoothstep, fwidth, textureLoad, sRGBTransferEOTF, dot, saturate, positionViewDirection,
+  round, smoothstep, fwidth, textureLoad, sRGBTransferEOTF, dot, saturate, positionViewDirection, mix,
 } from 'three/tsl';
 import { paletteRGB, transferThresholds, whiteHotRow, parseColor } from './palette.js';
 import { rowOfAmount } from '../../data/axis.js';
 import { CURVES, heightOfCpu, HEAT_H0, heatIntensityCpu, WHALE_RAMP_DECADES } from './curve.js';
 
 export { CURVES, heightOfCpu, HEAT_H0, heatIntensityCpu };
+
+// Owner layer: only the lit owners' spends flash, so each glows this many times brighter.
+export const OWNER_HEAT = 3;
 
 function srgbHexToLinearColor(hex, fallback = '#000000') {
   const rgb = parseColor(hex) || parseColor(fallback);
@@ -229,7 +232,10 @@ export function createShading({ rows }) {
     // flashes, their glow is dimmed to amp.heatEdge and ramps to full over amp.heatEdgeBlocks.
     const edge = worldX === null ? float(1)
       : float(1).sub(float(1).sub(u.heatEdge).mul(float(1).sub(smoothstep(0, max(u.heatEdgeBlocks, 1), u.block.sub(worldX.mul(1000))))));
-    return select(heat.greaterThan(0), amp.mul(fade).mul(u.heatGain).mul(edge), float(0));
+    // While owners are lit (ownersOn = 1) only their few spends heat cells: they glow OWNER_HEAT
+    // times as bright, without the creation-edge dimming (hot wallets spend young coins).
+    const owned = mix(edge, float(OWNER_HEAT), u.ownersOn);
+    return select(heat.greaterThan(0), amp.mul(fade).mul(u.heatGain).mul(owned), float(0));
   };
   /** Emissive colour of a heat brightness. */
   const heatEmissiveOf = (intensity) => u.heatColor.mul(intensity);

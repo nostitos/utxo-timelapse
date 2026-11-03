@@ -21,6 +21,7 @@ export const FLASH_CAPACITY = 32768;
 export const FLASH_LIFE_MS = 1400;
 export const FLASH_MAX_NEW = 400;
 export const FLASH_YOUNG_SHARE = 0.25; // at most this share of a frame's new flashes for creation-edge spends
+export const OWNER_FLASH_SIZE = 2.5;   // owner layer: its flashes' size and minimum pixels, against an old-coin flash
 export { flashLook };
 
 /** Indices of up to n items with the largest weights (order not guaranteed beyond the cut). */
@@ -77,8 +78,11 @@ export function createFlashes({ shading, capacity = FLASH_CAPACITY, onSpawn = nu
    * xEnd = the cell's newest block; btcCell = BTC per L0 cell, which sizes the flash). Old
    * coins (cells whose newest block is more than edgeBlocks before 'block') outrank
    * creation-edge spends, which get at most FLASH_YOUNG_SHARE of the slots.
+   * owners: the owner layer is on, so these are the lit owners' few spends: each is OWNER_FLASH_SIZE
+   * times larger, lasts twice as long and keeps full brightness near the creation edge, where an
+   * exchange's hot wallet spends its own change every block (it keeps the smaller young size).
    */
-  function spawn(items, { size = 1, reference = 100, edge = 0.3, block = Infinity, edgeBlocks = 1008, now = performance.now(), maxNew = FLASH_MAX_NEW, reason = null } = {}) {
+  function spawn(items, { size = 1, reference = 100, edge = 0.3, block = Infinity, edgeBlocks = 1008, now = performance.now(), maxNew = FLASH_MAX_NEW, reason = null, owners = false } = {}) {
     if (!(size > 0) || !items.length) return;
     for (const it of items) {
       it.old = !Number.isFinite(block) || block - (it.xEnd ?? it.x) * 1000 > edgeBlocks;
@@ -93,10 +97,12 @@ export function createFlashes({ shading, capacity = FLASH_CAPACITY, onSpawn = nu
     const chosen = topByWeight(old, maxNew - pickYoung.length).concat(pickYoung);
     let oldCount = 0;
     for (const it of chosen) {
-      const look = flashLook(it.btcCell ?? it.btc, { size, reference, old: it.old, edge });
+      const look = flashLook(it.btcCell ?? it.btc, { size: owners ? size * OWNER_FLASH_SIZE : size, reference, old: it.old, edge: owners ? 1 : edge });
       it.t = look.t;
+      it.minPx = look.minPx;
       if (it.old) oldCount++;
-      list.push({ x: it.x, y: it.y, z: it.z, size: look.size, minPx: look.minPx, intensity: look.intensity, t0: now });
+      list.push({ x: it.x, y: it.y, z: it.z, size: look.size, minPx: look.minPx, intensity: look.intensity, t0: now,
+        life: owners ? 2 * FLASH_LIFE_MS : FLASH_LIFE_MS });
     }
     if (list.length > capacity) list.splice(0, list.length - capacity);
     stats.spawned += chosen.length;
@@ -117,7 +123,7 @@ export function createFlashes({ shading, capacity = FLASH_CAPACITY, onSpawn = nu
     let w = 0;
     for (let i = 0; i < list.length; i++) {
       const f = list[i];
-      if ((now - f.t0) / FLASH_LIFE_MS >= 1) continue;
+      if ((now - f.t0) / f.life >= 1) continue;
       list[w++] = f;
     }
     list.length = w;
@@ -125,7 +131,7 @@ export function createFlashes({ shading, capacity = FLASH_CAPACITY, onSpawn = nu
     const V = valAttr.array;
     for (let i = 0; i < w; i++) {
       const f = list[i];
-      const a = (now - f.t0) / FLASH_LIFE_MS;
+      const a = (now - f.t0) / f.life;
       const grow = 0.6 + 0.4 * Math.min(1, a * 4);
       P[i * 4] = f.x;
       P[i * 4 + 1] = f.y;

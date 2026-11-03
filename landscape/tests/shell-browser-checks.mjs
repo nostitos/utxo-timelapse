@@ -1162,23 +1162,24 @@ const CHECKS = [
         out.pixelOff = await pixel();
         out.closer = away(out.pixelLit) < away(out.pixelOff);
       }
-      // Flashes over the same blocks and view: with the owner lit, only its spends flash.
+      // Flashes over the same blocks and view: with the owner lit, only its spends flash, larger.
       let flashes = 0;
-      const unsubscribe = L.view.onFlashes((list) => { flashes += list.length; });
+      let px = 0;
+      const unsubscribe = L.view.onFlashes((list) => { flashes += list.length; for (const f of list) px += f.minPx || 0; });
       L.controls.setPose({ x: 960, y: 150, z: 104, yaw: 0, pitch: -89 });
       const playFor = async () => {
         await L.seek(tip - 2400); await idle(); await sleep(500);
-        flashes = 0;
+        flashes = 0; px = 0;
         L.playback.setSpeed('1'); L.playback.play();
         await sleep(4000);
         L.playback.pause(); await idle();
-        return flashes;
+        return { n: flashes, px: flashes ? Math.round((px / flashes) * 10) / 10 : 0 };
       };
-      out.flashesAll = await playFor();
+      ({ n: out.flashesAll, px: out.flashPxAll } = await playFor());
       L.owners.set([ent.id]);
       const t3 = performance.now();
       while (!(L.replay.meta && L.replay.meta.owners && L.replay.meta.owners.active) && performance.now() - t3 < 30000) await sleep(100);
-      out.flashesLit = await playFor();
+      ({ n: out.flashesLit, px: out.flashPxLit } = await playFor());
       L.owners.set([]);
       unsubscribe();
       return out;`,
@@ -1199,6 +1200,7 @@ const CHECKS = [
       ['unticking Hide the rest restores the dimmed view (difference ' + v.onlyBack + ')', v.onlyBack < 3],
       ['turning it off restores the image (mean RGB difference ' + v.restored + ')', v.restored < 3],
       ['only the owner\u2019s spends flash: ' + v.flashesLit + ' flashes with it lit, ' + v.flashesAll + ' without', v.flashesAll > 0 && v.flashesLit * 3 < v.flashesAll],
+      ['its flashes are larger: ' + v.flashPxLit + ' px minimum on average, against ' + v.flashPxAll + ' px', v.flashPxLit > 2 * v.flashPxAll],
     ],
   },
   {

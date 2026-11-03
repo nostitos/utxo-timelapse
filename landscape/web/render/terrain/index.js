@@ -617,7 +617,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     if (candidates.length) {
       for (const c of candidates) c.y = heightAt(c.x, c.z);
       flashes.spawn(candidates, { size: flashSize, reference: get('amp.heatReference'), edge: get('amp.heatEdge'), block: blk,
-        edgeBlocks: get('amp.heatEdgeBlocks'), reason: frame.reason ?? null });
+        edgeBlocks: get('amp.heatEdgeBlocks'), reason: frame.reason ?? null, owners: !!atlas.ownersOn });
     }
     stats.applyMs = performance.now() - tA;
     stats.applyMsTotal = (stats.applyMsTotal || 0) + stats.applyMs;

@@ -535,7 +535,7 @@ rebuild the materials. Cells of the heightfield (the exact cell when stepped, th
 smooth) and far columns that hold a lit entity's output take its colour with
 an emissive lift (`OWNER_LIFT` 0.6); near columns colour exactly their top `owned` layers and,
 when one output is owned, the cap. Everything else multiplies its colour, edge glow and rim by
-`owners.dim`^2.2, a linear-light factor, so the slider reads as displayed brightness. The grid is unchanged and the worker limits heat (spend flashes) to the lit owners (§5.1); with the layer off the materials are
+`owners.dim`^2.2, a linear-light factor, so the slider reads as displayed brightness. The grid is unchanged and the worker limits heat (spend flashes) to the lit owners (§5.1), whose fewer flashes are stronger: their heat glows `OWNER_HEAT` (3) times as bright without the creation-edge dimming, and their flash sprites are `OWNER_FLASH_SIZE` (2.5) times as large, live twice `FLASH_LIFE_MS` and keep full brightness near the creation edge; with the layer off the materials are
 the same as before.
 
 
