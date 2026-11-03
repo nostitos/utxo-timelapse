@@ -143,11 +143,13 @@ node landscape/tools/owners-check.mjs --data "/Volumes/4T Data/buv_render/landsc
 Run the extraction detached so it outlives the shell, for example with
 `python3 "$OWNERS/daemon.py" "$OWNERS/extract.log" "$OWNERS/extract.pid" "$PWD" -- "$PY" scripts/landscape_owners.py extract …`.
 
-`extract` freezes Fulcrum's tip, reads every address's confirmed history (as above), and
-fetches each history transaction once. Its append-only cache keeps, per transaction, its height,
-the outputs paying listed scripts (vout, sats, script index) and the inputs that spend any history
-transaction. It then brings everything up to Fulcrum's latest tip and builds one record per output:
-txid, vout, address, entity, created, spent (empty when unspent) and sats, in `records.csv.gz`.
+`extract` freezes Fulcrum's tip, reads every address's confirmed history up to it (as above, over
+`--fulcrum-connections` connections, default 8, since each request costs about one network round
+trip), and fetches each history transaction once. Its append-only cache keeps, per transaction, its
+height, the outputs paying listed scripts (vout, sats, script index) and the inputs that spend any
+history transaction. It builds one record per output at that tip: txid, vout, address, entity,
+created, spent (empty when unspent) and sats, in `records.csv.gz`. A run over hundreds of thousands
+of addresses outlasts several blocks, so it does not chase the tip; rerun it to move forward.
 
 `build --tip T` keeps records created at or below T with more than 0 sats, drops records spent in
 the block that created them, and counts outputs spent after T as unspent. It reads T's hash from
@@ -163,10 +165,11 @@ never overwritten; files are written into a staging directory that is renamed wh
 - Each address's history must equal the set of transactions that pay it or spend its outputs.
   A transaction seen at two heights, an outpoint spent twice or a transaction never fetched
   stops the run with `extract-problems.json`.
-- At the final Fulcrum tip, each address's unspent records must equal its confirmed
-  `listunspent` exactly: same outpoints, same amounts. The only exception is an outpoint spent by
-  one of that address's own mempool transactions. If a block arrives during the check, the run
-  updates and checks again. Any mismatch writes `verify-failures.json` and exits with status 1.
+- Each address's unspent records at the frozen tip must equal its confirmed `listunspent`, read
+  afterwards, exactly: same outpoints, same amounts. Outputs confirmed above the tip are ignored,
+  and a record missing from `listunspent` must be spent by a transaction in that address's history
+  above the tip or in its mempool. Any other difference writes `verify-failures.json` and exits
+  with status 1, as does a tip block that was reorganised during the run.
 - `extract.json` records, per address, its evidence, history size, first use, records, unspent
   outputs and sats, and whether it verified, plus the totals, both tips and the label file's SHA-256.
 - `owners-check.mjs` matches every owner creation and spend against that block's landscape

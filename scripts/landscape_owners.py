@@ -515,48 +515,46 @@ def build_records(history: dict[str, list], cache: dict[str, tuple], scripts_lis
 
 
 def verify(client, rest: Rest, records: list[tuple], sh: dict[str, str], tip: int,
-           make_client=None, connections: int = 1) -> tuple[dict, list[dict], bool]:
-    """Compare unspent records with confirmed listunspent at tip. Returns (per address, mismatches, chain moved)."""
+           make_client=None, connections: int = 1) -> tuple[dict, list[dict]]:
+    """Compare the records' unspent outputs at tip with confirmed listunspent now, which may be later.
+    Outputs confirmed above tip are ignored; a record missing from listunspent must be spent by a
+    transaction in the address's history above tip or in its mempool. Returns (per address, mismatches)."""
     unspent = defaultdict(dict)
     for txid, vout, address, _, _, spent, sats in records:
         if spent is None:
             unspent[address][(txid, vout)] = sats
 
     def check(client, address: str):
-        listed, moved = {}, False
+        listed = {}
         for item in client.call("blockchain.scripthash.listunspent", sh[address]):
-            if item["height"] > tip:
-                moved = True
-            elif item["height"] > 0:
+            if 0 < item["height"] <= tip:
                 listed[(item["tx_hash"], item["tx_pos"])] = item["value"]
         ours = unspent[address]
-        missing, in_mempool = ours.keys() - listed.keys(), set()
+        missing, spent_later = ours.keys() - listed.keys(), set()
         if missing:
-            for entry in client.call("blockchain.scripthash.get_mempool", sh[address]):
+            later = client.call("blockchain.scripthash.get_history", sh[address], tip + 1, 2 ** 31 - 1)
+            for entry in later + client.call("blockchain.scripthash.get_mempool", sh[address]):
                 raw = rest.get(f"/rest/tx/{entry['tx_hash']}.bin", missing_ok=True)
-                if raw is None:
-                    moved = True
-                else:
-                    in_mempool.update(parse_tx(raw)[1])
-        unexplained = sorted(missing - in_mempool)
+                if raw is not None:  # a mempool transaction can leave before it is read
+                    spent_later.update(parse_tx(raw)[1])
+        unexplained = sorted(missing - spent_later)
         extra = sorted(listed.keys() - ours.keys())
         wrong = sorted(key for key in listed.keys() & ours.keys() if listed[key] != ours[key])
         result = dict(verified=not (unexplained or extra or wrong), listunspent=len(listed),
-                      spentInMempool=len(missing & in_mempool))
+                      spentAfterTip=len(missing & spent_later))
         mismatch = dict(address=address, recordsNotInListunspent=[f"{t}:{n}" for t, n in unexplained[:50]],
                         listunspentNotInRecords=[f"{t}:{n}" for t, n in extra[:50]],
                         amountDiffers=[f"{t}:{n}" for t, n in wrong[:50]],
                         counts=[len(unexplained), len(extra), len(wrong)]) if unexplained or extra or wrong else None
-        return result, mismatch, moved
+        return result, mismatch
 
-    results, mismatches, moved = {}, [], False
+    results, mismatches = {}, []
     addresses = sorted(sh)
-    for address, (result, mismatch, moved_here) in zip(addresses, fulcrum_map(
+    for address, (result, mismatch) in zip(addresses, fulcrum_map(
             make_client or (lambda: client), addresses, check, connections if make_client else 1)):
         results[address] = result
         mismatches += [mismatch] if mismatch else []
-        moved = moved or moved_here
-    return results, mismatches, moved
+    return results, mismatches
 
 
 def extract(args) -> int:
@@ -568,28 +566,21 @@ def extract(args) -> int:
     client, rest = Fulcrum(args.fulcrum), Rest(args.rest)
     clients = lambda: Fulcrum(args.fulcrum)  # noqa: E731 - one more connection per thread
     run = Extraction(args.work, selected, client, rest, args.concurrency, clients, args.fulcrum_connections)
-    start = tip, tip_hash = client.tip()
+    # One frozen tip: a pass over hundreds of thousands of addresses outlasts several blocks, so the
+    # records are built at this tip and the check accounts for later blocks address by address.
+    tip, tip_hash = client.tip()
     log(f"Fulcrum tip {tip} {tip_hash}")
-    for round_number in range(1, 11):
-        run.update(tip)
-        now = client.tip()
-        if now != (tip, tip_hash):  # blocks arrived while fetching: catch up before verifying
-            log(f"the chain moved to {now[0]} while updating")
-            tip, tip_hash = now
-            continue
-        records, problems = build_records(run.history, run.cache, run.scripts_list, selected, tip)
-        if problems:
-            write_json(args.work / "extract-problems.json", problems)
-            log(f"{len(problems)} consistency problems, first: {problems[0]}")
-            return 1
-        results, mismatches, moved = verify(client, rest, records, run.sh, tip, clients, args.fulcrum_connections)
-        now = client.tip()
-        if not moved and now == (tip, tip_hash):
-            break
-        log(f"the chain moved to {now[0]} during verification; updating")
-        tip, tip_hash = now
-    else:
-        raise RuntimeError("the chain kept moving during verification")
+    run.update(tip)
+    records, problems = build_records(run.history, run.cache, run.scripts_list, selected, tip)
+    if problems:
+        write_json(args.work / "extract-problems.json", problems)
+        log(f"{len(problems)} consistency problems, first: {problems[0]}")
+        return 1
+    results, mismatches = verify(client, rest, records, run.sh, tip, clients, args.fulcrum_connections)
+    header = bytes.fromhex(client.call("blockchain.block.header", tip))
+    if hashlib.sha256(hashlib.sha256(header).digest()).digest()[::-1].hex() != tip_hash:
+        log(f"block {tip} was reorganised during the run; run extract again")
+        return 1
     if mismatches:
         write_json(args.work / "verify-failures.json", dict(tip=tip, mismatches=mismatches))
         log(f"listunspent disagrees for {len(mismatches)} addresses; see verify-failures.json")
@@ -615,7 +606,7 @@ def extract(args) -> int:
                   verified=all(item["verified"] for item in addresses))
     write_json(args.work / "extract.json", dict(
         format="utxo-landscape-owner-extract-1", createdUtc=dt.datetime.now(dt.timezone.utc).isoformat(),
-        startTip=start[0], fulcrumTip=tip, fulcrumTipHash=tip_hash, rounds=round_number,
+        startTip=tip, fulcrumTip=tip, fulcrumTipHash=tip_hash,
         labels=dict(file=args.labels.name, path=str(args.labels.resolve()), sha256=labels.sha256(args.labels)),
         entities=entities, totals=totals, addresses=addresses))
     log(f"{totals['records']} records, {totals['unspent']} unspent; listunspent matches every address at {tip}")

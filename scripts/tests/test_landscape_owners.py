@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import csv
 import gzip
+import hashlib
 import json
 import math
 import re
@@ -105,6 +106,7 @@ def chain():
 
 class FakeChain:
     """Fulcrum and Bitcoin Core REST over synthetic transactions."""
+    HEADER = bytes(range(80))
 
     def __init__(self, txs, tip):
         self.txs, self.tip_height, self.rest_calls, self.extra = txs, tip, 0, []
@@ -122,7 +124,7 @@ class FakeChain:
                     self.history[owners.scripthash(script)].append((height, txid))
 
     def tip(self):
-        return self.tip_height, "ab" * 32
+        return self.tip_height, hashlib.sha256(hashlib.sha256(self.HEADER).digest()).digest()[::-1].hex()
 
     def call(self, method, *params):
         return self.request(method, *params)
@@ -142,6 +144,8 @@ class FakeChain:
             return utxos + [item for item in self.extra if item[0] == params[0] for item in [item[1]]]
         if method == "blockchain.scripthash.get_mempool":
             return []
+        if method == "blockchain.block.header":
+            return self.HEADER.hex()
         raise AssertionError(method)
 
     def get(self, path, missing_ok=False):
@@ -382,6 +386,12 @@ class ExtractTests(unittest.TestCase):
             self.assertEqual(fake.rest_calls, fetched)  # the rerun fetched nothing new
             failure = json.loads((work / "verify-failures.json").read_text())
             self.assertEqual(failure["mismatches"][0]["listunspentNotInRecords"], ["ee" * 32 + ":0"])
+            fake.extra.clear()
+            original = fake.request
+            fake.request = lambda method, *params: (  # the tip's block was replaced during the run
+                bytes(80).hex() if method == "blockchain.block.header" else original(method, *params))
+            self.assertEqual(self.run_extract(fake, work, root / "labels.csv", spec_path), 1)
+            fake.request = original
 
             out = root / "datasets"
             with mock.patch.object(owners, "Rest", lambda base: fake), mock.patch.object(owners, "log"):
@@ -395,33 +405,39 @@ class ExtractTests(unittest.TestCase):
             self.assertEqual([entity["records"] for entity in manifest["entities"]], [1, 2])
             self.assertEqual(manifest["entities"][1]["evidence"][0]["sources"], ["example.com"])
 
-    def test_verify_allows_only_mempool_spends(self):
+    def test_verify_explains_only_spends_after_the_tip(self):
         records = [("aa" * 32, 0, A, "one", 100, None, 5000), ("bb" * 32, 1, A, "one", 110, None, 7000)]
         sh = {A: "sha"}
         spend = tx([("bb" * 32, 1)], [(6000, OTHER)])
         spend_id = owners.parse_tx(spend)[0]
 
         class Client:
-            def __init__(self, utxos):
-                self.utxos = utxos
+            def __init__(self, utxos, later=(), mempool=()):
+                self.utxos, self.later, self.mempool = utxos, later, mempool
 
             def call(self, method, *params):
-                return self.utxos if method.endswith("listunspent") else [dict(tx_hash=spend_id, height=0)]
+                if method.endswith("listunspent"):
+                    return self.utxos
+                if method.endswith("get_history"):
+                    assert params[1:] == (251, 2 ** 31 - 1)
+                    return [dict(tx_hash=txid, height=300) for txid in self.later]
+                return [dict(tx_hash=txid, height=0) for txid in self.mempool]
 
         class Rest:
             def get(self, path, missing_ok=False):
                 return spend
 
         listed = [dict(tx_hash="aa" * 32, tx_pos=0, height=100, value=5000)]
-        results, mismatches, moved = owners.verify(Client(listed), Rest(), records, sh, 250)
-        self.assertEqual((mismatches, moved, results[A]["spentInMempool"]), ([], False, 1))
-        _, mismatches, _ = owners.verify(Client([dict(listed[0], value=4999)]), Rest(), records, sh, 250)
+        later = [dict(tx_hash="cc" * 32, tx_pos=0, height=251, value=1)]  # created above the tip: ignored
+        for client in (Client(listed + later, later=[spend_id]), Client(listed, mempool=[spend_id])):
+            results, mismatches = owners.verify(client, Rest(), records, sh, 250)
+            self.assertEqual((mismatches, results[A]["spentAfterTip"]), ([], 1))
+        _, mismatches = owners.verify(Client(listed), Rest(), records, sh, 250)
+        self.assertEqual(mismatches[0]["recordsNotInListunspent"], ["bb" * 32 + ":1"])
+        _, mismatches = owners.verify(Client([dict(listed[0], value=4999)], later=[spend_id]), Rest(), records, sh, 250)
         self.assertEqual(mismatches[0]["amountDiffers"], ["aa" * 32 + ":0"])
-        _, mismatches, _ = owners.verify(Client([]), Rest(), records, sh, 250)
+        _, mismatches = owners.verify(Client([], later=[spend_id]), Rest(), records, sh, 250)
         self.assertEqual(mismatches[0]["recordsNotInListunspent"], ["aa" * 32 + ":0"])
-        _, _, moved = owners.verify(Client(listed + [dict(tx_hash="cc" * 32, tx_pos=0, height=251, value=1)]),
-                                    Rest(), records, sh, 250)
-        self.assertTrue(moved)
 
 
 class DatasetTests(unittest.TestCase):
