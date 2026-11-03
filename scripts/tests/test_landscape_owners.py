@@ -493,9 +493,7 @@ class SpecTests(unittest.TestCase):
         types = {"service_disclosure", "service_disclosure_via_graphsense", "service_disclosure_via_aggregator",
                  "third_party_exact_tag", "third_party_exact_tag_via_graphsense"}
         for entity in entities:
-            reported = set(entity.get("reportedEvidenceTypes", []))
-            self.assertTrue(set(entity["evidenceTypes"]) | reported <= types, entity["id"])
-            self.assertFalse(set(entity["evidenceTypes"]) & reported, entity["id"])
+            self.assertTrue(set(entity["evidenceTypes"]) <= types, entity["id"])
         self.assertEqual(len({e["catalogEntity"] for e in entities}), len(entities))
         rgb = lambda value: tuple(int(value[i:i + 2], 16) for i in (1, 3, 5))  # noqa: E731
         schema = (Path(__file__).resolve().parents[2] / "landscape/web/settings.schema.js").read_text()
@@ -507,6 +505,12 @@ class SpecTests(unittest.TestCase):
             self.assertGreaterEqual(min(math.dist(colour, flash) for flash in flashes), 60)
         perceived = [cielab(colour) for colour in colours]
         self.assertGreaterEqual(min(math.dist(a, b) for n, a in enumerate(perceived) for b in perceived[n + 1:]), MIN_COLOUR_GAP)
+        # The app lights its small owners together in one grey (ui/owners-menu.js), which must stand apart.
+        menu = (Path(__file__).resolve().parents[2] / "landscape/web/ui/owners-menu.js").read_text()
+        other = rgb(re.search(r"OTHER_OWNERS = Object\.freeze\(\{[^}]*color: '(#[0-9A-Fa-f]{6})'", menu).group(1))
+        self.assertGreaterEqual(math.dist(other, (255, 255, 255)), 120)
+        self.assertGreaterEqual(min(math.dist(other, flash) for flash in flashes), 60)
+        self.assertGreaterEqual(min(math.dist(cielab(other), colour) for colour in perceived), 25)
         okx = "34xp4vRoCGJym3xR7yCVPFHoCNxv4Twseo"
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "labels.csv"

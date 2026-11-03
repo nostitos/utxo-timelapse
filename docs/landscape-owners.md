@@ -12,8 +12,11 @@ not name is never followed, and change outputs go dark the moment they leave a l
 
 The entity spec, [`scripts/landscape_owners_entities.json`](../scripts/landscape_owners_entities.json),
 names each entity's id, display name, colour, the entity name in the label catalog and the
-evidence types it accepts; `reportedEvidenceTypes` lists the third-party types present for it, which
-`extract` ignores until they are moved into `evidenceTypes`. It contains no addresses. Addresses come
+evidence types it accepts. Every exchange accepts all the types the catalog holds for it: its own
+disclosures and the addresses others attribute to it (the reported tier), so suspected addresses are
+lit too and the app says which kind each count is. Eight historic exchanges that GraphSense files
+under services (AllCoin, BitNZ, BitoEX, BtcExchange.ro, Coin-Swap, Cryptorush, HaoBTC, MPEx) were
+added by name. The spec contains no addresses. Addresses come
 from the label catalog that `scripts/address_coverage_labels.py` builds (see
 [address-coverage-labels.md](address-coverage-labels.md)); the extraction reads its
 `labels_extended_resolved.csv`, in which conflicting addresses are already excluded.
@@ -201,10 +204,11 @@ Tests: `"$PY" -m unittest scripts/tests/test_landscape_owners.py scripts/tests/t
    `parse`, or a new parser in `landscape_owners_sources.py` with a test on a trimmed layout of the real
    file. Add its spelling variants to `ALIASES` in `address_coverage_labels.py`.
 2. Append an entity to the spec: `id` (`[a-z0-9-]{1,32}`, used in links as `#own=<id>`), `name`,
-   `color` (`#RRGGBB`), `catalogEntity`, `evidenceTypes` and, for reference, `reportedEvidenceTypes`.
+   `color` (`#RRGGBB`), `catalogEntity` and `evidenceTypes` (every type the catalog holds for it).
    Up to 254 entities fit the record format; the spec's order is the entity index, so new entities go
    at the end. Pick a colour far from the others, from white (shared cells) and from every look's
-   spend-flash colour (warm white, gold, red in Paper); the spec test checks the distances. `build`
+   spend-flash colour (warm white, gold, red in Paper), and from the grey the app lights its small
+   owners in together (Other exchanges, landscape/SPEC.md §8); the spec test checks the distances. `build`
    copies the colours from the extraction summary, so a colour change needs `extract` (which then
    fetches nothing new) before `build`.
 3. Rerun `preflight` and `extract` with the same work directory, then `build`. An address whose history

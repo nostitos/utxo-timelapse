@@ -9,9 +9,7 @@
       "evidenceTypes": [
         "service_disclosure",
         "service_disclosure_via_graphsense",
-        "third_party_exact_tag_via_graphsense"
-      ],
-      "reportedEvidenceTypes": [
+        "third_party_exact_tag_via_graphsense",
         "third_party_exact_tag"
       ]
     },
@@ -23,9 +21,7 @@
       "evidenceTypes": [
         "service_disclosure",
         "service_disclosure_via_graphsense",
-        "service_disclosure_via_aggregator"
-      ],
-      "reportedEvidenceTypes": [
+        "service_disclosure_via_aggregator",
         "third_party_exact_tag"
       ]
     },
@@ -191,9 +187,7 @@
       "evidenceTypes": [
         "service_disclosure",
         "service_disclosure_via_aggregator",
-        "service_disclosure_via_graphsense"
-      ],
-      "reportedEvidenceTypes": [
+        "service_disclosure_via_graphsense",
         "third_party_exact_tag",
         "third_party_exact_tag_via_graphsense"
       ]
@@ -269,9 +263,7 @@
       "evidenceTypes": [
         "service_disclosure",
         "service_disclosure_via_aggregator",
-        "service_disclosure_via_graphsense"
-      ],
-      "reportedEvidenceTypes": [
+        "service_disclosure_via_graphsense",
         "third_party_exact_tag"
       ]
     },
@@ -317,9 +309,7 @@
       "color": "#F8F800",
       "catalogEntity": "Bitstamp",
       "evidenceTypes": [
-        "service_disclosure"
-      ],
-      "reportedEvidenceTypes": [
+        "service_disclosure",
         "third_party_exact_tag",
         "third_party_exact_tag_via_graphsense"
       ]
@@ -584,9 +574,7 @@
       "color": "#F81000",
       "catalogEntity": "CEX.IO",
       "evidenceTypes": [
-        "service_disclosure"
-      ],
-      "reportedEvidenceTypes": [
+        "service_disclosure",
         "third_party_exact_tag",
         "third_party_exact_tag_via_graphsense"
       ]
@@ -651,9 +639,7 @@
       "color": "#F80048",
       "catalogEntity": "Coinbase",
       "evidenceTypes": [
-        "service_disclosure"
-      ],
-      "reportedEvidenceTypes": [
+        "service_disclosure",
         "third_party_exact_tag",
         "third_party_exact_tag_via_graphsense"
       ]
@@ -709,9 +695,7 @@
       "color": "#B06878",
       "catalogEntity": "CoinEx",
       "evidenceTypes": [
-        "service_disclosure"
-      ],
-      "reportedEvidenceTypes": [
+        "service_disclosure",
         "third_party_exact_tag"
       ]
     },
@@ -839,9 +823,7 @@
       "color": "#009078",
       "catalogEntity": "Crypto.com",
       "evidenceTypes": [
-        "service_disclosure_via_graphsense"
-      ],
-      "reportedEvidenceTypes": [
+        "service_disclosure_via_graphsense",
         "third_party_exact_tag"
       ]
     },
@@ -1018,9 +1000,7 @@
       "catalogEntity": "Gemini",
       "evidenceTypes": [
         "service_disclosure",
-        "service_disclosure_via_aggregator"
-      ],
-      "reportedEvidenceTypes": [
+        "service_disclosure_via_aggregator",
         "third_party_exact_tag"
       ]
     },
@@ -1104,9 +1084,7 @@
       "evidenceTypes": [
         "service_disclosure",
         "service_disclosure_via_aggregator",
-        "service_disclosure_via_graphsense"
-      ],
-      "reportedEvidenceTypes": [
+        "service_disclosure_via_graphsense",
         "third_party_exact_tag",
         "third_party_exact_tag_via_graphsense"
       ]
@@ -1154,9 +1132,7 @@
       "catalogEntity": "Korbit",
       "evidenceTypes": [
         "service_disclosure",
-        "service_disclosure_via_aggregator"
-      ],
-      "reportedEvidenceTypes": [
+        "service_disclosure_via_aggregator",
         "third_party_exact_tag",
         "third_party_exact_tag_via_graphsense"
       ]
@@ -1305,9 +1281,7 @@
       "color": "#00F800",
       "catalogEntity": "MEXC",
       "evidenceTypes": [
-        "service_disclosure"
-      ],
-      "reportedEvidenceTypes": [
+        "service_disclosure",
         "third_party_exact_tag"
       ]
     },
@@ -1345,9 +1319,7 @@
       "color": "#608828",
       "catalogEntity": "Okcoin",
       "evidenceTypes": [
-        "service_disclosure"
-      ],
-      "reportedEvidenceTypes": [
+        "service_disclosure",
         "third_party_exact_tag",
         "third_party_exact_tag_via_graphsense"
       ]
@@ -1431,9 +1403,7 @@
       "catalogEntity": "Phemex",
       "evidenceTypes": [
         "service_disclosure",
-        "service_disclosure_via_aggregator"
-      ],
-      "reportedEvidenceTypes": [
+        "service_disclosure_via_aggregator",
         "third_party_exact_tag"
       ]
     },
@@ -1669,6 +1639,78 @@
       "name": "Zyado",
       "color": "#D030E0",
       "catalogEntity": "Zyado",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "allcoin",
+      "name": "AllCoin",
+      "color": "#FC002C",
+      "catalogEntity": "AllCoin.com",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "bitnz",
+      "name": "BitNZ",
+      "color": "#987C50",
+      "catalogEntity": "BitNZ.com",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "bitoex",
+      "name": "BitoEX",
+      "color": "#FC688C",
+      "catalogEntity": "BitoEX.com",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "btcexchange-ro",
+      "name": "BtcExchange.ro",
+      "color": "#FC9800",
+      "catalogEntity": "BtcExchange.ro",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "coin-swap",
+      "name": "Coin-Swap",
+      "color": "#FC54F8",
+      "catalogEntity": "Coin-Swap.net",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "cryptorush",
+      "name": "Cryptorush",
+      "color": "#985CFC",
+      "catalogEntity": "Cryptorush.in",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "haobtc",
+      "name": "HaoBTC",
+      "color": "#E43474",
+      "catalogEntity": "HaoBTC.com",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "mpex",
+      "name": "MPEx",
+      "color": "#5070FC",
+      "catalogEntity": "MPEx.co",
       "evidenceTypes": [
         "third_party_exact_tag_via_graphsense"
       ]
