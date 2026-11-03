@@ -100,8 +100,9 @@ activity stays dark until a monthly list names it.
   and `pdftotext` (Poppler) for KuCoin's PDF reports.
 - **Memory**: `extract` holds every history, the transaction cache and the records at once. A pass over
   the 687,047 addresses selected from `labels-20261103` (29.1 million transactions, 41.5 million history
-  items) needs about 34 GB at its peak, while it builds the records, estimated from the measured 640 bytes
-  per cached transaction and 92 per history item. Check `memory_pressure` first and quit large apps.
+  items) needs about 24 GB at its peak, while it builds the records, estimated from the measured 366 bytes
+  per cached transaction and 64 per history item. Check `memory_pressure` first and quit large apps:
+  macOS moves what does not fit to swap on the startup disk.
 
 ## Commands
 

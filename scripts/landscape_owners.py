@@ -351,7 +351,7 @@ def update_history(client, folder: Path, address: str, sh: str, end: int) -> tup
 
 
 def load_cache(path: Path) -> dict[str, tuple]:
-    """txid -> (script generation, outputs, inputs); a line cut off by an interrupted run is dropped."""
+    """txid -> compact(entry); a line cut off by an interrupted run is dropped."""
     cache = {}
     if not path.exists():
         return cache
@@ -361,11 +361,24 @@ def load_cache(path: Path) -> dict[str, tuple]:
             if not line.endswith(b"\n"):
                 break
             entry = json.loads(line)
-            # One str per txid, shared by histories, cache keys and inputs: about 10 GB less at 686,000 addresses.
-            cache[sys.intern(entry["t"])] = (entry["g"], entry["o"], [[sys.intern(prev), vout] for prev, vout in entry["i"]])
+            cache[sys.intern(entry["t"])] = compact(entry)
             good += len(line)
         stream.truncate(good)
     return cache
+
+
+SHARED_INTS: dict[int, int] = {}  # one object per repeated int: generations, script indexes, heights
+
+
+def compact(entry: dict) -> tuple:
+    """A cache entry as held in memory: (generation, outputs as flat (vout, sats, script index, ...),
+    inputs as flat (prev txid, vout, ...)). With one str per txid, shared by histories, cache keys
+    and inputs, a transaction and a history item take 430 bytes on the existing cache, against 728
+    as lists of lists and 1,030 as plain JSON values."""
+    share = SHARED_INTS.setdefault
+    return (share(entry["g"], entry["g"]),
+            tuple(x for vout, sats, index in entry["o"] for x in (vout, sats, share(index, index))),
+            tuple(x for prev, vout in entry["i"] for x in (sys.intern(prev), vout)))
 
 
 def fulcrum_map(make_client, items: list, work, connections: int):
@@ -455,7 +468,8 @@ class Extraction:
         histories = fulcrum_map(self.make_client, addresses, lambda client, address: update_history(
             client, self.work / "history", address, self.sh[address], tip + 1), self.connections)
         for address, (items, first) in zip(addresses, histories):
-            self.history[address], self.first_use[address] = [(height, sys.intern(txid)) for height, txid in items], first
+            self.history[address] = [(SHARED_INTS.setdefault(height, height), sys.intern(txid)) for height, txid in items]
+            self.first_use[address] = first
         height_of, required = {}, {}
         for address, items in self.history.items():
             generation = self.index[address] + 1
@@ -471,7 +485,7 @@ class Extraction:
         with (self.work / "txs.jsonl").open("a") as stream:
             def write(entry: dict) -> None:
                 stream.write(json.dumps(entry, separators=(",", ":")) + "\n")
-                self.cache[entry["t"]] = (entry["g"], entry["o"], entry["i"])
+                self.cache[entry["t"]] = compact(entry)
             fetch_transactions(self.rest, wanted, self.concurrency,
                                lambda txid, height, raw: cache_entry(txid, height, raw, self.scripts, height_of), write)
 
@@ -489,14 +503,18 @@ def build_records(history: dict[str, list], cache: dict[str, tuple], scripts_lis
         if txid not in cache:
             problems.append(f"{txid} was never fetched")
             continue
-        for prev, vout in cache[txid][2]:
+        inputs = cache[txid][2]
+        for k in range(0, len(inputs), 2):
+            prev, vout = inputs[k], inputs[k + 1]
             if spender.setdefault((prev, vout), txid) != txid:
                 problems.append(f"{prev}:{vout} is spent by {spender[(prev, vout)]} and {txid}")
     if problems:
         return [], problems
     records, explained = [], defaultdict(set)
     for txid, height in height_of.items():
-        for vout, sats, index in cache[txid][1]:
+        outputs = cache[txid][1]
+        for k in range(0, len(outputs), 3):
+            vout, sats, index = outputs[k], outputs[k + 1], outputs[k + 2]
             address = scripts_list[index]["address"]
             if address not in selected:
                 continue
@@ -578,6 +596,9 @@ def extract(args) -> int:
         write_json(args.work / "extract-problems.json", problems)
         log(f"{len(problems)} consistency problems, first: {problems[0]}")
         return 1
+    history = {address: len(items) for address, items in run.history.items()}
+    transactions = len({txid for items in run.history.values() for _, txid in items})
+    run.history.clear()  # verification needs only the records; this frees the rest of the histories
     results, mismatches = verify(client, rest, records, run.sh, tip, clients, args.fulcrum_connections)
     header = bytes.fromhex(client.call("blockchain.block.header", tip))
     if hashlib.sha256(hashlib.sha256(header).digest()).digest()[::-1].hex() != tip_hash:
@@ -598,11 +619,11 @@ def extract(args) -> int:
             per_address[address]["unspent"] += 1
             per_address[address]["unspentSats"] += sats
     addresses = [dict(address=address, entity=selected[address]["entity"], scripthash=run.sh[address],
-                      evidence=selected[address]["evidence"], history=len(run.history[address]),
+                      evidence=selected[address]["evidence"], history=history[address],
                       firstUse=run.first_use[address], **per_address[address], **results[address])
                  for address in sorted(selected)]
     totals = dict(addresses=len(addresses), historyItems=sum(item["history"] for item in addresses),
-                  transactions=len({txid for items in run.history.values() for _, txid in items}),
+                  transactions=transactions,
                   records=len(records), unspent=sum(item["unspent"] for item in addresses),
                   unspentSats=sum(item["unspentSats"] for item in addresses),
                   verified=all(item["verified"] for item in addresses))

@@ -206,7 +206,7 @@ class RecordTests(unittest.TestCase):
         self.cache = {}
         for txid, (height, raw) in self.txs.items():
             entry = owners.cache_entry(txid, height, raw, {a: 0, b: 1}, height_of)
-            self.cache[txid] = (entry["g"], entry["o"], entry["i"])
+            self.cache[txid] = owners.compact(entry)
 
     def test_records_from_synthetic_histories(self):
         records, problems = owners.build_records(self.history, self.cache, self.scripts_list, self.selected, 250)
