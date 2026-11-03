@@ -24,7 +24,9 @@ not query those providers for further addresses or expand any cluster.
 | --- | --- | --- |
 | `service_disclosure` | Exact address in a retained primary operator publication | `publicly_reported` |
 | `service_disclosure_via_graphsense` | Exact address transcribed from a primary disclosure into the pinned reviewed GraphSense pack | `publicly_reported` |
+| `service_disclosure_via_aggregator` | Exact address an aggregator (DefiLlama) lists for an exchange, citing the operator's own wallet page | `publicly_reported` |
 | `third_party_exact_tag_via_graphsense` | Exact published third-party address tag; provider inference may be involved | `third_party_reported` |
+| `third_party_exact_tag` | Exact address tag from another provider or an openly licensed dataset, outside GraphSense | `third_party_reported` |
 
 Confidence values describe provenance, not numerical probabilities. A disclosure
 at a particular date or block is not proof of continuous control throughout the
@@ -59,7 +61,10 @@ catalog. No mutable remote branch is used as the data reference. A missing
 repository is cloned into the output's `sources/` directory. Existing chain data,
 checkpoints and renderer files are not touched.
 
-The supplemental manifest contains `labels_csv`, `labels_sha256`, and `sources`.
+The supplemental manifest contains `labels_csv`, `labels_sha256`, and `sources`. Rows whose
+confidence is `third_party_reported` join the reported tier (`labels_reported.csv`); all other
+supplement rows join the direct tier. The owner highlight's supplements are written by
+`landscape_owners.py fetch-sources` (see [landscape-owners.md](landscape-owners.md)).
 Each source requires a public `url`, ISO `fetched_at`, `sha256`, `license` and
 `local_path`. Paths are relative to the manifest. Every CSV row must cite one of
 those archived source URLs, and both original source bytes and normalized CSV

@@ -55,9 +55,29 @@ ALIASES = {
     "binance": "Binance", "bitfinex": "Bitfinex", "bitmex": "BitMEX",
     "bybit": "Bybit", "crypto.com": "Crypto.com", "cryptocom": "Crypto.com",
     "deribit": "Deribit", "huobi": "Huobi", "kucoin": "KuCoin",
-    "okx": "OKX", "okex": "OKX", "checksig": "CheckSig",
+    "okx": "OKX", "okex": "OKX", "checksig": "CheckSig", "checksig.com": "CheckSig",
     "internet_archive": "Internet Archive", "internet archive": "Internet Archive",
     "protonmail": "Proton Mail", "proton mail": "Proton Mail",
+    # Exchanges in the owner catalog: operators' own names, DefiLlama, CoinGecko and GraphSense spellings.
+    # Separate companies stay separate (Binance.US, Okcoin, Gate US, HashKey Exchange and Global).
+    "binance cex": "Binance", "binance.us": "Binance.US", "binance us": "Binance.US", "binanceus": "Binance.US",
+    "okcoin": "Okcoin", "htx": "Huobi", "huobi global": "Huobi",
+    "gate": "Gate", "gate.io": "Gate", "gateio": "Gate", "gate us": "Gate US",
+    "bitget": "Bitget", "mexc": "MEXC", "mexc global": "MEXC", "mxc": "MEXC",
+    "bingx": "BingX", "bingbon": "BingX", "bingbon/bingx": "BingX",
+    "phemex": "Phemex", "coinex": "CoinEx", "bitstamp": "Bitstamp", "bitstamp by robinhood": "Bitstamp",
+    "backpack": "Backpack", "backpack exchange": "Backpack", "swissborg": "SwissBorg", "swisborg": "SwissBorg",
+    "cex.io": "CEX.IO", "cexio": "CEX.IO", "cex": "CEX.IO", "korbit": "Korbit",
+    "nbx": "NBX", "norwegian block exchange": "NBX", "coindcx": "CoinDCX",
+    "coinswitch": "CoinSwitch", "coinswitch kuber": "CoinSwitch", "wazirx": "WazirX",
+    "woo x": "WOO X", "woox": "WOO X", "woo": "WOO X", "woonetwork": "WOO X",
+    "woo network (exchange, earn)": "WOO X", "coinsquare": "Coinsquare", "gemini": "Gemini",
+    "river": "River", "river financial": "River", "kraken": "Kraken",
+    "coinbase": "Coinbase", "coinbase exchange": "Coinbase", "bitso": "Bitso",
+    "hashkey exchange": "HashKey Exchange", "hashkeyexchange": "HashKey Exchange",
+    "hashkey global": "HashKey Global", "crypto-com": "Crypto.com", "crypto.com exchange": "Crypto.com",
+    "kucoin & kucoin futures": "KuCoin", "robinhood": "Robinhood", "exmo": "EXMO", "poloniex": "Poloniex",
+    "coinw": "CoinW",
 }
 REPORTED_PACKS = {
     "walletexplorer.yaml": ("www.walletexplorer.com", "wallet-clustering provider; underlying ownership may be inferred"),
@@ -346,7 +366,9 @@ def build_catalog(repo: Path, revision: str, output: Path, supplements: list[Pat
     supplement_manifests = []
     for path in supplements:
         supplemental_rows, manifest = load_supplement(path)
-        rows.extend(supplemental_rows)
+        # Third-party rows join the reported tier, so the direct tier stays operator evidence.
+        rows.extend(row for row in supplemental_rows if row["confidence"] != "third_party_reported")
+        reported.extend(row for row in supplemental_rows if row["confidence"] == "third_party_reported")
         supplement_manifests.append(manifest)
     all_rows, resolved, conflicts = resolve_rows(rows)
     for name, table in (("labels.csv", all_rows), ("labels_resolved.csv", resolved), ("labels_conflicts.csv", conflicts)):

@@ -10,6 +10,9 @@
         "service_disclosure",
         "service_disclosure_via_graphsense",
         "third_party_exact_tag_via_graphsense"
+      ],
+      "reportedEvidenceTypes": [
+        "third_party_exact_tag"
       ]
     },
     {
@@ -19,7 +22,1655 @@
       "catalogEntity": "OKX",
       "evidenceTypes": [
         "service_disclosure",
+        "service_disclosure_via_graphsense",
+        "service_disclosure_via_aggregator"
+      ],
+      "reportedEvidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "796-com",
+      "name": "796.com",
+      "color": "#D0F800",
+      "catalogEntity": "796.com",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "allcrypt",
+      "name": "Allcrypt",
+      "color": "#7090C0",
+      "catalogEntity": "Allcrypt",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "arkham-exchange",
+      "name": "Arkham Exchange",
+      "color": "#D0D048",
+      "catalogEntity": "Arkham Exchange",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "atomic-trade-banx-io",
+      "name": "Atomic Trade / Banx io",
+      "color": "#F8D828",
+      "catalogEntity": "Atomic Trade / Banx io",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "backpack",
+      "name": "Backpack",
+      "color": "#00A010",
+      "catalogEntity": "Backpack",
+      "evidenceTypes": [
+        "service_disclosure"
+      ]
+    },
+    {
+      "id": "bake-io",
+      "name": "Bake.io",
+      "color": "#B8D068",
+      "catalogEntity": "Bake.io",
+      "evidenceTypes": [
+        "service_disclosure_via_aggregator"
+      ]
+    },
+    {
+      "id": "biconomy-com",
+      "name": "Biconomy.com",
+      "color": "#E868F8",
+      "catalogEntity": "Biconomy.com",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "bigone",
+      "name": "BigONE",
+      "color": "#D898B8",
+      "catalogEntity": "BigONE",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "bingx",
+      "name": "BingX",
+      "color": "#B048F8",
+      "catalogEntity": "BingX",
+      "evidenceTypes": [
+        "service_disclosure",
+        "service_disclosure_via_aggregator"
+      ]
+    },
+    {
+      "id": "bit-x",
+      "name": "Bit-X",
+      "color": "#78F858",
+      "catalogEntity": "Bit-X",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "bitbargain-co-uk",
+      "name": "bitbargain.co.uk",
+      "color": "#D89888",
+      "catalogEntity": "bitbargain.co.uk",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "bitcash",
+      "name": "Bitcash",
+      "color": "#C868B8",
+      "catalogEntity": "Bitcash",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "bitcoin-vietnam",
+      "name": "Bitcoin Vietnam",
+      "color": "#80A0F8",
+      "catalogEntity": "Bitcoin Vietnam",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "bitcoin-24",
+      "name": "Bitcoin-24",
+      "color": "#00C0B0",
+      "catalogEntity": "Bitcoin-24",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "bitcoin-de",
+      "name": "bitcoin.de",
+      "color": "#C8F880",
+      "catalogEntity": "bitcoin.de",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "bitcoinica",
+      "name": "Bitcoinica",
+      "color": "#E89878",
+      "catalogEntity": "Bitcoinica",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "bitcurex",
+      "name": "Bitcurex",
+      "color": "#B89008",
+      "catalogEntity": "Bitcurex",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "bitfinex",
+      "name": "Bitfinex",
+      "color": "#00F870",
+      "catalogEntity": "Bitfinex",
+      "evidenceTypes": [
+        "service_disclosure",
+        "service_disclosure_via_aggregator",
         "service_disclosure_via_graphsense"
+      ],
+      "reportedEvidenceTypes": [
+        "third_party_exact_tag",
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "bitget",
+      "name": "Bitget",
+      "color": "#A8D8A8",
+      "catalogEntity": "Bitget",
+      "evidenceTypes": [
+        "service_disclosure_via_aggregator"
+      ]
+    },
+    {
+      "id": "bitkan",
+      "name": "BitKan",
+      "color": "#C0C080",
+      "catalogEntity": "BitKan",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "bitkonan",
+      "name": "Bitkonan",
+      "color": "#D048A0",
+      "catalogEntity": "Bitkonan",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "bitkub",
+      "name": "Bitkub",
+      "color": "#888850",
+      "catalogEntity": "Bitkub",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "bitlo",
+      "name": "Bitlo",
+      "color": "#C07038",
+      "catalogEntity": "Bitlo",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "bitmain",
+      "name": "Bitmain",
+      "color": "#C0B050",
+      "catalogEntity": "Bitmain",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "bitmart",
+      "name": "BitMart",
+      "color": "#A0D800",
+      "catalogEntity": "BitMart",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "bitmex",
+      "name": "BitMEX",
+      "color": "#F88000",
+      "catalogEntity": "BitMEX",
+      "evidenceTypes": [
+        "service_disclosure",
+        "service_disclosure_via_aggregator",
+        "service_disclosure_via_graphsense"
+      ],
+      "reportedEvidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "bitomato",
+      "name": "BiTomato",
+      "color": "#E09018",
+      "catalogEntity": "BiTomato",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "bitpanda-fka-coinimal",
+      "name": "Bitpanda (fka coinimal)",
+      "color": "#48D048",
+      "catalogEntity": "Bitpanda (fka coinimal)",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "bitrue",
+      "name": "Bitrue",
+      "color": "#18D068",
+      "catalogEntity": "Bitrue",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "bitso",
+      "name": "Bitso",
+      "color": "#F85000",
+      "catalogEntity": "Bitso",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "bitstamp",
+      "name": "Bitstamp",
+      "color": "#F8F800",
+      "catalogEntity": "Bitstamp",
+      "evidenceTypes": [
+        "service_disclosure"
+      ],
+      "reportedEvidenceTypes": [
+        "third_party_exact_tag",
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "bittrex",
+      "name": "Bittrex",
+      "color": "#40D010",
+      "catalogEntity": "Bittrex",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "bitunix",
+      "name": "Bitunix",
+      "color": "#0888B8",
+      "catalogEntity": "Bitunix",
+      "evidenceTypes": [
+        "service_disclosure_via_aggregator"
+      ]
+    },
+    {
+      "id": "bitvavo",
+      "name": "Bitvavo",
+      "color": "#C05890",
+      "catalogEntity": "Bitvavo",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "bitvc",
+      "name": "Bitvc",
+      "color": "#6078E0",
+      "catalogEntity": "Bitvc",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "bitvenus",
+      "name": "BitVenus",
+      "color": "#00B0F8",
+      "catalogEntity": "BitVenus",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "bityes",
+      "name": "Bityes",
+      "color": "#18F040",
+      "catalogEntity": "Bityes",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "bitzlato",
+      "name": "bitzlato",
+      "color": "#D868D0",
+      "catalogEntity": "bitzlato",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "bleutrade",
+      "name": "Bleutrade",
+      "color": "#B8C800",
+      "catalogEntity": "Bleutrade",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "blocktrades",
+      "name": "Blocktrades",
+      "color": "#00B088",
+      "catalogEntity": "Blocktrades",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "blofin",
+      "name": "BloFin",
+      "color": "#A87050",
+      "catalogEntity": "BloFin",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "btc-trade",
+      "name": "BTC Trade",
+      "color": "#98D080",
+      "catalogEntity": "BTC Trade",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "btc-e",
+      "name": "Btc-E",
+      "color": "#9870C8",
+      "catalogEntity": "Btc-E",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "btc38",
+      "name": "Btc38",
+      "color": "#00F890",
+      "catalogEntity": "Btc38",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "btcc",
+      "name": "Btcc",
+      "color": "#F86830",
+      "catalogEntity": "Btcc",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "btcmarkets",
+      "name": "BTCMarkets",
+      "color": "#30B0D8",
+      "catalogEntity": "BTCMarkets",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "btcpop",
+      "name": "Btcpop",
+      "color": "#D09040",
+      "catalogEntity": "Btcpop",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "bter",
+      "name": "Bter",
+      "color": "#D85068",
+      "catalogEntity": "Bter",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "btrade-australia",
+      "name": "Btrade Australia",
+      "color": "#508868",
+      "catalogEntity": "Btrade Australia",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "btse",
+      "name": "BTSE",
+      "color": "#00F0F8",
+      "catalogEntity": "BTSE",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "bw",
+      "name": "Bw",
+      "color": "#C898D0",
+      "catalogEntity": "Bw",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "bx",
+      "name": "Bx",
+      "color": "#88B040",
+      "catalogEntity": "Bx",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "bybit",
+      "name": "Bybit",
+      "color": "#A0F060",
+      "catalogEntity": "Bybit",
+      "evidenceTypes": [
+        "service_disclosure",
+        "service_disclosure_via_aggregator",
+        "service_disclosure_via_graphsense"
+      ]
+    },
+    {
+      "id": "bydfi",
+      "name": "BYDFi",
+      "color": "#80D8D0",
+      "catalogEntity": "BYDFi",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "byte-exchange",
+      "name": "Byte Exchange",
+      "color": "#D8F050",
+      "catalogEntity": "Byte Exchange",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "c-cex",
+      "name": "C-Cex",
+      "color": "#D090E8",
+      "catalogEntity": "C-Cex",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "campbx",
+      "name": "Campbx",
+      "color": "#C86000",
+      "catalogEntity": "Campbx",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "cavirtex",
+      "name": "Cavirtex",
+      "color": "#B8A070",
+      "catalogEntity": "Cavirtex",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "ccedk",
+      "name": "Ccedk",
+      "color": "#F870B8",
+      "catalogEntity": "Ccedk",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "cex-io",
+      "name": "CEX.IO",
+      "color": "#F81000",
+      "catalogEntity": "CEX.IO",
+      "evidenceTypes": [
+        "service_disclosure"
+      ],
+      "reportedEvidenceTypes": [
+        "third_party_exact_tag",
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "chbtc",
+      "name": "Chbtc",
+      "color": "#60E890",
+      "catalogEntity": "Chbtc",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "checksig",
+      "name": "CheckSig",
+      "color": "#00F8B0",
+      "catalogEntity": "CheckSig",
+      "evidenceTypes": [
+        "service_disclosure_via_graphsense"
+      ]
+    },
+    {
+      "id": "clevercoin",
+      "name": "Clevercoin",
+      "color": "#0088D0",
+      "catalogEntity": "Clevercoin",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "coin",
+      "name": "Coin",
+      "color": "#C06850",
+      "catalogEntity": "Coin",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "coin8",
+      "name": "Coin8",
+      "color": "#F868D0",
+      "catalogEntity": "Coin8",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "coinarch-com",
+      "name": "coinarch.com",
+      "color": "#F88030",
+      "catalogEntity": "coinarch.com",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "coinbase",
+      "name": "Coinbase",
+      "color": "#F80048",
+      "catalogEntity": "Coinbase",
+      "evidenceTypes": [
+        "service_disclosure"
+      ],
+      "reportedEvidenceTypes": [
+        "third_party_exact_tag",
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "coinbroker",
+      "name": "Coinbroker",
+      "color": "#88E0F8",
+      "catalogEntity": "Coinbroker",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "coincafe",
+      "name": "Coincafe",
+      "color": "#309030",
+      "catalogEntity": "Coincafe",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "coincheck",
+      "name": "Coincheck",
+      "color": "#809000",
+      "catalogEntity": "Coincheck",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "coinchimp",
+      "name": "Coinchimp",
+      "color": "#289058",
+      "catalogEntity": "Coinchimp",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "coindcx",
+      "name": "CoinDCX",
+      "color": "#E800F8",
+      "catalogEntity": "CoinDCX",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "coinex",
+      "name": "CoinEx",
+      "color": "#B06878",
+      "catalogEntity": "CoinEx",
+      "evidenceTypes": [
+        "service_disclosure"
+      ],
+      "reportedEvidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "coingi",
+      "name": "Coingi",
+      "color": "#8078A8",
+      "catalogEntity": "Coingi",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "coinhako",
+      "name": "Coinhako",
+      "color": "#B880F8",
+      "catalogEntity": "Coinhako",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "coinmate",
+      "name": "Coinmate",
+      "color": "#40F8C8",
+      "catalogEntity": "Coinmate",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "coinmkt",
+      "name": "Coinmkt",
+      "color": "#F84870",
+      "catalogEntity": "Coinmkt",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "coinmotion",
+      "name": "Coinmotion",
+      "color": "#70D8B8",
+      "catalogEntity": "Coinmotion",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "coinomat",
+      "name": "Coinomat",
+      "color": "#E8C038",
+      "catalogEntity": "Coinomat",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "coins-e",
+      "name": "Coins-E",
+      "color": "#B87098",
+      "catalogEntity": "Coins-E",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "coinspot",
+      "name": "Coinspot",
+      "color": "#60A858",
+      "catalogEntity": "Coinspot",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "coinsquare",
+      "name": "Coinsquare",
+      "color": "#80E028",
+      "catalogEntity": "Coinsquare",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "coinswitch",
+      "name": "CoinSwitch",
+      "color": "#A8A8E8",
+      "catalogEntity": "CoinSwitch",
+      "evidenceTypes": [
+        "service_disclosure"
+      ]
+    },
+    {
+      "id": "coinw",
+      "name": "CoinW",
+      "color": "#60D8A0",
+      "catalogEntity": "CoinW",
+      "evidenceTypes": [
+        "third_party_exact_tag",
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "comkort",
+      "name": "Comkort",
+      "color": "#A0D048",
+      "catalogEntity": "Comkort",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "crypto-trade-com",
+      "name": "Crypto-Trade.com",
+      "color": "#68F828",
+      "catalogEntity": "Crypto-Trade.com",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "crypto-com",
+      "name": "Crypto.com",
+      "color": "#009078",
+      "catalogEntity": "Crypto.com",
+      "evidenceTypes": [
+        "service_disclosure_via_graphsense"
+      ],
+      "reportedEvidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "cryptonit",
+      "name": "Cryptonit",
+      "color": "#68C020",
+      "catalogEntity": "Cryptonit",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "cryptsy",
+      "name": "Cryptsy",
+      "color": "#E07878",
+      "catalogEntity": "Cryptsy",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "cubits",
+      "name": "Cubits",
+      "color": "#C07870",
+      "catalogEntity": "Cubits",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "dagensia",
+      "name": "Dagensia",
+      "color": "#C8E098",
+      "catalogEntity": "Dagensia",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "deribit",
+      "name": "Deribit",
+      "color": "#F85098",
+      "catalogEntity": "Deribit",
+      "evidenceTypes": [
+        "service_disclosure",
+        "service_disclosure_via_aggregator",
+        "service_disclosure_via_graphsense"
+      ]
+    },
+    {
+      "id": "dgex",
+      "name": "Dgex",
+      "color": "#F088F8",
+      "catalogEntity": "Dgex",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "empoex",
+      "name": "Empoex",
+      "color": "#F01088",
+      "catalogEntity": "Empoex",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "europex",
+      "name": "Europex",
+      "color": "#30B048",
+      "catalogEntity": "Europex",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "exchange-credit",
+      "name": "Exchange-Credit",
+      "color": "#E07038",
+      "catalogEntity": "Exchange-Credit",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "exchanging",
+      "name": "Exchanging",
+      "color": "#8070E8",
+      "catalogEntity": "Exchanging",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "exmo",
+      "name": "EXMO",
+      "color": "#6878C0",
+      "catalogEntity": "EXMO",
+      "evidenceTypes": [
+        "third_party_exact_tag",
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "fastex",
+      "name": "Fastex",
+      "color": "#98F800",
+      "catalogEntity": "Fastex",
+      "evidenceTypes": [
+        "service_disclosure_via_aggregator"
+      ]
+    },
+    {
+      "id": "flipster",
+      "name": "Flipster",
+      "color": "#F8B000",
+      "catalogEntity": "Flipster",
+      "evidenceTypes": [
+        "service_disclosure_via_aggregator"
+      ]
+    },
+    {
+      "id": "foxbit",
+      "name": "Foxbit",
+      "color": "#68A068",
+      "catalogEntity": "Foxbit",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "fybsg",
+      "name": "Fybsg",
+      "color": "#F86048",
+      "catalogEntity": "Fybsg",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "gate",
+      "name": "Gate",
+      "color": "#A070A8",
+      "catalogEntity": "Gate",
+      "evidenceTypes": [
+        "third_party_exact_tag",
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "gate-us",
+      "name": "Gate US",
+      "color": "#68B098",
+      "catalogEntity": "Gate US",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "gatecoin",
+      "name": "Gatecoin",
+      "color": "#78F880",
+      "catalogEntity": "Gatecoin",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "gemini",
+      "name": "Gemini",
+      "color": "#00A860",
+      "catalogEntity": "Gemini",
+      "evidenceTypes": [
+        "service_disclosure",
+        "service_disclosure_via_aggregator"
+      ],
+      "reportedEvidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "gocelery",
+      "name": "Gocelery",
+      "color": "#98E878",
+      "catalogEntity": "Gocelery",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "happycoins",
+      "name": "Happycoins",
+      "color": "#98F8C0",
+      "catalogEntity": "Happycoins",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "hashkey-exchange",
+      "name": "HashKey Exchange",
+      "color": "#F89850",
+      "catalogEntity": "HashKey Exchange",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "hashkey-global",
+      "name": "HashKey Global",
+      "color": "#F85058",
+      "catalogEntity": "HashKey Global",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "hashnest",
+      "name": "Hashnest",
+      "color": "#D85080",
+      "catalogEntity": "Hashnest",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "hibt",
+      "name": "Hibt",
+      "color": "#808830",
+      "catalogEntity": "Hibt",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "hitbtc",
+      "name": "HitBTC",
+      "color": "#90A858",
+      "catalogEntity": "HitBTC",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "hotcoin",
+      "name": "Hotcoin",
+      "color": "#80B0F0",
+      "catalogEntity": "Hotcoin",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "huobi",
+      "name": "HTX (Huobi)",
+      "color": "#B060C8",
+      "catalogEntity": "Huobi",
+      "evidenceTypes": [
+        "service_disclosure",
+        "service_disclosure_via_aggregator",
+        "service_disclosure_via_graphsense"
+      ],
+      "reportedEvidenceTypes": [
+        "third_party_exact_tag",
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "igot",
+      "name": "Igot",
+      "color": "#C86078",
+      "catalogEntity": "Igot",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "indacoin",
+      "name": "Indacoin",
+      "color": "#60C878",
+      "catalogEntity": "Indacoin",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "indodax",
+      "name": "Indodax",
+      "color": "#908018",
+      "catalogEntity": "Indodax",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "justcoin",
+      "name": "Justcoin",
+      "color": "#A088D0",
+      "catalogEntity": "Justcoin",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "korbit",
+      "name": "Korbit",
+      "color": "#0078F8",
+      "catalogEntity": "Korbit",
+      "evidenceTypes": [
+        "service_disclosure",
+        "service_disclosure_via_aggregator"
+      ],
+      "reportedEvidenceTypes": [
+        "third_party_exact_tag",
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "kraken",
+      "name": "Kraken",
+      "color": "#A0F8A0",
+      "catalogEntity": "Kraken",
+      "evidenceTypes": [
+        "third_party_exact_tag",
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "kucoin",
+      "name": "KuCoin",
+      "color": "#D8A868",
+      "catalogEntity": "KuCoin",
+      "evidenceTypes": [
+        "service_disclosure",
+        "service_disclosure_via_aggregator",
+        "service_disclosure_via_graphsense"
+      ]
+    },
+    {
+      "id": "lakebtc",
+      "name": "Lakebtc",
+      "color": "#2888A0",
+      "catalogEntity": "Lakebtc",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "latoken",
+      "name": "Latoken",
+      "color": "#F80070",
+      "catalogEntity": "Latoken",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "lbank",
+      "name": "LBank",
+      "color": "#A8B038",
+      "catalogEntity": "LBank",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "levex",
+      "name": "LeveX",
+      "color": "#F080A0",
+      "catalogEntity": "LeveX",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "litebit",
+      "name": "Litebit",
+      "color": "#70C090",
+      "catalogEntity": "Litebit",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "localbitcoins",
+      "name": "LocalBitcoins",
+      "color": "#A07838",
+      "catalogEntity": "LocalBitcoins",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "luno",
+      "name": "Luno",
+      "color": "#B09850",
+      "catalogEntity": "Luno",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "masterxchange",
+      "name": "Masterxchange",
+      "color": "#F850B0",
+      "catalogEntity": "Masterxchange",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "matbea",
+      "name": "Matbea",
+      "color": "#88A070",
+      "catalogEntity": "Matbea",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "max-maicoin",
+      "name": "Max Maicoin",
+      "color": "#F818E8",
+      "catalogEntity": "Max Maicoin",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "mcxnow",
+      "name": "Mcxnow",
+      "color": "#E8E830",
+      "catalogEntity": "Mcxnow",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "mercado-bitcoin",
+      "name": "Mercado Bitcoin",
+      "color": "#0888F8",
+      "catalogEntity": "Mercado Bitcoin",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "mexbt",
+      "name": "Mexbt",
+      "color": "#C0F850",
+      "catalogEntity": "Mexbt",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "mexc",
+      "name": "MEXC",
+      "color": "#00F800",
+      "catalogEntity": "MEXC",
+      "evidenceTypes": [
+        "service_disclosure"
+      ],
+      "reportedEvidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "mintpal",
+      "name": "Mintpal",
+      "color": "#80F8F8",
+      "catalogEntity": "Mintpal",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "nbx",
+      "name": "NBX",
+      "color": "#F090D0",
+      "catalogEntity": "NBX",
+      "evidenceTypes": [
+        "service_disclosure",
+        "service_disclosure_via_aggregator"
+      ]
+    },
+    {
+      "id": "niza",
+      "name": "Niza",
+      "color": "#D88898",
+      "catalogEntity": "Niza",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "okcoin",
+      "name": "Okcoin",
+      "color": "#608828",
+      "catalogEntity": "Okcoin",
+      "evidenceTypes": [
+        "service_disclosure"
+      ],
+      "reportedEvidenceTypes": [
+        "third_party_exact_tag",
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "oklink",
+      "name": "Oklink",
+      "color": "#00D8B8",
+      "catalogEntity": "Oklink",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "orangex",
+      "name": "OrangeX",
+      "color": "#88C8F8",
+      "catalogEntity": "OrangeX",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "orderbook",
+      "name": "Orderbook",
+      "color": "#00C0C8",
+      "catalogEntity": "Orderbook",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "osl-exchange",
+      "name": "OSL Exchange",
+      "color": "#F8A8A8",
+      "catalogEntity": "OSL Exchange",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "ourbit",
+      "name": "Ourbit",
+      "color": "#0098F8",
+      "catalogEntity": "Ourbit",
+      "evidenceTypes": [
+        "service_disclosure_via_aggregator"
+      ]
+    },
+    {
+      "id": "p2pb2b",
+      "name": "P2PB2B",
+      "color": "#F89068",
+      "catalogEntity": "P2PB2B",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "paxful",
+      "name": "Paxful",
+      "color": "#688848",
+      "catalogEntity": "Paxful",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "paymium",
+      "name": "Paymium",
+      "color": "#60C0D0",
+      "catalogEntity": "Paymium",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "phemex",
+      "name": "Phemex",
+      "color": "#60F8E0",
+      "catalogEntity": "Phemex",
+      "evidenceTypes": [
+        "service_disclosure",
+        "service_disclosure_via_aggregator"
+      ],
+      "reportedEvidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "pionex",
+      "name": "Pionex",
+      "color": "#88B000",
+      "catalogEntity": "Pionex",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "poloniex",
+      "name": "Poloniex",
+      "color": "#A090F8",
+      "catalogEntity": "Poloniex",
+      "evidenceTypes": [
+        "third_party_exact_tag",
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "probit-global",
+      "name": "ProBit Global",
+      "color": "#E8B048",
+      "catalogEntity": "ProBit Global",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "quadrigacx",
+      "name": "Quadrigacx",
+      "color": "#00C888",
+      "catalogEntity": "Quadrigacx",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "robinhood",
+      "name": "Robinhood",
+      "color": "#B060E8",
+      "catalogEntity": "Robinhood",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "simplecoin",
+      "name": "Simplecoin",
+      "color": "#8068F8",
+      "catalogEntity": "Simplecoin",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "smenarnabitcoin",
+      "name": "Smenarnabitcoin",
+      "color": "#F888E0",
+      "catalogEntity": "Smenarnabitcoin",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "spectrocoin",
+      "name": "Spectrocoin",
+      "color": "#F87078",
+      "catalogEntity": "Spectrocoin",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "swissborg",
+      "name": "SwissBorg",
+      "color": "#B8A800",
+      "catalogEntity": "SwissBorg",
+      "evidenceTypes": [
+        "service_disclosure",
+        "service_disclosure_via_aggregator"
+      ]
+    },
+    {
+      "id": "therocktrading",
+      "name": "TheRockTrading",
+      "color": "#D040C0",
+      "catalogEntity": "TheRockTrading",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "toobit",
+      "name": "Toobit",
+      "color": "#E87058",
+      "catalogEntity": "Toobit",
+      "evidenceTypes": [
+        "service_disclosure_via_aggregator"
+      ]
+    },
+    {
+      "id": "tothemoon",
+      "name": "Tothemoon",
+      "color": "#E828B8",
+      "catalogEntity": "Tothemoon",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "usecryptos",
+      "name": "Usecryptos",
+      "color": "#A0C080",
+      "catalogEntity": "Usecryptos",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "valr",
+      "name": "VALR",
+      "color": "#40A0A8",
+      "catalogEntity": "VALR",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "vault-of-satoshi",
+      "name": "Vault of Satoshi",
+      "color": "#C88858",
+      "catalogEntity": "Vault of Satoshi",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "vaultoro-com",
+      "name": "vaultoro.com",
+      "color": "#A07810",
+      "catalogEntity": "vaultoro.com",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "vircurex",
+      "name": "Vircurex",
+      "color": "#C048D8",
+      "catalogEntity": "Vircurex",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "virwox",
+      "name": "Virwox",
+      "color": "#C0F098",
+      "catalogEntity": "Virwox",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "webot",
+      "name": "Webot",
+      "color": "#589810",
+      "catalogEntity": "Webot",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "weex",
+      "name": "WEEX",
+      "color": "#70C058",
+      "catalogEntity": "WEEX",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "woo-x",
+      "name": "WOO X",
+      "color": "#B07000",
+      "catalogEntity": "WOO X",
+      "evidenceTypes": [
+        "service_disclosure_via_aggregator"
+      ]
+    },
+    {
+      "id": "xapo",
+      "name": "Xapo",
+      "color": "#F000A0",
+      "catalogEntity": "Xapo",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "yobit",
+      "name": "YoBit",
+      "color": "#C830F8",
+      "catalogEntity": "YoBit",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "zonda-fka-bitbay-net",
+      "name": "Zonda (fka bitbay.net)",
+      "color": "#F858E0",
+      "catalogEntity": "Zonda (fka bitbay.net)",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
+      ]
+    },
+    {
+      "id": "zoomex",
+      "name": "Zoomex",
+      "color": "#D07828",
+      "catalogEntity": "Zoomex",
+      "evidenceTypes": [
+        "third_party_exact_tag"
+      ]
+    },
+    {
+      "id": "zyado",
+      "name": "Zyado",
+      "color": "#D030E0",
+      "catalogEntity": "Zyado",
+      "evidenceTypes": [
+        "third_party_exact_tag_via_graphsense"
       ]
     }
   ]
