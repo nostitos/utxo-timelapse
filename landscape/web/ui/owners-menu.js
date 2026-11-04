@@ -27,6 +27,9 @@ const month = (iso) => {
   return m ? MONTHS[Number(m[2]) - 1] + ' ' + m[1] : '';
 };
 const span = (a, b) => (a && b && month(a) !== month(b) ? month(a) + ' to ' + month(b) : month(a || b));
+// shortcut: names a host by the one dataset it serves in the owner data today; give evidence summaries
+// a source name if a second dataset ever comes from the same host.
+const SOURCE_NAMES = { 'raw.githubusercontent.com': 'DefiLlama', 'ndownloader.figshare.com': 'figshare' };
 
 /**
  * Where an entity's addresses come from (owners.json entities[].evidence), as one line: the total,
@@ -37,8 +40,9 @@ export function evidenceText(entity) {
   const parts = (entity.evidence || []).map((e) => {
     const n = fmtInt(e.addresses || 0);
     const when = span(e.firstObserved, e.lastObserved);
-    const hosts = (e.sources || []).map(escapeHtml).join(', ');
+    const hosts = (e.sources || []).map((h) => escapeHtml(SOURCE_NAMES[h] || h)).join(', ');
     if (e.type === 'service_disclosure') return n + ' from its own published lists' + (when ? ', ' + when : '');
+    if (e.type === 'service_disclosure_via_aggregator') return n + ' from its own wallet page, via ' + (hosts || 'an aggregator') + (when ? ', ' + when : '');
     const about = [hosts, when].filter(Boolean).join(', ');
     if (String(e.type).startsWith('service_disclosure')) return n + ' it announced' + (about ? ' (' + about + ')' : '');
     return n + ' that others attribute to it' + (hosts ? ' (' + hosts + ')' : '');
