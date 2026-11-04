@@ -36,7 +36,7 @@ The inspector's history section reads the native explorer's cell API. Run a seco
 
 ## Online
 
-The landscape runs publicly at **https://bitcoinlandscape.com/**, also reachable at https://www.bitcoinlandscape.com/, https://3d.bitcointimelapse.com/ and https://utxo-landscape.nostisos.workers.dev/. A separate Cloudflare Worker, `utxo-landscape`, serves the app from Workers Static Assets and the dataset from the 2D explorer's private R2 bucket under `landscape/d974310-20261102/` (blocks 0–974,310), and it answers the inspector's cell lookups from the explorer's history shards. [`cloudflare/utxo-landscape-worker/README.md`](../cloudflare/utxo-landscape-worker/README.md) covers deploying, publishing a dataset for a new tip and rolling back. The 2D explorer links to the landscape with a small grey **3D** link in its control bar, after the **?** button (in the **More** panel on phones); it opens https://bitcoinlandscape.com/ in a new tab at the block being watched (`#b=<block>`). The illustrated guide does not link to the landscape yet.
+The landscape runs publicly at **https://bitcoinlandscape.com/**, also reachable at https://www.bitcoinlandscape.com/, https://3d.bitcointimelapse.com/ and https://utxo-landscape.nostisos.workers.dev/. A separate Cloudflare Worker, `utxo-landscape`, serves the app from Workers Static Assets and the dataset from the 2D explorer's private R2 bucket under `landscape/d974481-20261103/` (blocks 0–974,481), and it answers the inspector's cell lookups from the explorer's history shards. [`cloudflare/utxo-landscape-worker/README.md`](../cloudflare/utxo-landscape-worker/README.md) covers deploying, publishing a dataset for a new tip and rolling back. The 2D explorer links to the landscape with a small grey **3D** link in its control bar, after the **?** button (in the **More** panel on phones); it opens https://bitcoinlandscape.com/ in a new tab at the block being watched (`#b=<block>`). The illustrated guide does not link to the landscape yet.
 
 Three things change online, all decided in `landscape/web/ui/online.js`:
 
@@ -161,14 +161,14 @@ Only exact addresses are followed, with no clustering. The owner data names 185 
 
 ### Grid and measures
 
-Level 0 cells cover 64 creation blocks and one film amount row, 15,224 × 2,072 cells for blocks 0–974,310. Each coarser level doubles the block width and doubles the rows per cell up to 16. Every level is cut into 256 × 256 tiles, 758 tiles in all:
+Level 0 cells cover 64 creation blocks and one film amount row, 15,227 × 2,072 cells for blocks 0–974,481. Each coarser level doubles the block width and doubles the rows per cell up to 16. Every level is cut into 256 × 256 tiles, 758 tiles in all:
 
 | Level | Columns × rows | Tiles |
 |---|---|---|
-| 0 | 15,224 × 2,072 | 60 × 9 |
-| 1 | 7,612 × 1,036 | 30 × 5 |
-| 2 | 3,806 × 518 | 15 × 3 |
-| 3 | 1,903 × 259 | 8 × 2 |
+| 0 | 15,227 × 2,072 | 60 × 9 |
+| 1 | 7,614 × 1,036 | 30 × 5 |
+| 2 | 3,807 × 518 | 15 × 3 |
+| 3 | 1,904 × 259 | 8 × 2 |
 | 4 | 952 × 130 | 4 × 1 |
 | 5 | 475 × 130 | 2 × 1 |
 | 6 | 238 × 130 | 1 × 1 |
@@ -611,7 +611,7 @@ In the app, 1× playback from block 314,000 advanced 602 blocks in 10.03 s witho
 - Flight-mode and plane-mode pointer lock were checked only through the drag fallback (headless Chrome refuses the lock), and the gamepad mapping only with simulated gamepads. Firefox was not tested; Brave passed the browser checks online. Touch gestures were checked with real multi-touch input in Chrome's phone emulation (390 × 844), not yet on a physical phone or in iOS Safari.
 - The spend sound was checked in headless and visible Chrome through the ticks it schedules and a recording of its output (about −19 LUFS on busy recent blocks, as loud as the sounds it replaced, and 5.5 dB quieter in 2011, peaks under −6.8 dBFS, nothing below 300 Hz, and on recent blocks about half the energy between 1 and 3 kHz and most of the rest between 3 and 8 kHz; the clicks are synthesized on the audio thread, about 1% of one core at 4,000 a second, so the page spends about 0.15 ms a frame on sound and keeps its frame rate). Safari and Firefox were not tested.
 - Locally, the inspector's history section needs the explorer on port 12989, and its cell API shares `/api/pixel`'s rate limit (15 requests/s, burst 40). Online, the Worker answers it with 8 requests/s and a burst of 20 per visitor and Worker instance.
-- Online, a seek takes about 1–2 s and 5× or Max playback follows the connection's download speed (see Online). The dataset ends at block 974,310; a newer tip needs a new dataset. `scripts/landscape_r2_publish.py` copies every chunk and snapshot before the old tip inside R2 and uploads only the new ones, about 60 MB of snapshots a day. The 971,587 dataset was the first built with self-describing snapshots, so it uploaded all of them once more (58 GB); later datasets copy them: the 972,052 dataset uploaded 195 MB, the 972,848 dataset 295 MB and the 974,310 dataset 407 MB.
+- Online, a seek takes about 1–2 s and 5× or Max playback follows the connection's download speed (see Online). The dataset ends at block 974,481; a newer tip needs a new dataset. `scripts/landscape_r2_publish.py` copies every chunk and snapshot before the old tip inside R2 and uploads only the new ones, about 60 MB of snapshots a day. The 971,587 dataset was the first built with self-describing snapshots, so it uploaded all of them once more (58 GB); later datasets copy them: the 972,052 dataset uploaded 195 MB, the 972,848 dataset 295 MB and the 974,310 dataset 407 MB and the 974,481 dataset 100 MB.
 - Unchanged and worth a follow-up: `/api/pixel` and `/api/ranges` share one mutable inverter across request threads, so simultaneous requests for blocks in different epochs could compute wrong column ranges. The new cell endpoint does not use it.
 
 ## Files
