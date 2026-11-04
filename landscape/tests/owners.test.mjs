@@ -107,7 +107,7 @@ function lifecycles(blocks) {
   return out;
 }
 
-/** Brute force: per level, Map cellKey -> Float64Array(4E) of the records alive at b (layout of ownerWord). */
+/** Brute force: per level, Map cellKey -> Float64Array(4E) of the records alive at b, dense per entity (see sparse). */
 function bruteCells(grid, rows, records, b, E, tip) {
   const maps = grid.levels.map(() => new Map());
   if (b > tip) return maps;

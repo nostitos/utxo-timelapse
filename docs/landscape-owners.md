@@ -1,8 +1,9 @@
 # Landscape owner data
 
 The 3D landscape's **Owners** view lights the outputs that pay an exchange's known
-addresses at the current block and dims everything else, or hides it with Hide the rest; only
-the lit exchanges' spends flash. It follows each output from the
+addresses at the current block and dims everything else, lays it flat under the lit exchanges'
+hills with Flatten the rest, or hides it with Hide the rest; only the lit exchanges' spends
+flash. It follows each output from the
 block that created it to the block that spent it, so the highlight stays exact while you
 step or play through history. The data is built offline by `scripts/landscape_owners.py`
 from exact listed addresses. Nothing is clustered or inferred: an address the evidence does
@@ -75,10 +76,10 @@ activity stays dark until a monthly list names it.
 
 - **Fulcrum** 2.x over plaintext TCP, with ranged history,
   `blockchain.scripthash.get_history(scripthash, from_height, to_height)` (items with
-  from ≤ height < to), and `blockchain.scripthash.get_first_use`. Binance's hot wallets hold
-  ~2.37 million (`bc1qm34l…`) and ~1.19 million (`1NDy…`) history items, so Fulcrum's history cap
-  must be at least 5,000,000. On Umbrel set it in the Fulcrum app's settings as the custom environment
-  variable `MAX_HISTORY=5000000`; the `max-history` lines in `fulcrum.conf` are ignored because
+  from ≤ height < to), and `blockchain.scripthash.get_first_use`. The largest histories are HTX's
+  `1HckjUp…` (~3.70 million items) and Binance's `bc1qm34l…` (~2.37 million), so Fulcrum's history
+  cap must be at least 5,000,000. On Umbrel set it in the Fulcrum app's settings as the custom
+  environment variable `MAX_HISTORY=5000000`; the `max-history` lines in `fulcrum.conf` are ignored because
   Umbrel starts Fulcrum from environment settings. Fulcrum's client buffer is 10 MB. The first request
   for an address the cache lacks asks for its whole confirmed history: most histories are small, and
   one request replaces a page per 16,128 blocks. Fulcrum refuses or drops it when the reply would not
@@ -86,10 +87,10 @@ activity stays dark until a monthly list names it.
   16,128 blocks. A page that fails or times out is halved, and pages grow again where history is
   sparse. Cached addresses are only extended by range. Do not subscribe to hot-wallet scripthashes.
 - **Bitcoin Core REST** with `txindex`, through a dedicated tunnel at `http://127.0.0.1:18352`.
-  Transactions are fetched as `/rest/tx/<txid>.bin` over 12 keep-alive connections (`--concurrency`),
-  about 440 per second, so a first extraction of Binance's 3.57 million transactions takes a little
-  over two hours. The node's disk is the limit: at 48 connections its load average rose from 2.5 to
-  11.6 with 76% iowait for only about 20% more throughput, so keep the default. 503 replies and
+  Transactions are fetched as `/rest/tx/<txid>.bin` over 12 keep-alive connections (`--concurrency`)
+  at 330 to 655 per second: the first extraction of all 185 exchanges fetched 21.5 million uncached
+  transactions in about nine hours. The node's disk is the limit: at 48 connections its load average
+  rose from 2.5 to 11.6 with 76% iowait for only about 20% more throughput, so keep the default. 503 replies and
   dropped connections are retried for up to 15 minutes, which leaves time to restart the tunnel:
   ```sh
   python3 '/Volumes/4T Data/buv_owners/daemon.py' '/Volumes/4T Data/buv_owners/tunnel.log' \
@@ -188,7 +189,7 @@ current block. For `o974310-20261104` that is an 81 MB file of 11.2 million reco
 - `owners-check.mjs` matches every owner creation and spend against that block's landscape
   changes, the tip hash against the dataset, and every owned cell against the cell's own totals.
 
-Tests: `"$PY" -m unittest scripts/tests/test_landscape_owners.py scripts/tests/test_address_coverage_labels.py`.
+Tests: `"$PY" -m unittest scripts/tests/test_landscape_owners.py scripts/tests/test_landscape_owners_sources.py scripts/tests/test_address_coverage_labels.py`.
 
 ## Updating with each site update
 

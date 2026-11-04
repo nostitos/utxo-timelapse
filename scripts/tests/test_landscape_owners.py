@@ -2,6 +2,7 @@
 import csv
 import gzip
 import hashlib
+import itertools
 import json
 import math
 import re
@@ -261,7 +262,7 @@ class PagingTests(unittest.TestCase):
         self.assertTrue(all(count <= 300 for _, _, count in done))
         self.assertTrue(any(not ok for *_, ok in fake.calls))
         spans = [hi - lo for lo, hi, _ in done]
-        self.assertTrue(any(later == 2 * earlier for earlier, later in zip(spans, spans[1:])))
+        self.assertTrue(any(later == 2 * earlier for earlier, later in itertools.pairwise(spans)))
         self.assertTrue(all(hi - lo <= 4000 for lo, hi, _, _ in fake.calls))
 
     def test_a_single_block_that_never_fits_fails(self):

@@ -72,7 +72,7 @@ export function groupText(entities, members) {
 }
 
 /**
- * container: #owners; store: the settings store (owners.dim); onToggle(id, on): show or hide an
+ * container: #owners; store: the settings store (owners.*); onToggle(id, on): show or hide an
  * entity, or every member of Other exchanges for OTHER_OWNERS.id. update({manifest, group (member
  * indices, see ownerGroup), visible: Set of ids, meta (frame meta.owners), block, loading}) refreshes it.
  */

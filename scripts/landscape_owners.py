@@ -444,10 +444,9 @@ def fetch_transactions(rest: Rest, wanted: list[tuple[str, int]], concurrency: i
 class Extraction:
     """Histories, transaction cache and records for one work directory."""
 
-    def __init__(self, work: Path, selected: dict[str, dict], client, rest, concurrency: int,
-                 make_client=None, connections: int = 1):
-        self.work, self.selected, self.client, self.rest, self.concurrency = work, selected, client, rest, concurrency
-        self.make_client, self.connections = make_client or (lambda: client), connections if make_client else 1
+    def __init__(self, work: Path, selected: dict[str, dict], rest, concurrency: int, make_client, connections: int):
+        self.work, self.selected, self.rest, self.concurrency = work, selected, rest, concurrency
+        self.make_client, self.connections = make_client, connections
         (work / "history").mkdir(parents=True, exist_ok=True)
         scripts_path = work / "scripts.json"
         # Append-only so cached script indexes stay valid when addresses are added.
@@ -467,7 +466,7 @@ class Extraction:
         addresses = sorted(self.selected)
         histories = fulcrum_map(self.make_client, addresses, lambda client, address: update_history(
             client, self.work / "history", address, self.sh[address], tip + 1), self.connections)
-        for address, (items, first) in zip(addresses, histories):
+        for address, (items, first) in zip(addresses, histories, strict=True):
             self.history[address] = [(SHARED_INTS.setdefault(height, height), sys.intern(txid)) for height, txid in items]
             self.first_use[address] = first
         height_of, required = {}, {}
@@ -570,7 +569,7 @@ def verify(client, rest: Rest, records: list[tuple], sh: dict[str, str], tip: in
     results, mismatches = {}, []
     addresses = sorted(sh)
     for address, (result, mismatch) in zip(addresses, fulcrum_map(
-            make_client or (lambda: client), addresses, check, connections if make_client else 1)):
+            make_client or (lambda: client), addresses, check, connections if make_client else 1), strict=True):
         results[address] = result
         mismatches += [mismatch] if mismatch else []
     return results, mismatches
@@ -584,7 +583,7 @@ def extract(args) -> int:
     log(f"{len(selected)} addresses from {args.labels.name}")
     client, rest = Fulcrum(args.fulcrum), Rest(args.rest)
     clients = lambda: Fulcrum(args.fulcrum)  # noqa: E731 - one more connection per thread
-    run = Extraction(args.work, selected, client, rest, args.concurrency, clients, args.fulcrum_connections)
+    run = Extraction(args.work, selected, rest, args.concurrency, clients, args.fulcrum_connections)
     # One frozen tip: a pass over hundreds of thousands of addresses outlasts several blocks, so the
     # records are built at this tip and the check accounts for later blocks address by address.
     tip, tip_hash = client.tip()
@@ -710,7 +709,8 @@ def preflight(args) -> int:
     calls = refused = 0
     started = last = time.monotonic()
     results = fulcrum_map(lambda: CountingClient(Fulcrum(args.fulcrum)), uncached, one, args.fulcrum_connections)
-    for number, (address, (items, first, spent_calls, spent_refused, seconds)) in enumerate(zip(uncached, results), 1):
+    for number, (address, (items, first, spent_calls, spent_refused, seconds)) in enumerate(
+            zip(uncached, results, strict=True), 1):
         item = stats[selected[address]["entity"]]
         item["addresses"] += 1
         item["new"] += 1
