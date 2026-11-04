@@ -24,6 +24,9 @@ export const OWNER_COUNT_MAX = 0xffffff;    // owned count bits of an owner word
 const MAX_SATS = 2100000000000000;
 const ROW_KEY = 4096;                       // cell key = col * ROW_KEY + row (rows < 4096)
 const MAX_CHUNKS = 16;                      // short chunks kept loaded
+export const ENTRY_GROUP = 5;               // cell entry: entity, countSmall, satsSmall, countLarge, satsLarge
+const CELL_OVERHEAD = 112;                  // bytes per cell besides its entry's values: Map slot, typed array object
+const SLOT_SUMS = new Float64Array(256);    // scratch for ownerWord, all zero between calls
 
 /**
  * Parses one record file. Returns {count, created: Uint32Array, spent: Uint32Array (UNSPENT
@@ -78,24 +81,37 @@ export function parseOwnerRecords(buffer) {
 
 /**
  * Owner word of a cell: the count of outputs held by visible entities in bits 0-23 (capped),
- * and in bits 24-31 the code: 0 none, else index + 1 of the visible entity holding the most
- * outputs there (the lowest index on a tie). entry = per entity [countSmall, satsSmall,
+ * and in bits 24-31 the code: 0 none, else slot + 1 of the slot whose visible entities hold the
+ * most outputs there (the lowest slot on a tie). slot[e] is the slot entity e counts toward
+ * (entities lit as one group share their first member's index); null: each entity is its own.
+ * entry = [n, then per entity holding outputs in the cell: entity, countSmall, satsSmall,
  * countLarge, satsLarge], small meaning at most 5 BTC as in the landscape state.
  */
-export function ownerWord(entry, visible) {
+export function ownerWord(entry, visible, slot = null) {
+  const n = entry[0];
   let owned = 0;
+  for (let o = 1; o < 1 + n * ENTRY_GROUP; o += ENTRY_GROUP) {
+    const e = entry[o];
+    if (!visible[e]) continue;
+    const c = entry[o + 1] + entry[o + 3];
+    owned += c;
+    SLOT_SUMS[slot === null ? e : slot[e]] += c;
+  }
+  if (owned === 0) return 0;
   let best = 0;
   let code = 0;
-  for (let e = 0; e < visible.length; e++) {
+  for (let o = 1; o < 1 + n * ENTRY_GROUP; o += ENTRY_GROUP) {
+    const e = entry[o];
     if (!visible[e]) continue;
-    const n = entry[4 * e] + entry[4 * e + 2];
-    owned += n;
-    if (n > best) {
-      best = n;
-      code = e + 1;
+    const s = slot === null ? e : slot[e];
+    const c = SLOT_SUMS[s];
+    SLOT_SUMS[s] = 0; // read once per slot; later members of the slot see 0
+    if (c > best || (c === best && c > 0 && s + 1 < code)) {
+      best = c;
+      code = s + 1;
     }
   }
-  return owned === 0 ? 0 : code * 16777216 + Math.min(owned, OWNER_COUNT_MAX);
+  return code * 16777216 + Math.min(owned, OWNER_COUNT_MAX);
 }
 
 /** Short chunks whose outputs can be alive at some block of [a, b] (either order): {from, to}. */
@@ -180,15 +196,22 @@ export class OwnerLedger {
     this.chunks = new Map();     // chunk -> record set
     this.loading = new Map();    // 'long' | chunk -> Promise
     this.visible = new Uint8Array(this.E);
-    this.cells = grid.levels.map(() => new Map());  // per level: cell key -> Float64Array(4E), see ownerWord
+    this.slot = null;            // display slot per entity (setVisible), null: its own index
+    // Per level: cell key -> entry listing only the entities holding outputs there (see ownerWord),
+    // so memory follows the owners present in a cell, not the number of entities.
+    this.cells = grid.levels.map(() => new Map());
     this.tiles = grid.levels.map(() => new Map());  // per level: tile id -> Set of cell keys
+    this.cellBytes = 0;          // the entries' bytes, for memoryBytes
     this.totals = new Float64Array(2 * this.E);
     this.block = null;           // block the maps describe; null before the first move
   }
 
-  setVisible(indices) {
+  /** Lights these entity indices; slots (one per entity) groups them for the owner code, see ownerWord. */
+  setVisible(indices, slots = null) {
     this.visible.fill(0);
     for (const e of indices) if (Number.isInteger(e) && e >= 0 && e < this.E) this.visible[e] = 1;
+    const valid = Array.isArray(slots) && slots.length === this.E && slots.every((s) => Number.isInteger(s) && s >= 0 && s < this.E);
+    this.slot = valid ? Uint8Array.from(slots) : null;
   }
 
   // ------------------------------------------------------------------ files
@@ -274,6 +297,7 @@ export class OwnerLedger {
   #clear() {
     for (const m of this.cells) m.clear();
     for (const m of this.tiles) m.clear();
+    this.cellBytes = 0;
     this.totals.fill(0);
   }
 
@@ -309,12 +333,11 @@ export class OwnerLedger {
   }
 
   #add(set, i, sign) {
-    const E = this.E;
     const e = set.entity[i];
     const s = set.sats[i] * sign;
-    const o = 4 * e + (set.sats[i] > WEIGHT_THRESHOLD ? 2 : 0);
+    const large = set.sats[i] > WEIGHT_THRESHOLD ? 2 : 0;
     this.totals[e] += sign;
-    this.totals[E + e] += s;
+    this.totals[this.E + e] += s;
     const levels = this.grid.levels;
     for (let l = 0; l < levels.length; l++) {
       const L = levels[l];
@@ -327,19 +350,37 @@ export class OwnerLedger {
       let entry = cells.get(key);
       if (entry === undefined) {
         if (sign < 0) throw new Error('owner ledger: removing an output that was never added (cell ' + l + '/' + col + '/' + row + ')');
-        entry = new Float64Array(4 * E);
+        entry = new Float64Array(1 + ENTRY_GROUP);
         cells.set(key, entry);
+        this.cellBytes += CELL_OVERHEAD + entry.byteLength;
         let keys = this.tiles[l].get(tile);
         if (keys === undefined) this.tiles[l].set(tile, (keys = new Set()));
         keys.add(key);
       }
-      entry[o] += sign;
-      entry[o + 1] += s;
-      if (sign < 0 && entry[o] === 0) {
-        let empty = true;
-        for (let k = 0; k < 4 * E; k += 2) if (entry[k] !== 0) { empty = false; break; }
-        if (empty) {
+      const n = entry[0];
+      let o = 1;
+      while (o < 1 + n * ENTRY_GROUP && entry[o] !== e) o += ENTRY_GROUP;
+      if (o === 1 + n * ENTRY_GROUP) { // the entity's first output in this cell
+        if (sign < 0) throw new Error('owner ledger: removing an output that was never added (cell ' + l + '/' + col + '/' + row + ')');
+        if (o + ENTRY_GROUP > entry.length) {
+          const grown = new Float64Array(1 + 2 * n * ENTRY_GROUP);
+          grown.set(entry);
+          this.cellBytes += grown.byteLength - entry.byteLength;
+          cells.set(key, (entry = grown));
+        }
+        entry[o] = e;
+        entry[0] = n + 1;
+      }
+      entry[o + 1 + large] += sign;
+      entry[o + 2 + large] += s;
+      if (sign < 0 && entry[o + 1] === 0 && entry[o + 3] === 0) { // it holds nothing here any more
+        const last = 1 + (entry[0] - 1) * ENTRY_GROUP;
+        entry.copyWithin(o, last, last + ENTRY_GROUP);
+        entry.fill(0, last, last + ENTRY_GROUP);
+        entry[0] -= 1;
+        if (entry[0] === 0) {
           cells.delete(key);
+          this.cellBytes -= CELL_OVERHEAD + entry.byteLength;
           const keys = this.tiles[l].get(tile);
           keys.delete(key);
           if (!keys.size) this.tiles[l].delete(tile);
@@ -352,7 +393,7 @@ export class OwnerLedger {
   /** Owner word of a cell at the current block (0 when none). */
   word(level, col, row) {
     const entry = this.cells[level].get(col * ROW_KEY + row);
-    return entry === undefined ? 0 : ownerWord(entry, this.visible);
+    return entry === undefined ? 0 : ownerWord(entry, this.visible, this.slot);
   }
 
   /** Calls fn(col, row, word) for each cell of a tile holding visible owned outputs. */
@@ -361,21 +402,20 @@ export class OwnerLedger {
     if (keys === undefined) return;
     const cells = this.cells[level];
     for (const key of keys) {
-      const w = ownerWord(cells.get(key), this.visible);
+      const w = ownerWord(cells.get(key), this.visible, this.slot);
       if (w !== 0) fn(Math.floor(key / ROW_KEY), key % ROW_KEY, w);
     }
   }
 
-  /** Outputs per entity in a cell at the current block: [{entity, count, sats}] (count > 0). */
+  /** Outputs per entity in a cell at the current block: [{entity, count, sats}] (count > 0), by entity. */
   cell(level, col, row) {
     const entry = this.cells[level] && this.cells[level].get(col * ROW_KEY + row);
     const out = [];
     if (entry === undefined) return out;
-    for (let e = 0; e < this.E; e++) {
-      const count = entry[4 * e] + entry[4 * e + 2];
-      if (count > 0) out.push({ entity: e, count, sats: entry[4 * e + 1] + entry[4 * e + 3] });
+    for (let o = 1; o < 1 + entry[0] * ENTRY_GROUP; o += ENTRY_GROUP) {
+      out.push({ entity: entry[o], count: entry[o + 1] + entry[o + 3], sats: entry[o + 2] + entry[o + 4] });
     }
-    return out;
+    return out.sort((a, b) => a.entity - b.entity);
   }
 
   /**
@@ -387,10 +427,10 @@ export class OwnerLedger {
     if (entry === undefined) return false;
     let any = false;
     out[0] = out[1] = out[2] = out[3] = 0;
-    for (let e = 0; e < this.E; e++) {
-      if (!this.visible[e]) continue;
-      for (let k = 0; k < 4; k++) out[k] += entry[4 * e + k];
-      if (entry[4 * e] + entry[4 * e + 2] > 0) any = true;
+    for (let o = 1; o < 1 + entry[0] * ENTRY_GROUP; o += ENTRY_GROUP) {
+      if (!this.visible[entry[o]]) continue;
+      for (let k = 0; k < 4; k++) out[k] += entry[o + 1 + k];
+      any = true;
     }
     return any;
   }
@@ -426,7 +466,6 @@ export class OwnerLedger {
   get memoryBytes() {
     let b = this.long ? this.long.bytes : 0;
     for (const s of this.chunks.values()) b += s.bytes;
-    for (const m of this.cells) b += m.size * (48 + 32 * this.E);
-    return b;
+    return b + this.cellBytes;
   }
 }

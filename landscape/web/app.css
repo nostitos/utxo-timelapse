@@ -589,6 +589,9 @@ body.plane #legend { display: none; }
   right: var(--gap);
   bottom: calc(var(--tl-h) + 10px);
   width: min(460px, calc(100vw - 2 * var(--gap)));
+  max-height: calc(100vh - var(--tl-h) - 2 * var(--gap) - 10px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 14px 16px;
   border-radius: 8px;
   z-index: 9;
@@ -598,14 +601,17 @@ body.plane #legend { display: none; }
 .ow-item:hover { background: rgba(168, 214, 179, 0.1); }
 .ow-item input { margin: 0; accent-color: var(--mint); }
 .ow-name { font: 500 12.5px var(--body); color: var(--ink); }
+.ow-n { margin-left: 3px; font: 10.5px var(--mono); color: var(--dim); }
 .ow-held { font: 10.5px var(--mono); color: var(--dim); white-space: nowrap; }
 .ow-item.on .ow-held { color: var(--ink); }
 .ow-swatch, .hv-swatch, .in-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35); }
 .hv-swatch, .in-swatch { margin-right: 6px; vertical-align: -1px; }
 .ow-dim { display: grid; grid-template-columns: auto 1fr 40px; gap: 10px; align-items: center; margin: 10px 8px 4px; font: 10.5px var(--mono); color: var(--dim); }
 .ow-dim.off { opacity: 0.4; }
-.ow-only { display: flex; gap: 9px; align-items: center; margin: 10px 8px 0; font: 10.5px var(--mono); color: var(--dim); cursor: pointer; }
-.ow-only input { margin: 0; accent-color: var(--mint); }
+.ow-check { display: flex; gap: 9px; align-items: center; margin: 10px 8px 0; font: 10.5px var(--mono); color: var(--dim); cursor: pointer; }
+.ow-check + .ow-check { margin-top: 6px; }
+.ow-check.off { opacity: 0.4; cursor: default; }
+.ow-check input { margin: 0; accent-color: var(--mint); }
 .ow-dim input { width: 100%; accent-color: var(--mint); }
 .ow-dim output { text-align: right; color: var(--ink); }
 .ow-note { margin: 6px 8px; font-size: 12px; color: #f7b45a; }

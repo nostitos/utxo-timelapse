@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 import csv
 import gzip
+import hashlib
+import itertools
 import json
+import math
+import re
 import struct
 import sys
 import tempfile
 import threading
 import unittest
-import zipfile
 from collections import defaultdict
 from pathlib import Path
 from types import SimpleNamespace
@@ -34,7 +37,19 @@ GOLDEN = ("4255564f574e3100010000000300000064050100000080e497d01200c801c01f80809
 A = "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2"
 B = "3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy"
 OTHER = b"\x51"
-HEADER = "coin,network,address,balance,Height,Third party custodian name"
+MIN_COLOUR_GAP = 11.9  # CIELAB distance between any two entity colours; 177 colours cannot all be far apart
+
+
+def cielab(rgb):
+    """CIE L*a*b* (D65) of an sRGB colour, where distance follows perceived difference."""
+    def linear(c):
+        c /= 255
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+    r, g, b = map(linear, rgb)
+    x, y, z = ((0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047, 0.2126 * r + 0.7152 * g + 0.0722 * b,
+               (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883)
+    f = lambda t: t ** (1 / 3) if t > 0.008856 else 7.787 * t + 16 / 116  # noqa: E731
+    return 116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))
 
 
 def tx(inputs, outputs, tag=0):
@@ -92,6 +107,7 @@ def chain():
 
 class FakeChain:
     """Fulcrum and Bitcoin Core REST over synthetic transactions."""
+    HEADER = bytes(range(80))
 
     def __init__(self, txs, tip):
         self.txs, self.tip_height, self.rest_calls, self.extra = txs, tip, 0, []
@@ -109,7 +125,7 @@ class FakeChain:
                     self.history[owners.scripthash(script)].append((height, txid))
 
     def tip(self):
-        return self.tip_height, "ab" * 32
+        return self.tip_height, hashlib.sha256(hashlib.sha256(self.HEADER).digest()).digest()[::-1].hex()
 
     def call(self, method, *params):
         return self.request(method, *params)
@@ -119,7 +135,7 @@ class FakeChain:
             items = self.history.get(params[0])
             return dict(height=min(items)[0]) if items else None
         if method == "blockchain.scripthash.get_history":
-            sh, lo, hi = params
+            sh, lo, hi = params if len(params) == 3 else (*params, 0, 10 ** 9)
             return [dict(height=h, tx_hash=t) for h, t in sorted(self.history[sh]) if lo <= h < hi]
         if method == "blockchain.scripthash.listunspent":
             utxos = [dict(tx_hash=t, tx_pos=n, height=h, value=sats)
@@ -129,6 +145,8 @@ class FakeChain:
             return utxos + [item for item in self.extra if item[0] == params[0] for item in [item[1]]]
         if method == "blockchain.scripthash.get_mempool":
             return []
+        if method == "blockchain.block.header":
+            return self.HEADER.hex()
         raise AssertionError(method)
 
     def get(self, path, missing_ok=False):
@@ -189,7 +207,7 @@ class RecordTests(unittest.TestCase):
         self.cache = {}
         for txid, (height, raw) in self.txs.items():
             entry = owners.cache_entry(txid, height, raw, {a: 0, b: 1}, height_of)
-            self.cache[txid] = (entry["g"], entry["o"], entry["i"])
+            self.cache[txid] = owners.compact(entry)
 
     def test_records_from_synthetic_histories(self):
         records, problems = owners.build_records(self.history, self.cache, self.scripts_list, self.selected, 250)
@@ -244,7 +262,7 @@ class PagingTests(unittest.TestCase):
         self.assertTrue(all(count <= 300 for _, _, count in done))
         self.assertTrue(any(not ok for *_, ok in fake.calls))
         spans = [hi - lo for lo, hi, _ in done]
-        self.assertTrue(any(later == 2 * earlier for earlier, later in zip(spans, spans[1:])))
+        self.assertTrue(any(later == 2 * earlier for earlier, later in itertools.pairwise(spans)))
         self.assertTrue(all(hi - lo <= 4000 for lo, hi, _, _ in fake.calls))
 
     def test_a_single_block_that_never_fits_fails(self):
@@ -254,10 +272,84 @@ class PagingTests(unittest.TestCase):
             owners.fetch_history(fake, "sh", 0, 100, lambda hi, page: None)
 
 
+class Recorder:
+    """A client that records calls and can refuse whole-history requests, as Fulcrum does for big ones."""
+
+    def __init__(self, inner, refuse=False):
+        self.inner, self.refuse, self.calls = inner, refuse, []
+
+    def request(self, method, *params):
+        self.calls.append((method.rsplit(".", 1)[1], len(params)))
+        if self.refuse and method.endswith("get_history") and len(params) == 1:
+            raise owners.FulcrumError("history too large")
+        return self.inner.request(method, *params)
+
+    call = request
+
+
+class HistoryTests(unittest.TestCase):
+    def test_an_uncached_history_takes_one_request_and_falls_back_to_pages(self):
+        txs, _ = chain()
+        fake = FakeChain(txs, 250)
+        sh = owners.scripthash(labels.address_script(A))
+        expected = sorted(item for item in fake.history[sh] if item[0] <= 250)
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(owners, "log"):
+            whole, paged = Path(tmp) / "whole", Path(tmp) / "paged"
+            whole.mkdir()
+            paged.mkdir()
+            client = Recorder(fake)
+            self.assertEqual(owners.update_history(client, whole, A, sh, 251), (expected, 100))
+            self.assertEqual(client.calls, [("get_history", 1)])
+            self.assertEqual(json.loads((whole / f"{sh}.json").read_text())["through"], 251)
+            client.calls.clear()
+            self.assertEqual(owners.update_history(client, whole, A, sh, 260)[0], expected)
+            self.assertEqual(client.calls, [("get_history", 3)])  # the cache is extended by range
+            refused = Recorder(fake, refuse=True)
+            self.assertEqual(owners.update_history(refused, paged, A, sh, 251), (expected, 100))
+            self.assertEqual(refused.calls[:2], [("get_history", 1), ("get_first_use", 1)])
+            self.assertTrue(all(call == ("get_history", 3) for call in refused.calls[2:]))
+            self.assertEqual((paged / f"{sh}.tsv").read_text(), (whole / f"{sh}.tsv").read_text())
+
+
+class PreflightTests(unittest.TestCase):
+    def test_preflight_caches_new_histories_without_touching_scripts_or_transactions(self):
+        txs, ids = chain()
+        fake = FakeChain(txs, 250)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            spec_path = root / "spec.json"
+            spec_path.write_text(json.dumps(dict(entities=[
+                dict(id="one", name="One", color="#F0B90B", catalogEntity="One", evidenceTypes=["service_disclosure"]),
+                dict(id="two", name="Two", color="#00AAFF", catalogEntity="Two", evidenceTypes=["service_disclosure"])])))
+            write_labels(root / "labels.csv", [(A, "One", "service_disclosure", "2024-01-01"),
+                                               (B, "Two", "service_disclosure", "2024-02-01")])
+            work = root / "owners" / "extract"
+            work.mkdir(parents=True)
+            known = [dict(address=A, script=labels.address_script(A).hex())]
+            (work / "scripts.json").write_text(json.dumps(known))
+            cached = json.dumps(dict(t=ids["V"], h=120, g=1, o=[], i=[]), separators=(",", ":")) + "\n"
+            (work / "txs.jsonl").write_text(cached)
+            args = SimpleNamespace(spec=spec_path, labels=root / "labels.csv", fulcrum="fake:1", work=work,
+                                   out=root / "preflight.json", fulcrum_connections=2)
+            with mock.patch.object(owners, "running_jobs", lambda folder: ["extract.pid (1)"]), \
+                    self.assertRaisesRegex(SystemExit, "running"):
+                owners.preflight(args)
+            with mock.patch.object(owners, "running_jobs", lambda folder: []), \
+                    mock.patch.object(owners, "Fulcrum", lambda address: fake), mock.patch.object(owners, "log"):
+                self.assertEqual(owners.preflight(args), 0)
+            result = json.loads(args.out.read_text())
+            self.assertEqual((result["totals"]["new"], result["totals"]["cached"], result["totals"]["historyItems"]), (1, 1, 2))
+            self.assertEqual((result["totals"]["transactions"], result["totals"]["transactionsInCache"]), (2, 1))
+            self.assertEqual((result["entities"]["two"]["calls"], result["entities"]["one"]["new"]), (1, 0))
+            sh = owners.scripthash(labels.address_script(B))
+            self.assertEqual(len((work / "history" / f"{sh}.tsv").read_text().splitlines()), 2)
+            self.assertEqual((json.loads((work / "scripts.json").read_text()), (work / "txs.jsonl").read_text()), (known, cached))
+
+
 class ExtractTests(unittest.TestCase):
     def run_extract(self, fake, work, label_path, spec_path):
         args = SimpleNamespace(spec=spec_path, labels=label_path, fulcrum="fake:1", rest="http://fake",
-                               work=work, concurrency=4)
+                               work=work, concurrency=4, fulcrum_connections=2)
         with mock.patch.object(owners, "Fulcrum", lambda address: fake), \
                 mock.patch.object(owners, "Rest", lambda base: fake), mock.patch.object(owners, "log"):
             return owners.extract(args)
@@ -295,6 +387,12 @@ class ExtractTests(unittest.TestCase):
             self.assertEqual(fake.rest_calls, fetched)  # the rerun fetched nothing new
             failure = json.loads((work / "verify-failures.json").read_text())
             self.assertEqual(failure["mismatches"][0]["listunspentNotInRecords"], ["ee" * 32 + ":0"])
+            fake.extra.clear()
+            original = fake.request
+            fake.request = lambda method, *params: (  # the tip's block was replaced during the run
+                bytes(80).hex() if method == "blockchain.block.header" else original(method, *params))
+            self.assertEqual(self.run_extract(fake, work, root / "labels.csv", spec_path), 1)
+            fake.request = original
 
             out = root / "datasets"
             with mock.patch.object(owners, "Rest", lambda base: fake), mock.patch.object(owners, "log"):
@@ -308,33 +406,39 @@ class ExtractTests(unittest.TestCase):
             self.assertEqual([entity["records"] for entity in manifest["entities"]], [1, 2])
             self.assertEqual(manifest["entities"][1]["evidence"][0]["sources"], ["example.com"])
 
-    def test_verify_allows_only_mempool_spends(self):
+    def test_verify_explains_only_spends_after_the_tip(self):
         records = [("aa" * 32, 0, A, "one", 100, None, 5000), ("bb" * 32, 1, A, "one", 110, None, 7000)]
         sh = {A: "sha"}
         spend = tx([("bb" * 32, 1)], [(6000, OTHER)])
         spend_id = owners.parse_tx(spend)[0]
 
         class Client:
-            def __init__(self, utxos):
-                self.utxos = utxos
+            def __init__(self, utxos, later=(), mempool=()):
+                self.utxos, self.later, self.mempool = utxos, later, mempool
 
             def call(self, method, *params):
-                return self.utxos if method.endswith("listunspent") else [dict(tx_hash=spend_id, height=0)]
+                if method.endswith("listunspent"):
+                    return self.utxos
+                if method.endswith("get_history"):
+                    assert params[1:] == (251, 2 ** 31 - 1)
+                    return [dict(tx_hash=txid, height=300) for txid in self.later]
+                return [dict(tx_hash=txid, height=0) for txid in self.mempool]
 
         class Rest:
             def get(self, path, missing_ok=False):
                 return spend
 
         listed = [dict(tx_hash="aa" * 32, tx_pos=0, height=100, value=5000)]
-        results, mismatches, moved = owners.verify(Client(listed), Rest(), records, sh, 250)
-        self.assertEqual((mismatches, moved, results[A]["spentInMempool"]), ([], False, 1))
-        _, mismatches, _ = owners.verify(Client([dict(listed[0], value=4999)]), Rest(), records, sh, 250)
+        later = [dict(tx_hash="cc" * 32, tx_pos=0, height=251, value=1)]  # created above the tip: ignored
+        for client in (Client(listed + later, later=[spend_id]), Client(listed, mempool=[spend_id])):
+            results, mismatches = owners.verify(client, Rest(), records, sh, 250)
+            self.assertEqual((mismatches, results[A]["spentAfterTip"]), ([], 1))
+        _, mismatches = owners.verify(Client(listed), Rest(), records, sh, 250)
+        self.assertEqual(mismatches[0]["recordsNotInListunspent"], ["bb" * 32 + ":1"])
+        _, mismatches = owners.verify(Client([dict(listed[0], value=4999)], later=[spend_id]), Rest(), records, sh, 250)
         self.assertEqual(mismatches[0]["amountDiffers"], ["aa" * 32 + ":0"])
-        _, mismatches, _ = owners.verify(Client([]), Rest(), records, sh, 250)
+        _, mismatches = owners.verify(Client([], later=[spend_id]), Rest(), records, sh, 250)
         self.assertEqual(mismatches[0]["recordsNotInListunspent"], ["aa" * 32 + ":0"])
-        _, _, moved = owners.verify(Client(listed + [dict(tx_hash="cc" * 32, tx_pos=0, height=251, value=1)]),
-                                    Rest(), records, sh, 250)
-        self.assertTrue(moved)
 
 
 class DatasetTests(unittest.TestCase):
@@ -382,56 +486,32 @@ class DatasetTests(unittest.TestCase):
             self.assertEqual([path.name for path in Path(tmp).iterdir()], ["o8500-test"])
 
 
-def archive(path, files):
-    with zipfile.ZipFile(path, "w") as stream:
-        for name, text in files.items():
-            stream.writestr(name, text)
-
-
-class ReserveListTests(unittest.TestCase):
-    def test_reserve_lists_exclude_custodians_accept_old_layouts_and_reject_unknown_ones(self):
-        current = "\n".join([HEADER, f'BTC,BTC,{A},1.5,900000,""', f"BTC,BTC,{B},2.0,900000,Ceffu",
-                             'BTC,BNB,bnb1u2agwjat20494fmc6jnuau0ls937cfjn4pjwtn,3,1,""', 'ETH,ETH,0xabc,4,1,""'])
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            sources = {
-                "202302": {"PR01FEB23_HotCold.csv": current, "PR01FEB23_Deposit.csv": HEADER + "\n",
-                           "__MACOSX/._PR01FEB23_HotCold.csv": "\0\x05binary"},
-                "202303": {"wallet_address_20230301.csv": f"Coin,Network,Address,Balance\nbtc,btc,{B},1\n"},
-            }
-
-            def fetch(url, path):
-                month = url.rsplit("_", 1)[1][:6]
-                if month not in sources:
-                    return 403
-                archive(path, sources[month])
-                return 200
-
-            with mock.patch.object(owners, "log"):
-                counts = owners.por_binance(root / "por", ["202301", "202302", "202303"], fetch)
-            self.assertEqual(counts, dict(published_months=2, missing_months=1, evidence_rows=2, unique_addresses=2))
-            rows, manifest = labels.load_supplement(root / "por" / "binance_por_supplement.json")
-            self.assertEqual(sorted((row["address"], row["observed_date"]) for row in rows),
-                             [(A, "2023-02-01"), (B, "2023-03-01")])
-            self.assertIn("hot/cold list", next(row for row in rows if row["address"] == A)["historical_note"])
-            self.assertEqual(manifest["missing"][0]["status"], 403)
-            self.assertEqual(manifest["sources"][0]["lists"]["PR01FEB23_HotCold.csv"],
-                             dict(kind="hot/cold", btc_rows=2, custodian_rows_excluded=1))
-            self.assertEqual(manifest["sources"][0]["license"], "not stated")
-
-            sources["202304"] = {"wallet_address_20230401.csv": f"asset,chain,wallet\nBTC,BTC,{A}\n"}
-            with self.assertRaisesRegex(ValueError, "unrecognised layout"):
-                owners.por_binance(root / "bad", ["202304"], fetch)
-
-    def test_month_list(self):
-        self.assertEqual(owners.month_list("2022-11", "2023-02"), ["202211", "202212", "202301", "202302"])
-
-
 class SpecTests(unittest.TestCase):
     def test_committed_spec_and_address_selection(self):
         entities = owners.load_spec(Path(__file__).resolve().parents[1] / "landscape_owners_entities.json")
-        self.assertEqual([(e["id"], e["name"], e["color"]) for e in entities],
-                         [("binance", "Binance", "#FF2BD6"), ("okx", "OKX", "#22D3EE")])
+        self.assertEqual([(e["id"], e["name"], e["color"]) for e in entities[:2]],
+                         [("binance", "Binance", "#F0B90B"), ("okx", "OKX", "#22D3EE")])
+        types = {"service_disclosure", "service_disclosure_via_graphsense", "service_disclosure_via_aggregator",
+                 "third_party_exact_tag", "third_party_exact_tag_via_graphsense"}
+        for entity in entities:
+            self.assertTrue(set(entity["evidenceTypes"]) <= types, entity["id"])
+        self.assertEqual(len({e["catalogEntity"] for e in entities}), len(entities))
+        rgb = lambda value: tuple(int(value[i:i + 2], 16) for i in (1, 3, 5))  # noqa: E731
+        schema = (Path(__file__).resolve().parents[2] / "landscape/web/settings.schema.js").read_text()
+        flashes = {rgb(value) for value in re.findall(r"'color\.heat'[^#\n]*'(#[0-9a-fA-F]{6})'", schema)}
+        self.assertIn((255, 233, 196), flashes)  # the default warm-white flash is among them
+        colours = [rgb(e["color"]) for e in entities]
+        for colour in colours[2:]:  # white marks shared cells, and spend flashes must stay visible over owners
+            self.assertGreaterEqual(math.dist(colour, (255, 255, 255)), 120)
+            self.assertGreaterEqual(min(math.dist(colour, flash) for flash in flashes), 60)
+        perceived = [cielab(colour) for colour in colours]
+        self.assertGreaterEqual(min(math.dist(a, b) for n, a in enumerate(perceived) for b in perceived[n + 1:]), MIN_COLOUR_GAP)
+        # The app lights its small owners together in one grey (ui/owners-menu.js), which must stand apart.
+        menu = (Path(__file__).resolve().parents[2] / "landscape/web/ui/owners-menu.js").read_text()
+        other = rgb(re.search(r"OTHER_OWNERS = Object\.freeze\(\{[^}]*color: '(#[0-9A-Fa-f]{6})'", menu).group(1))
+        self.assertGreaterEqual(math.dist(other, (255, 255, 255)), 120)
+        self.assertGreaterEqual(min(math.dist(other, flash) for flash in flashes), 60)
+        self.assertGreaterEqual(min(math.dist(cielab(other), colour) for colour in perceived), 25)
         okx = "34xp4vRoCGJym3xR7yCVPFHoCNxv4Twseo"
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "labels.csv"

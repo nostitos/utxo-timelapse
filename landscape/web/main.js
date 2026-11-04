@@ -29,7 +29,7 @@ import { createCoins } from './render/coins.js';
 import { createHud } from './ui/hud.js';
 import { createTimeline } from './ui/timeline.js';
 import { createPlacesMenu } from './ui/places-menu.js';
-import { createOwnersMenu } from './ui/owners-menu.js';
+import { createOwnersMenu, ownerGroup, OTHER_OWNERS } from './ui/owners-menu.js';
 import { createLegend } from './ui/legend.js';
 import { createMinimap } from './ui/minimap.js';
 import { createInspector } from './ui/inspector.js';
@@ -345,33 +345,54 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     // ---- owners: the owner layer (replay/owners.js) ----------------------------------
     // The site's owner dataset (/owners/index.json, then owners.json) loads in the background;
     // until it has, the Owners button stays hidden and a link's own= waits for it.
-    const owners = { url: null, manifest: null, visible: [], pending: null };
+    // The many small owners (ownerGroup) are lit only together, as Other exchanges in one colour:
+    // display gives them its colour, slots their first member's code, and links name them once.
+    const owners = { url: null, manifest: null, visible: [], pending: null, group: [], display: null, slots: null };
     const ownerIndex = (id) => (owners.manifest ? owners.manifest.entities.findIndex((e) => e.id === id) : -1);
+    const groupIds = () => owners.group.map((i) => owners.manifest.entities[i].id);
+    /** Entity ids to light for these ids: Other exchanges or any of its members stands for all of them. */
+    function expandOwnerIds(ids) {
+      const out = [];
+      for (const id of ownerIds(ids)) {
+        const i = ownerIndex(id);
+        if (owners.group.length && (id === OTHER_OWNERS.id || owners.group.includes(i))) out.push(...groupIds());
+        else if (i >= 0) out.push(id);
+      }
+      return [...new Set(out)];
+    }
+    /** The lit owners for links and saved views: the group as OTHER_OWNERS.id. */
+    function sharedOwnerIds() {
+      const members = new Set(groupIds());
+      const rest = owners.visible.filter((id) => !members.has(id));
+      return rest.length < owners.visible.length ? [...rest, OTHER_OWNERS.id] : rest;
+    }
     function ownerInfo() {
       if (!owners.manifest || !owners.visible.length) return null;
-      return { entities: owners.manifest.entities, visible: new Set(owners.visible.map(ownerIndex)) };
+      return { entities: owners.display, visible: new Set(owners.visible.map(ownerIndex)) };
     }
     function ownersState() {
       const meta = replay.meta && replay.meta.owners;
-      return { manifest: owners.manifest, visible: new Set(owners.visible), meta: meta && !meta.error ? meta : null, block: replay.block,
+      return { manifest: owners.manifest, group: owners.group, visible: new Set(owners.visible), meta: meta && !meta.error ? meta : null, block: replay.block,
         loading: owners.visible.length > 0 && !(meta && meta.active !== undefined) };
     }
-    // The worker's owner layer: the lit entities and whether the rest is hidden (owners.only).
+    // The worker's owner layer: the lit entities and whether the rest is hidden (owners.only) or flat (owners.flat).
     const sendOwners = () => replay.setOwners({ url: owners.url, manifest: owners.manifest, visible: owners.visible.map(ownerIndex),
-      only: owners.visible.length > 0 && !!store.get('owners.only') });
+      slots: owners.slots, only: owners.visible.length > 0 && !!store.get('owners.only'),
+      flat: owners.visible.length > 0 && !!store.get('owners.flat') });
     /** Lights exactly these owners (entity ids; unknown ones are ignored). */
     function setOwnersVisible(ids) {
       if (!owners.manifest) {
         owners.pending = ownerIds(ids);
         return;
       }
-      const list = ownerIds(ids).filter((id) => ownerIndex(id) >= 0);
+      const list = expandOwnerIds(ids);
       if (list.join(',') === owners.visible.join(',')) return;
       owners.visible = list;
       const indices = list.map(ownerIndex);
       sendOwners();
-      view.setOwners(indices.length ? owners.manifest.entities.map((e) => e.color) : null);
-      legend.setOwners(list.map((id) => owners.manifest.entities[ownerIndex(id)]));
+      view.setOwners(indices.length ? owners.display.map((e) => e.color) : null);
+      const grouped = indices.filter((i) => owners.group.includes(i));
+      legend.setOwners([...indices.filter((i) => !grouped.includes(i)).map((i) => owners.manifest.entities[i]), ...(grouped.length ? [OTHER_OWNERS] : [])]);
       if (timeline) timeline.setOwners(indices.length > 0);
       ownersMenu.update(ownersState());
       selectionChanged();
@@ -379,7 +400,10 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     const ownersMenu = createOwnersMenu({
       container: $('owners') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'owners', className: 'popover', hidden: true })),
       store,
-      onToggle: (id, on) => setOwnersVisible(on ? [...owners.visible, id] : owners.visible.filter((x) => x !== id)),
+      onToggle: (id, on) => {
+        const ids = expandOwnerIds([id]);
+        setOwnersVisible(on ? [...owners.visible, ...ids] : owners.visible.filter((x) => !ids.includes(x)));
+      },
     });
     function toggleOwnersMenu() {
       if (!owners.manifest) return;
@@ -423,7 +447,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         const amount = !range ? 'No integer amount' : range.max === Infinity ? '≥ ' + fmtAmount(range.min) : fmtAmount(range.min) + '–' + fmtAmount(range.max);
         cellDescription = 'Blocks ' + fmtInt(first) + '–' + fmtInt(last) + ' · ' + amount;
       }
-      const snapshot = { block: replay.block, cam: controls.getPose(), follow: follow.active, own: owners.visible.slice(),
+      const snapshot = { block: replay.block, cam: controls.getPose(), follow: follow.active, own: sharedOwnerIds(),
         settings: store.viewURL(), cell, cellDescription, date: isoUtc(replay.blocktimes[replay.block]), playing: state.playing };
       if (pause) {
         playback.pause();
@@ -467,6 +491,9 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       if (!r.ok) throw new Error('owners.json: HTTP ' + r.status);
       owners.manifest = checkOwnerManifest(await r.json());
       owners.url = url;
+      owners.group = ownerGroup(owners.manifest.entities);
+      owners.display = owners.manifest.entities.map((e, i) => (owners.group.includes(i) ? { ...e, color: OTHER_OWNERS.color } : e));
+      owners.slots = owners.group.length ? owners.manifest.entities.map((e, i) => (owners.group.includes(i) ? owners.group[0] : i)) : null;
       timeline.setOwnersAvailable(true);
       help.setOwners(true);
       const pending = owners.pending;
@@ -543,11 +570,8 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       if (ids.has('amp.measure') || ids.has('color.measure')) applyMeasures();
       if (ids.has('color.ground')) applyLabelInk();
       if (ids.has('amp.heatHalfLife')) replay.setHeatHalfLife(store.get('amp.heatHalfLife'));
-      if (ids.has('owners.only') && owners.visible.length) {
-        sendOwners();
-        ownersMenu.update(ownersState());
-      }
-      if (ids.has('owners.dim')) ownersMenu.update(ownersState());
+      if ((ids.has('owners.only') || ids.has('owners.flat')) && owners.visible.length) sendOwners();
+      if (ids.has('owners.only') || ids.has('owners.flat') || ids.has('owners.dim')) ownersMenu.update(ownersState());
       if (ids.has('geo.tileBudget')) replay.setMaxResidentTiles(store.get('geo.tileBudget'));
       if (ids.has('display.hud')) dismissed.delete('hud');
       if (ids.has('display.legend')) dismissed.delete('legend');
@@ -727,8 +751,8 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     // Plane mode is not shared: a link made while flying opens in map mode at the camera.
     const shareMode = () => (controls.mode === 'plane' ? 'map' : controls.mode);
     // The address is a link to the view: it carries the look and its settings, not the quality.
-    const currentHash = () => encodeHash({ block: replay.block, mode: shareMode(), cam: controls.getPose(), follow: follow.active, cell: inspector.isOpen ? inspector.selection : null, own: owners.visible }, store.viewURL());
-    const viewState = () => ({ b: replay.block, cam: controls.getPose(), mode: shareMode(), follow: follow.active, cell: inspector.isOpen ? inspector.selection : null, own: owners.visible.slice() });
+    const currentHash = () => encodeHash({ block: replay.block, mode: shareMode(), cam: controls.getPose(), follow: follow.active, cell: inspector.isOpen ? inspector.selection : null, own: sharedOwnerIds() }, store.viewURL());
+    const viewState = () => ({ b: replay.block, cam: controls.getPose(), mode: shareMode(), follow: follow.active, cell: inspector.isOpen ? inspector.selection : null, own: sharedOwnerIds() });
     let restoringHash = true, hashRestoreId = 0;
     async function restoreLinkedView(h) {
       const my = ++hashRestoreId;

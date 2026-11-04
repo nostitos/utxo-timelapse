@@ -12,7 +12,7 @@ import { createHash } from 'node:crypto';
 import { gridFromManifest, SLOT, SLOT_CELLS, tileInfo } from '../web/data/grid.js';
 import { rowOfAmount } from '../web/data/axis.js';
 import {
-  parseOwnerRecords, OwnerLedger, ownerWord, chunkRange, checkOwnerManifest, UNSPENT, OWNER_COUNT_MAX,
+  parseOwnerRecords, OwnerLedger, ownerWord, chunkRange, checkOwnerManifest, UNSPENT, OWNER_COUNT_MAX, ENTRY_GROUP,
 } from '../web/replay/owners.js';
 import { ReplayEngine } from '../web/replay/engine.js';
 import { rng, writeDataset, fileSource, cppLikeRows, syntheticChain } from './replay-fixtures.mjs';
@@ -107,7 +107,7 @@ function lifecycles(blocks) {
   return out;
 }
 
-/** Brute force: per level, Map cellKey -> Float64Array(4E) of the records alive at b (layout of ownerWord). */
+/** Brute force: per level, Map cellKey -> Float64Array(4E) of the records alive at b, dense per entity (see sparse). */
 function bruteCells(grid, rows, records, b, E, tip) {
   const maps = grid.levels.map(() => new Map());
   if (b > tip) return maps;
@@ -129,6 +129,24 @@ function bruteCells(grid, rows, records, b, E, tip) {
 
 /** Count of the visible entities' outputs in a brute-force entry. */
 const countOf = (e, visible) => visible.reduce((n, x) => n + e[4 * x] + e[4 * x + 2], 0);
+
+/** A ledger cell entry (n, then entity and its four values for each entity holding outputs) from per-entity values. */
+function sparse(perEntity) {
+  const out = [0];
+  for (let e = 0; e < perEntity.length / 4; e++) {
+    if (perEntity[4 * e] + perEntity[4 * e + 2] === 0) continue;
+    out[0]++;
+    out.push(e, ...perEntity.slice(4 * e, 4 * e + 4));
+  }
+  return Float64Array.from(out);
+}
+
+/** Per-entity [countSmall, satsSmall, countLarge, satsLarge] of a ledger cell entry. */
+function dense(entry, E) {
+  const out = new Float64Array(4 * E);
+  for (let o = 1; o < 1 + entry[0] * ENTRY_GROUP; o += ENTRY_GROUP) out.set(entry.subarray(o + 1, o + ENTRY_GROUP), 4 * entry[o]);
+  return out;
+}
 
 /** Per level, the set of cell keys holding a visible record spent in blocks a+1..b. */
 function bruteSpendCells(grid, rows, records, a, b, visible) {
@@ -168,7 +186,7 @@ test('record files: golden vector, encoder and malformed input', () => {
 test('owner words and chunk ranges', () => {
   const vis = Uint8Array.from([1, 1, 0]);
   // Per entity [countSmall, satsSmall, countLarge, satsLarge].
-  const entry = (...perEntity) => Float64Array.from(perEntity.flat());
+  const entry = (...perEntity) => sparse(perEntity.flat());
   const none = [0, 0, 0, 0];
   assert.equal(ownerWord(entry(none, none, none), vis), 0);
   assert.equal(ownerWord(entry([3, 9, 0, 0], none, none), vis), 1 * 16777216 + 3);
@@ -178,6 +196,15 @@ test('owner words and chunk ranges', () => {
   assert.equal(ownerWord(entry([1, 9, 0, 0], [1, 9, 0, 0], none), vis), 1 * 16777216 + 2, 'a tie goes to the lower index');
   assert.equal(ownerWord(entry(none, none, [7, 9, 0, 0]), vis), 0, 'hidden entity');
   assert.equal(ownerWord(entry([2e7, 9, 0, 0], [1, 9, 0, 0], none), vis), 16777216 + OWNER_COUNT_MAX, 'capped count');
+  // Slots: entities lit as one group count together and take the group's code (its first member's).
+  const all = Uint8Array.from([1, 1, 1]);
+  const grouped = [0, 1, 0];
+  assert.equal(ownerWord(entry([2, 9, 0, 0], [3, 9, 0, 0], [2, 9, 0, 0]), all), 2 * 16777216 + 7, 'alone, entity 1 holds the most');
+  assert.equal(ownerWord(entry([2, 9, 0, 0], [3, 9, 0, 0], [2, 9, 0, 0]), all, grouped), 1 * 16777216 + 7, 'together 0 and 2 hold more');
+  assert.equal(ownerWord(entry(none, [3, 9, 0, 0], [3, 9, 0, 0]), all, grouped), 1 * 16777216 + 6, 'a tie goes to the lower slot');
+  assert.equal(ownerWord(entry(none, none, [1, 9, 0, 0]), Uint8Array.from([1, 1, 0]), grouped), 0, 'a hidden member counts for nothing');
+  // The entry lists entities in any order (removals move the last one into the gap).
+  assert.equal(ownerWord(Float64Array.from([2, 1, 4, 9, 0, 0, 0, 4, 9, 0, 0]), vis), 1 * 16777216 + 8, 'order does not matter on a tie');
   assert.deepEqual(chunkRange(0, 0, 100), { from: 0, to: 0 });
   assert.deepEqual(chunkRange(150, 150, 100), { from: 0, to: 1 });
   assert.deepEqual(chunkRange(199, 199, 100), { from: 1, to: 1 });
@@ -209,7 +236,10 @@ test('ledger maps equal brute force on random walks (forward, backward, jumps, p
     const want = bruteCells(grid, rows, kept, b, 2, tip);
     grid.levels.forEach((L, l) => {
       assert.equal(ledger.cells[l].size, want[l].size, 'cells at level ' + l + ' block ' + b);
-      for (const [key, e] of want[l]) assert.deepEqual(Array.from(ledger.cells[l].get(key) || []), Array.from(e), 'cell ' + l + '/' + key + ' block ' + b);
+      for (const [key, e] of want[l]) {
+        const got = ledger.cells[l].get(key);
+        assert.deepEqual(got ? Array.from(dense(got, 2)) : [], Array.from(e), 'cell ' + l + '/' + key + ' block ' + b);
+      }
     });
     const m = ledger.meta();
     assert.equal(m.active, b <= tip);
@@ -303,13 +333,13 @@ function eachCell(grid, tiles, fn) {
   }
 }
 
-function expectedWords(grid, rows, records, b, visible, tip) {
+function expectedWords(grid, rows, records, b, visible, tip, slots = null) {
   const vis = Uint8Array.from([0, 1].map((e) => (visible.includes(e) ? 1 : 0)));
   const maps = bruteCells(grid, rows, records, b, 2, tip);
   return maps.map((m) => {
     const w = new Map();
     for (const [key, e] of m) {
-      const word = ownerWord(e, vis);
+      const word = ownerWord(sparse(Array.from(e)), vis, slots);
       if (word) w.set(key, word);
     }
     return w;
@@ -395,7 +425,8 @@ test('engine frames carry owner words equal to brute force after seeks, playback
       }
     };
     let visible = [0, 1];
-    const verify = (b, label) => checkPlanes(grid, planes, expectedWords(grid, rows, records, b, visible, tip), label);
+    let slots = null;
+    const verify = (b, label) => checkPlanes(grid, planes, expectedWords(grid, rows, records, b, visible, tip, slots), label);
     // Cells whose flash (heat) is from blocks a+1..b, per level.
     const heatCells = (a, b) => {
       const got = grid.levels.map(() => new Set());
@@ -445,6 +476,21 @@ test('engine frames carry owner words equal to brute force after seeks, playback
     await until((m) => m.type === 'frame' && m.frame.reason === 'owners' && msgs.indexOf(m) >= read);
     drain();
     assert.ok(verify(tip, 'both again') >= owned1);
+    // Both lit as one group: every cell either holds takes the group's code, entity 0's.
+    slots = [0, 0];
+    send({ type: 'setOwners', url: 'file:///owners/', manifest, visible, slots });
+    await until((m) => m.type === 'frame' && m.frame.reason === 'owners' && msgs.indexOf(m) >= read);
+    drain();
+    verify(tip, 'one group');
+    for (const plane of planes.values()) for (const w of plane) assert.ok(w === 0 || w >>> 24 === 1, 'group code ' + (w >>> 24));
+    await seek(3200);
+    verify(3200, 'one group after a seek');
+    slots = null;
+    send({ type: 'setOwners', url: 'file:///owners/', manifest, visible });
+    await until((m) => m.type === 'frame' && m.frame.reason === 'owners' && msgs.indexOf(m) >= read);
+    drain();
+    await seek(tip);
+    verify(tip, 'separate again');
 
     // Cell lookups report the owner breakdown at the state block.
     const want = bruteCells(grid, rows, records, tip, 2, tip)[0];
@@ -475,6 +521,51 @@ test('engine frames carry owner words equal to brute force after seeks, playback
     await until((m) => m.type === 'frame' && m.frame.reason === 'measure' && msgs.indexOf(m) >= read);
     drain();
     checkCounts(3260, everyone, [0], 'every output again');
+
+    // Flatten the rest: each cell's count and height come from the lit records (the height
+    // exactly at L0, where a cell's area is 1), and it has a colour wherever any output is
+    // (hidden: only where the lit records are, as Hide the rest, which wins over Flatten).
+    const checkFlat = (b, vis, label, hidden = false) => {
+      const lit = bruteCells(grid, rows, records, b, 2, Infinity);
+      const all = bruteCells(grid, rows, everyone, b, 2, Infinity);
+      const seen = { owned: 0, flat: 0 };
+      eachCell(grid, tiles, (l, key, data, o, count) => {
+        const e = lit[l].get(key);
+        const exp = e ? countOf(e, vis) : 0;
+        const a = all[l].get(key);
+        const any = hidden ? exp : a ? countOf(a, [0]) : 0;
+        const height = l === 0 && exp ? Math.fround(vis.reduce((s, x) => s + e[4 * x], 0) + vis.reduce((s, x) => s + e[4 * x + 3], 0) / 5e8) : null;
+        if (count !== exp || (data[o] !== 0) !== (exp !== 0) || (height !== null && data[o] !== height) || (data[o + 3] !== 0) !== (any !== 0)) {
+          assert.fail(label + ': level ' + l + ' cell ' + key + ': count ' + count + ' (lit ' + exp + '), height ' + data[o] +
+            (height !== null ? ' (lit ' + height + ')' : '') + ', colour ' + data[o + 3] + ' (' + any + ' outputs)');
+        }
+        if (exp) seen.owned++;
+        else if (any) seen.flat++;
+      });
+      return seen;
+    };
+    const ownersFrame = () => until((m) => m.type === 'frame' && m.frame.reason === 'owners' && m.frame.full.length > 0 && msgs.indexOf(m) >= read);
+    send({ type: 'setOwners', url: 'file:///owners/', manifest, visible: [0, 1], flat: true });
+    await ownersFrame();
+    drain();
+    const flatAt = checkFlat(3260, [0, 1], 'flat');
+    assert.ok(flatAt.owned > 0 && flatAt.flat > 0, 'owned and flat cells: ' + JSON.stringify(flatAt));
+    await seek(3200);
+    checkFlat(3200, [0, 1], 'flat after a seek');
+    await advance(3260);
+    checkFlat(3260, [0, 1], 'flat after playback');
+    send({ type: 'setOwners', url: 'file:///owners/', manifest, visible: [0, 1], only: true, flat: true });
+    await ownersFrame();
+    drain();
+    checkFlat(3260, [0, 1], 'hide wins over flatten', true);
+    send({ type: 'setOwners', url: 'file:///owners/', manifest, visible: [1], flat: true });
+    await ownersFrame();
+    drain();
+    checkFlat(3260, [1], 'flat, one entity');
+    send({ type: 'setOwners', url: 'file:///owners/', manifest, visible: [1] });
+    await until((m) => m.type === 'frame' && m.frame.reason === 'measure' && msgs.indexOf(m) >= read);
+    drain();
+    checkCounts(3260, everyone, [0], 'every output after flatten');
     engine.dispose();
   } finally {
     rmSync(dir, { recursive: true, force: true });

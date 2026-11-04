@@ -83,6 +83,7 @@ export class ReplayEngine {
     this.ownersUrl = null;
     this.ownersOn = false;
     this.ownersOnly = false;            // owner-only view: tiles carry the lit owners' outputs alone
+    this.ownersFlat = false;            // with ownersOnly, Flatten the rest: only their heights and counts
     this.ownersDirty = false;
     this.ownersSeek = null;
     this.ownersError = null;
@@ -214,10 +215,14 @@ export class ReplayEngine {
 
   // ---------------------------------------------------------------- owners
   /**
-   * {url, manifest, visible: entity indices, only}; an empty list turns the owner layer off.
+   * {url, manifest, visible: entity indices, slots, only, flat}; an empty list turns the owner layer off.
+   * slots: per entity, the index whose owner code it counts toward (a group lit as one colour
+   * shares its first member's index); null or absent: each entity is its own.
    * only: tiles hold just the visible entities' outputs, so everything else disappears.
+   * flat (ignored with only): heights and counts are the visible entities' alone and colours
+   * stay every output's, so everything else lies flat in its own colour.
    */
-  setOwners({ url = null, manifest = null, visible = [], only = false }) {
+  setOwners({ url = null, manifest = null, visible = [], slots = null, only = false, flat = false }) {
     const want = Array.isArray(visible) ? visible.filter((e) => Number.isInteger(e) && e >= 0) : [];
     const wasOnly = this.ownersOnly;
     this.ownersError = null;
@@ -227,9 +232,11 @@ export class ReplayEngine {
         this.owners = new OwnerLedger({ grid: this.grid, minAmt: this.rows, manifest, fetchFile: (entry) => this.fetchOwnerFile(source, entry) });
         this.ownersUrl = url;
       }
-      if (this.owners) this.owners.setVisible(want);
+      if (this.owners) this.owners.setVisible(want, slots);
       this.ownersOn = want.length > 0 && this.owners !== null;
-      this.ownersOnly = this.ownersOn && !!only;
+      // Both views take tile data from the owners, so switching between them resends every tile.
+      this.ownersOnly = this.ownersOn && (!!only || !!flat);
+      this.ownersFlat = this.ownersOnly && !only;
       this.ownersDirty = this.ownersOn;
     } catch (err) {
       this.failOwners(err);
@@ -256,6 +263,7 @@ export class ReplayEngine {
     if (this.ownersOnly) this.measureDirty = true;
     this.ownersOn = false;
     this.ownersOnly = false;
+    this.ownersFlat = false;
     this.ownersDirty = false;
     this.ownersError = String((err && err.message) || err);
     this.post({ type: 'error', message: 'owner data: ' + this.ownersError });
@@ -985,7 +993,7 @@ export class ReplayEngine {
         if (this.ownersOnly) return null; // never show the full data in the owner-only view
       }
     }
-    const { frame, transfer, deltaCells } = this.builder.build(st, this.hm, this.cm, reason, st.block, partial, owners, this.ownersOnly);
+    const { frame, transfer, deltaCells } = this.builder.build(st, this.hm, this.cm, reason, st.block, partial, owners, this.ownersOnly, this.ownersFlat);
     if (skipEmpty && !frame.full.length && !frame.evicted.length && deltaCells === 0) {
       this.builder.seq--;
       return null;

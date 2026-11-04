@@ -8,7 +8,8 @@
 // (look and overrides; older links may also name a quality as preset, which the app leaves
 // to the device) and is passed through untouched. cell=col,row reopens
 // one exact L0 cell; play=1 autoplays a location link. Cell links always pause. own lists the
-// owners lit by the owner layer (owners.json entity ids, comma-separated).
+// owners lit by the owner layer (owners.json entity ids, comma-separated; other-exchanges stands
+// for the small owners lit together, ui/owners-menu.js).
 
 const SHELL_KEYS = new Set(['b', 'mode', 'follow', 'cam', 'cell', 'play', 'own']);
 export const MODES = Object.freeze(['map', 'flight']);

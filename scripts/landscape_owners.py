@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Owner highlight data for the 3D landscape (docs/landscape-owners.md).
 
-  por-binance  Binance's monthly proof-of-reserves lists -> exact-address label supplement
-  extract      every output paying the spec's exact addresses, from Fulcrum history and
-               Bitcoin Core REST transactions, verified against Fulcrum's listunspent
-  build        records cut at a landscape tip -> owner dataset read by the replay worker
+  fetch-sources    exchanges' published address lists -> exact-address label supplements
+                   (landscape_owners_sources.py, registry landscape_owners_sources.json)
+  coverage-report  a built label catalog summarised per entity
+  preflight        history of addresses new to the extraction, cached, and the work still to do
+  extract          every output paying the spec's exact addresses, from Fulcrum history and
+                   Bitcoin Core REST transactions, verified against Fulcrum's listunspent
+  build            records cut at a landscape tip -> owner dataset read by the replay worker
 
 No clustering: only the listed addresses are followed. Standard library only, apart
 from the address decoding shared with address_coverage_labels.py (which needs PyYAML).
@@ -12,12 +15,12 @@ from the address decoding shared with address_coverage_labels.py (which needs Py
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import csv
 import datetime as dt
 import gzip
 import hashlib
 import http.client
-import io
 import json
 import os
 import queue
@@ -25,22 +28,19 @@ import re
 import shutil
 import socket
 import struct
+import subprocess
 import sys
 import tempfile
 import threading
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
-import zipfile
 from collections import defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import address_coverage_labels as labels  # noqa: E402
+import landscape_owners_sources as sources  # noqa: E402
 
-POR_URL = "https://public.bnbstatic.com/static/proof-of-reserve/wallet_address_{}01.zip"
-POR_LANDING = "https://www.binance.com/en/proof-of-reserves"
 SHORT_LIFE = 4032
 MAGIC = b"BUVOWN1\0"
 MAX_SATS = 2_100_000_000_000_000
@@ -49,6 +49,7 @@ PAGE_ITEMS = 30_000        # ~3 MB of JSON per history page, well under Fulcrum'
 MAX_SPAN = 16_128          # blocks per page; bounds a page that runs from sparse into dense history
 REORG_DEPTH = 6            # cached history this close to the previous tip is fetched again
 REST_RETRY_SECONDS = 900   # long enough to restart a dropped tunnel
+FLAG_ITEMS = 4_000_000     # histories this long approach Fulcrum's MAX_HISTORY of 5,000,000
 RECORD_FIELDS = ("txid", "vout", "address", "entity", "created", "spent", "sats")
 METHOD = ("Exact listed addresses only, no clustering. Every output paying them is traced from "
           "Fulcrum's address history and Bitcoin Core's transactions, and the unspent set is "
@@ -63,120 +64,6 @@ def write_json(path: Path, value) -> None:
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_text(json.dumps(value, indent=2) + "\n")
     os.replace(temporary, path)
-
-
-# --- Binance proof-of-reserves lists -------------------------------------------------
-
-def month_list(first: str, last: str) -> list[str]:
-    """Inclusive YYYY-MM range as YYYYMM strings."""
-    year, month = map(int, first.split("-"))
-    end = tuple(map(int, last.split("-")))
-    months = []
-    while (year, month) <= end:
-        months.append(f"{year:04d}{month:02d}")
-        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
-    return months
-
-
-def por_rows(path: Path, url: str, observed: str) -> tuple[list[dict], dict]:
-    """BTC rows on the BTC network without a third-party custodian, from every CSV in one archive."""
-    rows, lists = [], {}
-    with zipfile.ZipFile(path) as archive:
-        names = [name for name in archive.namelist() if not name.endswith("/")
-                 and not name.startswith("__MACOSX/") and not Path(name).name.startswith("._")]
-        if not names:
-            raise ValueError(f"{path.name}: archive has no lists")
-        for name in names:
-            lower = Path(name).name.lower()
-            if not lower.endswith(".csv"):
-                raise ValueError(f"{path.name}: unrecognised file {name}")
-            kind = "deposit" if "deposit" in lower else "hot/cold" if "hotcold" in lower else "reserve wallet"
-            with archive.open(name) as raw:
-                reader = csv.reader(io.TextIOWrapper(raw, encoding="utf-8-sig", newline=""))
-                header = [field.strip().lower() for field in next(reader, [])]
-                if not {"coin", "network", "address"} <= set(header):
-                    raise ValueError(f"{path.name}/{name}: unrecognised layout {header}")
-                coin, network, address = (header.index(key) for key in ("coin", "network", "address"))
-                custodians = [index for index, field in enumerate(header) if "custodian" in field]
-                height = header.index("height") if "height" in header else None
-                btc = excluded = 0
-                for record in reader:
-                    if not record:
-                        continue
-                    if len(record) != len(header):
-                        raise ValueError(f"{path.name}/{name} line {reader.line_num}: "
-                                         f"{len(record)} fields under a {len(header)}-field header")
-                    if record[coin].strip().upper() != "BTC" or record[network].strip().upper() != "BTC":
-                        continue
-                    btc += 1
-                    if any(record[index].strip() for index in custodians):
-                        excluded += 1
-                        continue
-                    at = f" (BTC height {record[height].strip()})" if height is not None and record[height].strip() else ""
-                    rows.append(dict(
-                        address=labels.normalize_address(record[address]), entity="Binance", source=url,
-                        observed_date=observed, confidence="publicly_reported", evidence_type="service_disclosure",
-                        historical_note=(f"Binance proof-of-reserves {kind} list, snapshot {observed}{at}. "
-                                         "Rows naming a third-party custodian (such as Ceffu) are excluded. "
-                                         "A snapshot is not proof of continuous control before or after it.")))
-                lists[name] = dict(kind=kind, btc_rows=btc, custodian_rows_excluded=excluded)
-    return rows, lists
-
-
-def download(url: str, path: Path) -> int:
-    """Fetch url into path; return the HTTP status (403 and 404 mean not published)."""
-    request = urllib.request.Request(url, headers={"User-Agent": "utxo-landscape-owners/1"})
-    for attempt in range(4):
-        try:
-            # A short timeout: the CDN name resolves to some addresses that never answer, and
-            # each is tried in turn for this long.
-            with urllib.request.urlopen(request, timeout=20) as response, path.open("wb") as stream:
-                shutil.copyfileobj(response, stream, 1 << 20)
-            return 200
-        except urllib.error.HTTPError as exc:
-            if exc.code in (403, 404):
-                return exc.code
-            problem = exc
-        except (OSError, http.client.HTTPException) as exc:
-            problem = exc
-        time.sleep(2 ** attempt)
-    raise RuntimeError(f"{url}: {problem}")
-
-
-def por_binance(out: Path, months: list[str], fetch=download) -> dict:
-    """Archive each monthly list and write a supplement CSV plus the manifest load_supplement reads."""
-    out.mkdir(parents=True, exist_ok=True)
-    rows, sources, missing = {}, [], []
-    for month in months:
-        url = POR_URL.format(month)
-        local = out / Path(urllib.parse.urlsplit(url).path).name
-        observed = f"{month[:4]}-{month[4:]}-01"
-        fetched_at = dt.datetime.now(dt.timezone.utc).isoformat()
-        status = fetch(url, local)
-        if status != 200:
-            missing.append(dict(month=observed[:7], url=url, status=status, checked_at=fetched_at))
-            log(f"{observed[:7]} not published (HTTP {status})")
-            continue
-        found, lists = por_rows(local, url, observed)
-        for row in found:
-            rows[tuple(row[key] for key in labels.FIELDS)] = row
-        sources.append(dict(url=url, fetched_at=fetched_at, sha256=labels.sha256(local), license="not stated",
-                            local_path=local.name, month=observed[:7], bytes=local.stat().st_size,
-                            addresses=len({row["address"] for row in found}), lists=lists))
-        log(f"{observed[:7]} {sources[-1]['addresses']} BTC addresses, "
-            f"{sum(item['custodian_rows_excluded'] for item in lists.values())} custodian rows excluded")
-    if not sources:
-        raise ValueError("no Binance reserve list was published in the requested months")
-    csv_path = out / "binance_por_labels.csv"
-    labels.write_csv(csv_path, [rows[key] for key in sorted(rows)])
-    counts = dict(published_months=len(sources), missing_months=len(missing), evidence_rows=len(rows),
-                  unique_addresses=len({key[0] for key in rows}))
-    write_json(out / "binance_por_supplement.json", dict(
-        labels_csv=csv_path.name, labels_sha256=labels.sha256(csv_path), sources=sources, missing=missing,
-        landing_page=POR_LANDING, generated_at=dt.datetime.now(dt.timezone.utc).isoformat(), counts=counts,
-        policy=("coin == BTC and network == BTC from every CSV in each monthly archive; rows naming a "
-                "third-party custodian are excluded; exact listed addresses only.")))
-    return counts
 
 
 # --- Fulcrum and Bitcoin Core REST -----------------------------------------------------
@@ -331,7 +218,7 @@ def cache_entry(txid: str, height: int, raw: bytes, scripts: dict[bytes, int], h
         raise ValueError(f"REST returned transaction {parsed} for {txid}")
     return dict(t=txid, h=height, g=len(scripts),
                 o=[[vout, sats, scripts[script]] for vout, (sats, script) in enumerate(outputs) if script in scripts],
-                i=[[prev, vout] for prev, vout in inputs if prev in history])
+                i=[[sys.intern(prev), vout] for prev, vout in inputs if prev in history])
 
 
 # --- extraction ------------------------------------------------------------------------
@@ -401,9 +288,28 @@ def fetch_history(client, sh: str, start: int, end: int, on_page) -> None:
             span = min(MAX_SPAN, span * 2)
 
 
+def whole_history(client, address: str, sh: str, end: int) -> list[tuple[int, str]] | None:
+    """An uncached address's confirmed history below end from one unranged request, or None when
+    Fulcrum refuses or drops it (a history too big for its client buffer), so it is paged instead."""
+    try:
+        reply = client.request("blockchain.scripthash.get_history", sh)
+    except (FulcrumError, OSError, ValueError) as exc:
+        log(f"{address}: whole history refused ({exc!r}); paging it")
+        return None
+    return sorted((item["height"], item["tx_hash"]) for item in reply if 0 < item["height"] < end)
+
+
 def update_history(client, folder: Path, address: str, sh: str, end: int) -> tuple[list[tuple[int, str]], int | None]:
     """Cached confirmed history below end; only blocks the cache lacks are fetched."""
     meta_path, items_path = folder / f"{sh}.json", folder / f"{sh}.tsv"
+    if not meta_path.exists():  # most histories are small: one request instead of a page per 16,128 blocks
+        whole = whole_history(client, address, sh, end)
+        if whole is not None:
+            with items_path.open("w") as stream:
+                stream.writelines(f"{height}\t{txid}\n" for height, txid in whole)
+            first = whole[0][0] if whole else None
+            write_json(meta_path, dict(address=address, firstUse=first, through=end))
+            return whole, first
     meta = json.loads(meta_path.read_text()) if meta_path.exists() else dict(address=address, firstUse=None, through=0)
     if meta["firstUse"] is None:
         first = client.call("blockchain.scripthash.get_first_use", sh)
@@ -445,7 +351,7 @@ def update_history(client, folder: Path, address: str, sh: str, end: int) -> tup
 
 
 def load_cache(path: Path) -> dict[str, tuple]:
-    """txid -> (script generation, outputs, inputs); a line cut off by an interrupted run is dropped."""
+    """txid -> compact(entry); a line cut off by an interrupted run is dropped."""
     cache = {}
     if not path.exists():
         return cache
@@ -455,10 +361,43 @@ def load_cache(path: Path) -> dict[str, tuple]:
             if not line.endswith(b"\n"):
                 break
             entry = json.loads(line)
-            cache[entry["t"]] = (entry["g"], entry["o"], entry["i"])
+            cache[sys.intern(entry["t"])] = compact(entry)
             good += len(line)
         stream.truncate(good)
     return cache
+
+
+SHARED_INTS: dict[int, int] = {}  # one object per repeated int: generations, script indexes, heights
+
+
+def compact(entry: dict) -> tuple:
+    """A cache entry as held in memory: (generation, outputs as flat (vout, sats, script index, ...),
+    inputs as flat (prev txid, vout, ...)). With one str per txid, shared by histories, cache keys
+    and inputs, a transaction and a history item take 430 bytes on the existing cache, against 728
+    as lists of lists and 1,030 as plain JSON values."""
+    share = SHARED_INTS.setdefault
+    return (share(entry["g"], entry["g"]),
+            tuple(x for vout, sats, index in entry["o"] for x in (vout, sats, share(index, index))),
+            tuple(x for prev, vout in entry["i"] for x in (sys.intern(prev), vout)))
+
+
+def fulcrum_map(make_client, items: list, work, connections: int):
+    """work(client, item) for each item, in order, over that many Fulcrum clients (one per thread).
+    A request costs about one network round trip, so parallel connections cut the wall time."""
+    if connections <= 1:
+        client = make_client()
+        yield from (work(client, item) for item in items)
+        return
+    local = threading.local()
+
+    def run(item):
+        if getattr(local, "client", None) is None:
+            local.client = make_client()
+        return work(local.client, item)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=connections) as pool:
+        for start in range(0, len(items), 4096):  # bounded memory for hundreds of thousands of addresses
+            yield from pool.map(run, items[start:start + 4096])
 
 
 def fetch_transactions(rest: Rest, wanted: list[tuple[str, int]], concurrency: int, entry_for, write) -> None:
@@ -505,8 +444,9 @@ def fetch_transactions(rest: Rest, wanted: list[tuple[str, int]], concurrency: i
 class Extraction:
     """Histories, transaction cache and records for one work directory."""
 
-    def __init__(self, work: Path, selected: dict[str, dict], client, rest, concurrency: int):
-        self.work, self.selected, self.client, self.rest, self.concurrency = work, selected, client, rest, concurrency
+    def __init__(self, work: Path, selected: dict[str, dict], rest, concurrency: int, make_client, connections: int):
+        self.work, self.selected, self.rest, self.concurrency = work, selected, rest, concurrency
+        self.make_client, self.connections = make_client, connections
         (work / "history").mkdir(parents=True, exist_ok=True)
         scripts_path = work / "scripts.json"
         # Append-only so cached script indexes stay valid when addresses are added.
@@ -523,9 +463,12 @@ class Extraction:
 
     def update(self, tip: int) -> None:
         """Bring every history and the transaction cache up to tip."""
-        for address in sorted(self.selected):
-            self.history[address], self.first_use[address] = update_history(
-                self.client, self.work / "history", address, self.sh[address], tip + 1)
+        addresses = sorted(self.selected)
+        histories = fulcrum_map(self.make_client, addresses, lambda client, address: update_history(
+            client, self.work / "history", address, self.sh[address], tip + 1), self.connections)
+        for address, (items, first) in zip(addresses, histories, strict=True):
+            self.history[address] = [(SHARED_INTS.setdefault(height, height), sys.intern(txid)) for height, txid in items]
+            self.first_use[address] = first
         height_of, required = {}, {}
         for address, items in self.history.items():
             generation = self.index[address] + 1
@@ -541,7 +484,7 @@ class Extraction:
         with (self.work / "txs.jsonl").open("a") as stream:
             def write(entry: dict) -> None:
                 stream.write(json.dumps(entry, separators=(",", ":")) + "\n")
-                self.cache[entry["t"]] = (entry["g"], entry["o"], entry["i"])
+                self.cache[entry["t"]] = compact(entry)
             fetch_transactions(self.rest, wanted, self.concurrency,
                                lambda txid, height, raw: cache_entry(txid, height, raw, self.scripts, height_of), write)
 
@@ -559,14 +502,18 @@ def build_records(history: dict[str, list], cache: dict[str, tuple], scripts_lis
         if txid not in cache:
             problems.append(f"{txid} was never fetched")
             continue
-        for prev, vout in cache[txid][2]:
+        inputs = cache[txid][2]
+        for k in range(0, len(inputs), 2):
+            prev, vout = inputs[k], inputs[k + 1]
             if spender.setdefault((prev, vout), txid) != txid:
                 problems.append(f"{prev}:{vout} is spent by {spender[(prev, vout)]} and {txid}")
     if problems:
         return [], problems
     records, explained = [], defaultdict(set)
     for txid, height in height_of.items():
-        for vout, sats, index in cache[txid][1]:
+        outputs = cache[txid][1]
+        for k in range(0, len(outputs), 3):
+            vout, sats, index = outputs[k], outputs[k + 1], outputs[k + 2]
             address = scripts_list[index]["address"]
             if address not in selected:
                 continue
@@ -585,41 +532,47 @@ def build_records(history: dict[str, list], cache: dict[str, tuple], scripts_lis
     return records, problems
 
 
-def verify(client, rest: Rest, records: list[tuple], sh: dict[str, str], tip: int) -> tuple[dict, list[dict], bool]:
-    """Compare unspent records with confirmed listunspent at tip. Returns (per address, mismatches, chain moved)."""
+def verify(client, rest: Rest, records: list[tuple], sh: dict[str, str], tip: int,
+           make_client=None, connections: int = 1) -> tuple[dict, list[dict]]:
+    """Compare the records' unspent outputs at tip with confirmed listunspent now, which may be later.
+    Outputs confirmed above tip are ignored; a record missing from listunspent must be spent by a
+    transaction in the address's history above tip or in its mempool. Returns (per address, mismatches)."""
     unspent = defaultdict(dict)
     for txid, vout, address, _, _, spent, sats in records:
         if spent is None:
             unspent[address][(txid, vout)] = sats
-    results, mismatches, moved = {}, [], False
-    for address in sorted(sh):
+
+    def check(client, address: str):
         listed = {}
         for item in client.call("blockchain.scripthash.listunspent", sh[address]):
-            if item["height"] > tip:
-                moved = True
-            elif item["height"] > 0:
+            if 0 < item["height"] <= tip:
                 listed[(item["tx_hash"], item["tx_pos"])] = item["value"]
         ours = unspent[address]
-        missing, in_mempool = ours.keys() - listed.keys(), set()
+        missing, spent_later = ours.keys() - listed.keys(), set()
         if missing:
-            for entry in client.call("blockchain.scripthash.get_mempool", sh[address]):
+            later = client.call("blockchain.scripthash.get_history", sh[address], tip + 1, 2 ** 31 - 1)
+            for entry in later + client.call("blockchain.scripthash.get_mempool", sh[address]):
                 raw = rest.get(f"/rest/tx/{entry['tx_hash']}.bin", missing_ok=True)
-                if raw is None:
-                    moved = True
-                else:
-                    in_mempool.update(parse_tx(raw)[1])
-        unexplained = sorted(missing - in_mempool)
+                if raw is not None:  # a mempool transaction can leave before it is read
+                    spent_later.update(parse_tx(raw)[1])
+        unexplained = sorted(missing - spent_later)
         extra = sorted(listed.keys() - ours.keys())
         wrong = sorted(key for key in listed.keys() & ours.keys() if listed[key] != ours[key])
-        results[address] = dict(verified=not (unexplained or extra or wrong), listunspent=len(listed),
-                                spentInMempool=len(missing & in_mempool))
-        if unexplained or extra or wrong:
-            mismatches.append(dict(address=address,
-                                   recordsNotInListunspent=[f"{t}:{n}" for t, n in unexplained[:50]],
-                                   listunspentNotInRecords=[f"{t}:{n}" for t, n in extra[:50]],
-                                   amountDiffers=[f"{t}:{n}" for t, n in wrong[:50]],
-                                   counts=[len(unexplained), len(extra), len(wrong)]))
-    return results, mismatches, moved
+        result = dict(verified=not (unexplained or extra or wrong), listunspent=len(listed),
+                      spentAfterTip=len(missing & spent_later))
+        mismatch = dict(address=address, recordsNotInListunspent=[f"{t}:{n}" for t, n in unexplained[:50]],
+                        listunspentNotInRecords=[f"{t}:{n}" for t, n in extra[:50]],
+                        amountDiffers=[f"{t}:{n}" for t, n in wrong[:50]],
+                        counts=[len(unexplained), len(extra), len(wrong)]) if unexplained or extra or wrong else None
+        return result, mismatch
+
+    results, mismatches = {}, []
+    addresses = sorted(sh)
+    for address, (result, mismatch) in zip(addresses, fulcrum_map(
+            make_client or (lambda: client), addresses, check, connections if make_client else 1), strict=True):
+        results[address] = result
+        mismatches += [mismatch] if mismatch else []
+    return results, mismatches
 
 
 def extract(args) -> int:
@@ -629,29 +582,27 @@ def extract(args) -> int:
         raise SystemExit("no catalog address matches the spec")
     log(f"{len(selected)} addresses from {args.labels.name}")
     client, rest = Fulcrum(args.fulcrum), Rest(args.rest)
-    run = Extraction(args.work, selected, client, rest, args.concurrency)
-    start = tip, tip_hash = client.tip()
+    clients = lambda: Fulcrum(args.fulcrum)  # noqa: E731 - one more connection per thread
+    run = Extraction(args.work, selected, rest, args.concurrency, clients, args.fulcrum_connections)
+    # One frozen tip: a pass over hundreds of thousands of addresses outlasts several blocks, so the
+    # records are built at this tip and the check accounts for later blocks address by address.
+    tip, tip_hash = client.tip()
     log(f"Fulcrum tip {tip} {tip_hash}")
-    for round_number in range(1, 11):
-        run.update(tip)
-        now = client.tip()
-        if now != (tip, tip_hash):  # blocks arrived while fetching: catch up before verifying
-            log(f"the chain moved to {now[0]} while updating")
-            tip, tip_hash = now
-            continue
-        records, problems = build_records(run.history, run.cache, run.scripts_list, selected, tip)
-        if problems:
-            write_json(args.work / "extract-problems.json", problems)
-            log(f"{len(problems)} consistency problems, first: {problems[0]}")
-            return 1
-        results, mismatches, moved = verify(client, rest, records, run.sh, tip)
-        now = client.tip()
-        if not moved and now == (tip, tip_hash):
-            break
-        log(f"the chain moved to {now[0]} during verification; updating")
-        tip, tip_hash = now
-    else:
-        raise RuntimeError("the chain kept moving during verification")
+    run.update(tip)
+    records, problems = build_records(run.history, run.cache, run.scripts_list, selected, tip)
+    run.cache.clear()  # the records hold what verification needs; this frees most of the memory
+    if problems:
+        write_json(args.work / "extract-problems.json", problems)
+        log(f"{len(problems)} consistency problems, first: {problems[0]}")
+        return 1
+    history = {address: len(items) for address, items in run.history.items()}
+    transactions = len({txid for items in run.history.values() for _, txid in items})
+    run.history.clear()  # verification needs only the records; this frees the rest of the histories
+    results, mismatches = verify(client, rest, records, run.sh, tip, clients, args.fulcrum_connections)
+    header = bytes.fromhex(client.call("blockchain.block.header", tip))
+    if hashlib.sha256(hashlib.sha256(header).digest()).digest()[::-1].hex() != tip_hash:
+        log(f"block {tip} was reorganised during the run; run extract again")
+        return 1
     if mismatches:
         write_json(args.work / "verify-failures.json", dict(tip=tip, mismatches=mismatches))
         log(f"listunspent disagrees for {len(mismatches)} addresses; see verify-failures.json")
@@ -667,20 +618,143 @@ def extract(args) -> int:
             per_address[address]["unspent"] += 1
             per_address[address]["unspentSats"] += sats
     addresses = [dict(address=address, entity=selected[address]["entity"], scripthash=run.sh[address],
-                      evidence=selected[address]["evidence"], history=len(run.history[address]),
+                      evidence=selected[address]["evidence"], history=history[address],
                       firstUse=run.first_use[address], **per_address[address], **results[address])
                  for address in sorted(selected)]
     totals = dict(addresses=len(addresses), historyItems=sum(item["history"] for item in addresses),
-                  transactions=len({txid for items in run.history.values() for _, txid in items}),
+                  transactions=transactions,
                   records=len(records), unspent=sum(item["unspent"] for item in addresses),
                   unspentSats=sum(item["unspentSats"] for item in addresses),
                   verified=all(item["verified"] for item in addresses))
     write_json(args.work / "extract.json", dict(
         format="utxo-landscape-owner-extract-1", createdUtc=dt.datetime.now(dt.timezone.utc).isoformat(),
-        startTip=start[0], fulcrumTip=tip, fulcrumTipHash=tip_hash, rounds=round_number,
+        startTip=tip, fulcrumTip=tip, fulcrumTipHash=tip_hash,
         labels=dict(file=args.labels.name, path=str(args.labels.resolve()), sha256=labels.sha256(args.labels)),
         entities=entities, totals=totals, addresses=addresses))
     log(f"{totals['records']} records, {totals['unspent']} unspent; listunspent matches every address at {tip}")
+    return 0
+
+
+# --- preflight ---------------------------------------------------------------------------
+
+def running_jobs(folder: Path) -> list[str]:
+    """pid files in folder whose process is a live landscape_owners.py run other than this one."""
+    alive = []
+    for path in sorted(folder.glob("*.pid")):
+        try:
+            pid = int(path.read_text().split()[0])
+        except (ValueError, IndexError):
+            continue
+        command = subprocess.run(["ps", "-p", str(pid), "-o", "command="], capture_output=True, text=True).stdout
+        if pid != os.getpid() and "landscape_owners.py" in command:
+            alive.append(f"{path.name} ({pid})")
+    return alive
+
+
+class CountingClient:
+    """A Fulcrum client that counts its calls and the whole-history requests Fulcrum refused."""
+
+    def __init__(self, client):
+        self.client, self.calls, self.refused = client, 0, 0
+
+    def request(self, method: str, *params):
+        self.calls += 1
+        try:
+            return self.client.request(method, *params)
+        except (FulcrumError, OSError, ValueError):
+            self.refused += method == "blockchain.scripthash.get_history" and len(params) == 1
+            raise
+
+    def call(self, method: str, *params):
+        self.calls += 1
+        return self.client.call(method, *params)
+
+
+def preflight(args) -> int:
+    """Cache the history of every spec address the extraction does not know yet and estimate the
+    node work left. Fulcrum only: no transactions are fetched and scripts.json is not touched."""
+    jobs = running_jobs(args.work.parent)
+    if jobs:
+        raise SystemExit(f"an owner job is running ({', '.join(jobs)}); leave the node alone until it ends")
+    entities = load_spec(args.spec)
+    selected = select_addresses(entities, args.labels)
+    scripts_path = args.work / "scripts.json"
+    known = {item["address"] for item in json.loads(scripts_path.read_text())} if scripts_path.exists() else set()
+    cached = set()
+    if (args.work / "txs.jsonl").exists():
+        with (args.work / "txs.jsonl").open("rb") as stream:  # lines start {"t":"<txid>"; a cut-off last line is skipped
+            cached = {int(line[6:22], 16) for line in stream if line.endswith(b"\n")}
+    tip, tip_hash = Fulcrum(args.fulcrum).tip()
+    folder = args.work / "history"
+    folder.mkdir(parents=True, exist_ok=True)
+    stats = {entity["id"]: dict(addresses=0, cached=0, new=0, empty=0, history=0, calls=0, refused=0,
+                                seconds=0.0, pagerCallsBefore=0) for entity in entities}
+    flagged, wanted = [], set()
+    uncached = [address for address in sorted(selected) if address not in known]
+    log(f"tip {tip}: {len(selected)} addresses, {len(uncached)} new, {len(cached)} cached transactions")
+    for address in sorted(set(selected) & known):  # the extraction updates these from its cache
+        item = stats[selected[address]["entity"]]
+        item["addresses"] += 1
+        item["cached"] += 1
+        tsv = folder / f"{scripthash(labels.address_script(address))}.tsv"
+        lines = tsv.stat().st_size // 72 if tsv.exists() else 0
+        if lines >= FLAG_ITEMS:
+            flagged.append(dict(address=address, entity=selected[address]["entity"], history=lines, cached=True))
+
+    def one(client, address: str):
+        calls, refused, began = client.calls, client.refused, time.monotonic()
+        items, first = update_history(client, folder, address, scripthash(labels.address_script(address)), tip + 1)
+        return items, first, client.calls - calls, client.refused - refused, time.monotonic() - began
+
+    calls = refused = 0
+    started = last = time.monotonic()
+    results = fulcrum_map(lambda: CountingClient(Fulcrum(args.fulcrum)), uncached, one, args.fulcrum_connections)
+    for number, (address, (items, first, spent_calls, spent_refused, seconds)) in enumerate(
+            zip(uncached, results, strict=True), 1):
+        item = stats[selected[address]["entity"]]
+        item["addresses"] += 1
+        item["new"] += 1
+        item["empty"] += not items
+        item["history"] += len(items)
+        item["calls"] += spent_calls
+        item["refused"] += spent_refused
+        item["seconds"] += seconds
+        calls, refused = calls + spent_calls, refused + spent_refused
+        if first is not None:  # what the page-per-16,128-blocks pager would have needed
+            item["pagerCallsBefore"] += 1 + -(-(tip + 1 - first) // MAX_SPAN)
+        if len(items) >= FLAG_ITEMS:
+            flagged.append(dict(address=address, entity=selected[address]["entity"], history=len(items)))
+        wanted.update(int(txid[:16], 16) for _, txid in items)
+        if time.monotonic() - last >= 60:
+            last = time.monotonic()
+            log(f"{number}/{len(uncached)} new addresses, {len(wanted)} transactions, {calls} calls")
+            jobs = running_jobs(args.work.parent)
+            if jobs:  # each address's cache files are complete, so a later run resumes here
+                raise SystemExit(f"an owner job started ({', '.join(jobs)}); stopped after {number} addresses")
+    for item in stats.values():
+        item["seconds"] = round(item["seconds"], 1)
+    new = sum(item["new"] for item in stats.values())
+    history = sum(item["history"] for item in stats.values())
+    totals = dict(addresses=len(selected), cached=len(selected) - new, new=new, historyItems=history,
+                  transactions=len(wanted), transactionsInCache=len(wanted & cached), calls=calls,
+                  refusedWholeHistories=refused, seconds=round(time.monotonic() - started, 1),
+                  connections=args.fulcrum_connections,
+                  pagerCallsBefore=sum(item["pagerCallsBefore"] for item in stats.values()))
+    write_json(args.out, dict(
+        format="utxo-landscape-owner-preflight-1", createdUtc=dt.datetime.now(dt.timezone.utc).isoformat(),
+        tip=tip, tipHash=tip_hash, spec=str(args.spec.resolve()),
+        labels=dict(file=args.labels.name, path=str(args.labels.resolve()), sha256=labels.sha256(args.labels)),
+        entities=stats, totals=totals, flagged=flagged,
+        estimate=dict(
+            note=("Every transaction in a new address's history is fetched, cached or not: a cached entry records "
+                  "only the outputs paying the addresses known when it was parsed. Addresses already in the "
+                  "extraction add only the blocks since its last tip."),
+            transactions=len(wanted), hoursAt440=round(len(wanted) / 440 / 3600, 2),
+            hoursAt650=round(len(wanted) / 650 / 3600, 2), txCacheBytes=len(wanted) * 190,
+            historyCacheBytes=history * 72)))
+    log(f"{new} new addresses: {history} history items, {len(wanted)} transactions "
+        f"({len(wanted & cached)} already cached), {calls} calls in {totals['seconds']} s; "
+        f"{len(flagged)} flagged; wrote {args.out}")
     return 0
 
 
@@ -805,16 +879,33 @@ def build(args) -> int:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest="command", required=True)
-    por = commands.add_parser("por-binance", help="archive Binance's monthly reserve lists as a label supplement")
-    por.add_argument("--out", type=Path, required=True)
-    por.add_argument("--from", dest="first", default="2022-11", help="first month, YYYY-MM")
-    por.add_argument("--to", dest="last", default=f"{dt.date.today():%Y-%m}", help="last month, YYYY-MM")
+    fetch = commands.add_parser("fetch-sources", help="archive exchanges' published address lists as supplements")
+    fetch.add_argument("--registry", type=Path, default=sources.REGISTRY)
+    fetch.add_argument("--out", type=Path, required=True, help="research folder, e.g. labels-YYYYMMDD/research")
+    fetch.add_argument("--source", action="append", default=[], help="source id to run (repeatable; default: all active)")
+    fetch.add_argument("--reuse", type=Path, action="append", default=[],
+                       help="earlier research folder whose recorded archives are linked instead of downloaded")
+    fetch.add_argument("--discover", action="store_true", help="instead, archive the seed lists into candidates.json")
+    fetch.add_argument("--tagpacks-dir", type=Path, help="GraphSense checkout, for --discover")
+    fetch.add_argument("--catalog", type=Path, help="current catalog folder, for --discover")
+    report = commands.add_parser("coverage-report", help="summarise a built label catalog per entity")
+    report.add_argument("--labels", type=Path, required=True, help="catalog folder, labels-YYYYMMDD")
+    report.add_argument("--registry", type=Path, default=sources.REGISTRY)
+    report.add_argument("--research", type=Path, required=True)
+    report.add_argument("--out", type=Path, required=True, help="JSON path; the Markdown is written beside it")
+    pre = commands.add_parser("preflight", help="cache new addresses' histories and estimate the extraction")
     ext = commands.add_parser("extract", help="trace every output paying the spec's addresses")
-    ext.add_argument("--spec", type=Path, required=True)
-    ext.add_argument("--labels", type=Path, required=True, help="resolved catalog CSV, e.g. labels_extended_resolved.csv")
-    ext.add_argument("--fulcrum", required=True, help="host:port of a plaintext Fulcrum server")
+    for command in (pre, ext):
+        command.add_argument("--spec", type=Path, required=True)
+        command.add_argument("--labels", type=Path, required=True,
+                             help="resolved catalog CSV, e.g. labels_extended_resolved.csv")
+        command.add_argument("--fulcrum", required=True, help="host:port of a plaintext Fulcrum server")
+        command.add_argument("--work", type=Path, required=True)
+        # Each request waits about one network round trip; 8 connections stay under Fulcrum's per-client limit.
+        command.add_argument("--fulcrum-connections", type=int, default=8,
+                             help="parallel Fulcrum connections for histories and listunspent (default 8)")
+    pre.add_argument("--out", type=Path, required=True, help="preflight JSON")
     ext.add_argument("--rest", required=True, help="Bitcoin Core REST base URL")
-    ext.add_argument("--work", type=Path, required=True)
     # The node is disk-bound: more parallel reads only queue in bitcoind's work queue.
     ext.add_argument("--concurrency", type=int, default=12, help="parallel REST requests (default 12)")
     bld = commands.add_parser("build", help="cut the records at a landscape tip into an owner dataset")
@@ -824,10 +915,15 @@ def main(argv=None) -> int:
     bld.add_argument("--out-root", type=Path, required=True)
     bld.add_argument("--id", help="dataset id; default o<tip>-<today>")
     args = parser.parse_args(argv)
-    if args.command == "por-binance":
-        print(json.dumps(por_binance(args.out, month_list(args.first, args.last)), indent=2))
+    if args.command == "fetch-sources" and args.discover:
+        print(json.dumps(sources.discover(args.registry, args.out, args.tagpacks_dir, catalog=args.catalog), indent=2))
         return 0
-    return extract(args) if args.command == "extract" else build(args)
+    if args.command == "fetch-sources":
+        return sources.fetch_sources(args.registry, args.out, args.source, args.reuse)
+    if args.command == "coverage-report":
+        print(json.dumps(sources.coverage_report(args.labels, args.registry, args.research, args.out), indent=2))
+        return 0
+    return dict(preflight=preflight, extract=extract, build=build)[args.command](args)
 
 
 if __name__ == "__main__":

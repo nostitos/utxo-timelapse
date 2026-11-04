@@ -95,7 +95,8 @@ export function createLegend({ container, settings, onDismiss = null, onEditHeig
     const ownerRow = owners && owners.length
       ? '<div class="lg-row lg-owners"><span class="eyebrow">Owners</span><span>' +
         owners.map((o) => swatch(o.color) + escapeHtml(o.name)).join(' \u00b7 ') +
-        (get('owners.only', false) ? ' \u00b7 the rest hidden' : ' \u00b7 the rest at ' + Math.round(get('owners.dim', 0.2) * 100) + '%') +
+        (get('owners.only', false) ? ' \u00b7 the rest hidden'
+          : (get('owners.flat', false) ? ' \u00b7 the rest flat at ' : ' \u00b7 the rest at ') + Math.round(get('owners.dim', 0.2) * 100) + '%') +
         ' \u00b7 only their spends flash</span></div>'
       : '';
 
