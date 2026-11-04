@@ -375,9 +375,10 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       return { manifest: owners.manifest, group: owners.group, visible: new Set(owners.visible), meta: meta && !meta.error ? meta : null, block: replay.block,
         loading: owners.visible.length > 0 && !(meta && meta.active !== undefined) };
     }
-    // The worker's owner layer: the lit entities and whether the rest is hidden (owners.only).
+    // The worker's owner layer: the lit entities and whether the rest is hidden (owners.only) or flat (owners.flat).
     const sendOwners = () => replay.setOwners({ url: owners.url, manifest: owners.manifest, visible: owners.visible.map(ownerIndex),
-      slots: owners.slots, only: owners.visible.length > 0 && !!store.get('owners.only') });
+      slots: owners.slots, only: owners.visible.length > 0 && !!store.get('owners.only'),
+      flat: owners.visible.length > 0 && !!store.get('owners.flat') });
     /** Lights exactly these owners (entity ids; unknown ones are ignored). */
     function setOwnersVisible(ids) {
       if (!owners.manifest) {
@@ -569,11 +570,8 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       if (ids.has('amp.measure') || ids.has('color.measure')) applyMeasures();
       if (ids.has('color.ground')) applyLabelInk();
       if (ids.has('amp.heatHalfLife')) replay.setHeatHalfLife(store.get('amp.heatHalfLife'));
-      if (ids.has('owners.only') && owners.visible.length) {
-        sendOwners();
-        ownersMenu.update(ownersState());
-      }
-      if (ids.has('owners.dim')) ownersMenu.update(ownersState());
+      if ((ids.has('owners.only') || ids.has('owners.flat')) && owners.visible.length) sendOwners();
+      if (ids.has('owners.only') || ids.has('owners.flat') || ids.has('owners.dim')) ownersMenu.update(ownersState());
       if (ids.has('geo.tileBudget')) replay.setMaxResidentTiles(store.get('geo.tileBudget'));
       if (ids.has('display.hud')) dismissed.delete('hud');
       if (ids.has('display.legend')) dismissed.delete('legend');

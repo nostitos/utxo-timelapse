@@ -558,6 +558,8 @@ const ENTRIES = [
     help: 'While owners are lit, brightness of every cell and column layer no lit owner holds: 0 is black, 1 leaves them unchanged. Only the lit owners\u2019 spends flash.' },
   { id: 'owners.only', label: 'Hide the rest', type: 'bool', default: false, preset: false,
     help: 'While owners are lit, show their outputs alone: every other output disappears, and heights, columns and flashes count only the lit owners.' },
+  { id: 'owners.flat', label: 'Flatten the rest', type: 'bool', default: false, preset: false,
+    help: 'While owners are lit, heights and columns count only their outputs: every other cell keeps its colour and lies flat, dimmed by Dim the rest. Has no effect while Hide the rest is on.' },
 ];
 
 function deepFreeze(value) {

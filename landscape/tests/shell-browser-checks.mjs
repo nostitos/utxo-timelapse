@@ -1305,6 +1305,125 @@ const CHECKS = [
     ],
   },
   {
+    name: 'owners-flat',
+    shot: 'owners-flat.png',
+    timeout: 180000,
+    // Flatten the rest (owners.flat), when the server has owner data: heights and columns count
+    // only the lit owner, every other cell keeps its colour, flat and dimmed, and near the camera
+    // its terrain stays where the owner's columns stand.
+    script: `
+      const out = {};
+      const t0 = performance.now();
+      while (!L.owners.manifest && performance.now() - t0 < 8000) await sleep(100);
+      out.available = !!L.owners.manifest;
+      if (!out.available) return out;
+      const ent = L.owners.manifest.entities[0];
+      out.entity = ent.id;
+      await L.seek(tip); await idle();
+      L.controls.setPose(POSES.map);
+      L.owners.set([ent.id]);
+      const t1 = performance.now();
+      while (!(L.replay.meta && L.replay.meta.owners && L.replay.meta.owners.active) && performance.now() - t1 < 30000) await sleep(100);
+      const mean = (g) => g.reduce((a, v) => a + v, 0) / g.length;
+      // Cells on screen with height, and flat ones (colour but no height).
+      const kinds = () => {
+        const k = { tall: 0, flat: 0 };
+        for (let y = 60; y <= 820; y += 40) for (let x = 40; x <= 1560; x += 40) {
+          const h = L.view.pick(x, y);
+          if (h && h.value > 0) k.tall++;
+          else if (h && h.colorValue > 0) k.flat++;
+        }
+        return k;
+      };
+      const dimmed = await settled(800, 15000);
+      out.dimmed = kinds();
+      const btn = document.querySelector('#timeline [data-act="owners"]');
+      btn.click(); await sleep(250);
+      const box = document.querySelector('#owners [data-flat]');
+      out.box = !!box;
+      if (box) box.click();
+      await sleep(300);
+      out.setting = L.settings.get('owners.flat');
+      out.dimEnabled = !(document.querySelector('#owners [data-dim]') || {}).disabled;
+      btn.click(); await sleep(100);
+      const flat = await settled(800, 15000);
+      out.flat = kinds();
+      out.legend = (document.querySelector('#legend .lg-owners') || {}).innerText || '';
+      out.hash = location.hash.includes('owners.flat=');
+      out.flatChanged = Math.round(gridDiff(dimmed, flat) * 100) / 100;
+      // The owner's own cells keep their height.
+      let own = null;
+      for (let y = 60; y <= 820 && !own; y += 10) for (let x = 40; x <= 1560 && !own; x += 10) {
+        const h = L.view.pick(x, y); if (!h) continue;
+        const c = await L.replay.cell(h.level || 0, h.col, h.row, { load: false });
+        if (c && c.owners && c.owners.some((o) => o.entity === 0)) own = h;
+      }
+      out.ownHeight = own ? own.value : null;
+      // Dim the rest still sets how bright the flat rest is.
+      L.settings.set('owners.dim', 0.6);
+      out.brighter = Math.round(mean(await settled(800, 15000)) - mean(flat));
+      L.settings.set('owners.dim', 0.2);
+      await settled(800, 15000);
+      // Hide the rest wins: Flatten is disabled and the rest has no colour.
+      L.settings.set('owners.only', true);
+      btn.click(); await sleep(250);
+      out.disabledUnderHide = !!(document.querySelector('#owners [data-flat]') || {}).disabled;
+      btn.click(); await sleep(100);
+      const hidden = await settled(800, 15000);
+      out.hidden = kinds();
+      out.hideDiffers = Math.round(gridDiff(hidden, flat) * 100) / 100;
+      L.settings.set('owners.only', false);
+      await settled(800, 15000);
+      // Near the camera the heightfield gives way to columns, which stand only on cells with height:
+      // the flat rest must keep its terrain there. Undimmed, a cut-out cell shows the grey ground
+      // instead of its blue, so most pixels that are blue without columns must stay blue with them
+      // (measured on o974310-20261104: 68% kept, 36% with the flat cells cut out).
+      const pose0 = L.controls.getPose();
+      const pw = L.controls.poseLookingAt({ x: tip / 1000 - 0.4, y: 0, z: 54 }, { distance: 14, yaw: 25, pitch: -38 });
+      L.controls.setPose({ x: pw.position.x, y: pw.position.y, z: pw.position.z, yaw: pw.yaw, pitch: pw.pitch });
+      L.settings.set('owners.dim', 1);
+      const blueAt = async () => {
+        const d = (await frameImage(640, 360)).getContext('2d').getImageData(0, 0, 640, 360).data;
+        const b = new Uint8Array(d.length / 4);
+        for (let i = 0; i < d.length; i += 4) b[i / 4] = d[i + 2] > d[i] + 20 ? 1 : 0;
+        return b;
+      };
+      await settled(800, 15000);
+      const withColumns = await blueAt();
+      out.columns = (L.view.stats || {}).columns || 0;
+      L.settings.set('geo.columns', false);
+      await settled(800, 15000);
+      const without = await blueAt();
+      L.settings.set('geo.columns', true);
+      let blue = 0;
+      let kept = 0;
+      for (let i = 0; i < without.length; i++) if (without[i]) { blue++; kept += withColumns[i]; }
+      out.blue = blue;
+      out.kept = Math.round((kept / Math.max(1, blue)) * 100) / 100;
+      L.settings.set('owners.dim', 0.2);
+      L.controls.setPose(pose0);
+      await settled(800, 15000);
+      L.settings.set('owners.flat', false);
+      out.restored = Math.round(gridDiff(dimmed, await settled(800, 15000)) * 100) / 100;
+      L.owners.set([]);
+      return out;`,
+    expect: (v) => !v.available ? [['no owner data served: nothing to flatten', true]] : [
+      ['the Owners menu has a Flatten the rest checkbox that sets owners.flat', v.box && v.setting === true],
+      ['Dim the rest stays on with it', v.dimEnabled],
+      ['the legend says the rest is flat: ' + JSON.stringify(v.legend), /the rest flat at 20%/.test(v.legend)],
+      ['the link keeps owners.flat', v.hash],
+      ['dimmed, every coloured cell has height: ' + JSON.stringify(v.dimmed), v.dimmed.flat === 0 && v.dimmed.tall > 0],
+      ['flattened, the rest keeps its colour without height: ' + JSON.stringify(v.flat), v.flat.flat > v.flat.tall && v.flat.flat > 20],
+      ['the view changes (mean RGB difference ' + v.flatChanged + ')', v.flatChanged > 0.5],
+      [v.entity + '\u2019s own cells keep their height (' + v.ownHeight + ')', v.ownHeight > 0],
+      ['Dim the rest brightens the flat rest (+' + v.brighter + ' mean RGB at 60%)', v.brighter >= 2],
+      ['Hide the rest wins: Flatten is disabled and the rest has no colour: ' + JSON.stringify(v.hidden), v.disabledUnderHide && v.hidden.flat === 0],
+      ['hidden and flat differ (mean RGB difference ' + v.hideDiffers + ')', v.hideDiffers > 1],
+      ['near the camera the flat rest keeps its terrain where columns stand: ' + v.columns + ' columns, ' + Math.round(v.kept * 100) + '% of ' + v.blue + ' blue pixels kept', v.columns > 0 && v.blue > 1000 && v.kept > 0.55],
+      ['turning it off restores the dimmed view (difference ' + v.restored + ')', v.restored < 3],
+    ],
+  },
+  {
     name: 'webgl2-fallback',
     query: '?webgl=1',
     shot: 'webgl2.png',

@@ -352,6 +352,7 @@ export function buildTerrainMaterial({ atlas, shading, instances, mode, view = n
   const tr0F = vInfo.y;
   const rowScaleF = vInfo.z;
   let raw;
+  let cell; // the containing cell, exact: what the column test reads
   let cy;
   let ox; // the cell the owner layer colours: exact when stepped, the nearest cell when smooth
   let heat;
@@ -361,6 +362,7 @@ export function buildTerrainMaterial({ atlas, shading, instances, mode, view = n
     const cx = clamp(int(floor(c.x)), int(-1), I256).toVar();
     cy = clamp(int(floor(c.y)), int(-1), I256).toVar();
     raw = atlas.fetch(slotF, cx.add(I1), cy.add(I1)).toVar();
+    cell = raw;
     heat = shading.heatEmissive(raw.y, raw.z, positionWorld.x);
     ox = cx;
   } else {
@@ -384,6 +386,7 @@ export function buildTerrainMaterial({ atlas, shading, instances, mode, view = n
     const lerp2 = (a, b, c, d) => a.mul(float(1).sub(tx)).add(b.mul(tx)).mul(float(1).sub(ty))
       .add(c.mul(float(1).sub(tx)).add(d.mul(tx)).mul(ty));
     raw = lerp2(c00, c10, c01, c11).toVar();
+    cell = select(ty.lessThan(0.5), select(tx.lessThan(0.5), c00, c10), select(tx.lessThan(0.5), c01, c11));
     const hi = (cc) => shading.heatIntensity(cc.y, cc.z, positionWorld.x);
     heat = shading.heatEmissiveOf(lerp2(hi(c00), hi(c10), hi(c01), hi(c11)));
     cy = select(ty.lessThan(0.5), y0, y1).toVar();
@@ -431,7 +434,10 @@ export function buildTerrainMaterial({ atlas, shading, instances, mode, view = n
     const inside = dx.mul(dx).add(dz.mul(dz)).lessThan(cf.z.mul(cf.z));
     const tid = int(l0r).div(I256).mul(int(L0.tilesX)).add(int(l0c).div(I256)).add(int(L0.firstTile));
     const resident = atlas.page(tid).greaterThanEqual(0);
-    const outside = inside.and(resident).not();
+    let outside = inside.and(resident).not();
+    // Columns stand only where the height value is above 0, so a cell Flatten the rest leaves with
+    // colour but no height keeps its terrain. Gated on the owner layer: other views keep their material.
+    if (atlas.ownersOn) outside = outside.or(cell.x.lessThanEqual(0).and(cell.w.greaterThan(0)));
     keep = keep ? keep.and(outside) : outside;
   }
   if (keep) material.maskNode = keep;

@@ -521,6 +521,51 @@ test('engine frames carry owner words equal to brute force after seeks, playback
     await until((m) => m.type === 'frame' && m.frame.reason === 'measure' && msgs.indexOf(m) >= read);
     drain();
     checkCounts(3260, everyone, [0], 'every output again');
+
+    // Flatten the rest: each cell's count and height come from the lit records (the height
+    // exactly at L0, where a cell's area is 1), and it has a colour wherever any output is
+    // (hidden: only where the lit records are, as Hide the rest, which wins over Flatten).
+    const checkFlat = (b, vis, label, hidden = false) => {
+      const lit = bruteCells(grid, rows, records, b, 2, Infinity);
+      const all = bruteCells(grid, rows, everyone, b, 2, Infinity);
+      const seen = { owned: 0, flat: 0 };
+      eachCell(grid, tiles, (l, key, data, o, count) => {
+        const e = lit[l].get(key);
+        const exp = e ? countOf(e, vis) : 0;
+        const a = all[l].get(key);
+        const any = hidden ? exp : a ? countOf(a, [0]) : 0;
+        const height = l === 0 && exp ? Math.fround(vis.reduce((s, x) => s + e[4 * x], 0) + vis.reduce((s, x) => s + e[4 * x + 3], 0) / 5e8) : null;
+        if (count !== exp || (data[o] !== 0) !== (exp !== 0) || (height !== null && data[o] !== height) || (data[o + 3] !== 0) !== (any !== 0)) {
+          assert.fail(label + ': level ' + l + ' cell ' + key + ': count ' + count + ' (lit ' + exp + '), height ' + data[o] +
+            (height !== null ? ' (lit ' + height + ')' : '') + ', colour ' + data[o + 3] + ' (' + any + ' outputs)');
+        }
+        if (exp) seen.owned++;
+        else if (any) seen.flat++;
+      });
+      return seen;
+    };
+    const ownersFrame = () => until((m) => m.type === 'frame' && m.frame.reason === 'owners' && m.frame.full.length > 0 && msgs.indexOf(m) >= read);
+    send({ type: 'setOwners', url: 'file:///owners/', manifest, visible: [0, 1], flat: true });
+    await ownersFrame();
+    drain();
+    const flatAt = checkFlat(3260, [0, 1], 'flat');
+    assert.ok(flatAt.owned > 0 && flatAt.flat > 0, 'owned and flat cells: ' + JSON.stringify(flatAt));
+    await seek(3200);
+    checkFlat(3200, [0, 1], 'flat after a seek');
+    await advance(3260);
+    checkFlat(3260, [0, 1], 'flat after playback');
+    send({ type: 'setOwners', url: 'file:///owners/', manifest, visible: [0, 1], only: true, flat: true });
+    await ownersFrame();
+    drain();
+    checkFlat(3260, [0, 1], 'hide wins over flatten', true);
+    send({ type: 'setOwners', url: 'file:///owners/', manifest, visible: [1], flat: true });
+    await ownersFrame();
+    drain();
+    checkFlat(3260, [1], 'flat, one entity');
+    send({ type: 'setOwners', url: 'file:///owners/', manifest, visible: [1] });
+    await until((m) => m.type === 'frame' && m.frame.reason === 'measure' && msgs.indexOf(m) >= read);
+    drain();
+    checkCounts(3260, everyone, [0], 'every output after flatten');
     engine.dispose();
   } finally {
     rmSync(dir, { recursive: true, force: true });

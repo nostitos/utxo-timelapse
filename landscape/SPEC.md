@@ -418,7 +418,7 @@ from the repository root. Link to the 2D explorer as
 
 ### 5.1 Owners (owner layer)
 
-`replay.setOwners({url, manifest, visible, slots, only})`: `url` of an owner data directory, its parsed
+`replay.setOwners({url, manifest, visible, slots, only, flat})`: `url` of an owner data directory, its parsed
 owners.json and the entity indices to light; `visible: []` turns the layer off. `slots` (one per
 entity, or null) lights a group as one owner: each member counts toward its group's first member,
 whose code it takes (the app's Other exchanges, §8). Nothing loads until
@@ -450,7 +450,11 @@ share every cell, so the cell heat is exact; the glow, the flash sprites and the
 outputs alone (`OwnerLedger.values` at the same source cell as the floats), so heights, columns,
 picking and flashes show nothing else. Entering it, changing its entities or crossing the owner tip
 resends every delivered tile, and leaving it resends them with the full data; in that view a frame
-waits for the owner data rather than show the full data.
+waits for the owner data rather than show the full data. `flat: true` (ignored with `only`) flattens
+everything else instead: only the tile heights and counts come from the lit entities' outputs, while
+the colour value and whether a cell is empty stay the full cell's, so the rest lies flat in its own
+colours. Its frames resend and wait like the owner-only view's, and switching between the two
+resends every delivered tile.
 
 
 ## 6. Rendering contract
@@ -539,7 +543,7 @@ rebuild the materials. Cells of the heightfield (the exact cell when stepped, th
 smooth) and far columns that hold a lit entity's output take its colour with
 an emissive lift (`OWNER_LIFT` 0.6); near columns colour exactly their top `owned` layers and,
 when one output is owned, the cap. Everything else multiplies its colour, edge glow and rim by
-`owners.dim`^2.2, a linear-light factor, so the slider reads as displayed brightness. The grid is unchanged and the worker limits heat (spend flashes) to the lit owners (§5.1), whose fewer flashes are stronger: their heat glows `OWNER_HEAT` (3) times as bright without the creation-edge dimming, and their flash sprites are `OWNER_FLASH_SIZE` (2.5) times as large, live twice `FLASH_LIFE_MS` and keep full brightness near the creation edge; with the layer off the materials are
+`owners.dim`^2.2, a linear-light factor, so the slider reads as displayed brightness. Columns stand only where the height value is above 0, so where they are drawn the heightfield also stays over a cell with colour but no height (`x` ≤ 0 < `w`, read from the containing cell even when smooth), which only the flattened view (§5.1) produces. The grid is unchanged and the worker limits heat (spend flashes) to the lit owners (§5.1), whose fewer flashes are stronger: their heat glows `OWNER_HEAT` (3) times as bright without the creation-edge dimming, and their flash sprites are `OWNER_FLASH_SIZE` (2.5) times as large, live twice `FLASH_LIFE_MS` and keep full brightness near the creation edge; with the layer off the materials are
 the same as before.
 
 
@@ -671,8 +675,9 @@ ui_settings with the consumers):
   `display.ssaa` (1, 2, 4), `display.overlay`, `display.labels`, `display.grid`,
   `display.legend`, `display.minimap`, `display.hud`.
 - Owners: `owners.dim` (0–1, default 0.2), the brightness of everything no lit owner holds
-  while the owner layer is on, and `owners.only` (bool, default off), the owner-only view that
-  hides everything else (§4 owner files, §5 owners).
+  while the owner layer is on, `owners.only` (bool, default off), the owner-only view that
+  hides everything else, and `owners.flat` (bool, default off), which lays everything else flat in
+  its own colours (§4 owner files, §5 owners).
 
 Look intent: **Landscape** is the schema defaults. **BitcoinTimelapse.com** (named Film until
 October 2026) reproduces the film's colours
@@ -918,10 +923,11 @@ once `/owners/index.json` names owner data): a checkbox per owner with its colou
 it holds at the block (`meta.owners`). Owners holding under 1% of all the outputs in the owner data
 (owners.json `entities[].records`) share one row, Other exchanges, when at least two do (`ownerGroup`):
 it lights them together in one grey (`#B7B7B7`, `slots` in §5.1), its total is theirs, and the sources
-name them in one line. Then the Hide the rest checkbox (`owners.only`), the Dim the rest
-slider (`owners.dim`, off while the rest is hidden), and where the addresses
+name them in one line. Then the Hide the rest checkbox (`owners.only`), the Flatten the rest checkbox
+(`owners.flat`, off while the rest is hidden), the Dim the rest slider (`owners.dim`, off while the
+rest is hidden), and where the addresses
 come from (owners.json evidence: the owner's own published lists and their months, addresses
-attributed by others and their sources). The legend gains an Owners row (Other exchanges once), the
+attributed by others and their sources). The legend gains an Owners row (Other exchanges once; the rest hidden, or flat or dimmed at the Dim value), the
 hover card and the inspector a line per lit owner (`cell().owners`, a group member under its own name
 in the group's grey), and the hash `own=id[,id]` (lit owners, the group as `other-exchanges`, which
 like any member's id lights the whole group; also in shared links and exported views).

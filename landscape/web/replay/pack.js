@@ -36,8 +36,10 @@ const OWN4 = new Float64Array(4); // scratch: the lit owners' values of one cell
  * Handles interior cells, borders (resident neighbour or nearest interior copy) and cells
  * outside the grid. Returns true when any value is non-zero. With owners (the owner-only
  * view), the cell's counts and sums are the lit owners' (OwnerLedger.values) at that cell.
+ * flat (with owners, Flatten the rest): only the height value and the count are the lit
+ * owners'; the colour value and whether the cell is empty stay the full cell's.
  */
-export function resolveCell(slotOf, slot, sx, sy, hm, cm, out, o, counts = null, ci = o / 4, owners = null) {
+export function resolveCell(slotOf, slot, sx, sy, hm, cm, out, o, counts = null, ci = o / 4, owners = null, flat = false) {
   if (counts) counts[ci] = 0;
   let lx = sx - 1;
   let ly = sy - 1;
@@ -64,13 +66,19 @@ export function resolveCell(slotOf, slot, sx, sy, hm, cm, out, o, counts = null,
   const area = slot.colW[ax] * slot.rowH[ay];
   if (area === 0) { zero4(out, o); return false; }
   const li = (ly << 8) | lx;
-  let c = src.cells;
+  let c = src.cells; // colour value and the empty test
   let co = li << 2;
+  let h = c;         // height value and count
+  let ho = co;
   if (owners !== null) {
-    c = OWN4;
-    co = 0;
     OWN4.fill(0);
     owners.values(src.level, src.col0 + lx, src.row0 + ly, OWN4);
+    h = OWN4;
+    ho = 0;
+    if (!flat) {
+      c = OWN4;
+      co = 0;
+    }
   }
   let heat = 0;
   let hb = 0;
@@ -79,9 +87,9 @@ export function resolveCell(slotOf, slot, sx, sy, hm, cm, out, o, counts = null,
     if (heat !== 0) hb = src.heat[(li << 1) + 1];
   }
   if (c[co] === 0 && c[co + 2] === 0 && heat === 0) { zero4(out, o); return false; }
-  if (counts) counts[ci] = c[co] + c[co + 2];
+  if (counts) counts[ci] = h[ho] + h[ho + 2];
   const inv = 1 / area;
-  out[o] = measureValue(c, co, hm) * inv;
+  out[o] = measureValue(h, ho, hm) * inv;
   out[o + 1] = heat;
   out[o + 2] = hb;
   out[o + 3] = measureValue(c, co, cm) * inv;
@@ -132,13 +140,13 @@ export function packFull(slotOf, slot, hm, cm, counts = null) {
   return any ? out : null;
 }
 
-/** packFull for the owner-only view: every slot cell holds the lit owners' outputs alone. */
-export function packOwnerFull(owners, slotOf, slot, hm, cm, counts) {
+/** packFull for the owner-only view: every slot cell holds the lit owners' outputs alone (flat: see resolveCell). */
+export function packOwnerFull(owners, slotOf, slot, hm, cm, counts, flat = false) {
   const out = new Float32Array(SLOT_CELLS * 4);
   let any = false;
   for (let ci = 0; ci < SLOT_CELLS; ci++) {
     const sy = (ci / SLOT) | 0;
-    if (resolveCell(slotOf, slot, ci - sy * SLOT, sy, hm, cm, out, ci * 4, counts, ci, owners)) any = true;
+    if (resolveCell(slotOf, slot, ci - sy * SLOT, sy, hm, cm, out, ci * 4, counts, ci, owners, flat)) any = true;
   }
   return any ? out : null;
 }
@@ -264,9 +272,10 @@ export class FrameBuilder {
    * owners: the owner ledger at this block while the owner layer is on, else null. Then every
    * full tile carries an owner plane (null when it holds none) and the deltas their words.
    * only (with owners): the owner-only view, whose tile data are the lit owners' outputs alone.
+   * flat (with only): Flatten the rest, whose heights and counts alone are the lit owners'.
    * @returns {{frame:object, transfer:ArrayBuffer[]}} frame without stats/meta.
    */
-  build(state, hm, cm, reason, block, partial = false, owners = null, only = false) {
+  build(state, hm, cm, reason, block, partial = false, owners = null, only = false, flat = false) {
     const source = owners !== null && only ? owners : null;
     const slotOf = state.slotOf;
     const delivered = state.delivered;
@@ -377,7 +386,7 @@ export class FrameBuilder {
       for (let i = dOffsets[k]; i < dOffsets[k + 1]; i++) {
         const idx = dIndex[i];
         const sy = (idx / SLOT) | 0;
-        resolveCell(slotOf, s, idx - sy * SLOT, sy, hm, cm, dData, i * 4, dCounts, i, source);
+        resolveCell(slotOf, s, idx - sy * SLOT, sy, hm, cm, dData, i * 4, dCounts, i, source, flat);
         if (dOwners) dOwners[i] = ownerWordAt(owners, slotOf, s, idx - sy * SLOT, sy);
       }
     }
@@ -388,7 +397,7 @@ export class FrameBuilder {
     for (const id of fullIds) {
       const s = slotOf[id];
       const counts = new Uint32Array(SLOT_CELLS);
-      const data = source ? packOwnerFull(source, slotOf, s, hm, cm, counts) : packFull(slotOf, s, hm, cm, counts);
+      const data = source ? packOwnerFull(source, slotOf, s, hm, cm, counts, flat) : packFull(slotOf, s, hm, cm, counts);
       const ownerPlane = owners && data !== null ? packOwners(owners, slotOf, s) : null;
       full.push({ id, level: s.level, tx: s.tx, ty: s.ty, empty: data === null, data, counts: data === null ? null : counts, owners: ownerPlane });
       if (data !== null) transfer.push(data.buffer, counts.buffer);

@@ -85,10 +85,12 @@ export async function createReplayClient(opts = {}) {
      * Frames then carry owner words (frame.owners), meta.owners has per-entity totals, and
      * cell() adds owners.
      * only: tiles carry just those entities' outputs, so everything else disappears.
+     * flat (ignored with only): tile heights and counts are those entities' alone, colours every
+     * output's, so everything else lies flat in its own colour.
      */
-    setOwners({ url = null, manifest = null, visible = [], slots = null, only = false } = {}) {
+    setOwners({ url = null, manifest = null, visible = [], slots = null, only = false, flat = false } = {}) {
       post({ type: 'setOwners', url: url ? new URL(url, base).href : null, manifest, visible: Array.from(visible, Number),
-        slots: slots ? Array.from(slots, Number) : null, only: !!only });
+        slots: slots ? Array.from(slots, Number) : null, only: !!only, flat: !!flat });
     },
     /**
      * Deliver held frames up to 'block' (Infinity: all, and no holding); later advance frames

@@ -1,6 +1,7 @@
 // Owners popover (landscape/SPEC.md §8): which holders of known addresses to light up, how many
-// outputs and how much BTC each holds at the current block, how dim everything else gets
-// (owners.dim), and where the addresses come from (owners.json). Outputs are the exact ones
+// outputs and how much BTC each holds at the current block, whether everything else is hidden
+// (owners.only) or flat (owners.flat) and how dim it gets (owners.dim), and where the addresses
+// come from (owners.json). Outputs are the exact ones
 // paying those addresses; the layer itself is replay/owners.js and the terrain's owner plane.
 // The many small owners share one row, Other exchanges, lit together in one colour (ownerGroup).
 
@@ -118,10 +119,12 @@ export function createOwnersMenu({ container, store, onToggle }) {
     const dim = Number(store.get('owners.dim'));
     const pct = Math.round((Number.isFinite(dim) ? dim : 0.2) * 100);
     const only = !!store.get('owners.only');
+    const flat = !!store.get('owners.flat');
     const out =
       '<div class="pl-col"><h3>Owners <span>Outputs paying addresses an exchange published or others attribute to it, lit in its colour at the current block. Only their spends flash.</span></h3>' +
       rows +
-      '<label class="ow-only"><input type="checkbox" data-only' + (only ? ' checked' : '') + '><span>Hide the rest</span></label>' +
+      '<label class="ow-check"><input type="checkbox" data-only' + (only ? ' checked' : '') + '><span>Hide the rest</span></label>' +
+      '<label class="ow-check' + (only ? ' off' : '') + '"><input type="checkbox" data-flat' + (flat ? ' checked' : '') + (only ? ' disabled' : '') + '><span>Flatten the rest</span></label>' +
       '<label class="ow-dim' + (only ? ' off' : '') + '"><span>Dim the rest</span><input type="range" min="0" max="1" step="0.05" value="' + (pct / 100) + '" data-dim aria-label="Brightness of everything else"' + (only ? ' disabled' : '') + '>' +
       '<output>' + pct + '%</output></label>' +
       (past ? '<p class="ow-note">This block is after the owner data, which ends at block ' + fmtInt(manifest.tip) + '; nothing is lit here.</p>' : '') +
@@ -139,6 +142,7 @@ export function createOwnersMenu({ container, store, onToggle }) {
     const box = e.target.closest('[data-owner]');
     if (box) onToggle(box.dataset.owner, box.checked);
     if (e.target.matches('[data-only]')) store.set('owners.only', e.target.checked);
+    if (e.target.matches('[data-flat]')) store.set('owners.flat', e.target.checked);
     if (e.target.matches('[data-dim]')) {
       e.target.blur();
       render();
