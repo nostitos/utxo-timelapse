@@ -1385,6 +1385,10 @@ const CHECKS = [
       const pw = L.controls.poseLookingAt({ x: tip / 1000 - 0.4, y: 0, z: 54 }, { distance: 14, yaw: 25, pitch: -38 });
       L.controls.setPose({ x: pw.position.x, y: pw.position.y, z: pw.position.z, yaw: pw.yaw, pitch: pw.pitch });
       L.settings.set('owners.dim', 1);
+      // Bloom off while counting: a bright owner colour (Binance's yellow) tints the blue terrain around
+      // its columns, which would read as terrain cut out.
+      const bloom0 = L.settings.get('fx.bloomStrength');
+      L.settings.set('fx.bloomStrength', 0);
       const blueAt = async () => {
         const d = (await frameImage(640, 360)).getContext('2d').getImageData(0, 0, 640, 360).data;
         const b = new Uint8Array(d.length / 4);
@@ -1403,6 +1407,7 @@ const CHECKS = [
       for (let i = 0; i < without.length; i++) if (without[i]) { blue++; kept += withColumns[i]; }
       out.blue = blue;
       out.kept = Math.round((kept / Math.max(1, blue)) * 100) / 100;
+      L.settings.set('fx.bloomStrength', bloom0);
       L.settings.set('owners.dim', 0.2);
       L.controls.setPose(pose0);
       await settled(800, 15000);
