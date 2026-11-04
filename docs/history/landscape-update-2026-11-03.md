@@ -17,7 +17,7 @@ The 3D landscape now ends at **block 974,481** (2026-11-04 04:30:31 UTC), previo
 
 - `landscape_verify` passed. All 1,109 snapshots equal fresh replays, 20 backward replays pass, every level-0 cell at 210,000, 630,000 and 974,310 equals the history index (0 mismatches over 3,715,768,459 records), block times equal the history through 974,310 and the BLK through 974,481, and the renderer checkpoint at 972,899 is within 3.64e-12.
 - In R2, the size and MD5 of all 5,564 objects (77.07 GB) match, with 0 problems, before and after the manifest.
-- Online: LIVE_RESULT
+- Online: release `landscape-20261103-1`, Worker version `4ad7755d-aab3-47c7-aa01-5d9fc1fbc181`, deployed alone from merged master ([#63](https://github.com/nostitos/utxo-timelapse/pull/63)). `scripts/check_live_release.mjs` confirmed all four landscape hostnames serve it and all five 2D hostnames still serve `append-974310-20261102`. All four landscape hostnames name the new dataset. On bitcoinlandscape.com the manifest and the first MiB of the tip snapshot equal the local files, and the documented example cell returns 1 output of 21,236 sat with history through 974,310. The 51 browser checks in startup, inspector, hover, playback, keys-inputs-scrub and column-counts pass; column-counts hit the same WebGPU readback error inside three.js on its first run, as on October 23 and November 2, and passed on an immediate re-run.
 
 ## Measured stages
 
