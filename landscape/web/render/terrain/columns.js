@@ -25,7 +25,7 @@ import {
   varying, normalView, transformNormalToView, dFdx, dFdy, fwidth, vec2, dot, clamp, sqrt, cameraPosition,
 } from 'three/tsl';
 import { tileInfo, SLOT, SLOT_CELLS } from '../../data/grid.js';
-import { TerrainNodeMaterial } from './heightfield.js';
+import { TerrainNodeMaterial, OWNER_LIFT } from './heightfield.js';
 
 export const MAX_COLUMN_TILES = 512;
 export const COLUMN_SHAPES = Object.freeze(['cylinder', 'oval', 'box']);
@@ -184,6 +184,7 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
   const uNear2 = uniform(0);
   const uBudget = uniform(0, 'uint');
   const uGap = uniform(0);
+  const uWidth = uniform(1);
 
   const tilesNode = storage(tilesAttr, 'vec4', MAX_COLUMN_TILES).toReadOnly();
   const counterAtomic = storage(counterAttr, 'uint', 3).toAtomic();
@@ -288,8 +289,10 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
     const ref = instRead.element(slot);
     const raw = atlas.readNode.element(int(ref.x));
     // Footprint (world units): an oval or a box filling the cell, or a round cylinder as wide as
-    // the cell (its narrower side, 64 blocks); geo.columnGap (0 by default) trims a margin.
-    const w = float(1).sub(uGap);
+    // the cell (its narrower side, 64 blocks); geo.columnGap (0 by default) trims a margin and
+    // geo.columnWidth (1) widens it past the cell.
+    // shortcut: hover and picking still hit the cell footprint, not a widened column; widen intersect() if wide columns become a common view.
+    const w = float(1).sub(uGap).mul(uWidth);
     const sx = w.mul(COL_W);
     const sz = shape === 'cylinder' ? sx : w.mul(ROW_D);
     m.positionNode = Fn(() => {
@@ -343,7 +346,26 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
     const facet = dFdx(wp).cross(dFdy(wp));
     const side = select(abs(facet.y).lessThan(length(facet).mul(0.5)), float(1), float(0));
     const groove = select(internal, seam.mul(fade).mul(side), float(0));
-    const col = vec3(colV).mul(float(1).sub(groove.mul(0.5)));
+    let col = vec3(colV).mul(float(1).sub(groove.mul(0.5)));
+    let rimK = null;
+    let lift = null;
+    if (atlas.ownersOn) {
+      // Owner layer: near columns colour their top 'owned' layers (and the cap when any output
+      // is owned) in the entity's colour; far columns, too thin for layers, the whole column.
+      // Everything else dims; heat (spend flashes) stays.
+      const own = atlas.ownerAtIndex(int(ref.x));
+      const code = varying(own.code, 'vColOwnerCode');
+      code.setInterpolation('flat');
+      const owned = varying(own.count, 'vColOwned');
+      owned.setInterpolation('flat');
+      const held = level === near
+        ? owned.greaterThan(0.5).and(layer.greaterThanEqual(count.sub(owned)))
+        : code.greaterThan(0.5);
+      const oc = shading.ownerColor(code);
+      col = select(held, oc.mul(float(1).sub(groove.mul(0.5))), col.mul(U.ownersDim));
+      rimK = select(held, float(1), U.ownersDim);
+      lift = select(held, oc.mul(OWNER_LIFT), vec3(0, 0, 0));
+    }
     if (style !== 'prism') {
       // Round shading on flat rectangles: the normal turns across the column as on a cylinder
       // seen from the camera (u = -1 at its left edge, 0 in the middle, 1 at its right edge).
@@ -370,7 +392,9 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
     const heat = shading.heatEmissive(fRaw.y, fRaw.z, wp.x).mul(heatShape);
     const glow = shading.edgeGlow(wp.x);
     m.colorNode = vec4(col.mul(U.albedo), 1);
-    m.emissiveNode = col.mul(U.emissive).add(col.mul(glow)).add(heat).add(shading.rimTerm(normalView));
+    let emissive = col.mul(U.emissive).add(col.mul(glow)).add(heat).add(rimK ? shading.rimTerm(normalView).mul(rimK) : shading.rimTerm(normalView));
+    if (lift) emissive = emissive.add(lift);
+    m.emissiveNode = emissive;
     m.roughnessNode = U.roughness;
     m.metalnessNode = U.metalness;
     return m;
@@ -421,9 +445,10 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
    * 'cylinder' | 'oval' | 'box'; sides: cylinder sides; farStyle: one of FAR_STYLES; farShadows:
    * whether the far level casts shadows.
    */
-  function update({ enabled, focus, eye = focus, radiusCells, nearCells = Infinity, budget, gap, dataVersion, shape = 'cylinder',
+  function update({ enabled, focus, eye = focus, radiusCells, nearCells = Infinity, budget, gap, width = 1, dataVersion, shape = 'cylinder',
     sides = 12, farStyle = 'prism', farShadows = true }) {
     uGap.value = gap;
+    uWidth.value = width;
     state.enabled = !!enabled;
     if (!enabled) {
       group.visible = false;

@@ -34,6 +34,8 @@ const BAND_EPS = 0.002;
 export const WHALE_MIN_PX = 1.5;
 /** Largest widening of a whale cell (times its width). */
 export const WHALE_MAX_GROW = 3;
+/** Owner layer: emissive lift of a cell held by a shown entity, so it glows in lit looks too. */
+export const OWNER_LIFT = 0.6;
 
 /**
  * World z where the whale band ends at a level: the far edge of the cell that holds the last
@@ -350,7 +352,9 @@ export function buildTerrainMaterial({ atlas, shading, instances, mode, view = n
   const tr0F = vInfo.y;
   const rowScaleF = vInfo.z;
   let raw;
+  let cell; // the containing cell, exact: what the column test reads
   let cy;
+  let ox; // the cell the owner layer colours: exact when stepped, the nearest cell when smooth
   let heat;
   if (mode.stepped) {
     // Exact: one palette colour per cell (walls take the taller neighbour's cell).
@@ -358,7 +362,9 @@ export function buildTerrainMaterial({ atlas, shading, instances, mode, view = n
     const cx = clamp(int(floor(c.x)), int(-1), I256).toVar();
     cy = clamp(int(floor(c.y)), int(-1), I256).toVar();
     raw = atlas.fetch(slotF, cx.add(I1), cy.add(I1)).toVar();
+    cell = raw;
     heat = shading.heatEmissive(raw.y, raw.z, positionWorld.x);
+    ox = cx;
   } else {
     // Smooth surfaces: bilinear colour value between cell centres, so slopes around isolated
     // cells keep their palette colour instead of the ground colour. Heat blends the final
@@ -380,18 +386,33 @@ export function buildTerrainMaterial({ atlas, shading, instances, mode, view = n
     const lerp2 = (a, b, c, d) => a.mul(float(1).sub(tx)).add(b.mul(tx)).mul(float(1).sub(ty))
       .add(c.mul(float(1).sub(tx)).add(d.mul(tx)).mul(ty));
     raw = lerp2(c00, c10, c01, c11).toVar();
+    cell = select(ty.lessThan(0.5), select(tx.lessThan(0.5), c00, c10), select(tx.lessThan(0.5), c01, c11));
     const hi = (cc) => shading.heatIntensity(cc.y, cc.z, positionWorld.x);
     heat = shading.heatEmissiveOf(lerp2(hi(c00), hi(c10), hi(c01), hi(c11)));
     cy = select(ty.lessThan(0.5), y0, y1).toVar();
+    ox = select(tx.lessThan(0.5), x0, x1).toVar();
   }
   const l0row = tr0F.add(float(cy)).mul(rowScaleF);
-  const col = shading.cellColor(raw.w, l0row).toVar();
+  let col = shading.cellColor(raw.w, l0row).toVar();
   const wp = positionWorld;
   const occupied = select(raw.w.greaterThan(0), float(1), float(0));
   const glow = shading.edgeGlow(wp.x).mul(occupied);
   const gridI = shading.gridLines(wp.x, wp.z);
-  const emissive = col.mul(U.emissive).add(col.mul(glow)).add(heat).add(shading.rimTerm(normalView).mul(occupied))
+  let rim = shading.rimTerm(normalView).mul(occupied);
+  let lift = null;
+  if (atlas.ownersOn) {
+    // Owner layer: cells holding outputs of a shown entity take its colour and glow; the
+    // rest dim. Heat (spend flashes) and the grid stay as they are.
+    const own = atlas.ownerAt(slotF, ox.add(I1), cy.add(I1));
+    const owned = own.code.greaterThan(0.5);
+    const oc = shading.ownerColor(own.code);
+    col = select(owned, oc, col.mul(U.ownersDim)).toVar();
+    rim = rim.mul(select(owned, float(1), U.ownersDim));
+    lift = select(owned, oc.mul(OWNER_LIFT), vec3(0, 0, 0));
+  }
+  let emissive = col.mul(U.emissive).add(col.mul(glow)).add(heat).add(rim)
     .add(U.gridColor.mul(gridI));
+  if (lift) emissive = emissive.add(lift);
   material.colorNode = vec4(col.mul(U.albedo), 1);
   material.emissiveNode = emissive;
   material.roughnessNode = U.roughness;
@@ -413,7 +434,10 @@ export function buildTerrainMaterial({ atlas, shading, instances, mode, view = n
     const inside = dx.mul(dx).add(dz.mul(dz)).lessThan(cf.z.mul(cf.z));
     const tid = int(l0r).div(I256).mul(int(L0.tilesX)).add(int(l0c).div(I256)).add(int(L0.firstTile));
     const resident = atlas.page(tid).greaterThanEqual(0);
-    const outside = inside.and(resident).not();
+    let outside = inside.and(resident).not();
+    // Columns stand only where the height value is above 0, so a cell Flatten the rest leaves with
+    // colour but no height keeps its terrain. Gated on the owner layer: other views keep their material.
+    if (atlas.ownersOn) outside = outside.or(cell.x.lessThanEqual(0).and(cell.w.greaterThan(0)));
     keep = keep ? keep.and(outside) : outside;
   }
   if (keep) material.maskNode = keep;

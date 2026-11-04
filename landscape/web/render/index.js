@@ -203,6 +203,8 @@ export async function createLandscapeView({
     setDetailAhead(shift, reach) { if (terrain.setDetailAhead) terrain.setDetailAhead(shift, reach); },
     /** fn(list, {block, reason, now}) for each frame's new flash sprites (ui/flash-sound.js); returns an unsubscribe function. */
     onFlashes(fn) { return terrain.onFlashes ? terrain.onFlashes(fn) : () => {}; },
+    /** Owner layer: entity colours (sRGB hex) to show it, null to hide it (render/terrain/index.js). */
+    setOwners(colors) { if (terrain.setOwners) terrain.setOwners(colors); },
     /** Camera position and view-projection matrix (column-major, valid until the next call). */
     cameraView() {
       camera.updateMatrixWorld();

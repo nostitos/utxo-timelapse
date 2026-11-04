@@ -26,8 +26,16 @@ for (let i = 0; i < blob.length; i++) blob[i] = i & 255;
 writeFileSync(join(data, 'snapshots', '0000000.bin'), blob);
 writeFileSync(join(data, 'manifest.json'), '{"format":"utxo-landscape-1"}');
 writeFileSync(join(data, 'empty.bin'), '');
+const owners = join(base, 'owners');
+const OWNERS_ID = 'o100-20261102';
+mkdirSync(join(owners, 'short'), { recursive: true });
+writeFileSync(join(owners, 'owners.json'), JSON.stringify({ format: 'utxo-landscape-owners-1', id: OWNERS_ID, tip: 100 }));
+writeFileSync(join(owners, 'long.bin'), blob.subarray(0, 300));
+writeFileSync(join(owners, 'short', '0000.bin'), blob.subarray(0, 20));
+writeFileSync(join(owners, 'records.csv'), 'build input, never served');
+symlinkSync(join(base, 'secret.txt'), join(owners, 'short', '0001.bin'));
 
-const server = createLandscapeServer({ web, data });
+const server = createLandscapeServer({ web, data, owners });
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const port = server.address().port;
 test.after(() => { server.close(); rmSync(base, { recursive: true, force: true }); });
@@ -149,7 +157,58 @@ test('server without --data returns 404 under /dataset/', async () => {
   const s = createLandscapeServer({ web });
   await new Promise((r) => s.listen(0, '127.0.0.1', r));
   const p = s.address().port;
-  const r = await new Promise((resolve) => request({ host: '127.0.0.1', port: p, path: '/dataset/manifest.json' }, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); }).end());
-  assert.equal(r, 404);
+  const status = (path) => new Promise((resolve) => request({ host: '127.0.0.1', port: p, path }, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); }).end());
+  assert.equal(await status('/dataset/manifest.json'), 404);
+  assert.equal(await status('/owners/index.json'), 404, 'without --owners there is no owner data');
+  assert.equal(await status('/owners/' + OWNERS_ID + '/long.bin'), 404);
   s.close();
+});
+
+test('owner data: the index, then its files served like the dataset', async () => {
+  const ix = await raw('/owners/index.json');
+  assert.equal(ix.status, 200);
+  assert.match(ix.headers['content-type'], /application\/json/);
+  assert.equal(ix.headers['cache-control'], 'no-cache');
+  assert.equal(ix.headers['cross-origin-embedder-policy'], 'require-corp');
+  assert.deepEqual(JSON.parse(ix.body), { id: OWNERS_ID, url: '/owners/' + OWNERS_ID + '/', tip: 100 });
+  const head = await raw('/owners/index.json', { method: 'HEAD' });
+  assert.equal(head.status, 200);
+  assert.equal(head.body.length, 0);
+  const dir = '/owners/' + OWNERS_ID + '/';
+  const meta = await raw(dir + 'owners.json');
+  assert.equal(meta.status, 200);
+  assert.match(meta.headers['content-type'], /application\/json/);
+  assert.equal(meta.headers['cache-control'], 'no-cache');
+  const part = await raw(dir + 'long.bin', { headers: { Range: 'bytes=10-19' } });
+  assert.equal(part.status, 206);
+  assert.equal(part.headers['content-range'], 'bytes 10-19/300');
+  assert.equal(part.headers['content-type'], 'application/octet-stream');
+  assert.match(part.headers['cache-control'], /immutable/);
+  assert.equal(part.headers['cross-origin-resource-policy'], 'same-origin');
+  assert.deepEqual([...part.body], [...blob.subarray(10, 20)]);
+  const short = await raw(dir + 'short/0000.bin');
+  assert.equal(short.status, 200);
+  assert.equal(short.body.length, 20);
+  assert.equal((await raw(dir + 'short/0000.bin', { headers: { 'If-None-Match': short.headers.etag } })).status, 304);
+  assert.equal((await raw(dir + 'long.bin', { headers: { Range: 'bytes=300-' } })).status, 416);
+  for (const p of [dir + 'records.csv', dir + 'short/1.bin', dir + 'short/0002.bin', dir + 'short/', dir, '/owners/', '/owners',
+    '/owners/o1-20260101/long.bin', '/owners/' + OWNERS_ID + 'x/long.bin', dir + 'long.bin.bak']) {
+    assert.equal((await raw(p)).status, 404, p);
+  }
+  for (const p of [dir + '..%2f..%2fsecret.txt', dir + 'short/..%2f..%2f..%2fsecret.txt']) {
+    const r = await raw(p);
+    assert.equal(r.status, 403, p);
+  }
+  assert.equal((await raw(dir + 'short/0001.bin')).status, 403, 'a symlink out of the owner directory');
+});
+
+test('an owner directory must hold owner data', () => {
+  const bad = join(base, 'bad-owners');
+  mkdirSync(bad);
+  assert.throws(() => createLandscapeServer({ web, owners: bad }), /ENOENT/);
+  for (const [meta, why] of [[{ format: 'utxo-landscape-1', id: OWNERS_ID, tip: 100 }, /format/], [{ format: 'utxo-landscape-owners-1', id: 'd100-20261102', tip: 100 }, /id/],
+    [{ format: 'utxo-landscape-owners-1', id: '../o100-20261102', tip: 100 }, /id/], [{ format: 'utxo-landscape-owners-1', id: OWNERS_ID, tip: '100' }, /tip/]]) {
+    writeFileSync(join(bad, 'owners.json'), JSON.stringify(meta));
+    assert.throws(() => createLandscapeServer({ web, owners: bad }), why);
+  }
 });

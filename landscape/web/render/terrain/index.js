@@ -36,7 +36,7 @@ export const TERRAIN_DEFAULTS = Object.freeze({
   'amp.nowPlane': 0.15,
   'geo.smoothing': 'bilinear', 'geo.stepped': false, 'geo.steppedWhales': true, 'geo.subdivision': 1, 'geo.columns': true,
   'geo.uniform': false, 'geo.uniformLevel': 1,
-  'geo.columnRadius': 4096, 'geo.instanceBudget': 1000000, 'geo.columnGap': 0, 'geo.lodBias': 0,
+  'geo.columnRadius': 4096, 'geo.instanceBudget': 1000000, 'geo.columnGap': 0, 'geo.columnWidth': 1, 'geo.lodBias': 0,
   'geo.columnShape': 'oval', 'geo.cylinderSides': 12, 'geo.farColumns': 'prism', 'geo.farShadows': true,
   'geo.columnPixels': 4,
   'geo.pixelsPerCell': 3, 'geo.tileBudget': 225, 'geo.skirts': true, 'geo.wireframe': false,
@@ -44,8 +44,9 @@ export const TERRAIN_DEFAULTS = Object.freeze({
   'light.roughness': 0.65, 'light.metalness': 0.05, 'light.floorReflection': 0,
   'geo.groundHorizon': false,
   'display.labels': true, 'display.grid': false,
+  'owners.dim': 0.2,
 });
-const CONSUMED_PREFIXES = ['color.', 'amp.', 'geo.', 'light.', 'display.'];
+const CONSUMED_PREFIXES = ['color.', 'amp.', 'geo.', 'light.', 'display.', 'owners.'];
 
 export function createTerrain({ renderer, scene, camera, settings, manifest, rows, blocktimes, capabilities = {}, labelsElement = null }) {
   const grid = gridFromManifest(manifest);
@@ -137,8 +138,10 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
   const floorReflection = uniform(0);
   const floorMat = new MeshStandardNodeMaterial();
   floorMat.name = 'TerrainFloor';
-  floorMat.colorNode = vec4(U.ground.mul(U.albedo), 1);
-  floorMat.emissiveNode = U.ground.mul(U.emissive);
+  // Tiles without data are floor; while the owner layer is on, it dims like the empty cells.
+  const floorDim = mix(float(1), U.ownersDim, U.ownersOn);
+  floorMat.colorNode = vec4(U.ground.mul(U.albedo).mul(floorDim), 1);
+  floorMat.emissiveNode = U.ground.mul(U.emissive).mul(floorDim);
   floorMat.metalnessNode = floorReflection;
   floorMat.roughnessNode = mix(float(1), float(0.04), floorReflection);
   floorMat.fog = true;
@@ -508,7 +511,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     if (mode.columns) {
       ensureColumns().update({
         enabled: true, focus: region.focus, eye: region.eye, radiusCells: region.radiusCells, nearCells: region.nearCells,
-        budget: Math.round(get('geo.instanceBudget')), gap: get('geo.columnGap'), dataVersion: atlas.version,
+        budget: Math.round(get('geo.instanceBudget')), gap: get('geo.columnGap'), width: get('geo.columnWidth'), dataVersion: atlas.version,
         shape: get('geo.columnShape'), sides: Number(get('geo.cylinderSides')),
         farStyle: get('geo.farColumns'), farShadows: !!get('geo.farShadows'),
       });
@@ -614,7 +617,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     if (candidates.length) {
       for (const c of candidates) c.y = heightAt(c.x, c.z);
       flashes.spawn(candidates, { size: flashSize, reference: get('amp.heatReference'), edge: get('amp.heatEdge'), block: blk,
-        edgeBlocks: get('amp.heatEdgeBlocks'), reason: frame.reason ?? null });
+        edgeBlocks: get('amp.heatEdgeBlocks'), reason: frame.reason ?? null, owners: !!atlas.ownersOn });
     }
     stats.applyMs = performance.now() - tA;
     stats.applyMsTotal = (stats.applyMsTotal || 0) + stats.applyMs;
@@ -779,6 +782,16 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     return () => flashListeners.delete(fn);
   }
 
+  /**
+   * Owner layer: entity colours (sRGB hex, in owners.json order) turn it on, null turns it
+   * off. The atlas gains or frees its owner plane and the materials rebuild on the next update.
+   */
+  function setOwners(colors) {
+    shading.setOwnerColors(colors || []);
+    U.ownersOn.value = colors ? 1 : 0;
+    atlas.setOwners(!!colors);
+  }
+
   function dispose() {
     if (unsubscribe) unsubscribe();
     object3d.removeFromParent();
@@ -795,7 +808,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
   }
 
   return {
-    object3d, applyFrame, setBlock, update, pick, heightAt, focusDistance, setDetailAhead, onFlashes, stats, dispose,
+    object3d, applyFrame, setBlock, update, pick, heightAt, focusDistance, setDetailAhead, onFlashes, setOwners, stats, dispose,
     // extras for dev pages and tests
     atlas, shading, grid, cellAt, get mode() { return mode; }, get drawn() { return drawn; },
     get meshes() { return { heightfield: [...hfLevels.values()].map((L) => L.mesh), floor, nowPlane, columns: columns ? columns.mesh : null }; },

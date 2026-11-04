@@ -11,7 +11,7 @@
 
 import { createPlayback, defaultStartBlock, speedById, SPEED_KEYS, STEP_LARGE } from './ui/playback.js';
 import { createTipFollow } from './ui/follow.js';
-import { decodeHash, encodeHash } from './ui/hash.js';
+import { decodeHash, encodeHash, ownerIds } from './ui/hash.js';
 import { createShare } from './ui/share.js';
 import { buildShareUrl } from './ui/share-link.js';
 import { resolvePlace } from './ui/places.js';
@@ -29,6 +29,7 @@ import { createCoins } from './render/coins.js';
 import { createHud } from './ui/hud.js';
 import { createTimeline } from './ui/timeline.js';
 import { createPlacesMenu } from './ui/places-menu.js';
+import { createOwnersMenu, ownerGroup, OTHER_OWNERS } from './ui/owners-menu.js';
 import { createLegend } from './ui/legend.js';
 import { createMinimap } from './ui/minimap.js';
 import { createInspector } from './ui/inspector.js';
@@ -37,7 +38,8 @@ import { createHelp } from './ui/help.js';
 import { createToast } from './ui/toast.js';
 import { createLoading } from './ui/loading.js';
 import { fmtInt, fmtAmount, escapeHtml, isoUtc } from './ui/format.js';
-import { resolveEndpoints, resolveDataUrl, startupMode, chooseStartup, deviceTraits } from './ui/online.js';
+import { resolveEndpoints, resolveDataUrl, startupMode, chooseStartup, deviceTraits, ownersUrl } from './ui/online.js';
+import { checkOwnerManifest } from './replay/owners.js';
 import { gridFromManifest, columnBlocks, worldX, worldZ } from './data/grid.js';
 import { FILM_AXIS, rowAmountRange } from './data/axis.js';
 
@@ -327,17 +329,90 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       onSelect: () => selectionChanged(), onClose: () => selectionChanged(),
       onShare: () => openShare('cell'),
       camera: view.camera, canvas, heightAt: (x, z) => view.heightAt(x, z),
+      owners: () => ownerInfo(),
     });
     // What the pointer (the crosshair in flight mode) is aimed at, from local data only, in a
     // card docked under the HUD.
     const hover = createHover({
       container: $('hover'), canvas, pick: (x, y) => view.pick(x, y), replay, grid, rows: replay.rows, blocktimes: replay.blocktimes,
-      mode: () => controls.mode, anchor: $('hud'), enabled: !touchOnly,
+      mode: () => controls.mode, anchor: $('hud'), enabled: !touchOnly, owners: () => ownerInfo(),
     });
     const placesMenu = createPlacesMenu({
       container: $('places'), getBlock: () => replay.block,
       onPlace: (id) => flyToPlace(id).catch((err) => notice(String(err.message || err), 'warn')),
     });
+
+    // ---- owners: the owner layer (replay/owners.js) ----------------------------------
+    // The site's owner dataset (/owners/index.json, then owners.json) loads in the background;
+    // until it has, the Owners button stays hidden and a link's own= waits for it.
+    // The many small owners (ownerGroup) are lit only together, as Other exchanges in one colour:
+    // display gives them its colour, slots their first member's code, and links name them once.
+    const owners = { url: null, manifest: null, visible: [], pending: null, group: [], display: null, slots: null };
+    const ownerIndex = (id) => (owners.manifest ? owners.manifest.entities.findIndex((e) => e.id === id) : -1);
+    const groupIds = () => owners.group.map((i) => owners.manifest.entities[i].id);
+    /** Entity ids to light for these ids: Other exchanges or any of its members stands for all of them. */
+    function expandOwnerIds(ids) {
+      const out = [];
+      for (const id of ownerIds(ids)) {
+        const i = ownerIndex(id);
+        if (owners.group.length && (id === OTHER_OWNERS.id || owners.group.includes(i))) out.push(...groupIds());
+        else if (i >= 0) out.push(id);
+      }
+      return [...new Set(out)];
+    }
+    /** The lit owners for links and saved views: the group as OTHER_OWNERS.id. */
+    function sharedOwnerIds() {
+      const members = new Set(groupIds());
+      const rest = owners.visible.filter((id) => !members.has(id));
+      return rest.length < owners.visible.length ? [...rest, OTHER_OWNERS.id] : rest;
+    }
+    function ownerInfo() {
+      if (!owners.manifest || !owners.visible.length) return null;
+      return { entities: owners.display, visible: new Set(owners.visible.map(ownerIndex)) };
+    }
+    function ownersState() {
+      const meta = replay.meta && replay.meta.owners;
+      return { manifest: owners.manifest, group: owners.group, visible: new Set(owners.visible), meta: meta && !meta.error ? meta : null, block: replay.block,
+        loading: owners.visible.length > 0 && !(meta && meta.active !== undefined) };
+    }
+    // The worker's owner layer: the lit entities and whether the rest is hidden (owners.only) or flat (owners.flat).
+    const sendOwners = () => replay.setOwners({ url: owners.url, manifest: owners.manifest, visible: owners.visible.map(ownerIndex),
+      slots: owners.slots, only: owners.visible.length > 0 && !!store.get('owners.only'),
+      flat: owners.visible.length > 0 && !!store.get('owners.flat') });
+    /** Lights exactly these owners (entity ids; unknown ones are ignored). */
+    function setOwnersVisible(ids) {
+      if (!owners.manifest) {
+        owners.pending = ownerIds(ids);
+        return;
+      }
+      const list = expandOwnerIds(ids);
+      if (list.join(',') === owners.visible.join(',')) return;
+      owners.visible = list;
+      const indices = list.map(ownerIndex);
+      sendOwners();
+      view.setOwners(indices.length ? owners.display.map((e) => e.color) : null);
+      const grouped = indices.filter((i) => owners.group.includes(i));
+      legend.setOwners([...indices.filter((i) => !grouped.includes(i)).map((i) => owners.manifest.entities[i]), ...(grouped.length ? [OTHER_OWNERS] : [])]);
+      if (timeline) timeline.setOwners(indices.length > 0);
+      ownersMenu.update(ownersState());
+      selectionChanged();
+    }
+    const ownersMenu = createOwnersMenu({
+      container: $('owners') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'owners', className: 'popover', hidden: true })),
+      store,
+      onToggle: (id, on) => {
+        const ids = expandOwnerIds([id]);
+        setOwnersVisible(on ? [...owners.visible, ...ids] : owners.visible.filter((x) => !ids.includes(x)));
+      },
+    });
+    function toggleOwnersMenu() {
+      if (!owners.manifest) return;
+      if (controls.mode === 'plane') controls.setMode('map');
+      funMenu.close();
+      placesMenu.close();
+      ownersMenu.update(ownersState());
+      ownersMenu.toggle();
+    }
     const panel = deps.createPanel({
       container: $('panel'), store, schema: deps.SCHEMA, presets: deps.PRESETS, capabilities: view.capabilities,
       onExport: (json) => ({ ...json, view: viewState() }),
@@ -372,7 +447,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         const amount = !range ? 'No integer amount' : range.max === Infinity ? '≥ ' + fmtAmount(range.min) : fmtAmount(range.min) + '–' + fmtAmount(range.max);
         cellDescription = 'Blocks ' + fmtInt(first) + '–' + fmtInt(last) + ' · ' + amount;
       }
-      const snapshot = { block: replay.block, cam: controls.getPose(), follow: follow.active,
+      const snapshot = { block: replay.block, cam: controls.getPose(), follow: follow.active, own: sharedOwnerIds(),
         settings: store.viewURL(), cell, cellDescription, date: isoUtc(replay.blocktimes[replay.block]), playing: state.playing };
       if (pause) {
         playback.pause();
@@ -390,6 +465,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       onNotice: notice,
       onPlaces: () => {
         funMenu.close();
+        ownersMenu.close();
         placesMenu.toggle();
       },
       onSettings: () => togglePanel(),
@@ -400,13 +476,30 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         // The menu needs the cursor: land first, as G, P and H do.
         if (controls.mode === 'plane') controls.setMode('map');
         placesMenu.close();
+        ownersMenu.close();
         funMenu.toggle();
       },
       onSound: () => toggleSound(),
       onShare: () => openShare(),
+      onOwners: () => toggleOwnersMenu(),
     });
     timeline.setSound(sound.on);
     sound.onChange((on) => timeline.setSound(on));
+    ownersUrl(location.href).then(async (url) => {
+      if (!url) return;
+      const r = await fetch(new URL('owners.json', url).href, { cache: 'no-cache' });
+      if (!r.ok) throw new Error('owners.json: HTTP ' + r.status);
+      owners.manifest = checkOwnerManifest(await r.json());
+      owners.url = url;
+      owners.group = ownerGroup(owners.manifest.entities);
+      owners.display = owners.manifest.entities.map((e, i) => (owners.group.includes(i) ? { ...e, color: OTHER_OWNERS.color } : e));
+      owners.slots = owners.group.length ? owners.manifest.entities.map((e, i) => (owners.group.includes(i) ? owners.group[0] : i)) : null;
+      timeline.setOwnersAvailable(true);
+      help.setOwners(true);
+      const pending = owners.pending;
+      owners.pending = null;
+      if (pending && pending.length) setOwnersVisible(pending);
+    }).catch((err) => console.warn('owner data unavailable:', err && err.message ? err.message : err));
 
     /** Turn Follow tip on or off; on, the camera stays put and moves on with the tip from here. */
     function setFollow(on, { quiet = false } = {}) {
@@ -477,6 +570,8 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       if (ids.has('amp.measure') || ids.has('color.measure')) applyMeasures();
       if (ids.has('color.ground')) applyLabelInk();
       if (ids.has('amp.heatHalfLife')) replay.setHeatHalfLife(store.get('amp.heatHalfLife'));
+      if ((ids.has('owners.only') || ids.has('owners.flat')) && owners.visible.length) sendOwners();
+      if (ids.has('owners.only') || ids.has('owners.flat') || ids.has('owners.dim')) ownersMenu.update(ownersState());
       if (ids.has('geo.tileBudget')) replay.setMaxResidentTiles(store.get('geo.tileBudget'));
       if (ids.has('display.hud')) dismissed.delete('hud');
       if (ids.has('display.legend')) dismissed.delete('legend');
@@ -496,6 +591,13 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       minimap.applyFrame(frame);
       view.applyFrame(frame);
       view.setBlock(frame.block);
+      const om = frame.meta && frame.meta.owners;
+      if (om && om.error && owners.visible.length) {
+        setOwnersVisible([]);
+        notice('Owner data could not be loaded: ' + om.error, 'error', 'owners');
+      } else if (ownersMenu.open) {
+        ownersMenu.update(ownersState());
+      }
       // Follow tip: every change of block moves a following camera. Plane mode holds it at every
       // frame, so no tip motion while flying (not even a frame just before landing) moves the
       // camera afterwards.
@@ -649,8 +751,8 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     // Plane mode is not shared: a link made while flying opens in map mode at the camera.
     const shareMode = () => (controls.mode === 'plane' ? 'map' : controls.mode);
     // The address is a link to the view: it carries the look and its settings, not the quality.
-    const currentHash = () => encodeHash({ block: replay.block, mode: shareMode(), cam: controls.getPose(), follow: follow.active, cell: inspector.isOpen ? inspector.selection : null }, store.viewURL());
-    const viewState = () => ({ b: replay.block, cam: controls.getPose(), mode: shareMode(), follow: follow.active, cell: inspector.isOpen ? inspector.selection : null });
+    const currentHash = () => encodeHash({ block: replay.block, mode: shareMode(), cam: controls.getPose(), follow: follow.active, cell: inspector.isOpen ? inspector.selection : null, own: sharedOwnerIds() }, store.viewURL());
+    const viewState = () => ({ b: replay.block, cam: controls.getPose(), mode: shareMode(), follow: follow.active, cell: inspector.isOpen ? inspector.selection : null, own: sharedOwnerIds() });
     let restoringHash = true, hashRestoreId = 0;
     async function restoreLinkedView(h) {
       const my = ++hashRestoreId;
@@ -665,6 +767,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       else if (cell) controls.setPose({ x: worldX((cell.col + .5) * grid.blocksPerColumn), y: 150, z: worldZ(cell.row + .5), yaw: 0, pitch: -89 });
       controls.setMode(h.mode === 'flight' && !cell && !touchOnly ? 'flight' : 'map');
       setFollow(!!h.follow, { quiet: true });
+      setOwnersVisible(h.own || []);
       try {
         if (Number.isInteger(h.block)) await seekPlacingCamera(clamp(h.block, 0, tip));
         if (my !== hashRestoreId) return;
@@ -784,7 +887,11 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         case 'KeyP':
           if (controls.mode === 'plane') controls.setMode('map');
           funMenu.close();
+          ownersMenu.close();
           placesMenu.toggle();
+          break;
+        case 'KeyO':
+          toggleOwnersMenu();
           break;
         case 'KeyH':
           if (controls.mode === 'plane') controls.setMode('map');
@@ -803,6 +910,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
           else if (help.open) help.close();
           else if (funMenu.open) funMenu.close();
           else if (placesMenu.open) placesMenu.close();
+          else if (ownersMenu.open) ownersMenu.close();
           else if (inspector.isOpen) inspector.close();
           else if (panelOpen()) togglePanel(false);
           break;
@@ -844,7 +952,12 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
 
     Object.assign(hook, {
       settings: store, replay, view, controls, playback, panel, manifest, grid,
-      ui: { hud, timeline, legend, minimap, inspector, share, hover, placesMenu, help, toast, funMenu, funCard },
+      ui: { hud, timeline, legend, minimap, inspector, share, hover, placesMenu, ownersMenu, help, toast, funMenu, funCard },
+      owners: {
+        get manifest() { return owners.manifest; },
+        get visible() { return owners.visible.slice(); },
+        set: (ids) => setOwnersVisible(ids),
+      },
       seek: (b) => playback.seek(b),
       flyTo: (place) => flyToPlace(place),
       inspect: (x, y) => inspectAt(x, y),

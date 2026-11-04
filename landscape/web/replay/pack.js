@@ -7,7 +7,8 @@
 // visible at coarse levels). A parallel uint32 plane carries raw UTXO counts, independent
 // of those measures and without area normalisation, for the column's coin layers. The border
 // holds the same-level neighbour's cell when resident, else the nearest interior cell;
-// cells outside the grid are 0.
+// cells outside the grid are 0. While the owner layer is on, a third uint32 plane carries each
+// cell's owner word (replay/owners.js), taken from the same source cell as the floats.
 import { SLOT, SLOT_CELLS } from '../data/grid.js';
 
 export const MEASURES = Object.freeze(['density', 'count', 'value']);
@@ -28,12 +29,17 @@ function zero4(out, o) {
   out[o] = 0; out[o + 1] = 0; out[o + 2] = 0; out[o + 3] = 0;
 }
 
+const OWN4 = new Float64Array(4); // scratch: the lit owners' values of one cell (owner-only view)
+
 /**
  * Writes the packed floats of slot coordinate (sx, sy) of 'slot' into out[o..o+3].
  * Handles interior cells, borders (resident neighbour or nearest interior copy) and cells
- * outside the grid. Returns true when any value is non-zero.
+ * outside the grid. Returns true when any value is non-zero. With owners (the owner-only
+ * view), the cell's counts and sums are the lit owners' (OwnerLedger.values) at that cell.
+ * flat (with owners, Flatten the rest): only the height value and the count are the lit
+ * owners'; the colour value and whether the cell is empty stay the full cell's.
  */
-export function resolveCell(slotOf, slot, sx, sy, hm, cm, out, o, counts = null, ci = o / 4) {
+export function resolveCell(slotOf, slot, sx, sy, hm, cm, out, o, counts = null, ci = o / 4, owners = null, flat = false) {
   if (counts) counts[ci] = 0;
   let lx = sx - 1;
   let ly = sy - 1;
@@ -60,8 +66,20 @@ export function resolveCell(slotOf, slot, sx, sy, hm, cm, out, o, counts = null,
   const area = slot.colW[ax] * slot.rowH[ay];
   if (area === 0) { zero4(out, o); return false; }
   const li = (ly << 8) | lx;
-  const c = src.cells;
-  const co = li << 2;
+  let c = src.cells; // colour value and the empty test
+  let co = li << 2;
+  let h = c;         // height value and count
+  let ho = co;
+  if (owners !== null) {
+    OWN4.fill(0);
+    owners.values(src.level, src.col0 + lx, src.row0 + ly, OWN4);
+    h = OWN4;
+    ho = 0;
+    if (!flat) {
+      c = OWN4;
+      co = 0;
+    }
+  }
   let heat = 0;
   let hb = 0;
   if (src.heatActive) {
@@ -69,9 +87,9 @@ export function resolveCell(slotOf, slot, sx, sy, hm, cm, out, o, counts = null,
     if (heat !== 0) hb = src.heat[(li << 1) + 1];
   }
   if (c[co] === 0 && c[co + 2] === 0 && heat === 0) { zero4(out, o); return false; }
-  if (counts) counts[ci] = c[co] + c[co + 2];
+  if (counts) counts[ci] = h[ho] + h[ho + 2];
   const inv = 1 / area;
-  out[o] = measureValue(c, co, hm) * inv;
+  out[o] = measureValue(h, ho, hm) * inv;
   out[o + 1] = heat;
   out[o + 2] = hb;
   out[o + 3] = measureValue(c, co, cm) * inv;
@@ -118,6 +136,66 @@ export function packFull(slotOf, slot, hm, cm, counts = null) {
   for (let sy = 1; sy < SLOT - 1; sy++) {
     if (resolveCell(slotOf, slot, 0, sy, hm, cm, out, (sy * SLOT) << 2, counts)) any = true;
     if (resolveCell(slotOf, slot, SLOT - 1, sy, hm, cm, out, (sy * SLOT + SLOT - 1) << 2, counts)) any = true;
+  }
+  return any ? out : null;
+}
+
+/** packFull for the owner-only view: every slot cell holds the lit owners' outputs alone (flat: see resolveCell). */
+export function packOwnerFull(owners, slotOf, slot, hm, cm, counts, flat = false) {
+  const out = new Float32Array(SLOT_CELLS * 4);
+  let any = false;
+  for (let ci = 0; ci < SLOT_CELLS; ci++) {
+    const sy = (ci / SLOT) | 0;
+    if (resolveCell(slotOf, slot, ci - sy * SLOT, sy, hm, cm, out, ci * 4, counts, ci, owners, flat)) any = true;
+  }
+  return any ? out : null;
+}
+
+/**
+ * Owner word of slot coordinate (sx, sy), from the cell resolveCell copies there: the
+ * neighbour's cell when that tile is resident, else the nearest interior cell; 0 outside.
+ */
+export function ownerWordAt(owners, slotOf, slot, sx, sy) {
+  let lx = sx - 1;
+  let ly = sy - 1;
+  if (lx < 0 || lx > 255 || ly < 0 || ly > 255) {
+    if (slot.colW[sx] === 0 || slot.rowH[sy] === 0) return 0;
+    const dx = lx < 0 ? -1 : lx > 255 ? 1 : 0;
+    const dy = ly < 0 ? -1 : ly > 255 ? 1 : 0;
+    const nid = slot.nb[(dy + 1) * 3 + dx + 1];
+    if (!(nid >= 0 && slotOf[nid] !== null)) {
+      lx = lx < 0 ? 0 : lx > 255 ? 255 : lx;
+      ly = ly < 0 ? 0 : ly > 255 ? 255 : ly;
+      if (slot.colW[lx + 1] * slot.rowH[ly + 1] === 0) return 0;
+    }
+  } else if (slot.colW[sx] * slot.rowH[sy] === 0) {
+    return 0;
+  }
+  return owners.word(slot.level, slot.col0 + lx, slot.row0 + ly);
+}
+
+/** Owner plane of a whole slot (interior + border), or null when no cell holds owned outputs. */
+export function packOwners(owners, slotOf, slot) {
+  const out = new Uint32Array(SLOT_CELLS);
+  let any = false;
+  owners.forEachInTile(slot.level, slot.id, (col, row, w) => {
+    out[(row - slot.row0 + 1) * SLOT + (col - slot.col0 + 1)] = w;
+    any = true;
+  });
+  const edge = (sx, sy) => {
+    const w = ownerWordAt(owners, slotOf, slot, sx, sy);
+    if (w !== 0) {
+      out[sy * SLOT + sx] = w;
+      any = true;
+    }
+  };
+  for (let sx = 0; sx < SLOT; sx++) {
+    edge(sx, 0);
+    edge(sx, SLOT - 1);
+  }
+  for (let sy = 1; sy < SLOT - 1; sy++) {
+    edge(0, sy);
+    edge(SLOT - 1, sy);
   }
   return any ? out : null;
 }
@@ -170,10 +248,35 @@ export class FrameBuilder {
   }
 
   /**
+   * A frame that only refreshes owner planes: one entry per delivered tile with data,
+   * {id, owners: Uint32Array | null}. Sent when the owner layer turns on or its visible
+   * entities change, so tile data is not resent.
+   */
+  ownerFrame(state, owners, block) {
+    const ownerTiles = [];
+    const transfer = [];
+    for (let id = 0; id < this.grid.tiles; id++) {
+      const s = state.slotOf[id];
+      if (s === null || state.delivered[id] !== 1) continue;
+      const plane = packOwners(owners, state.slotOf, s);
+      ownerTiles.push({ id, owners: plane });
+      if (plane !== null) transfer.push(plane.buffer);
+    }
+    const deltas = { ids: new Uint32Array(0), offsets: new Uint32Array(1), index: new Uint32Array(0), data: new Float32Array(0), counts: new Uint32Array(0), owners: null };
+    const frame = { seq: ++this.seq, block, reason: 'owners', partial: false, full: [], deltas, evicted: [], owners: true, ownerTiles };
+    return { frame, transfer };
+  }
+
+  /**
    * Builds one frame and resets the dirty bookkeeping of every resident slot.
+   * owners: the owner ledger at this block while the owner layer is on, else null. Then every
+   * full tile carries an owner plane (null when it holds none) and the deltas their words.
+   * only (with owners): the owner-only view, whose tile data are the lit owners' outputs alone.
+   * flat (with only): Flatten the rest, whose heights and counts alone are the lit owners'.
    * @returns {{frame:object, transfer:ArrayBuffer[]}} frame without stats/meta.
    */
-  build(state, hm, cm, reason, block, partial = false) {
+  build(state, hm, cm, reason, block, partial = false, owners = null, only = false, flat = false) {
+    const source = owners !== null && only ? owners : null;
     const slotOf = state.slotOf;
     const delivered = state.delivered;
     const desired = state.desired;
@@ -277,12 +380,14 @@ export class FrameBuilder {
     dIndex = dIndex.slice(0, n);
     const dData = new Float32Array(n * 4);
     const dCounts = new Uint32Array(n);
+    const dOwners = owners ? new Uint32Array(n) : null;
     for (let k = 0; k < dIds.length; k++) {
       const s = slotOf[dIds[k]];
       for (let i = dOffsets[k]; i < dOffsets[k + 1]; i++) {
         const idx = dIndex[i];
         const sy = (idx / SLOT) | 0;
-        resolveCell(slotOf, s, idx - sy * SLOT, sy, hm, cm, dData, i * 4, dCounts);
+        resolveCell(slotOf, s, idx - sy * SLOT, sy, hm, cm, dData, i * 4, dCounts, i, source, flat);
+        if (dOwners) dOwners[i] = ownerWordAt(owners, slotOf, s, idx - sy * SLOT, sy);
       }
     }
 
@@ -292,9 +397,11 @@ export class FrameBuilder {
     for (const id of fullIds) {
       const s = slotOf[id];
       const counts = new Uint32Array(SLOT_CELLS);
-      const data = packFull(slotOf, s, hm, cm, counts);
-      full.push({ id, level: s.level, tx: s.tx, ty: s.ty, empty: data === null, data, counts: data === null ? null : counts });
+      const data = source ? packOwnerFull(source, slotOf, s, hm, cm, counts, flat) : packFull(slotOf, s, hm, cm, counts);
+      const ownerPlane = owners && data !== null ? packOwners(owners, slotOf, s) : null;
+      full.push({ id, level: s.level, tx: s.tx, ty: s.ty, empty: data === null, data, counts: data === null ? null : counts, owners: ownerPlane });
       if (data !== null) transfer.push(data.buffer, counts.buffer);
+      if (ownerPlane !== null) transfer.push(ownerPlane.buffer);
       delivered[id] = 1;
       state.wantFull[id] = 0;
     }
@@ -306,11 +413,13 @@ export class FrameBuilder {
       s.clearDirty();
       s.borderMask = 0;
     }
-    const deltas = { ids: Uint32Array.from(dIds), offsets: Uint32Array.from(dOffsets), index: dIndex, data: dData, counts: dCounts };
+    const deltas = { ids: Uint32Array.from(dIds), offsets: Uint32Array.from(dOffsets), index: dIndex, data: dData, counts: dCounts, owners: dOwners };
     transfer.push(deltas.ids.buffer, deltas.offsets.buffer, deltas.index.buffer, deltas.data.buffer, deltas.counts.buffer);
+    if (dOwners) transfer.push(dOwners.buffer);
     const evicted = state.evicted;
     state.evicted = [];
-    const frame = { seq: ++this.seq, block, reason, partial, full, deltas, evicted };
+    // owners: whether this frame carries owner words (false: the owner layer is off).
+    const frame = { seq: ++this.seq, block, reason, partial, full, deltas, evicted, owners: owners !== null };
     return { frame, transfer, deltaCells: n };
   }
 }

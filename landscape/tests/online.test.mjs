@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  resolveEndpoints, resolveDataUrl, startupMode, chooseStartup, deviceTraits, isLocalHost,
+  resolveEndpoints, resolveDataUrl, ownersUrl, startupMode, chooseStartup, deviceTraits, isLocalHost,
   ADAPTIVE_DISPLAY, LOW_END_NOTICE, LOCAL_EXPLORER,
 } from '../web/ui/online.js';
 import { SCHEMA, PRESETS } from '../web/settings.schema.js';
@@ -52,6 +52,30 @@ test('dataset URL: ?data wins, then /dataset/index.json, then /dataset/', async 
   assert.equal(await resolveDataUrl({ href, fetchImpl: broken }), 'https://3d.bitcointimelapse.com/dataset/');
   const junk = async () => ({ ok: true, json: async () => ({ current: null }) });
   assert.equal(await resolveDataUrl({ href, fetchImpl: junk }), 'https://3d.bitcointimelapse.com/dataset/');
+});
+
+test('owner data URL: /owners/index.json names it; anything else hides the Owners view', async () => {
+  const href = 'https://bitcoinlandscape.com/#b=1&own=binance';
+  const seen = [];
+  const index = async (url, opts) => {
+    seen.push([url, opts.cache]);
+    return { ok: true, json: async () => ({ id: 'o974310-20261102', url: '/owners/o974310-20261102/', tip: 974310 }) };
+  };
+  assert.equal(await ownersUrl(href, index), 'https://bitcoinlandscape.com/owners/o974310-20261102/');
+  assert.deepEqual(seen, [['https://bitcoinlandscape.com/owners/index.json', 'no-store']]);
+  assert.equal(await ownersUrl('http://127.0.0.1:12990/', index), 'http://127.0.0.1:12990/owners/o974310-20261102/');
+  const answers = [
+    async () => ({ ok: false, status: 404, json: async () => ({}) }),
+    async () => { throw new TypeError('network'); },
+    async () => ({ ok: true, json: async () => { throw new SyntaxError('not JSON'); } }),
+    async () => ({ ok: true, json: async () => null }),
+    async () => ({ ok: true, json: async () => ({ url: 42 }) }),
+    async () => ({ ok: true, json: async () => ({ url: '/dataset/d974310-20261102/' }) }),
+    async () => ({ ok: true, json: async () => ({ url: 'https://example.test/owners/o1-20260101/' }) }),
+    async () => ({ ok: true, json: async () => ({ url: '//example.test/owners/o1-20260101/' }) }),
+  ];
+  for (const [i, fetchImpl] of answers.entries()) assert.equal(await ownersUrl(href, fetchImpl), null, 'answer ' + i);
+  assert.equal(await ownersUrl(undefined, index), null, 'no page URL (outside a browser)');
 });
 
 test('startup: adaptive first visits online, High locally and for returning visitors', () => {

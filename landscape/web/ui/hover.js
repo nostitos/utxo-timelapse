@@ -103,9 +103,11 @@ const row = (label, value, cls = '') => '<div' + (cls ? ' class="' + cls + '"' :
  * container: #hover; canvas: the view canvas; pick(clientX, clientY) → terrain hit (render/index.js);
  * replay: the replay client (block, cell()); mode() → 'map' | 'flight' | 'plane';
  * anchor: the element the card docks under, at the same left edge and width (the HUD).
+ * owners() → {entities: owners.json entities, visible: Set of entity indices} while the owner
+ * layer is on, else null: the card then lists the lit owners' outputs in the cell.
  */
 export function createHover({
-  container, canvas, pick, replay, grid, rows, blocktimes, mode = () => 'map', anchor = null, enabled = true,
+  container, canvas, pick, replay, grid, rows, blocktimes, mode = () => 'map', anchor = null, enabled = true, owners = () => null,
 }) {
   const off = { update() {}, hide() {}, dismiss() {}, get dismissed() { return false; }, get current() { return null; } };
   if (!container || !canvas || !enabled) return off;
@@ -235,6 +237,15 @@ export function createHover({
     if (Number.isInteger(block)) {
       const cls = 'hv-live' + (dim ? ' stale' : '');
       out += row('Unspent outputs', live.outputs, cls) + row('Value', live.value, cls);
+      const info = owners();
+      if (info && mine && mine.owners && !dim) {
+        for (const o of mine.owners) {
+          const e = info.entities[o.entity];
+          if (!e || !info.visible.has(o.entity)) continue;
+          out += row('<i class="hv-swatch" style="background:' + esc(e.color) + '"></i>' + esc(e.name),
+            fmtInt(o.count) + (o.count === 1 ? ' output' : ' outputs') + ' \u00b7 ' + fmtBtc(o.sats), 'hv-owner');
+        }
+      }
     }
     out += '</dl>';
     if (s.level > 0) out += '<p>Zoomed out: ' + fmtInt(s.columns) + ' \u00d7 ' + fmtInt(s.rows) + ' cells drawn as one</p>';

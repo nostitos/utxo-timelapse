@@ -1,8 +1,9 @@
 // Bottom timeline (landscape/SPEC.md §8): transport, the speed menu, scrubber with halving
 // marks, one field with the exact block and its UTC date (each editable), and the Follow / Fly / Fun / Sound / Places /
-// Settings / Help buttons (Follow toggles Follow tip, Fly flight mode and Sound the sound
+// Owners / Settings / Help buttons (Follow toggles Follow tip, Fly flight mode and Sound the sound
 // switch, and all three show their state; Fun opens the Fun menu of crafts and Stack sats.
-// Fly and Fun only when onFly and onFun are given: touch-only devices leave them out).
+// Fly and Fun only when onFly and onFun are given: touch-only devices leave them out; Owners
+// stays hidden until setOwnersAvailable(true), once the site has owner data).
 // On phones (app.css) the block and date field hides and Places and Settings show icons.
 
 import { SHARE_ICON } from './share.js';
@@ -23,10 +24,11 @@ const ICONS = {
   fun: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 .8c.55 0 .95.5.95 1.2v4.1l6 3.3v1.6L8.95 9.2v3.2l1.75 1.3v1.3L8 14.2 5.3 15v-1.3l1.75-1.3V9.2L1.05 11V9.4l6-3.3V2c0-.7.4-1.2.95-1.2z"/></svg>',
   follow: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1 7.2h6.9V3.9L12.4 8l-4.5 4.1V8.8H1z"/><path d="M13.4 2.2H15v11.6h-1.6z"/></svg>',
   sound: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 5.6h2.7L8 2.4v11.2L4.2 10.4H1.5z"/><path d="M10.2 5.2a3.6 3.6 0 0 1 0 5.6l-.9-1.1a2.2 2.2 0 0 0 0-3.4z"/><path d="M11.9 3a6.4 6.4 0 0 1 0 10l-.9-1.1a5 5 0 0 0 0-7.8z"/></svg>',
+  owners: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" d="M1.4 2.4v5.3l7.3 7.3 6-6-7.3-7.3H2.4a1 1 0 0 0-1 .7zm3.3 1.1a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6z"/></svg>',
 };
 const HALVINGS = [210000, 420000, 630000, 840000];
 
-export function createTimeline({ container, tip, blocktimes, playback, onSeek, onNotice, onPlaces, onSettings, onHelp, onFollow = null, onFly = null, onFun = null, onSound = null, onShare = null }) {
+export function createTimeline({ container, tip, blocktimes, playback, onSeek, onNotice, onPlaces, onSettings, onHelp, onFollow = null, onFly = null, onFun = null, onSound = null, onShare = null, onOwners = null }) {
   let tipBlock = tip;
   container.innerHTML =
     '<div class="tl-transport">' +
@@ -57,6 +59,7 @@ export function createTimeline({ container, tip, blocktimes, playback, onSeek, o
     (onFun ? '<button type="button" class="tl-text" data-act="fun" aria-haspopup="true" title="Fun: fly a plane, bird or jet, and stack sats (T takes off)">' + ICONS.fun + '<span class="tl-label">Fun</span></button>' : '') +
     (onSound ? '<button type="button" class="tl-text" data-act="sound" aria-pressed="false" title="Sound: a click for each spend flash on screen, darker for older coins, louder for more BTC and nearer the view; the engine in plane mode (M)">' + ICONS.sound + '<span class="tl-label">Sound</span></button>' : '') +
     '<button type="button" class="tl-text" data-act="places" title="Places (P)" aria-haspopup="true">' + ICONS.places + '<span class="tl-label">Places</span></button>' +
+    (onOwners ? '<button type="button" class="tl-text" data-act="owners" aria-haspopup="true" aria-pressed="false" hidden title="Owners: light up the outputs held by known exchange addresses (O)">' + ICONS.owners + '<span class="tl-label">Owners</span></button>' : '') +
     '<button type="button" class="tl-text" data-act="settings" title="Graphics settings (G)">' + ICONS.settings + '<span class="tl-label">Settings</span></button>' +
     '<button type="button" class="tl-text tl-round" data-act="help" title="Keyboard and mouse (H or ?)" aria-label="Help">?</button>' +
     '</div>';
@@ -70,6 +73,7 @@ export function createTimeline({ container, tip, blocktimes, playback, onSeek, o
   const followBtn = q('[data-act="follow"]');
   const flyBtn = q('[data-act="fly"]');
   const soundBtn = q('[data-act="sound"]');
+  const ownersBtn = q('[data-act="owners"]');
   const marks = q('.tl-marks');
   let dragging = false;
   let shown = { block: null, playing: null, speed: null };
@@ -95,6 +99,7 @@ export function createTimeline({ container, tip, blocktimes, playback, onSeek, o
     fun: () => onFun && onFun(),
     sound: () => onSound && onSound(),
     share: () => onShare && onShare(),
+    owners: () => onOwners && onOwners(),
   };
   container.addEventListener('click', (e) => {
     const btn = e.target.closest('button');
@@ -192,6 +197,15 @@ export function createTimeline({ container, tip, blocktimes, playback, onSeek, o
       if (!soundBtn) return;
       soundBtn.classList.toggle('on', !!on);
       soundBtn.setAttribute('aria-pressed', String(!!on));
+    },
+    /** Show the Owners button (owner data exists) and whether any owner is lit. */
+    setOwnersAvailable(available) {
+      if (ownersBtn) ownersBtn.hidden = !available;
+    },
+    setOwners(on) {
+      if (!ownersBtn) return;
+      ownersBtn.classList.toggle('on', !!on);
+      ownersBtn.setAttribute('aria-pressed', String(!!on));
     },
     update(block, state) {
       if (block != null && block !== shown.block) {

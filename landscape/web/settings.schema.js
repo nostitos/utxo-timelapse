@@ -52,6 +52,7 @@ export const GROUPS = Object.freeze([
   Object.freeze({ id: 'fx', label: 'Effects' }),
   Object.freeze({ id: 'camera', label: 'Camera' }),
   Object.freeze({ id: 'display', label: 'Display' }),
+  Object.freeze({ id: 'owners', label: 'Owners' }),
 ]);
 
 export const TYPES = Object.freeze(['number', 'int', 'bool', 'enum', 'color', 'gradient', 'file']);
@@ -323,6 +324,9 @@ const ENTRIES = [
   { id: 'geo.columnGap', section: 'Columns', label: 'Column gap', type: 'number',
     min: 0, max: 0.9, step: 0.01, default: 0, webgpu: true,
     help: 'Fraction of each cell footprint left empty around its column. At 0 neighbouring columns touch and the ground shows only where a cell is empty.' },
+  { id: 'geo.columnWidth', section: 'Columns', label: 'Column width', type: 'number',
+    min: 1, max: 4, step: 0.05, default: 1, unit: 'x', webgpu: true,
+    help: 'Widens every column about its cell centre, up to four times the cell, so sparse columns (an exchange\'s outputs with Hide the rest) stay visible from farther away. Above 1 neighbouring columns overlap; hovering and the inspector still use the cell.' },
   { id: 'geo.farColumns', section: 'Columns', label: 'Far columns', type: 'enum', options: ['prism', 'card', 'flat', 'cross'],
     optionLabels: { prism: 'Box', card: 'Card', flat: 'Flat card', cross: 'Cross' },
     default: 'prism', webgpu: true, rebuild: 'material',
@@ -547,6 +551,15 @@ const ENTRIES = [
     help: 'Overview map with the camera footprint.' },
   { id: 'display.hud', section: 'Overlays', label: 'HUD', type: 'bool', default: true, url: false, preset: false,
     help: 'Block, date and playback readout.' },
+
+  // Owners: the owner layer (Owners button), which lights the outputs paying known addresses
+  // of the chosen exchanges.
+  { id: 'owners.dim', label: 'Dim the rest', type: 'number', min: 0, max: 1, step: 0.01, default: 0.2, preset: false,
+    help: 'While owners are lit, brightness of every cell and column layer no lit owner holds: 0 is black, 1 leaves them unchanged. Only the lit owners\u2019 spends flash.' },
+  { id: 'owners.only', label: 'Hide the rest', type: 'bool', default: false, preset: false,
+    help: 'While owners are lit, show their outputs alone: every other output disappears, and heights, columns and flashes count only the lit owners.' },
+  { id: 'owners.flat', label: 'Flatten the rest', type: 'bool', default: false, preset: false,
+    help: 'While owners are lit, heights and columns count only their outputs: every other cell keeps its colour and lies flat, dimmed by Dim the rest. Has no effect while Hide the rest is on.' },
 ];
 
 function deepFreeze(value) {
@@ -620,6 +633,7 @@ export const NEEDS = deepFreeze({
   'geo.columnPixels': [on('geo.columns'), ADAPTIVE],
   'geo.instanceBudget': [on('geo.columns'), ADAPTIVE],
   'geo.columnGap': [on('geo.columns'), ADAPTIVE],
+  'geo.columnWidth': [on('geo.columns'), ADAPTIVE],
   'geo.farColumns': [on('geo.columns'), ADAPTIVE],
   'geo.farShadows': [on('geo.columns'), on('light.shadows'), ADAPTIVE],
   'geo.lodBias': [ADAPTIVE],

@@ -48,6 +48,22 @@ export async function resolveDataUrl({ query = new URLSearchParams(), href, fetc
   return new URL('/dataset/', href).href;
 }
 
+/**
+ * Owner data URL named by /owners/index.json (the online Worker, or serve.mjs --owners), or
+ * null when there is none, which hides the Owners view. Never throws.
+ */
+export async function ownersUrl(href = globalThis.location?.href, fetchImpl = globalThis.fetch) {
+  try {
+    const r = await fetchImpl(new URL('/owners/index.json', href).href, { cache: 'no-store' });
+    if (!r.ok) return null;
+    const index = await r.json();
+    const url = index && index.url;
+    return typeof url === 'string' && url.startsWith('/owners/') ? new URL(url, href).href : null;
+  } catch {
+    return null;
+  }
+}
+
 /** 'adaptive' online and 'high' locally, unless ?startup=adaptive|high says otherwise. */
 export function startupMode({ query = new URLSearchParams(), local }) {
   const v = query.get('startup');

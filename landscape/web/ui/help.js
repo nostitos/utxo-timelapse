@@ -59,6 +59,7 @@ const SECTIONS = [
   ['Panels', [
     [['G'], 'Graphics settings'],
     [['P'], 'Places: fly to landmarks in the data, from the first 50 BTC rewards to the dust ridge'],
+    [['O'], 'Owners: light up the outputs held by known exchange addresses, in each exchange\u2019s colour (the small ones together in grey)', { owners: true }],
     [['H', '?'], 'This help'],
     [['Esc'], 'Close the inspector or a panel'],
   ]],
@@ -73,9 +74,11 @@ export function createHelp(dialog, { touchFirst = false } = {}) {
   // Touch-only devices have no plane mode (Fun), so its keys are left out there.
   const sections = SECTIONS.filter((s) => !(touchFirst && s[2] && s[2].flyOnly));
   const list = touchFirst ? [TOUCH, ...sections] : [...sections, TOUCH];
-  const html = list.map(([title, rows]) =>
+  // The Owners line appears once the site has owner data (setOwners).
+  let owners = false;
+  const html = () => list.map(([title, rows]) =>
     '<section><h3>' + title + '</h3><dl>' +
-    rows.map(([keys, v]) => '<div><dt>' + keys.map(keyHtml).join('') + '</dt><dd>' + v + '</dd></div>').join('') +
+    rows.filter((r) => owners || !(r[2] && r[2].owners)).map(([keys, v]) => '<div><dt>' + keys.map(keyHtml).join('') + '</dt><dd>' + v + '</dd></div>').join('') +
     '</dl></section>').join('');
   dialog.innerHTML =
     '<div class="help-head"><div><span class="eyebrow">UTXO Timelapse \u00b7 Landscape</span>' +
@@ -86,7 +89,7 @@ export function createHelp(dialog, { touchFirst = false } = {}) {
     'Front to back: its amount, on the film\u2019s 2,072 rows, with the largest amounts farthest away. ' +
     'Height and colour measure the outputs still unspent at the current block. ' +
     'Your browser replays that state exactly from the change log, block by block.</p>' +
-    '<div class="help-grid">' + html + '</div>';
+    '<div class="help-grid">' + html() + '</div>';
   dialog.querySelector('[data-close]').addEventListener('click', () => dialog.close());
   dialog.addEventListener('click', (e) => {
     if (e.target === dialog) dialog.close();
@@ -101,6 +104,12 @@ export function createHelp(dialog, { touchFirst = false } = {}) {
     },
     close() {
       if (dialog.open) dialog.close();
+    },
+    /** Lists the O key once the site has owner data. */
+    setOwners(on) {
+      if (owners === !!on) return;
+      owners = !!on;
+      dialog.querySelector('.help-grid').innerHTML = html();
     },
   };
 }

@@ -116,7 +116,14 @@ test('hash round trip keeps settings untouched', () => {
   assert.deepEqual(d.cam, { x: 483.12, y: 96.4, z: 402, yaw: -12.35, pitch: -35 });
   assert.equal(d.settings, settings);
   // Without '#', with a leading '?' settings string, and with URLSearchParams.
-  assert.deepEqual(decodeHash('b=5&mode=map'), { block: 5, mode: 'map', cam: null, follow: false, cell: null, play: false, settings: '' });
+  assert.deepEqual(decodeHash('b=5&mode=map'), { block: 5, mode: 'map', cam: null, follow: false, cell: null, play: false, own: [], settings: '' });
+  // Owners: own= lists the lit owners (owners.json ids) before the settings; bad ids are dropped.
+  const owned = encodeHash({ block: 5, own: ['binance', 'okx', 'binance'] }, 'preset=High');
+  assert.equal(owned, '#b=5&own=binance,okx&preset=High');
+  assert.deepEqual(decodeHash(owned).own, ['binance', 'okx']);
+  assert.equal(decodeHash(owned).settings, 'preset=High');
+  assert.deepEqual(decodeHash('#own=Bad,ok-1,,x%20y').own, ['ok-1']);
+  assert.equal(encodeHash({ block: 5, own: [] }), '#b=5');
   assert.equal(encodeHash({ block: 7 }, '?preset=High'), '#b=7&preset=High');
   assert.equal(encodeHash({ block: 7 }, new URLSearchParams({ preset: 'Ultra' })), '#b=7&preset=Ultra');
   assert.equal(encodeHash({}), '');

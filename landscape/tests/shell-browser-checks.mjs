@@ -1082,6 +1082,356 @@ const CHECKS = [
     ],
   },
   {
+    name: 'owners',
+    shot: 'owners.png',
+    timeout: 120000,
+    // The owner layer, when the server has owner data (serve.mjs --owners, or the Worker's
+    // /owners/index.json); without it the check only confirms the Owners button stays hidden.
+    script: `
+      const out = {};
+      const t0 = performance.now();
+      while (!L.owners.manifest && performance.now() - t0 < 8000) await sleep(100);
+      const btn = document.querySelector('#timeline [data-act="owners"]');
+      out.available = !!L.owners.manifest;
+      out.buttonShown = !!btn && !btn.hidden;
+      if (!out.available) return out;
+      const ent = L.owners.manifest.entities[0];
+      out.entity = ent.id;
+      await L.seek(tip); await idle();
+      L.controls.setPose(POSES.map);
+      const off = await settled(800, 15000);
+      const mean = (g) => g.reduce((a, v) => a + v, 0) / g.length;
+      btn.click(); await sleep(250);
+      out.menuOpen = !document.getElementById('owners').hidden;
+      document.querySelector('#owners [data-owner="' + ent.id + '"]').click();
+      const t1 = performance.now();
+      while (!(L.replay.meta && L.replay.meta.owners && L.replay.meta.owners.active) && performance.now() - t1 < 30000) await sleep(100);
+      const meta = L.replay.meta && L.replay.meta.owners;
+      out.active = !!(meta && meta.active);
+      out.totals = meta && meta.entities ? meta.entities[0] : null;
+      out.menuText = document.getElementById('owners').innerText;
+      // The open menu follows Dim the rest when it changes elsewhere (a link, a film capture).
+      L.settings.set('owners.dim', 0.5); await sleep(150);
+      out.dimShown = (document.querySelector('#owners .ow-dim output') || {}).textContent || '';
+      L.settings.set('owners.dim', 0.2); await sleep(150);
+      btn.click(); await sleep(100);
+      const lit = await settled(800, 15000);
+      out.hash = location.hash.includes('own=' + ent.id);
+      out.legend = (document.querySelector('#legend .lg-owners') || {}).innerText || '';
+      out.meanOff = Math.round(mean(off)); out.meanLit = Math.round(mean(lit));
+      // A cell on screen that holds the owner's outputs: its pixel moves toward the owner's colour.
+      let hit = null;
+      for (let y = 60; y <= 820 && !hit; y += 10) for (let x = 40; x <= 1560 && !hit; x += 10) {
+        const h = L.view.pick(x, y); if (!h) continue;
+        const c = await L.replay.cell(h.level || 0, h.col, h.row, { load: false });
+        if (c && c.owners && c.owners.some((o) => o.entity === 0)) hit = { x, y, level: h.level || 0, col: h.col, row: h.row };
+      }
+      out.found = !!hit;
+      if (hit) {
+        const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+        const chroma = (c) => { const s = c[0] + c[1] + c[2] || 1; return c.map((v) => v / s); };
+        const away = (p) => { const a = chroma(p); const b = chroma(rgb(ent.color)); return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]); };
+        const pixel = async () => { const d = (await frameImage(1600, 900)).getContext('2d').getImageData(hit.x, hit.y, 1, 1).data; return [d[0], d[1], d[2]]; };
+        out.pixelLit = await pixel();
+        canvas.dispatchEvent(new PointerEvent('pointermove', { clientX: hit.x, clientY: hit.y, pointerId: 9, pointerType: 'mouse', bubbles: true }));
+        for (let i = 0; i < 6; i++) { await frame(); await sleep(60); }
+        out.hover = (L.ui.hover.current && L.ui.hover.current.text) || '';
+        // The inspector shows one L0 cell: one of the merged cell's that holds the owner's outputs.
+        const Lv = L.grid.levels[hit.level];
+        let l0 = null;
+        for (let dc = 0; dc < 2 ** Lv.columnShift && !l0; dc++) for (let dr = 0; dr < 2 ** Lv.rowShift && !l0; dr++) {
+          const col = hit.col * 2 ** Lv.columnShift + dc; const row = hit.row * 2 ** Lv.rowShift + dr;
+          const c = await L.replay.cell(0, col, row);
+          if (c && c.owners && c.owners.some((o) => o.entity === 0)) l0 = { col, row };
+        }
+        if (l0) {
+          await L.ui.inspector.open({ l0Col: l0.col, l0Row: l0.row, shared: true, x: (l0.col + 0.5) * 0.064, z: (l0.row + 0.5) * 0.1 });
+          await sleep(800);
+        }
+        out.inspector = (document.querySelector('#inspector .in-owners') || {}).innerText || '';
+        L.ui.inspector.close();
+        // Hide the rest: only the owner's outputs stay; unticking it brings back the dimmed view.
+        L.settings.set('owners.only', true);
+        await sleep(300);
+        const only = await settled(800, 15000);
+        out.onlyHash = location.hash.includes('owners.only=');
+        out.onlyChanged = Math.round(gridDiff(lit, only) * 100) / 100;
+        // Column width: over the newest edge, wider columns put more of the owner's outputs on screen.
+        const pose0 = L.controls.getPose();
+        const pw = L.controls.poseLookingAt({ x: tip / 1000 - 0.4, y: 0, z: 54 }, { distance: 14, yaw: 25, pitch: -38 });
+        L.controls.setPose({ x: pw.position.x, y: pw.position.y, z: pw.position.z, yaw: pw.yaw, pitch: pw.pitch });
+        // Bright pixels leaning toward the owner's hue: with the rest hidden its columns are the only bright
+        // things, and the floor, the sky and white labels are dimmer or neutral (AgX turns a yellow pale, so
+        // the hue alone would miss it).
+        const tint = chroma(rgb(ent.color)).map((v) => v - 1 / 3);
+        const litPx = async () => { const d = (await frameImage(1600, 900)).getContext('2d').getImageData(0, 0, 1600, 900).data; let n = 0; for (let i = 0; i < d.length; i += 4) { const s = d[i] + d[i + 1] + d[i + 2]; if (s > 480 && (d[i] / s - 1 / 3) * tint[0] + (d[i + 1] / s - 1 / 3) * tint[1] + (d[i + 2] / s - 1 / 3) * tint[2] > 0) n++; } return n; };
+        await settled(800, 15000); out.widthPx1 = await litPx();
+        L.settings.set('geo.columnWidth', 2.5); await settled(800, 15000); out.widthPx25 = await litPx();
+        L.settings.set('geo.columnWidth', 1); L.controls.setPose(pose0); await settled(800, 15000);
+        L.settings.set('owners.only', false);
+        await sleep(300);
+        out.onlyBack = Math.round(gridDiff(lit, await settled(800, 15000)) * 100) / 100;
+        L.owners.set([]);
+        await sleep(300);
+        const after = await settled(800, 15000);
+        out.restored = Math.round(gridDiff(off, after) * 100) / 100;
+        out.pixelOff = await pixel();
+        out.closer = away(out.pixelLit) < away(out.pixelOff);
+      }
+      // Flashes over the same blocks and view: with the owner lit, only its spends flash, larger.
+      let flashes = 0;
+      let px = 0;
+      const unsubscribe = L.view.onFlashes((list) => { flashes += list.length; for (const f of list) px += f.minPx || 0; });
+      L.controls.setPose({ x: 960, y: 150, z: 104, yaw: 0, pitch: -89 });
+      const playFor = async () => {
+        await L.seek(tip - 2400); await idle(); await sleep(500);
+        flashes = 0; px = 0;
+        L.playback.setSpeed('1'); L.playback.play();
+        await sleep(4000);
+        L.playback.pause(); await idle();
+        return { n: flashes, px: flashes ? Math.round((px / flashes) * 10) / 10 : 0 };
+      };
+      ({ n: out.flashesAll, px: out.flashPxAll } = await playFor());
+      L.owners.set([ent.id]);
+      const t3 = performance.now();
+      while (!(L.replay.meta && L.replay.meta.owners && L.replay.meta.owners.active) && performance.now() - t3 < 30000) await sleep(100);
+      ({ n: out.flashesLit, px: out.flashPxLit } = await playFor());
+      // A drained hot wallet is fresh coins, and every spent cell flashes: Binance's 2026 hack spent
+      // 513 outputs in 305 cells of block 973,732, where the share kept for young coins allowed 100.
+      if (ent.id === 'binance' && tip >= 973732) {
+        await L.seek(973731); await idle();
+        const pd = L.controls.poseLookingAt({ x: 973.6, y: 0, z: 54 }, { distance: 14, yaw: 25, pitch: -38 });
+        L.controls.setPose({ x: pd.position.x, y: pd.position.y, z: pd.position.z, yaw: pd.yaw, pitch: pd.pitch });
+        await settled(800, 15000);
+        flashes = 0;
+        L.playback.step(1);
+        const t4 = performance.now();
+        while (L.replay.block !== 973732 && performance.now() - t4 < 15000) await sleep(50);
+        for (let i = 0; i < 10; i++) { await frame(); await sleep(30); }
+        out.drainFlashes = flashes;
+      }
+      L.owners.set([]);
+      unsubscribe();
+      return out;`,
+    expect: (v) => !v.available ? [['no owner data served: the Owners button stays hidden', !v.buttonShown]] : [
+      ['the Owners button shows when owner data is served', v.buttonShown],
+      ['the menu opens and its checkbox lights ' + v.entity, v.menuOpen && v.active],
+      ['meta reports the owner\u2019s outputs at the tip: ' + JSON.stringify(v.totals), !!v.totals && v.totals.count > 0 && v.totals.sats > 0],
+      ['the menu lists the totals', /outputs \u00b7 /.test(v.menuText || '')],
+      ['the link keeps own=', v.hash],
+      ['the legend names the owner: ' + JSON.stringify(v.legend), v.legend.length > 0],
+      ['the rest dims (' + v.meanOff + ' \u2192 ' + v.meanLit + ' mean RGB)', v.meanLit < v.meanOff * 0.8],
+      ['an owned cell is on screen', v.found],
+      ['its pixel moves toward the owner colour: ' + JSON.stringify(v.pixelOff) + ' \u2192 ' + JSON.stringify(v.pixelLit), !!v.closer],
+      ['the hover card lists the owner', /output/.test(v.hover || '') && (v.hover || '').toUpperCase().includes((v.entity || '').toUpperCase())],
+      ['the inspector lists the owner: ' + JSON.stringify(v.inspector), /of .* outputs/.test(v.inspector || '')],
+      ['Hide the rest changes the view (mean RGB difference ' + v.onlyChanged + ')', v.onlyChanged > 1],
+      ['the link keeps owners.only', !!v.onlyHash],
+      ['unticking Hide the rest restores the dimmed view (difference ' + v.onlyBack + ')', v.onlyBack < 3],
+      ['turning it off restores the image (mean RGB difference ' + v.restored + ')', v.restored < 3],
+      ['only the owner\u2019s spends flash: ' + v.flashesLit + ' flashes with it lit, ' + v.flashesAll + ' without', v.flashesAll > 0 && v.flashesLit * 3 < v.flashesAll],
+      ['its flashes are larger: ' + v.flashPxLit + ' px minimum on average, against ' + v.flashPxAll + ' px', v.flashPxLit > 2 * v.flashPxAll],
+      ['the open menu follows Dim the rest (' + v.dimShown + ')', v.dimShown === '50%'],
+      ['wider columns cover more of the screen: ' + v.widthPx1 + ' \u2192 ' + v.widthPx25 + ' owner-coloured pixels at width 1 and 2.5', v.widthPx1 > 1000 && v.widthPx25 > 1.3 * v.widthPx1],
+      ['every spent cell of a drained hot wallet flashes (' + v.drainFlashes + ' at block 973,732)', v.drainFlashes === undefined || v.drainFlashes > 100],
+    ],
+  },
+  {
+    name: 'owners-group',
+    shot: 'owners-group.png',
+    timeout: 120000,
+    // The small owners' shared row (ui/owners-menu.js ownerGroup), when the served owner data has
+    // one: one row, one grey, one legend entry and one own= id for all of them.
+    script: `
+      const out = { members: [] };
+      const t0 = performance.now();
+      while (!L.owners.manifest && performance.now() - t0 < 8000) await sleep(100);
+      if (!L.owners.manifest) return out;
+      const ents = L.owners.manifest.entities;
+      const total = ents.reduce((n, e) => n + (e.records || 0), 0);
+      out.members = ents.flatMap((e, i) => (total && (e.records || 0) < total * 0.01 ? [i] : []));
+      if (out.members.length < 2) return out;
+      await L.seek(tip); await idle();
+      L.controls.setPose(POSES.map);
+      await settled(800, 15000);
+      const btn = document.querySelector('#timeline [data-act="owners"]');
+      btn.click(); await sleep(250);
+      out.rows = document.querySelectorAll('#owners .ow-item').length;
+      out.memberRows = out.members.filter((i) => document.querySelector('#owners [data-owner="' + ents[i].id + '"]')).length;
+      document.querySelector('#owners [data-owner="other-exchanges"]').click();
+      const t1 = performance.now();
+      while (!(L.replay.meta && L.replay.meta.owners && L.replay.meta.owners.active) && performance.now() - t1 < 30000) await sleep(100);
+      await sleep(300);
+      out.visible = L.owners.visible.length;
+      out.row = (document.querySelector('#owners [data-owner="other-exchanges"]').closest('.ow-item') || {}).innerText || '';
+      btn.click(); await sleep(100);
+      await settled(800, 15000);
+      out.hash = (location.hash.match(/own=([^&]*)/) || [])[1] || '';
+      out.legend = (document.querySelector('#legend .lg-owners') || {}).innerText || '';
+      // A cell only group members hold: its pixel turns toward the group's grey and the hover card names its exchange.
+      let hit = null;
+      for (let y = 60; y <= 820 && !hit; y += 10) for (let x = 40; x <= 1560 && !hit; x += 10) {
+        const h = L.view.pick(x, y); if (!h) continue;
+        const c = await L.replay.cell(h.level || 0, h.col, h.row, { load: false });
+        if (c && c.owners && c.owners.length && c.owners.every((o) => out.members.includes(o.entity))) hit = { x, y, names: c.owners.map((o) => ents[o.entity].name) };
+      }
+      out.found = !!hit;
+      if (hit) {
+        const pixel = async () => { const d = (await frameImage(1600, 900)).getContext('2d').getImageData(hit.x, hit.y, 1, 1).data; return [d[0], d[1], d[2]]; };
+        const spread = (p) => Math.max(...p) - Math.min(...p);
+        out.pixelLit = await pixel();
+        canvas.dispatchEvent(new PointerEvent('pointermove', { clientX: hit.x, clientY: hit.y, pointerId: 9, pointerType: 'mouse', bubbles: true }));
+        for (let i = 0; i < 6; i++) { await frame(); await sleep(60); }
+        const hover = (L.ui.hover.current && L.ui.hover.current.text) || '';
+        out.hoverNames = hit.names.filter((n) => hover.toUpperCase().includes(n.toUpperCase()));
+        L.owners.set([]); await sleep(300); await settled(800, 15000);
+        out.pixelOff = await pixel();
+        out.greyer = spread(out.pixelLit) < spread(out.pixelOff);
+      }
+      // A link naming the group, or any member, lights all of them.
+      L.owners.set(['other-exchanges']); await sleep(200);
+      out.fromLink = L.owners.visible.length;
+      L.owners.set([ents[out.members[0]].id]); await sleep(200);
+      out.fromMember = L.owners.visible.length;
+      L.owners.set([]);
+      return out;`,
+    expect: (v) => v.members.length < 2 ? [['no group in the served owner data (fewer than two owners under 1% of the outputs)', true]] : [
+      ['one row stands for the ' + v.members.length + ' small owners (' + v.rows + ' rows)', v.memberRows === 0 && v.rows < v.members.length],
+      ['the row lights all of them', v.visible === v.members.length],
+      ['the row shows what they hold: ' + JSON.stringify(v.row), /outputs \u00b7 /.test(v.row)],
+      ['the link names the group once: own=' + v.hash, v.hash === 'other-exchanges'],
+      ['the legend names it once: ' + JSON.stringify(v.legend), (v.legend.match(/Other exchanges/g) || []).length === 1],
+      ['a cell only they hold is on screen', v.found],
+      ['its pixel turns toward grey: ' + JSON.stringify(v.pixelOff) + ' \u2192 ' + JSON.stringify(v.pixelLit), !!v.greyer],
+      ['the hover card names its exchange: ' + JSON.stringify(v.hoverNames), (v.hoverNames || []).length > 0],
+      ['own=other-exchanges or a member lights all of them', v.fromLink === v.members.length && v.fromMember === v.members.length],
+    ],
+  },
+  {
+    name: 'owners-flat',
+    shot: 'owners-flat.png',
+    timeout: 180000,
+    // Flatten the rest (owners.flat), when the server has owner data: heights and columns count
+    // only the lit owner, every other cell keeps its colour, flat and dimmed, and near the camera
+    // its terrain stays where the owner's columns stand.
+    script: `
+      const out = {};
+      const t0 = performance.now();
+      while (!L.owners.manifest && performance.now() - t0 < 8000) await sleep(100);
+      out.available = !!L.owners.manifest;
+      if (!out.available) return out;
+      const ent = L.owners.manifest.entities[0];
+      out.entity = ent.id;
+      await L.seek(tip); await idle();
+      L.controls.setPose(POSES.map);
+      L.owners.set([ent.id]);
+      const t1 = performance.now();
+      while (!(L.replay.meta && L.replay.meta.owners && L.replay.meta.owners.active) && performance.now() - t1 < 30000) await sleep(100);
+      const mean = (g) => g.reduce((a, v) => a + v, 0) / g.length;
+      // Cells on screen with height, and flat ones (colour but no height).
+      const kinds = () => {
+        const k = { tall: 0, flat: 0 };
+        for (let y = 60; y <= 820; y += 40) for (let x = 40; x <= 1560; x += 40) {
+          const h = L.view.pick(x, y);
+          if (h && h.value > 0) k.tall++;
+          else if (h && h.colorValue > 0) k.flat++;
+        }
+        return k;
+      };
+      const dimmed = await settled(800, 15000);
+      out.dimmed = kinds();
+      const btn = document.querySelector('#timeline [data-act="owners"]');
+      btn.click(); await sleep(250);
+      const box = document.querySelector('#owners [data-flat]');
+      out.box = !!box;
+      if (box) box.click();
+      await sleep(300);
+      out.setting = L.settings.get('owners.flat');
+      out.dimEnabled = !(document.querySelector('#owners [data-dim]') || {}).disabled;
+      btn.click(); await sleep(100);
+      const flat = await settled(800, 15000);
+      out.flat = kinds();
+      out.legend = (document.querySelector('#legend .lg-owners') || {}).innerText || '';
+      out.hash = location.hash.includes('owners.flat=');
+      out.flatChanged = Math.round(gridDiff(dimmed, flat) * 100) / 100;
+      // The owner's own cells keep their height.
+      let own = null;
+      for (let y = 60; y <= 820 && !own; y += 10) for (let x = 40; x <= 1560 && !own; x += 10) {
+        const h = L.view.pick(x, y); if (!h) continue;
+        const c = await L.replay.cell(h.level || 0, h.col, h.row, { load: false });
+        if (c && c.owners && c.owners.some((o) => o.entity === 0)) own = h;
+      }
+      out.ownHeight = own ? own.value : null;
+      // Dim the rest still sets how bright the flat rest is.
+      L.settings.set('owners.dim', 0.6);
+      out.brighter = Math.round(mean(await settled(800, 15000)) - mean(flat));
+      L.settings.set('owners.dim', 0.2);
+      await settled(800, 15000);
+      // Hide the rest wins: Flatten is disabled and the rest has no colour.
+      L.settings.set('owners.only', true);
+      btn.click(); await sleep(250);
+      out.disabledUnderHide = !!(document.querySelector('#owners [data-flat]') || {}).disabled;
+      btn.click(); await sleep(100);
+      const hidden = await settled(800, 15000);
+      out.hidden = kinds();
+      out.hideDiffers = Math.round(gridDiff(hidden, flat) * 100) / 100;
+      L.settings.set('owners.only', false);
+      await settled(800, 15000);
+      // Near the camera the heightfield gives way to columns, which stand only on cells with height:
+      // the flat rest must keep its terrain there. Undimmed, a cut-out cell shows the grey ground
+      // instead of its blue, so most pixels that are blue without columns must stay blue with them
+      // (measured on o974310-20261104: 68% kept, 36% with the flat cells cut out).
+      const pose0 = L.controls.getPose();
+      const pw = L.controls.poseLookingAt({ x: tip / 1000 - 0.4, y: 0, z: 54 }, { distance: 14, yaw: 25, pitch: -38 });
+      L.controls.setPose({ x: pw.position.x, y: pw.position.y, z: pw.position.z, yaw: pw.yaw, pitch: pw.pitch });
+      L.settings.set('owners.dim', 1);
+      // Bloom off while counting: a bright owner colour (Binance's yellow) tints the blue terrain around
+      // its columns, which would read as terrain cut out.
+      const bloom0 = L.settings.get('fx.bloomStrength');
+      L.settings.set('fx.bloomStrength', 0);
+      const blueAt = async () => {
+        const d = (await frameImage(640, 360)).getContext('2d').getImageData(0, 0, 640, 360).data;
+        const b = new Uint8Array(d.length / 4);
+        for (let i = 0; i < d.length; i += 4) b[i / 4] = d[i + 2] > d[i] + 20 ? 1 : 0;
+        return b;
+      };
+      await settled(800, 15000);
+      const withColumns = await blueAt();
+      out.columns = (L.view.stats || {}).columns || 0;
+      L.settings.set('geo.columns', false);
+      await settled(800, 15000);
+      const without = await blueAt();
+      L.settings.set('geo.columns', true);
+      let blue = 0;
+      let kept = 0;
+      for (let i = 0; i < without.length; i++) if (without[i]) { blue++; kept += withColumns[i]; }
+      out.blue = blue;
+      out.kept = Math.round((kept / Math.max(1, blue)) * 100) / 100;
+      L.settings.set('fx.bloomStrength', bloom0);
+      L.settings.set('owners.dim', 0.2);
+      L.controls.setPose(pose0);
+      await settled(800, 15000);
+      L.settings.set('owners.flat', false);
+      out.restored = Math.round(gridDiff(dimmed, await settled(800, 15000)) * 100) / 100;
+      L.owners.set([]);
+      return out;`,
+    expect: (v) => !v.available ? [['no owner data served: nothing to flatten', true]] : [
+      ['the Owners menu has a Flatten the rest checkbox that sets owners.flat', v.box && v.setting === true],
+      ['Dim the rest stays on with it', v.dimEnabled],
+      ['the legend says the rest is flat: ' + JSON.stringify(v.legend), /the rest flat at 20%/.test(v.legend)],
+      ['the link keeps owners.flat', v.hash],
+      ['dimmed, every coloured cell has height: ' + JSON.stringify(v.dimmed), v.dimmed.flat === 0 && v.dimmed.tall > 0],
+      ['flattened, the rest keeps its colour without height: ' + JSON.stringify(v.flat), v.flat.flat > v.flat.tall && v.flat.flat > 20],
+      ['the view changes (mean RGB difference ' + v.flatChanged + ')', v.flatChanged > 0.5],
+      [v.entity + '\u2019s own cells keep their height (' + v.ownHeight + ')', v.ownHeight > 0],
+      ['Dim the rest brightens the flat rest (+' + v.brighter + ' mean RGB at 60%)', v.brighter >= 2],
+      ['Hide the rest wins: Flatten is disabled and the rest has no colour: ' + JSON.stringify(v.hidden), v.disabledUnderHide && v.hidden.flat === 0],
+      ['hidden and flat differ (mean RGB difference ' + v.hideDiffers + ')', v.hideDiffers > 1],
+      ['near the camera the flat rest keeps its terrain where columns stand: ' + v.columns + ' columns, ' + Math.round(v.kept * 100) + '% of ' + v.blue + ' blue pixels kept', v.columns > 0 && v.blue > 1000 && v.kept > 0.55],
+      ['turning it off restores the dimmed view (difference ' + v.restored + ')', v.restored < 3],
+    ],
+  },
+  {
     name: 'webgl2-fallback',
     query: '?webgl=1',
     shot: 'webgl2.png',

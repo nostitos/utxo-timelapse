@@ -100,10 +100,26 @@ export function heatDecayTable(halfLife) {
 }
 
 /**
+ * Heat filter of the owner layer: whether a spend of amount a created at height h is one of
+ * the block's owner spends (own: amount -> creation heights, from OwnerLedger.spendsAt); a match
+ * is used up. Outputs sharing amount and creation height share a cell, so cell heat is exact.
+ */
+function ownerSpend(own, a, h) {
+  const hs = own.get(a);
+  if (hs === undefined) return false;
+  const k = hs.indexOf(h);
+  if (k < 0) return false;
+  hs[k] = hs[hs.length - 1];
+  hs.pop();
+  return true;
+}
+
+/**
  * Builds the hot apply function for a grid and minAmt table.
  * apply(dec, sign, slotOf, heat, totals) applies (sign = +1) or undoes (sign = -1) one
  * decoded block on every slot present in slotOf (array indexed by tile id, null when
- * absent). heat = null or {block, halfLife, decay}; only forward playback passes heat.
+ * absent). heat = null or {block, halfLife, decay, owners?}; only forward playback passes heat,
+ * and while the owner layer is on, heat.owners limits it to the owner spends (ownerSpend).
  * totals = null or Float64Array(4) [countSmall, satsSmall, countLarge, satsLarge].
  * Returns the number of non-zero changes applied.
  */
@@ -169,6 +185,7 @@ function makeUnrolledApplier(grid, minAmt) {
     const hb = heatOn ? heat.block : 0;
     const decay = heatOn ? heat.decay : null;
     const hl = heatOn ? heat.halfLife : 1;
+    const own = heatOn && heat.owners ? heat.owners : null;
     const tot = totals !== null;
     let rSp = 0;
     let rCr = last;
@@ -194,7 +211,7 @@ function makeUnrolledApplier(grid, minAmt) {
       const off = a > WEIGHT_THRESHOLD ? 2 : 0;
       if (tot) { totals[off] += dc; totals[off + 1] += ds; }
       const c = HH[i] >>> 6;
-      const spendHeat = heatOn && s < 0;
+      const spendHeat = heatOn && s < 0 && (own === null || ownerSpend(own, a, HH[i]));
       const add = spendHeat ? a / 1e8 : 0;
       let slot;
       let col;
@@ -252,6 +269,7 @@ export function makeGenericApplier(grid, minAmt) {
     const decay = heatOn ? heat.decay : null;
     const DT = heatOn ? decay.length : 0;
     const hl = heatOn ? heat.halfLife : 1;
+    const own = heatOn && heat.owners ? heat.owners : null;
     const tot = totals !== null;
     // Changes are sorted by satoshi: spends (most negative first, so falling amounts and
     // rising rows), zeros, then creations (rising amounts, falling rows). Walk the rows.
@@ -279,7 +297,7 @@ export function makeGenericApplier(grid, minAmt) {
       const off = a > WEIGHT_THRESHOLD ? 2 : 0;
       if (tot) { totals[off] += dc; totals[off + 1] += ds; }
       const c0 = HH[i] >>> colShift;
-      const spendHeat = heatOn && s < 0;
+      const spendHeat = heatOn && s < 0 && (own === null || ownerSpend(own, a, HH[i]));
       for (let l = 0; l < NL; l++) {
         const col = c0 >>> l;
         const row = r >>> RS[l];

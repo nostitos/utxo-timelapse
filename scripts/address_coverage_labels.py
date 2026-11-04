@@ -55,9 +55,29 @@ ALIASES = {
     "binance": "Binance", "bitfinex": "Bitfinex", "bitmex": "BitMEX",
     "bybit": "Bybit", "crypto.com": "Crypto.com", "cryptocom": "Crypto.com",
     "deribit": "Deribit", "huobi": "Huobi", "kucoin": "KuCoin",
-    "okx": "OKX", "okex": "OKX", "checksig": "CheckSig",
+    "okx": "OKX", "okex": "OKX", "checksig": "CheckSig", "checksig.com": "CheckSig",
     "internet_archive": "Internet Archive", "internet archive": "Internet Archive",
     "protonmail": "Proton Mail", "proton mail": "Proton Mail",
+    # Exchanges in the owner catalog: operators' own names, DefiLlama, CoinGecko and GraphSense spellings.
+    # Separate companies stay separate (Binance.US, Okcoin, Gate US, HashKey Exchange and Global).
+    "binance cex": "Binance", "binance.us": "Binance.US", "binance us": "Binance.US", "binanceus": "Binance.US",
+    "okcoin": "Okcoin", "htx": "Huobi", "huobi global": "Huobi",
+    "gate": "Gate", "gate.io": "Gate", "gateio": "Gate", "gate us": "Gate US",
+    "bitget": "Bitget", "mexc": "MEXC", "mexc global": "MEXC", "mxc": "MEXC",
+    "bingx": "BingX", "bingbon": "BingX", "bingbon/bingx": "BingX",
+    "phemex": "Phemex", "coinex": "CoinEx", "bitstamp": "Bitstamp", "bitstamp by robinhood": "Bitstamp",
+    "backpack": "Backpack", "backpack exchange": "Backpack", "swissborg": "SwissBorg", "swisborg": "SwissBorg",
+    "cex.io": "CEX.IO", "cexio": "CEX.IO", "cex": "CEX.IO", "korbit": "Korbit",
+    "nbx": "NBX", "norwegian block exchange": "NBX", "coindcx": "CoinDCX",
+    "coinswitch": "CoinSwitch", "coinswitch kuber": "CoinSwitch", "wazirx": "WazirX",
+    "woo x": "WOO X", "woox": "WOO X", "woo": "WOO X", "woonetwork": "WOO X",
+    "woo network (exchange, earn)": "WOO X", "coinsquare": "Coinsquare", "gemini": "Gemini",
+    "river": "River", "river financial": "River", "kraken": "Kraken",
+    "coinbase": "Coinbase", "coinbase exchange": "Coinbase", "bitso": "Bitso",
+    "hashkey exchange": "HashKey Exchange", "hashkeyexchange": "HashKey Exchange",
+    "hashkey global": "HashKey Global", "crypto-com": "Crypto.com", "crypto.com exchange": "Crypto.com",
+    "kucoin & kucoin futures": "KuCoin", "robinhood": "Robinhood", "exmo": "EXMO", "poloniex": "Poloniex",
+    "coinw": "CoinW",
 }
 REPORTED_PACKS = {
     "walletexplorer.yaml": ("www.walletexplorer.com", "wallet-clustering provider; underlying ownership may be inferred"),
@@ -68,6 +88,16 @@ REPORTED_PACKS = {
 
 def normalize_address(value: str) -> str:
     """Validate Base58Check or BIP173/BIP350 mainnet address; canonicalise case."""
+    return decode_address(value)[0]
+
+
+def address_script(value: str) -> bytes:
+    """scriptPubKey paid by a validated mainnet address."""
+    return decode_address(value)[1]
+
+
+def decode_address(value: str) -> tuple[str, bytes]:
+    """Validate a mainnet address; return its canonical text and scriptPubKey."""
     value = str(value).strip()
     if value.lower().startswith("bc1"):
         if value != value.lower() and value != value.upper():
@@ -105,7 +135,8 @@ def normalize_address(value: str) -> str:
             raise ValueError("invalid witness padding")
         if not 2 <= len(program) <= 40 or (version == 0 and len(program) not in (20, 32)):
             raise ValueError("invalid witness program length")
-        return value
+        # Witness version 0 is OP_0; versions 1-16 are OP_1 (0x51) to OP_16.
+        return value, bytes((0x50 + version if version else 0, len(program))) + bytes(program)
     if not 26 <= len(value) <= 35 or value[0:1] not in ("1", "3"):
         raise ValueError("not a Bitcoin mainnet address")
     number = 0
@@ -120,7 +151,9 @@ def normalize_address(value: str) -> str:
         raise ValueError("invalid Base58 mainnet payload")
     if hashlib.sha256(hashlib.sha256(decoded[:-4]).digest()).digest()[:4] != decoded[-4:]:
         raise ValueError("invalid Base58Check checksum")
-    return value
+    if decoded[0] == 0:
+        return value, b"\x76\xa9\x14" + decoded[1:21] + b"\x88\xac"
+    return value, b"\xa9\x14" + decoded[1:21] + b"\x87"
 
 
 def normalize_entity(entity: str) -> str:
@@ -333,7 +366,9 @@ def build_catalog(repo: Path, revision: str, output: Path, supplements: list[Pat
     supplement_manifests = []
     for path in supplements:
         supplemental_rows, manifest = load_supplement(path)
-        rows.extend(supplemental_rows)
+        # Third-party rows join the reported tier, so the direct tier stays operator evidence.
+        rows.extend(row for row in supplemental_rows if row["confidence"] != "third_party_reported")
+        reported.extend(row for row in supplemental_rows if row["confidence"] == "third_party_reported")
         supplement_manifests.append(manifest)
     all_rows, resolved, conflicts = resolve_rows(rows)
     for name, table in (("labels.csv", all_rows), ("labels_resolved.csv", resolved), ("labels_conflicts.csv", conflicts)):

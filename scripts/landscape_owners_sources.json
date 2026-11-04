@@ -1,0 +1,1091 @@
+{
+  "format": "utxo-landscape-owner-sources-1",
+  "description": "Sources of exact Bitcoin addresses for the landscape owner catalog (docs/landscape-owners.md). fetch-sources runs the active ones. Names, URLs and patterns only, never addresses.",
+  "sources": [
+    {
+      "id": "binance-por",
+      "entity": "Binance",
+      "status": "active",
+      "cadence": "monthly",
+      "fetch": "months",
+      "parse": "por_csv",
+      "url": "https://public.bnbstatic.com/static/proof-of-reserve/wallet_address_{YYYYMM}01.zip",
+      "landing": "https://www.binance.com/en/proof-of-reserves",
+      "license": "not stated",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "binance.com/",
+        "bnbstatic.com/"
+      ],
+      "options": {
+        "from": "2022-11"
+      },
+      "note": "Monthly reserve archives; a 403 means the month was not published (Nov 2022 to Jan 2023 were not). Lists from February 2025 split into hot/cold and deposit lists."
+    },
+    {
+      "id": "okx-por",
+      "entity": "OKX",
+      "status": "active",
+      "cadence": "monthly",
+      "fetch": "page_links",
+      "parse": "por_csv",
+      "url": "https://www.okx.com/en-gb/proof-of-reserves/download",
+      "landing": "https://www.okx.com/en-gb/proof-of-reserves/download",
+      "license": "not stated",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "okx.com/",
+        "twitter.com/okx/"
+      ],
+      "options": {
+        "browser": true,
+        "pages": [
+          "https://www.okx.com/en-gb/proof-of-reserves/download"
+        ],
+        "wayback_pages": [
+          "www.okx.com/proof-of-reserves/download",
+          "www.okx.com/proof-of-reserves"
+        ],
+        "wayback_prefixes": [
+          "static.okx.com/cdn/okx/por/"
+        ],
+        "link_pattern": "static\\.okx\\.com/cdn/okx/por/(?:chain/)?(?:okx_por|por_csv)_[0-9A-Za-z_]+(?:\\.csv)?\\.zip",
+        "date_pattern": "(20\\d{2})(\\d{2})(\\d{2})"
+      },
+      "note": "File names carry an hour and version that cannot be guessed, so links come from the download page, its Wayback Machine captures and the Wayback index of the file folder. Files OKX no longer serves come from their latest Wayback capture."
+    },
+    {
+      "id": "htx-por",
+      "entity": "Huobi",
+      "status": "active",
+      "cadence": "git",
+      "fetch": "git_history",
+      "parse": "por_csv",
+      "url": "https://github.com/huobiapi/Tool-Node.js-VerifyAddress",
+      "landing": "https://www.htx.com/en-us/proof-of-reserves/",
+      "license": "MIT (repository LICENSE); the data's terms are not stated",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "huobi.com/",
+        "htx.com/",
+        "github.com/huobiapi/"
+      ],
+      "options": {
+        "paths": [
+          "snapshot/*.csv"
+        ]
+      },
+      "note": "Every version of the snapshot CSVs in HTX's verification repository (monthly files in 2023, then one file updated in place)."
+    },
+    {
+      "id": "bybit-por",
+      "entity": "Bybit",
+      "status": "active",
+      "cadence": "monthly",
+      "fetch": "months",
+      "parse": "por_csv",
+      "url": "https://api2.bybit.com/common-static/por/bybit_por_{YYYYMM}.csv",
+      "landing": "https://www.bybit.com/en/app/user/audit-report",
+      "license": "not stated",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "bybit.com/",
+        "bycustody.com/",
+        "twitter.com/benbybit/"
+      ],
+      "options": {
+        "from": "2024-06",
+        "btc_coins": [
+          "BTC",
+          "BTC-Bitcoin"
+        ]
+      },
+      "note": "Monthly reserve CSVs on Bybit's API host (published there from 2025-06); a missing month answers 403. Mainnet rows are 'BTC-Bitcoin' (plain 'BTC' in the earliest files) and one cell can hold several addresses."
+    },
+    {
+      "id": "bybit-por-custody",
+      "entity": "Bybit",
+      "status": "active",
+      "cadence": "monthly",
+      "fetch": "months",
+      "parse": "por_csv",
+      "url": "https://static.bycustody.com/download/app/bybit_por_{YYYYMM}.csv",
+      "landing": "https://www.bybit.com/en/help-center/article?id=000001874",
+      "license": "not stated",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "bybit.com/",
+        "bycustody.com/",
+        "twitter.com/benbybit/"
+      ],
+      "options": {
+        "from": "2022-11",
+        "btc_coins": [
+          "BTC",
+          "BTC-Bitcoin"
+        ],
+        "to": "2026-01"
+      },
+      "note": "The same monthly CSVs on the host the help centre links: 2022-12 to 2025-05 (roughly every other month at first) and 2026-01; a missing month answers 403 and the host often times out. Newer months are on Bybit's API host (bybit-por), so this source stops at 2026-01."
+    },
+    {
+      "id": "mexc-por",
+      "entity": "MEXC",
+      "status": "active",
+      "cadence": "monthly",
+      "fetch": "list",
+      "parse": "por_csv",
+      "url": "https://www.mexc.com/api/assetbussiness/asset/merkle/stock_info/snapshot_date",
+      "landing": "https://www.mexc.com/proof-of-reserve",
+      "license": "not stated",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "mexc.com/",
+        "mocortech.com/"
+      ],
+      "options": {
+        "header_names": {
+          "资产": "coin",
+          "链": "network",
+          "钱包地址": "address"
+        },
+        "btc_networks": [
+          "Bitcoin(BTC)"
+        ],
+        "files": [
+          {
+            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20251108.csv",
+            "observed": "2025-11-08",
+            "wayback": true
+          },
+          {
+            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20251109.csv",
+            "observed": "2025-11-09",
+            "wayback": true
+          },
+          {
+            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20251110.csv",
+            "observed": "2025-11-10",
+            "wayback": true
+          },
+          {
+            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20251111.csv",
+            "observed": "2025-11-11",
+            "wayback": true
+          },
+          {
+            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20251112.csv",
+            "observed": "2025-11-12",
+            "wayback": true
+          },
+          {
+            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20251126.csv",
+            "observed": "2025-11-26",
+            "wayback": true
+          },
+          {
+            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20251210.csv",
+            "observed": "2025-12-10",
+            "wayback": true
+          },
+          {
+            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20260109.csv",
+            "observed": "2026-01-09",
+            "wayback": true
+          },
+          {
+            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20260210.csv",
+            "observed": "2026-02-10",
+            "wayback": true
+          },
+          {
+            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20260310.csv",
+            "observed": "2026-03-10",
+            "wayback": true
+          },
+          {
+            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20260410.csv",
+            "observed": "2026-04-10",
+            "wayback": true
+          },
+          {
+            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20260510.csv",
+            "observed": "2026-05-10",
+            "wayback": true
+          },
+          {
+            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20260610.csv",
+            "observed": "2026-06-10",
+            "wayback": true
+          },
+          {
+            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20260710.csv",
+            "observed": "2026-07-10",
+            "wayback": true
+          },
+          {
+            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20260810.csv",
+            "observed": "2026-08-10",
+            "wayback": true
+          },
+          {
+            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20260910.csv",
+            "observed": "2026-09-10",
+            "wayback": true
+          },
+          {
+            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20261009.csv",
+            "observed": "2026-10-09",
+            "wayback": true
+          }
+        ]
+      },
+      "note": "Per-snapshot CSVs on MEXC's file host (Chinese header: asset, chain, wallet address, balance). The snapshot list API refuses plain connections from Canada, so the 17 files it led to on 2026-11-03 are named here (2025-11-08 to 2026-10-09; earlier snapshots have no file under this name, and new ones fall on about the 10th of each month). Mainnet rows are chain 'Bitcoin(BTC)'; BTC on BEP20, TRC20 and Bitcoin layer-2 chains is dropped."
+    },
+    {
+      "id": "kucoin-por",
+      "entity": "KuCoin",
+      "status": "active",
+      "cadence": "monthly",
+      "fetch": "api_links",
+      "parse": "pdf_table",
+      "url": "https://www.kucoin.com/_api/asset-front/current/por/monthly?lang=en_US",
+      "landing": "https://www.kucoin.com/proof-of-reserves",
+      "license": "not stated",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "kucoin.com/",
+        "staticimg.com/"
+      ],
+      "options": {
+        "list_path": "data",
+        "url_key": "auditReportUrl",
+        "time_key": "auditDate",
+        "network": "Bitcoin",
+        "list": "proof-of-reserves report, verified wallets table",
+        "files": [
+          {
+            "url": "https://assets.staticimg.com/cms/media/oBSu5xKppUHrB0zRZrovMTvlU9lO8HcGEmereBNK9.pdf",
+            "observed": "2026-06-10",
+            "wayback": true
+          }
+        ]
+      },
+      "note": "Hacken reserve reports (PDF) with a table of verified wallets. The page's public API names only the latest report; the June 2026 one comes from a Wayback capture of that API. Earlier reports' file names are random and were not found. Needs pdftotext (Poppler)."
+    },
+    {
+      "id": "kucoin-blog",
+      "entity": "KuCoin",
+      "status": "active",
+      "cadence": "snapshot",
+      "fetch": "list",
+      "parse": "html_table",
+      "url": "https://www.kucoin.com/blog/transparency-and-trust-a-detailed-list-of-kucoin-s-wallets",
+      "landing": "https://www.kucoin.com/blog/transparency-and-trust-a-detailed-list-of-kucoin-s-wallets",
+      "license": "not stated",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "kucoin.com/"
+      ],
+      "options": {
+        "coin_pattern": "^BTC$",
+        "list": "wallet list blog post",
+        "files": [
+          {
+            "url": "https://www.kucoin.com/blog/transparency-and-trust-a-detailed-list-of-kucoin-s-wallets",
+            "observed": "2022-11-11",
+            "wayback": true
+          }
+        ]
+      },
+      "note": "The 2022-11-11 wallet list. Its BTC rows also hold a TRON and a KCC address, which fail Bitcoin validation and are recorded as rejected."
+    },
+    {
+      "id": "deribit-por",
+      "entity": "Deribit",
+      "status": "active",
+      "cadence": "snapshot",
+      "fetch": "single",
+      "parse": "text_pattern",
+      "url": "https://insights.deribit.com/exchange-updates/proof-of-reserves-deribit/",
+      "landing": "https://insights.deribit.com/exchange-updates/proof-of-reserves-deribit/",
+      "license": "not stated",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "deribit.com/"
+      ],
+      "options": {
+        "wayback_history": true,
+        "no_redirects": true,
+        "allow_empty": true,
+        "block": "Bitcoin \\(BTC\\)(.*?)(?=\\n\\s*[A-Z][A-Za-z ]+ \\([A-Z0-9]{2,6}\\)|\\Z)",
+        "list": "proof-of-reserves page, Bitcoin (BTC) table"
+      },
+      "note": "The page was revised in place (three BTC lists, 2022-12 to 2025-04) and now redirects, so its Wayback captures are read; some captures are cut off before the tables. The page excludes assets with third-party custodians (Copper ClearLoop, Cobo Loop)."
+    },
+    {
+      "id": "bitget",
+      "entity": "Bitget",
+      "status": "deferred",
+      "cadence": "monthly",
+      "url": "https://www.bitget.com/v1/bill/proof/assets/public/queryReserveWalletDetailList",
+      "landing": "https://www.bitget.com/promotion/proof-of-reserves",
+      "license": "not stated",
+      "note": "Public API, but it returns 10 wallet rows per request (larger pages and coin filters are ignored), so one snapshot of about 2.17 million rows needs about 217,000 requests, 2.5 days at one per second, and BTC rows are not contiguous. Deferred; DefiLlama's Bitget list covers part.",
+      "operator_hosts": [
+        "bitget.com/",
+        "twitter.com/bitgetglobal/"
+      ]
+    },
+    {
+      "id": "bitmex-porl",
+      "entity": "BitMEX",
+      "status": "active",
+      "cadence": "snapshot",
+      "fetch": "list",
+      "parse": "bitmex_reserves",
+      "url": "https://s3-eu-west-1.amazonaws.com/public.bitmex.com/data/porl/",
+      "landing": "https://github.com/BitMEX/proof-of-reserves-liabilities",
+      "license": "not stated (the tools are subject to the BitMEX Terms of Service)",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "bitmex.com/",
+        "github.com/bitmex/"
+      ],
+      "options": {
+        "files": [
+          {
+            "url": "https://s3-eu-west-1.amazonaws.com/public.bitmex.com/data/porl/reserves-693062-20210728D113027681725000.yaml",
+            "observed": "2021-07-28",
+            "wayback": "20210813082907"
+          },
+          {
+            "url": "https://s3-eu-west-1.amazonaws.com/public.bitmex.com/data/porl/20221115-reserves-763269-20221115D113036434534000.yaml",
+            "observed": "2022-11-15",
+            "wayback": true
+          },
+          {
+            "url": "https://s3-eu-west-1.amazonaws.com/public.bitmex.com/data/porl/20260721-reserves-958990-20260721D100102336354000.yaml",
+            "observed": "2026-07-21",
+            "wayback": true
+          }
+        ]
+      },
+      "note": "BitMEX stopped trading on 2026-09-23 and its reserve files now answer 403. The 2021-07-28 file survives whole as a Wayback capture (a later capture is cut off at 1 MiB, so the capture is pinned). The 2022-11-15 file survives only in GraphSense's packs; the 2026-07-21 file and the snapshots between were not archived and their names are unknown."
+    },
+    {
+      "id": "bitfinex-wallets",
+      "entity": "Bitfinex",
+      "status": "active",
+      "cadence": "git",
+      "fetch": "git_history",
+      "parse": "text_wallets",
+      "url": "https://github.com/bitfinexcom/pub",
+      "landing": "https://github.com/bitfinexcom/pub/blob/main/wallets.txt",
+      "license": "not stated",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "bitfinex.com/",
+        "github.com/bitfinexcom/"
+      ],
+      "options": {
+        "paths": [
+          "wallets.txt"
+        ],
+        "keep": "^BTC\\s"
+      },
+      "note": "Every version of wallets.txt. Bitcoin Cash and Bitcoin SV lines use the same address format, so only descriptions starting 'BTC ' are kept."
+    },
+    {
+      "id": "bitstamp-transparency",
+      "entity": "Bitstamp",
+      "status": "active",
+      "cadence": "live",
+      "fetch": "pages",
+      "parse": "json_list",
+      "url": "https://www.bitstamp.net/api/v2/wallet_transparency/?page={page}",
+      "landing": "https://www.bitstamp.net/wallet_transparency/",
+      "license": "not stated",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "bitstamp.net/"
+      ],
+      "options": {
+        "until_empty": "wallets",
+        "require": [
+          "wallets"
+        ],
+        "path": "wallets.BTC",
+        "address_key": "address",
+        "chain_key": "network",
+        "chain_values": [
+          "bitcoin"
+        ],
+        "btc_only": true,
+        "observed_epoch": "last_update",
+        "list": "wallet transparency list"
+      },
+      "note": "Every page of the live list; the BTC entries span several pages and repeat addresses."
+    },
+    {
+      "id": "backpack-wallets",
+      "entity": "Backpack",
+      "status": "active",
+      "cadence": "live",
+      "fetch": "single",
+      "parse": "json_list",
+      "url": "https://api.backpack.exchange/api/v1/wallets",
+      "landing": "https://backpack.exchange/",
+      "license": "not stated",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "backpack.exchange/"
+      ],
+      "options": {
+        "path": "",
+        "address_key": "address",
+        "chain_key": "blockchain",
+        "chain_values": [
+          "Bitcoin"
+        ],
+        "list": "published wallet list"
+      },
+      "note": "Live public API of the exchange's wallets."
+    },
+    {
+      "id": "okcoin-por",
+      "entity": "Okcoin",
+      "status": "active",
+      "cadence": "monthly",
+      "fetch": "api_links",
+      "parse": "por_csv",
+      "url": "https://www.okcoin.com/v2/asset/audit/list",
+      "landing": "https://www.okcoin.com/proof-of-reserves/download",
+      "license": "not stated",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "okcoin.com/"
+      ],
+      "options": {
+        "list_path": "data",
+        "url_key": "download",
+        "time_key": "createTime"
+      },
+      "note": "Monthly reserve archives listed by the download page's public API, 2023-05 to 2025-05; none after Okcoin US became OKX-branded."
+    },
+    {
+      "id": "swissborg-wallets",
+      "entity": "SwissBorg",
+      "status": "active",
+      "cadence": "git",
+      "fetch": "git_history",
+      "parse": "typed_csv",
+      "url": "https://github.com/SwissBorg/pub",
+      "landing": "https://github.com/SwissBorg/pub",
+      "license": "not stated (no licence file)",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "swissborg.com/",
+        "github.com/swissborg/"
+      ],
+      "options": {
+        "paths": [
+          "swissborg-wallets.csv"
+        ],
+        "address_column": "address",
+        "type_column": "Address type",
+        "name_column": "Wallet name",
+        "keep_types": [
+          "Bitcoin-Legacy",
+          "Bitcoin-Segwit",
+          "Bitcoin"
+        ],
+        "fieldnames": [
+          "Wallet name",
+          "Address type",
+          "address"
+        ]
+      },
+      "note": "Every version of the operator's wallet list. GraphSense's SwissBorg pack cites a Nansen dashboard and stays excluded."
+    },
+    {
+      "id": "korbit-wallets",
+      "entity": "Korbit",
+      "status": "active",
+      "cadence": "snapshot",
+      "fetch": "dates",
+      "parse": "json_list",
+      "url": "https://w2b.korbit.co.kr/v1/exchange/wallets/address?currency=btc&requestDate={date}",
+      "landing": "https://insights.digitalx.miraeasset.com/reserves/address/btc",
+      "license": "not stated",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "korbit.co.kr/",
+        "insights.digitalx.miraeasset.com/"
+      ],
+      "options": {
+        "from": "2023-11-08",
+        "require": [
+          "data"
+        ],
+        "path": "data",
+        "address_key": "address",
+        "chain_key": "currency",
+        "chain_values": [
+          "btc"
+        ],
+        "list": "daily BTC wallet list",
+        "placeholder_sha256": [
+          "2edf730af23c0d820fc75bbe3693955d7be9312162026f0952f10b06aa8b7e15"
+        ]
+      },
+      "note": "Daily lists from 2023-11-08. For a date without a snapshot the API returns a fixed base list instead of an error; that reply is recorded as missing and fetched again next run."
+    },
+    {
+      "id": "coinswitch-por",
+      "entity": "CoinSwitch",
+      "status": "active",
+      "cadence": "snapshot",
+      "fetch": "wp_posts",
+      "parse": "html_table",
+      "url": "https://coinswitch.co/building-blocks/wp-json/wp/v2/posts",
+      "landing": "https://coinswitch.co/building-blocks/",
+      "license": "not stated",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "coinswitch.co/"
+      ],
+      "options": {
+        "searches": [
+          "proof of reserves",
+          "wallet addresses"
+        ],
+        "title_pattern": "proof of reserves|wallet addresses|वॉलेट",
+        "coin_pattern": "^(btc|bitcoin)\\b",
+        "list": "proof-of-reserves post",
+        "allow_empty": true
+      },
+      "note": "Each edition is a blog post with an address table, found through the blog's public post search."
+    },
+    {
+      "id": "nbx-por",
+      "entity": "NBX",
+      "status": "active",
+      "cadence": "live",
+      "fetch": "single",
+      "parse": "html_anchors",
+      "url": "https://nbx.com/en/proof-of-reserves",
+      "landing": "https://nbx.com/en/proof-of-reserves",
+      "license": "not stated",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "nbx.com/"
+      ],
+      "options": {
+        "wayback_history": true,
+        "href_pattern": "^https?://blockstream\\.info/address/",
+        "list": "proof-of-reserves page, Blockstream explorer link"
+      },
+      "note": "The page links its BTC cold and hot wallets to Blockstream's explorer (its link classes changed over time); earlier versions come from Wayback captures."
+    },
+    {
+      "id": "bingx-reserve",
+      "entity": "BingX",
+      "status": "active",
+      "cadence": "live",
+      "fetch": "single",
+      "parse": "por_csv",
+      "url": "https://static-app.bb-os.com/balance-reserve/bingXWalletAddress.xlsx",
+      "landing": "https://bingx.com/en/balance-reserve/",
+      "license": "not stated",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "bingx.com/",
+        "bb-os.com/"
+      ],
+      "options": {
+        "wayback_history": true
+      },
+      "note": "One spreadsheet overwritten in place; addresses are explorer links. The page says most company assets are in other wallets."
+    },
+    {
+      "id": "phemex-cold",
+      "entity": "Phemex",
+      "status": "active",
+      "cadence": "snapshot",
+      "fetch": "list",
+      "parse": "js_items",
+      "url": "https://phemex.com/proof-of-reserves",
+      "landing": "https://phemex.com/proof-of-reserves",
+      "license": "not stated",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "phemex.com/"
+      ],
+      "options": {
+        "files": [
+          {
+            "url": "https://phemex.com/p-117/js/chunk-1012cc25.js",
+            "observed": "2026-11-03",
+            "wayback": true
+          }
+        ],
+        "list": "proof-of-reserves page, 'part of our cold wallets'"
+      },
+      "note": "The page lists a few cold wallets from a script bundle whose name changes with each deployment; a new name must be added here."
+    },
+    {
+      "id": "woo-x-custody",
+      "entity": "WOO X",
+      "status": "active",
+      "cadence": "snapshot",
+      "fetch": "single",
+      "parse": "text_pattern",
+      "url": "https://support.woox.io/api/v2/help_center/en-us/articles/50921487947161.json",
+      "landing": "https://support.woox.io/hc/en-us/articles/50921487947161",
+      "license": "not stated",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "woox.io/",
+        "woo.org/"
+      ],
+      "options": {
+        "json_path": "article.body",
+        "pattern": "^\\s*BTC:\\s*(\\S+)",
+        "list": "custody wallet notice",
+        "custodian": "third-party custodian (the notice says custody wallets are managed by trusted custodians; the reserves page names Cobo Custody)"
+      },
+      "note": "The only operator disclosure is a 2025-09-22 notice of custody wallets held by a third-party custodian, so its address is excluded and reported."
+    },
+    {
+      "id": "coinex-por",
+      "entity": "CoinEx",
+      "status": "active",
+      "cadence": "monthly",
+      "fetch": "list",
+      "parse": "por_csv",
+      "url": "https://www.coinex.com/res/account/balance/merkle/reserve",
+      "landing": "https://www.coinex.com/en/reserve-proof",
+      "license": "not stated",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "coinex.com/",
+        "coinex.network/",
+        "coinexstatic.com/"
+      ],
+      "options": {
+        "also_columns": [
+          "owner_address",
+          "owner address"
+        ],
+        "files": [
+          {
+            "url": "https://file.coinexstatic.com/CoinEx_Address_2023-08-21.xlsx",
+            "observed": "2023-08-21",
+            "wayback": true
+          },
+          {
+            "url": "https://file.coinexstatic.com/CoinEx_Address_2024-11-13.xlsx",
+            "observed": "2024-11-13",
+            "wayback": true
+          },
+          {
+            "url": "https://file.coinexstatic.com/CoinEx_Address_2025-01-21.xlsx",
+            "observed": "2025-01-21",
+            "wayback": true
+          },
+          {
+            "url": "https://file.coinexstatic.com/CoinEx_Address_2025-02-25.xlsx",
+            "observed": "2025-02-25",
+            "wayback": true
+          },
+          {
+            "url": "https://file.coinexstatic.com/CoinEx_Address_2025-03-31.xlsx",
+            "observed": "2025-03-31",
+            "wayback": true
+          },
+          {
+            "url": "https://file.coinexstatic.com/CoinEx_Address_2025-04-29.xlsx",
+            "observed": "2025-04-29",
+            "wayback": true
+          },
+          {
+            "url": "https://file.coinexstatic.com/CoinEx_Address_2025-06-04.xlsx",
+            "observed": "2025-06-04",
+            "wayback": true
+          },
+          {
+            "url": "https://file.coinexstatic.com/CoinEx_Address_2025-07-08.xlsx",
+            "observed": "2025-07-08",
+            "wayback": true
+          },
+          {
+            "url": "https://file.coinexstatic.com/CoinEx_Address_2025-08-13.xlsx",
+            "observed": "2025-08-13",
+            "wayback": true
+          },
+          {
+            "url": "https://file.coinexstatic.com/CoinEx_Address_2025-09-08.xlsx",
+            "observed": "2025-09-08",
+            "wayback": true
+          },
+          {
+            "url": "https://file.coinexstatic.com/CoinEx_Address_2025-10-10.xlsx",
+            "observed": "2025-10-10",
+            "wayback": true
+          },
+          {
+            "url": "https://file.coinexstatic.com/CoinEx_Address_2025-11-13.xlsx",
+            "observed": "2025-11-13",
+            "wayback": true
+          },
+          {
+            "url": "https://file.coinexstatic.com/CoinEx_Address_2025-12-17.xlsx",
+            "observed": "2025-12-17",
+            "wayback": true
+          },
+          {
+            "url": "https://file.coinexstatic.com/CoinEx_Address_2026-1-22.xlsx",
+            "observed": "2026-01-22",
+            "wayback": true
+          },
+          {
+            "url": "https://file.coinexstatic.com/CoinEx_Address_2026-2-24.xlsx",
+            "observed": "2026-02-24",
+            "wayback": true
+          },
+          {
+            "url": "https://file.coinexstatic.com/CoinEx_Address_2026-4-9.xlsx",
+            "observed": "2026-04-09",
+            "wayback": true
+          },
+          {
+            "url": "https://file.coinexstatic.com/CoinEx_Address_2026-5-8.xlsx",
+            "observed": "2026-05-08",
+            "wayback": true
+          },
+          {
+            "url": "https://file.coinexstatic.com/CoinEx_Address_2026-6-11.xlsx",
+            "observed": "2026-06-11",
+            "wayback": true
+          },
+          {
+            "url": "https://file.coinexstatic.com/CoinEx_Address_2026-07-21.xlsx",
+            "observed": "2026-07-21",
+            "wayback": true
+          },
+          {
+            "url": "https://file.coinexstatic.com/CoinEx_Address_2026-8-25.xlsx",
+            "observed": "2026-08-25",
+            "wayback": true
+          },
+          {
+            "url": "https://file.coinexstatic.com/CoinEx_Address_2026-9-14.xlsx",
+            "observed": "2026-09-14",
+            "wayback": true
+          }
+        ]
+      },
+      "note": "Monthly spreadsheets on CoinEx's file host. The reserve page's API (www.coinex.com/res/account/balance/merkle/reserve, which lists them) refuses connections from Canada, so the files it listed on 2026-11-03 are named here; add new months from the API or the page. A 2023-08-21 file the API no longer lists is included. Cold-wallet rows also name an owner address, which is kept. Files between 2023-08 and 2024-11 are not known."
+    },
+    {
+      "id": "cex-io-wallets",
+      "entity": "CEX.IO",
+      "status": "active",
+      "cadence": "live",
+      "fetch": "single",
+      "parse": "text_pattern",
+      "url": "https://blog.cex.io/wallet-address-list",
+      "landing": "https://blog.cex.io/wallet-address-list",
+      "license": "not stated",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "cex.io/"
+      ],
+      "options": {
+        "wayback_history": true,
+        "no_redirects": true,
+        "block": "Bitcoin \\(BTC\\):(.*?)(?=\\n[^\\n]*\\([A-Z0-9]{2,6}\\):|\\Z)",
+        "list": "wallet address list ('external custodial wallets are excluded')"
+      },
+      "note": "One page updated in place. From Canada every cex.io page redirects to a regulatory notice, so the redirect is recorded and the page's Wayback captures are read."
+    },
+    {
+      "id": "coindcx",
+      "entity": "CoinDCX",
+      "status": "blocked_antibot",
+      "cadence": "snapshot",
+      "url": "https://coindcx.com/proof-of-reserves",
+      "landing": "https://coindcx.com/proof-of-reserves",
+      "license": "not stated",
+      "note": "coindcx.com answers plain HTTP with a Cloudflare challenge (403), which is not worked around. The CEO's 2022 announcement publishes the full list only as a Nansen dashboard, which is excluded."
+    },
+    {
+      "id": "gemini-trust-center",
+      "entity": "Gemini",
+      "status": "active",
+      "cadence": "snapshot",
+      "fetch": "list",
+      "parse": "text_pattern",
+      "url": "https://www.gemini.com/trust-center",
+      "landing": "https://www.gemini.com/trust-center",
+      "license": "not stated",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "gemini.com/"
+      ],
+      "options": {
+        "block": "defaultValue[\\\\\"]*:[\\\\\"]*\\[([^\\]]*)\\][^{}]*?key[\\\\\"]*:[\\\\\"]*Bitcoin",
+        "list": "Trust Center wallet list ('used to support BTC and ETH exchange activity')",
+        "files": [
+          {
+            "url": "https://web.archive.org/web/20251201042756id_/https://www.gemini.com/trust-center",
+            "observed": "2025-12-01",
+            "capture_of": "https://www.gemini.com/trust-center"
+          }
+        ]
+      },
+      "note": "The Trust Center listed BTC wallets from a feature-flag setting that is now removed; one Wayback capture keeps it. Glassnode says Gemini supplies verified addresses daily, possibly through a channel not found here."
+    },
+    {
+      "id": "defillama",
+      "entity": null,
+      "status": "active",
+      "cadence": "pinned",
+      "parse": "defillama",
+      "url": "https://github.com/DefiLlama/DefiLlama-Adapters",
+      "landing": "https://defillama.com/cexs",
+      "license": "MIT (DefiLlama-Adapters); the sources of its addresses are not stated",
+      "options": {
+        "repository": "https://github.com/DefiLlama/DefiLlama-Adapters",
+        "commit": "700a051c4d0dc7ac83b319dac198dacde95a3336",
+        "cexs": "https://api.llama.fi/cexs",
+        "protocols": "https://api.llama.fi/protocols",
+        "excluded": {
+          "Coinsquare": "DefiLlama cites a Coinsquare tweet whose only list is a Nansen dashboard, a paid analytics platform",
+          "CoinDCX": "DefiLlama cites a CoinDCX tweet whose only list is a Nansen dashboard, a paid analytics platform"
+        }
+      },
+      "note": "Bitcoin owners of every CEX adapter at a pinned commit. service_disclosure_via_aggregator when DefiLlama's wallet page for the exchange is the operator's own and the operator publishes a list, third_party_exact_tag otherwise. Adapters whose cited page or its list is on a paid analytics platform (Arkham, Nansen) are excluded."
+    },
+    {
+      "id": "figshare-btg",
+      "entity": null,
+      "status": "active",
+      "cadence": "pinned",
+      "fetch": "single",
+      "parse": "figshare_csv",
+      "url": "https://ndownloader.figshare.com/files/52159721",
+      "landing": "https://doi.org/10.6084/m9.figshare.26305093.v3",
+      "license": "CC BY 4.0 (Schnoering and Vazirgiannis, BitcoinTemporalGraph, figshare 2024)",
+      "evidence_type": "third_party_exact_tag",
+      "note": "addresses.csv of an openly licensed research dataset: EXCHANGE-category rows whose entity is in this registry. The 17 GB graph is not used."
+    },
+    {
+      "id": "coinbase-cbbtc",
+      "entity": "Coinbase",
+      "status": "active",
+      "cadence": "live",
+      "fetch": "single",
+      "parse": "json_list",
+      "url": "https://www.coinbase.com/cbbtc/proof-of-reserves.json",
+      "landing": "https://www.coinbase.com/cbbtc/proof-of-reserves",
+      "license": "not stated",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "coinbase.com/"
+      ],
+      "options": {
+        "wayback_history": true,
+        "require": [
+          "reserveAddresses"
+        ],
+        "path": "reserveAddresses",
+        "address_key": "address",
+        "chain_key": "balance.network.name",
+        "chain_values": [
+          "bitcoin"
+        ],
+        "list": "cbBTC proof-of-reserves list (BTC that Coinbase holds as custodian for cbBTC)"
+      },
+      "note": "The addresses backing cbBTC, which Coinbase holds itself; they rotate completely between snapshots. Plain HTTP gets a Cloudflare challenge (403), which is recorded and not worked around, so the list comes from Wayback captures. Coinbase publishes no list of its exchange wallets."
+    },
+    {
+      "id": "coinbase-cbbtc-page",
+      "entity": "Coinbase",
+      "status": "active",
+      "cadence": "snapshot",
+      "fetch": "list",
+      "parse": "text_pattern",
+      "url": "https://www.coinbase.com/cbbtc/proof-of-reserves",
+      "landing": "https://www.coinbase.com/cbbtc/proof-of-reserves",
+      "license": "not stated",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "coinbase.com/"
+      ],
+      "options": {
+        "pattern": "ReserveAddress[\\\\\"]*,[\\\\\"]*address[\\\\\"]*:[\\\\\"]*([0-9A-Za-z]{26,90})",
+        "allow_empty": true,
+        "list": "cbBTC proof-of-reserves page (BTC that Coinbase holds as custodian for cbBTC)",
+        "files": [
+          {
+            "url": "https://web.archive.org/web/20250218211642id_/https://www.coinbase.com/cbbtc/proof-of-reserves",
+            "observed": "2025-02-18",
+            "capture_of": "https://www.coinbase.com/cbbtc/proof-of-reserves"
+          },
+          {
+            "url": "https://web.archive.org/web/20250929223144id_/https://www.coinbase.com/cbbtc/proof-of-reserves",
+            "observed": "2025-09-29",
+            "capture_of": "https://www.coinbase.com/cbbtc/proof-of-reserves"
+          },
+          {
+            "url": "https://web.archive.org/web/20250930030956id_/https://www.coinbase.com/cbbtc/proof-of-reserves?ref=blog.citrea.xyz",
+            "observed": "2025-09-30",
+            "capture_of": "https://www.coinbase.com/cbbtc/proof-of-reserves?ref=blog.citrea.xyz"
+          },
+          {
+            "url": "https://web.archive.org/web/20251002193454id_/https://www.coinbase.com/en-ca/cbbtc/proof-of-reserves",
+            "observed": "2025-10-02",
+            "capture_of": "https://www.coinbase.com/en-ca/cbbtc/proof-of-reserves"
+          },
+          {
+            "url": "https://web.archive.org/web/20251017171556id_/https://www.coinbase.com/cbbtc/proof-of-reserves",
+            "observed": "2025-10-17",
+            "capture_of": "https://www.coinbase.com/cbbtc/proof-of-reserves"
+          },
+          {
+            "url": "https://web.archive.org/web/20251127010426id_/https://www.coinbase.com/cbbtc/proof-of-reserves?ref=blog.citrea.xyz",
+            "observed": "2025-11-27",
+            "capture_of": "https://www.coinbase.com/cbbtc/proof-of-reserves?ref=blog.citrea.xyz"
+          },
+          {
+            "url": "https://web.archive.org/web/20261012102957id_/https://www.coinbase.com/en-ca/cbbtc/proof-of-reserves",
+            "observed": "2026-10-12",
+            "capture_of": "https://www.coinbase.com/en-ca/cbbtc/proof-of-reserves"
+          }
+        ]
+      },
+      "note": "Wayback captures of the page whose server-rendered data embeds the reserve list; several captures are script-only shells without it."
+    },
+    {
+      "id": "kraken",
+      "entity": "Kraken",
+      "status": "reported_only",
+      "cadence": "snapshot",
+      "url": "https://www.kraken.com/proof-of-reserves",
+      "landing": "https://www.kraken.com/proof-of-reserves",
+      "license": "not stated",
+      "note": "Proof of reserves is an accountant's attestation and a logged-in inclusion check; no addresses are published."
+    },
+    {
+      "id": "bitso",
+      "entity": "Bitso",
+      "status": "reported_only",
+      "cadence": "snapshot",
+      "url": "https://bitso.com/proof-that-matters",
+      "landing": "https://bitso.com/proof-that-matters",
+      "license": "not stated",
+      "note": "Monthly zero-knowledge solvency proofs are shown only after login and are designed not to reveal addresses."
+    },
+    {
+      "id": "crypto-com",
+      "entity": "Crypto.com",
+      "status": "no_public_list",
+      "cadence": "snapshot",
+      "url": "https://crypto.com/en/proof-of-reserves",
+      "landing": "https://crypto.com/en/proof-of-reserves",
+      "license": "not stated",
+      "note": "The reserve report (PDF) and the auditor's Merkle page hold no addresses, and fund checks need a login. Its November 2022 wallet posts on X need a login; GraphSense's pinned pack keeps that transcription.",
+      "operator_hosts": [
+        "crypto.com/",
+        "twitter.com/kris/"
+      ]
+    },
+    {
+      "id": "gate",
+      "entity": "Gate",
+      "status": "no_public_list",
+      "cadence": "snapshot",
+      "url": "https://www.gate.com/proof-of-reserves",
+      "landing": "https://www.gate.com/proof-of-reserves",
+      "license": "not stated (verifier code GPL-3.0)",
+      "note": "Merkle and zk-SNARK liability proofs with auditor-run ownership checks; the snapshot API gives totals only and the GitHub releases hold verifier binaries. No address list.",
+      "operator_hosts": [
+        "gate.com/",
+        "gate.io/",
+        "github.com/gateio/"
+      ]
+    },
+    {
+      "id": "gate-us",
+      "entity": "Gate US",
+      "status": "no_public_list",
+      "cadence": "snapshot",
+      "url": "https://www.gate.com/en-us/proof-of-reserves",
+      "landing": "https://www.gate.com/en-us/proof-of-reserves",
+      "license": "not stated",
+      "note": "Runs its reserves page on Gate's platform; totals only, no address list."
+    },
+    {
+      "id": "binance-us",
+      "entity": "Binance.US",
+      "status": "no_public_list",
+      "cadence": "snapshot",
+      "url": "https://www.binance.us/",
+      "landing": "https://www.binance.us/",
+      "license": "not stated",
+      "note": "No reserve or wallet page in either sitemap. Binance's lists belong to a different company and are not used for Binance.US."
+    },
+    {
+      "id": "coinsquare",
+      "entity": "Coinsquare",
+      "status": "no_public_list",
+      "cadence": "snapshot",
+      "url": "https://www.coinsquare.com/",
+      "landing": "https://www.coinsquare.com/en-ca/learn/coinsquares-commitment-to-transparency-and-risk-management",
+      "license": "not stated",
+      "note": "Client assets are with Coinbase Custody, Tetra Trust and Fireblocks; no addresses published. Its 2022 tweet links only a Nansen dashboard, which is excluded."
+    },
+    {
+      "id": "hashkey-exchange",
+      "entity": "HashKey Exchange",
+      "status": "no_public_list",
+      "cadence": "snapshot",
+      "url": "https://exchange.hashkey.com/",
+      "landing": "https://exchange.hashkey.com/en-US",
+      "license": "not stated",
+      "note": "No reserve page (it redirects home) and no address in the help centre's 487 articles."
+    },
+    {
+      "id": "hashkey-global",
+      "entity": "HashKey Global",
+      "status": "no_public_list",
+      "cadence": "snapshot",
+      "url": "https://global.hashkey.com/",
+      "landing": "https://global.hashkey.com/en-US",
+      "license": "not stated",
+      "note": "The reserve page is missing and the help centre's 496 articles hold no address."
+    },
+    {
+      "id": "river",
+      "entity": "River",
+      "status": "no_public_list",
+      "cadence": "snapshot",
+      "url": "https://river.com/reserves",
+      "landing": "https://river.com/reserves",
+      "license": "not stated",
+      "note": "Each monthly proof's single cold-storage address appears only in an interactive dialog of the page, not in any file or archived HTML."
+    },
+    {
+      "id": "wazirx",
+      "entity": "WazirX",
+      "status": "no_public_list",
+      "cadence": "snapshot",
+      "url": "https://wazirx.com/proof-of-reserves",
+      "landing": "https://wazirx.com/proof-of-reserves",
+      "license": "not stated",
+      "note": "The proof-of-reserves page now renders empty and its 2023 PDF holds no addresses. The 240,000-address list from its restructuring was filed with the Singapore High Court, not published on the site."
+    }
+  ]
+}

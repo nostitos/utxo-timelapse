@@ -7,11 +7,14 @@
 // uploaded as buffer ranges and per-cell deltas are scattered by a compute pass.
 // WebGL2: a DataArrayTexture (one layer per slot) uploaded per layer.
 // A page table texture maps tile id -> slot (or -1) for neighbour lookups in shaders.
+// While the owner layer is on (setOwners), a uint32 owner word per cell (replay/owners.js:
+// owned count in bits 0-23, owner code in bits 24-31) lives in a parallel storage buffer
+// (WebGPU) or an RGBA8 DataArrayTexture of the same bytes (WebGL2).
 import {
   StorageBufferAttribute, DataArrayTexture, DataTexture, RGBAFormat, RedFormat, FloatType,
-  NearestFilter, ClampToEdgeWrapping, NoColorSpace,
+  NearestFilter, ClampToEdgeWrapping, NoColorSpace, UnsignedByteType,
 } from 'three/webgpu';
-import { storage, textureLoad, ivec2, int, Fn, instanceIndex, uniform } from 'three/tsl';
+import { storage, textureLoad, ivec2, int, uint, float, round, Fn, instanceIndex, uniform } from 'three/tsl';
 import { tileInfo, SLOT, SLOT_CELLS } from '../../data/grid.js';
 import { rootTiles, PATCHES_PER_TILE } from './lod.js';
 import { bumpPatchMax, recomputePatchMax } from './patchmax.js';
@@ -40,6 +43,8 @@ export class TileAtlas {
     this.stats = { uploadsFull: 0, uploadsDelta: 0, slotsUsed: 0, evictions: 0, scatterDispatches: 0, layerUploads: 0 };
     this.pendingLayers = new Set();
     this.maxLayerUploadsPerFrame = 24;
+    this.ownerData = null;          // Uint32Array while the owner layer is on
+    this.pendingOwnerLayers = new Set();
     this._pageDirty = true;
     this._createPageTable();
     this._createDeltaStaging();
@@ -62,6 +67,7 @@ export class TileAtlas {
     lastUse.set(this.lastUse);
     this.lastUse = lastUse;
     this.capacity = n;
+    if (this.ownerData) this._allocOwners(n);
     if (this.webgpu) {
       if (this.attribute) this.attribute.dispose?.();
       const counts = new Uint32Array(n * SLOT_CELLS);
@@ -94,6 +100,52 @@ export class TileAtlas {
     return true;
   }
 
+  /** Allocates (on) or frees (off) the owner plane; materials rebuild with the new layout. */
+  setOwners(on) {
+    if (!!on === (this.ownerData !== null)) return;
+    if (on) {
+      this._allocOwners(this.capacity);
+    } else {
+      this.ownerAttribute?.dispose?.();
+      this.ownerTexture?.dispose();
+      this.ownerData = this.ownerAttribute = this.ownerReadNode = this.ownerWriteNode = this.ownerTexture = null;
+      this.pendingOwnerLayers.clear();
+    }
+    if (this.webgpu) this._buildScatter();
+    this.layoutVersion++;
+  }
+
+  get ownersOn() {
+    return this.ownerData !== null;
+  }
+
+  _allocOwners(n) {
+    const old = this.ownerData;
+    const data = new Uint32Array(n * SLOT_CELLS);
+    if (old) data.set(old.subarray(0, Math.min(old.length, data.length)));
+    this.ownerData = data;
+    if (this.webgpu) {
+      this.ownerAttribute?.dispose?.();
+      this.ownerAttribute = new StorageBufferAttribute(data, 1);
+      this.ownerAttribute.name = 'terrainOwners';
+      this.ownerReadNode = storage(this.ownerAttribute, 'uint', n * SLOT_CELLS).toReadOnly();
+      this.ownerWriteNode = storage(this.ownerAttribute, 'uint', n * SLOT_CELLS);
+      if (!this.deltaOwners) this.deltaOwners = new StorageBufferAttribute(new Uint32Array(DELTA_CAPACITY), 1);
+    } else {
+      this.ownerTexture?.dispose();
+      const tex = new DataArrayTexture(new Uint8Array(data.buffer), SLOT, SLOT, n);
+      tex.format = RGBAFormat;
+      tex.type = UnsignedByteType;
+      tex.minFilter = tex.magFilter = NearestFilter;
+      tex.wrapS = tex.wrapT = ClampToEdgeWrapping;
+      tex.generateMipmaps = false;
+      tex.colorSpace = NoColorSpace;
+      tex.needsUpdate = true;
+      this.ownerTexture = tex;
+      this.pendingOwnerLayers.clear();
+    }
+  }
+
   _createPageTable() {
     const n = this.grid.tiles;
     this.pageData = new Float32Array(n * 4).fill(-1);
@@ -119,9 +171,12 @@ export class TileAtlas {
     const dst = this.writeNode;
     const counts = storage(this.deltaCounts, 'uint', DELTA_CAPACITY).toReadOnly();
     const countDst = this.countWriteNode;
+    const owners = this.ownerData ? storage(this.deltaOwners, 'uint', DELTA_CAPACITY).toReadOnly() : null;
+    const ownerDst = this.ownerWriteNode;
     this.scatter = Fn(() => {
       dst.element(idx.element(instanceIndex)).assign(val.element(instanceIndex));
       countDst.element(idx.element(instanceIndex)).assign(counts.element(instanceIndex));
+      if (owners) ownerDst.element(idx.element(instanceIndex)).assign(owners.element(instanceIndex));
     })().compute(DELTA_CAPACITY, [128]);
     this.scatter.name = 'terrainAtlasScatter';
   }
@@ -134,6 +189,23 @@ export class TileAtlas {
       return this.readNode.element(int(slotNode).mul(SLOT_CELLS).add(int(syNode).mul(SLOT)).add(int(sxNode)));
     }
     return textureLoad(this.texture, ivec2(int(sxNode), int(syNode))).depth(int(slotNode));
+  }
+
+  /**
+   * Owner word of slot-local cell (sx, sy) as float nodes {code, count} (0 when none);
+   * only while the owner layer is on.
+   */
+  ownerAt(slotNode, sxNode, syNode) {
+    if (this.webgpu) return this.ownerAtIndex(int(slotNode).mul(SLOT_CELLS).add(int(syNode).mul(SLOT)).add(int(sxNode)));
+    // RGBA8 bytes of the little-endian word: count in x, y, z and the code in w.
+    const b = round(textureLoad(this.ownerTexture, ivec2(int(sxNode), int(syNode))).depth(int(slotNode)).mul(255));
+    return { code: b.w, count: b.x.add(b.y.mul(256)).add(b.z.mul(65536)) };
+  }
+
+  /** Owner word at a flat cell index (slot * SLOT_CELLS + local), WebGPU only. */
+  ownerAtIndex(indexNode) {
+    const w = this.ownerReadNode.element(indexNode);
+    return { code: float(w.shiftRight(uint(24))), count: float(w.bitAnd(uint(0xffffff))) };
   }
 
   /** float node: slot of a tile id (-1 when not resident with data). */
@@ -252,6 +324,7 @@ export class TileAtlas {
         this.countData.fill(0, start, start + SLOT_CELLS);
         if (t.counts) this.countData.set(t.counts, start);
       }
+      this._setOwnerSlot(s, frame.owners ? t.owners : null);
       this.tileState[t.id] = 1;
       this._markSlotFull(s);
       this._recomputeMaxima(t.id, s);
@@ -274,12 +347,15 @@ export class TileAtlas {
           if (s < 0) continue;
           this.data.fill(0, s * FLOATS_PER_SLOT, (s + 1) * FLOATS_PER_SLOT);
           if (this.webgpu) this.countData.fill(0, s * SLOT_CELLS, (s + 1) * SLOT_CELLS);
+          this._setOwnerSlot(s, null);
           this.tileState[id] = 1;
           this._markSlotFull(s);
         }
         const base = s * FLOATS_PER_SLOT;
         const pm = this.patchMaxValue;
         const pbase = id * PATCHES_PER_TILE;
+        const ownerBase = s * SLOT_CELLS;
+        const ownerWords = this.ownerData && frame.owners && d.owners ? d.owners : null;
         for (let j = a; j < b; j++) {
           const li = index[j];
           const o = base + li * 4;
@@ -298,14 +374,43 @@ export class TileAtlas {
           }
           const count = d.counts ? d.counts[j] : 0;
           if (this.webgpu) this.countData[s * SLOT_CELLS + li] = count;
-          this._stageDelta(s, li, j, data, count);
+          // Frames without owner words leave a cell's word as it is (the worker refreshes it).
+          let owner = 0;
+          if (this.ownerData) {
+            if (ownerWords) this.ownerData[ownerBase + li] = ownerWords[j];
+            owner = this.ownerData[ownerBase + li];
+            if (!this.webgpu && ownerWords) this.pendingOwnerLayers.add(s);
+          }
+          this._stageDelta(s, li, j, data, count, owner);
         }
         out.deltaCells += b - a;
       }
       this.stats.uploadsDelta += out.deltaCells;
     }
-    if (out.fullIds.length || out.deltaCells) this.version++;
+    if (frame.ownerTiles && this.ownerData) {
+      for (const t of frame.ownerTiles) {
+        const s = this.tileSlot[t.id];
+        if (s >= 0) this._setOwnerSlot(s, t.owners);
+      }
+      out.ownerTiles = frame.ownerTiles.length;
+    }
+    if (out.fullIds.length || out.deltaCells || out.ownerTiles) this.version++;
     return out;
+  }
+
+  /** Writes a slot's owner plane (null: none) and schedules its upload. */
+  _setOwnerSlot(s, plane) {
+    if (!this.ownerData) return;
+    const o = s * SLOT_CELLS;
+    if (plane) this.ownerData.set(plane, o);
+    else this.ownerData.fill(0, o, o + SLOT_CELLS);
+    if (this.webgpu) {
+      if (this.deltaCount) this.flush(); // staged words for this slot predate the plane
+      this.ownerAttribute.addUpdateRange(o, SLOT_CELLS);
+      this._ownerDirty = true;
+    } else {
+      this.pendingOwnerLayers.add(s);
+    }
   }
 
   _bumpPatches(pm, pbase, lx, ly, v) {
@@ -332,7 +437,7 @@ export class TileAtlas {
     }
   }
 
-  _stageDelta(s, li, j, data, count) {
+  _stageDelta(s, li, j, data, count, owner = 0) {
     if (!this.webgpu) {
       this.pendingLayers.add(s);
       return;
@@ -341,6 +446,7 @@ export class TileAtlas {
     const n = this.deltaCount++;
     this.deltaIndex.array[n] = s * SLOT_CELLS + li;
     this.deltaCounts.array[n] = count;
+    if (this.ownerData) this.deltaOwners.array[n] = owner;
     const dd = this.deltaData.array;
     dd[n * 4] = data[j * 4];
     dd[n * 4 + 1] = data[j * 4 + 1];
@@ -356,6 +462,11 @@ export class TileAtlas {
       this._pageDirty = false;
     }
     if (this.webgpu) {
+      if (this._ownerDirty) {
+        // Whole owner planes go up before the scatter writes newer cells over them.
+        this.ownerAttribute.needsUpdate = true;
+        this._ownerDirty = false;
+      }
       if (this.deltaCount) {
         const n = this.deltaCount;
         this.deltaIndex.addUpdateRange(0, n);
@@ -364,6 +475,10 @@ export class TileAtlas {
         this.deltaData.needsUpdate = true;
         this.deltaCounts.addUpdateRange(0, n);
         this.deltaCounts.needsUpdate = true;
+        if (this.ownerData) {
+          this.deltaOwners.addUpdateRange(0, n);
+          this.deltaOwners.needsUpdate = true;
+        }
         if (this._attrDirty) {
           this.attribute.needsUpdate = true;
           this.countAttribute.needsUpdate = true;
@@ -378,15 +493,27 @@ export class TileAtlas {
         this.countAttribute.needsUpdate = true;
         this._attrDirty = false;
       }
-    } else if (this.pendingLayers.size) {
-      let n = 0;
-      for (const s of this.pendingLayers) {
-        this.texture.addLayerUpdate(s);
-        this.pendingLayers.delete(s);
-        if (++n >= this.maxLayerUploadsPerFrame) break;
+    } else {
+      if (this.pendingLayers.size) {
+        let n = 0;
+        for (const s of this.pendingLayers) {
+          this.texture.addLayerUpdate(s);
+          this.pendingLayers.delete(s);
+          if (++n >= this.maxLayerUploadsPerFrame) break;
+        }
+        this.texture.needsUpdate = true;
+        this.stats.layerUploads += n;
       }
-      this.texture.needsUpdate = true;
-      this.stats.layerUploads += n;
+      if (this.ownerTexture && this.pendingOwnerLayers.size) {
+        // A quarter of a data layer each, so twice as many per frame.
+        let n = 0;
+        for (const s of this.pendingOwnerLayers) {
+          this.ownerTexture.addLayerUpdate(s);
+          this.pendingOwnerLayers.delete(s);
+          if (++n >= 2 * this.maxLayerUploadsPerFrame) break;
+        }
+        this.ownerTexture.needsUpdate = true;
+      }
     }
     let used = 0;
     for (let i = 0; i < this.capacity; i++) if (this.slotTile[i] >= 0) used++;
@@ -407,13 +534,16 @@ export class TileAtlas {
   }
 
   get bytes() {
-    return this.capacity * (FLOATS_PER_SLOT * 4 + (this.webgpu ? SLOT_CELLS * 4 : 0));
+    return this.capacity * (FLOATS_PER_SLOT * 4 + (this.webgpu ? SLOT_CELLS * 4 : 0) + (this.ownerData ? SLOT_CELLS * 4 : 0));
   }
 
   dispose() {
     this.attribute?.dispose?.();
     this.countAttribute?.dispose?.();
     this.deltaCounts?.dispose?.();
+    this.ownerAttribute?.dispose?.();
+    this.deltaOwners?.dispose?.();
+    this.ownerTexture?.dispose();
     this.texture?.dispose();
     this.pageTexture.dispose();
   }

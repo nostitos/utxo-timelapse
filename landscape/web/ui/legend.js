@@ -4,7 +4,7 @@
 
 import { paletteRGB, parseColor } from '../render/terrain/palette.js';
 import { dismissButton } from './dismiss.js';
-import { fmtCompact } from './format.js';
+import { fmtCompact, escapeHtml } from './format.js';
 
 const MEASURE_LABELS = {
   density: 'weighted density',
@@ -74,6 +74,7 @@ export function createLegend({ container, settings, onDismiss = null, onEditHeig
     }
   };
   let pending = false;
+  let owners = null; // [{name, color}] of the owners the owner layer lights, or null
   // One button, moved into each re-rendered header.
   const close = onDismiss ? dismissButton('the legend', onDismiss) : null;
 
@@ -90,6 +91,14 @@ export function createLegend({ container, settings, onDismiss = null, onEditHeig
     const ticks = legendTicks(transfer);
     const heat = parseColor(get('color.heat', '#ffffff')) || [255, 255, 255];
     const halfLife = get('amp.heatHalfLife', 144);
+    const swatch = (color) => '<i class="lg-swatch" style="background:' + escapeHtml(color) + '"></i>';
+    const ownerRow = owners && owners.length
+      ? '<div class="lg-row lg-owners"><span class="eyebrow">Owners</span><span>' +
+        owners.map((o) => swatch(o.color) + escapeHtml(o.name)).join(' \u00b7 ') +
+        (get('owners.only', false) ? ' \u00b7 the rest hidden'
+          : (get('owners.flat', false) ? ' \u00b7 the rest flat at ' : ' \u00b7 the rest at ') + Math.round(get('owners.dim', 0.2) * 100) + '%') +
+        ' \u00b7 only their spends flash</span></div>'
+      : '';
 
     container.innerHTML =
       '<div class="lg-head"><span class="eyebrow">Colour</span><span class="lg-measure">' + MEASURE_LABELS[colourMeasure] + ' per cell</span></div>' +
@@ -98,6 +107,7 @@ export function createLegend({ container, settings, onDismiss = null, onEditHeig
       '<p class="lg-note">' + MEASURE_NOTES[colourMeasure] + '; log scale from 1 to ' + fmtCompact(transfer.upper) + (transfer.gamma !== 1 ? ', gamma ' + transfer.gamma : '') + '. Empty cells use the ground colour.</p>' +
       '<div class="lg-row"><span class="eyebrow">Height</span><span>' + MEASURE_LABELS[heightMeasure] + ' \u00b7 ' + (CURVES[get('amp.curve', 'log')] || '') + ' \u00b7 reference ' + fmtCompact(get('amp.reference', 500)) + ' \u2192 ' + fmtCompact(get('amp.exaggeration', 10)) + ' high' + '</span></div>' +
       '<div class="lg-row"><span class="eyebrow">Heat</span><span><i class="lg-swatch" style="background:rgb(' + heat.join(',') + ')"></i>Spent outputs flash, brighter for more BTC \u00b7 half-life ' + fmtCompact(halfLife) + ' blocks</span></div>' +
+      ownerRow +
       '<p class="lg-foot">Each cell holds 64 blocks \u00d7 1 amount row. Every block has the same width, so early eras look sparse next to the film.</p>';
     if (close) container.querySelector('.lg-head').appendChild(close);
     if (onEditHeight) {
@@ -133,6 +143,11 @@ export function createLegend({ container, settings, onDismiss = null, onEditHeig
   return {
     element: container,
     render,
+    /** Owners lit by the owner layer ([{name, color}]), or null when it is off. */
+    setOwners(list) {
+      owners = list && list.length ? list : null;
+      schedule();
+    },
     dispose() {
       if (typeof unsubscribe === 'function') unsubscribe();
     },

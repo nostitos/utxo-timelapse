@@ -51,7 +51,7 @@ function chart(points, { start, end, label, firstLabel, lastLabel, sampled = fal
 
 export function createInspector({
   container, marker, replay, grid, rows, blocktimes, axis, explorerBase, camera, canvas, heightAt, onClose, onSelect, onShare,
-  link2d = (block, x, y) => explorerBase + '/?block=' + block + '&x=' + x + '&y=' + y, local = true,
+  link2d = (block, x, y) => explorerBase + '/?block=' + block + '&x=' + x + '&y=' + y, local = true, owners = () => null,
 }) {
   let sel = null;
   let seq = 0;
@@ -133,6 +133,16 @@ export function createInspector({
     const count = cell.countSmall + cell.countLarge, sats = cell.satsSmall + cell.satsLarge;
     html += '<dl class="in-primary">' + metric('Unspent outputs', fmtInt(count)) +
       '<div><dt>Total value</dt><dd><span class="in-value' + (fmtInt(sats).length > 12 ? ' in-value-long' : '') + '">' + satsText(sats) + '</span></dd><dd class="in-btc">' + btcText(sats) + '</dd></div></dl>';
+    // Owner layer: the lit owners' share of this cell at the same block.
+    const info = owners();
+    const held = info && cell.owners ? cell.owners.filter((o) => info.visible.has(o.entity) && info.entities[o.entity]) : [];
+    if (held.length) {
+      html += '<dl class="in-owners">' + held.map((o) => {
+        const e = info.entities[o.entity];
+        return '<div><dt><i class="in-swatch" style="background:' + escapeHtml(e.color) + '"></i>' + escapeHtml(e.name) + '</dt><dd>' +
+          fmtInt(o.count) + ' of ' + fmtInt(count) + ' outputs \u00b7 ' + btcText(o.sats) + '</dd></div>';
+      }).join('') + '</dl>';
+    }
     if (block !== replay.block) html += '<p class="in-more">Refreshing for selected block ' + fmtInt(replay.block) + '\u2026</p>';
     if (match && !match.ok) html += '<p class="in-check bad" role="status">History differs: index ' + fmtInt(match.apiCount) + ' outputs / ' + satsText(match.apiSats) + '; replay ' + fmtInt(match.count) + ' / ' + satsText(match.sats) + '.</p>';
     return html + '</section>';

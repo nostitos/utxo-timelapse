@@ -2,6 +2,7 @@
 import csv
 import hashlib
 import importlib.util
+import subprocess
 import json
 import tempfile
 import unittest
@@ -58,6 +59,26 @@ class AddressValidationTests(unittest.TestCase):
         ):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 labels.normalize_address(value)
+
+    def test_address_script_vectors(self):
+        # Bitcoin wiki P2PKH/P2SH examples; BIP173/BIP350 scriptPubKey vectors.
+        for value, script in (
+            ("1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2", "76a91477bff20c60e522dfaa3350c39b030a5d004e839a88ac"),
+            ("3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy", "a914b472a266d0bd89c13706a4132ccfb16f7c3b9fcb87"),
+            ("BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4", "0014751e76e8199196d454941c45d1b3a323f1433bd6"),
+            ("bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3",
+             "00201863143c14c5166804bd19203356da136c985678cd4d27a1b8c6329604903262"),
+            ("bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj0",
+             "512079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"),
+            ("BC1SW50QGDZ25J", "6002751e"),
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(labels.address_script(value).hex(), script)
+        for value in ("1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN3", "3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLz",
+                      "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t5",
+                      "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj1"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                labels.address_script(value)
 
 
 class EvidenceTests(unittest.TestCase):
@@ -142,6 +163,37 @@ tags:
         with self.assertRaises(ValueError):
             labels.parse_reported_pack("walletexplorer.yaml",
                 raw.replace(b"www.walletexplorer.com", b"unreviewed.example"), {})
+
+    def test_third_party_supplement_rows_join_the_reported_tier(self):
+        tagged = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "tagpacks"
+            (repo / "packs").mkdir(parents=True)
+            (repo / "LICENSE").write_text("MIT")
+            for name in labels.PACKS:
+                (repo / "packs" / name).write_text("tags: []\n")
+            git = lambda *args: subprocess.run(["git", "-C", str(repo), *args], check=True,  # noqa: E731
+                                               capture_output=True, text=True).stdout.strip()
+            git("init", "-q")
+            git("add", ".")
+            git("-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qm", "packs")
+            (root / "source.csv").write_text("source")
+            labels.write_csv(root / "labels.csv", [
+                {**evidence(), "entity": "HTX", "source": "https://example.com/list"},
+                {**evidence(), "address": tagged, "entity": "Bingbon/BingX", "source": "https://example.com/list",
+                 "confidence": "third_party_reported", "evidence_type": "third_party_exact_tag"}])
+            (root / "manifest.json").write_text(json.dumps(dict(
+                labels_csv="labels.csv", labels_sha256=labels.sha256(root / "labels.csv"),
+                sources=[dict(url="https://example.com/list", fetched_at="2026-11-03T00:00:00Z",
+                              sha256=labels.sha256(root / "source.csv"), license="not stated", local_path="source.csv")])))
+            counts = labels.build_catalog(repo, git("rev-parse", "HEAD"), root / "out", [root / "manifest.json"])
+            read = lambda name: [(row["address"], row["entity"]) for row in  # noqa: E731
+                                 csv.DictReader((root / "out" / name).read_text(encoding="utf-8").splitlines())]
+            self.assertEqual(read("labels.csv"), [(ADDRESS, "Huobi")])
+            self.assertEqual(read("labels_reported.csv"), [(tagged, "BingX")])
+            self.assertEqual(sorted(read("labels_extended_resolved.csv")), sorted([(ADDRESS, "Huobi"), (tagged, "BingX")]))
+            self.assertEqual((counts["entities"], counts["optional_reported_tier"]["unique_addresses"]), (1, 1))
 
 
 if __name__ == "__main__":

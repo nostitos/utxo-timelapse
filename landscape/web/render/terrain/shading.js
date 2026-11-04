@@ -3,13 +3,16 @@
 import { Color, Vector3, DataTexture, RGBAFormat, FloatType, UnsignedByteType, NearestFilter, NoColorSpace } from 'three/webgpu';
 import {
   Fn, uniform, float, int, ivec2, vec3, select, log, pow, exp2, log2, clamp, min, max, abs, floor,
-  round, smoothstep, fwidth, textureLoad, sRGBTransferEOTF, dot, saturate, positionViewDirection,
+  round, smoothstep, fwidth, textureLoad, sRGBTransferEOTF, dot, saturate, positionViewDirection, mix,
 } from 'three/tsl';
 import { paletteRGB, transferThresholds, whiteHotRow, parseColor } from './palette.js';
 import { rowOfAmount } from '../../data/axis.js';
 import { CURVES, heightOfCpu, HEAT_H0, heatIntensityCpu, WHALE_RAMP_DECADES } from './curve.js';
 
 export { CURVES, heightOfCpu, HEAT_H0, heatIntensityCpu };
+
+// Owner layer: only the lit owners' spends flash, so each glows this many times brighter.
+export const OWNER_HEAT = 3;
 
 function srgbHexToLinearColor(hex, fallback = '#000000') {
   const rgb = parseColor(hex) || parseColor(fallback);
@@ -55,6 +58,8 @@ export function createShading({ rows }) {
     skirt: uniform(1),
     skirtDepth: uniform(0.02),
     columnFocus: uniform(new Vector3(0, 0, 0)), // (x, z, radius) in world units; radius 0 = off
+    ownersDim: uniform(0.2 ** 2.2), // owner layer: linear-light factor for the cells and layers no shown entity holds
+    ownersOn: uniform(0),            // owner layer on (1) or off (0); the floor dims with the rest while it is on
   };
 
   // Palette LUT: row 0 base palette, row 1 white-hot palette (sRGB bytes).
@@ -75,6 +80,25 @@ export function createShading({ rows }) {
   gridRows.minFilter = gridRows.magFilter = NearestFilter;
   gridRows.generateMipmaps = false;
   gridRows.colorSpace = NoColorSpace;
+  // Owner colours by owner code (replay/owners.js): code e + 1 is entity e.
+  const ownerData = new Uint8Array(256 * 4).fill(255);
+  const ownerPalette = new DataTexture(ownerData, 256, 1, RGBAFormat, UnsignedByteType);
+  ownerPalette.minFilter = ownerPalette.magFilter = NearestFilter;
+  ownerPalette.generateMipmaps = false;
+  ownerPalette.colorSpace = NoColorSpace;
+  ownerPalette.needsUpdate = true;
+
+  /** Entity colours (sRGB hex, in entity order) for the owner layer. */
+  function setOwnerColors(list) {
+    ownerData.fill(255);
+    (list || []).slice(0, 254).forEach((hex, e) => {
+      const rgb = parseColor(hex) || [255, 255, 255];
+      ownerData.set([rgb[0], rgb[1], rgb[2], 255], (e + 1) * 4);
+    });
+    ownerPalette.needsUpdate = true;
+  }
+  /** Linear RGB of an owner code (float node). */
+  const ownerColor = (code) => sRGBTransferEOTF(textureLoad(ownerPalette, ivec2(clamp(int(code), int(0), int(255)), int(0))).xyz);
 
   const state = {
     palette: 'film', gradient: null, reverse: false, whiteHot: true, whiteHotBTC: 10,
@@ -208,7 +232,10 @@ export function createShading({ rows }) {
     // flashes, their glow is dimmed to amp.heatEdge and ramps to full over amp.heatEdgeBlocks.
     const edge = worldX === null ? float(1)
       : float(1).sub(float(1).sub(u.heatEdge).mul(float(1).sub(smoothstep(0, max(u.heatEdgeBlocks, 1), u.block.sub(worldX.mul(1000))))));
-    return select(heat.greaterThan(0), amp.mul(fade).mul(u.heatGain).mul(edge), float(0));
+    // While owners are lit (ownersOn = 1) only their few spends heat cells: they glow OWNER_HEAT
+    // times as bright, without the creation-edge dimming (hot wallets spend young coins).
+    const owned = mix(edge, float(OWNER_HEAT), u.ownersOn);
+    return select(heat.greaterThan(0), amp.mul(fade).mul(u.heatGain).mul(owned), float(0));
   };
   /** Emissive colour of a heat brightness. */
   const heatEmissiveOf = (intensity) => u.heatColor.mul(intensity);
@@ -281,6 +308,8 @@ export function createShading({ rows }) {
       case 'light.metalness': u.metalness.value = value; break;
       case 'display.grid': u.grid.value = value ? 1 : 0; break;
       case 'geo.skirts': u.skirt.value = value ? 1 : 0; break;
+      // The factor scales linear light, so owners.dim ** 2.2 makes the slider's value the displayed brightness.
+      case 'owners.dim': u.ownersDim.value = Math.min(1, Math.max(0, Number(value))) ** 2.2; break;
       default: return false;
     }
     return true;
@@ -294,9 +323,9 @@ export function createShading({ rows }) {
   }
 
   return {
-    uniforms: u, textures: { lut, thresholds, gridRows }, state,
+    uniforms: u, textures: { lut, thresholds, gridRows, ownerPalette }, state,
     heightOf, paletteIndex, cellColor, heatEmissive, heatDecayed, heatIntensity, heatEmissiveOf, edgeGlow, gridLines, rimTerm,
-    set, heightParams, setGridRows,
-    dispose() { lut.dispose(); thresholds.dispose(); gridRows.dispose(); },
+    set, heightParams, setGridRows, setOwnerColors, ownerColor,
+    dispose() { lut.dispose(); thresholds.dispose(); gridRows.dispose(); ownerPalette.dispose(); },
   };
 }
