@@ -4,7 +4,7 @@
     {
       "id": "binance",
       "name": "Binance",
-      "color": "#FF2BD6",
+      "color": "#F0B90B",
       "catalogEntity": "Binance",
       "evidenceTypes": [
         "service_disclosure",
@@ -747,7 +747,7 @@
     {
       "id": "coinomat",
       "name": "Coinomat",
-      "color": "#E8C038",
+      "color": "#78D050",
       "catalogEntity": "Coinomat",
       "evidenceTypes": [
         "third_party_exact_tag_via_graphsense"
@@ -941,7 +941,7 @@
     {
       "id": "flipster",
       "name": "Flipster",
-      "color": "#F8B000",
+      "color": "#FF2BD6",
       "catalogEntity": "Flipster",
       "evidenceTypes": [
         "service_disclosure_via_aggregator"

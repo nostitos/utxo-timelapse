@@ -490,7 +490,7 @@ class SpecTests(unittest.TestCase):
     def test_committed_spec_and_address_selection(self):
         entities = owners.load_spec(Path(__file__).resolve().parents[1] / "landscape_owners_entities.json")
         self.assertEqual([(e["id"], e["name"], e["color"]) for e in entities[:2]],
-                         [("binance", "Binance", "#FF2BD6"), ("okx", "OKX", "#22D3EE")])
+                         [("binance", "Binance", "#F0B90B"), ("okx", "OKX", "#22D3EE")])
         types = {"service_disclosure", "service_disclosure_via_graphsense", "service_disclosure_via_aggregator",
                  "third_party_exact_tag", "third_party_exact_tag_via_graphsense"}
         for entity in entities:
