@@ -967,8 +967,8 @@ node --test landscape/tests/*.test.mjs
 ./build_local/buv -ns -tc=landscape_verify -cfg=configs/buv_explorer.json -data="/Volumes/4T Data/buv_render/landscape_966827" -checkpoint="/Volumes/4T Data/buv_render/renderer_before_965400.bin"
 ./build_local/buv -ns '-tc=density_palette,epoch_transition_mapping,checkpoint_v3'
 node landscape/tools/serve.mjs --data "/Volumes/4T Data/buv_render/landscape_966827"
-node landscape/tools/owners-check.mjs --data "/Volumes/4T Data/buv_render/landscape_974310" --owners "/Volumes/4T Data/buv_owners/o974310-20261103"
-node landscape/tools/serve.mjs --data "/Volumes/4T Data/buv_render/landscape_974310" --owners "/Volumes/4T Data/buv_owners/o974310-20261103"
+node landscape/tools/owners-check.mjs --data "/Volumes/4T Data/buv_render/landscape_974310" --owners "/Volumes/4T Data/buv_owners/o974310-20261104"
+node landscape/tools/serve.mjs --data "/Volumes/4T Data/buv_render/landscape_974310" --owners "/Volumes/4T Data/buv_owners/o974310-20261104"
 ```
 
 

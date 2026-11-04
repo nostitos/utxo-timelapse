@@ -3,7 +3,7 @@
 // highlights. Node 22, no dependencies; holds one BLK2 chunk (plus the next, prefetched) at a time.
 //
 //   node landscape/tools/owners-check.mjs --data "/Volumes/4T Data/buv_render/landscape_974310" \
-//     --owners "/Volumes/4T Data/buv_owners/o974310-20261103" [--json]
+//     --owners "/Volumes/4T Data/buv_owners/o974310-20261104" [--json]
 //
 // 1. owners.json and its record files: sizes, SHA-256, record counts, the file of each record
 //    (long.bin: unspent at the owner tip or living more than shortLife blocks; short/k: the rest

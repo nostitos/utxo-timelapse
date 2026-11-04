@@ -136,7 +136,8 @@ OWNERS='/Volumes/4T Data/buv_owners'
   --labels "$OWNERS/labels-$DATE/labels_extended_resolved.csv" --fulcrum 192.168.8.234:50002 \
   --work "$OWNERS/extract" --out "$OWNERS/labels-$DATE/preflight.json"
 
-# 3. Every output paying the selected addresses, verified at Fulcrum's tip (about two hours the first time).
+# 3. Every output paying the selected addresses, verified at Fulcrum's tip (about 12 hours for the 687,047
+#    addresses of labels-20261103, 21.5 million transactions at 330 to 655 a second).
 "$PY" scripts/landscape_owners.py extract --spec scripts/landscape_owners_entities.json \
   --labels "$OWNERS/labels-$DATE/labels_extended_resolved.csv" \
   --fulcrum 192.168.8.234:50002 --rest http://127.0.0.1:18352 --work "$OWNERS/extract"
@@ -166,6 +167,10 @@ for outputs unspent at T or alive longer than 4,032 blocks, and `short/NNNN.bin`
 by `floor(created / 4032)`. Empty chunks are omitted. The record format is in
 [landscape/SPEC.md](../landscape/SPEC.md) §4 (owner files). An existing non-empty output directory is
 never overwritten; files are written into a staging directory that is renamed when complete.
+
+The app downloads `long.bin` whole as soon as any owner is lit, and the short chunks around the
+current block. For `o974310-20261104` that is an 81 MB file of 11.2 million records, and the tab holds about
+470 MB more while owners are lit (measured in Chrome), whichever owners they are.
 
 ## Verification
 
@@ -230,6 +235,6 @@ Follow "Publish owner data" in [cloudflare/utxo-landscape-worker/README.md](../c
 | `labels-<date>/research/<id>/` | One source's archives, `fetch_state.json`, `<id>_labels.csv`, `<id>_rejected.csv` and `<id>_supplement.json` |
 | `labels-<date>/research/fetch_report.json`, `candidates.json` | Each source's last outcome; the candidate exchanges and their seed lists |
 | `labels-<date>/coverage_report.json`, `.md`, `preflight.json` | Per-entity coverage of the catalog; the node work left for the new addresses |
-| `o<tip>-<date>/` | `owners.json`, `long.bin` and `short/NNNN.bin` (51 MB for `o974310-20261103`, Binance and OKX) |
+| `o<tip>-<date>/` | `owners.json`, `long.bin` and `short/NNNN.bin` (230 MB for `o974310-20261104`: 185 exchanges, 33.4 million records) |
 
 Generated data lives under `/Volumes/4T Data/buv_owners/` and is never committed.
