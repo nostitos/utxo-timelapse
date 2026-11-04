@@ -1176,7 +1176,7 @@ def run_defillama(source: dict, fetcher: Fetcher, operators: dict[str, dict]):
     if "imports" in consts:
         start, stop = consts["imports"]
         pairs = [value for kind, value in tokens[start:stop] if kind == "s"]
-        for key, relative in zip(pairs[::2], pairs[1::2]):
+        for key, relative in zip(pairs[::2], pairs[1::2], strict=True):
             path = f"{Path(book_path).parent.as_posix()}/{relative.removeprefix('./')}"
             if not blob(path):
                 raise ValueError(f"{book_path}: imported {path} is missing")

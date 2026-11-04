@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Source adapters: one test per parser on a trimmed layout of its real source (example addresses
 replace the real ones), plus fetching, archiving, reuse and the registry."""
-import csv
 import io
 import json
 import subprocess
@@ -70,8 +69,8 @@ class ParserTests(unittest.TestCase):
             "coin,Type,Network,Snapshot Height,address,amount,message,signature1,signature2,redeem script/ public key,EOA1,EOA2",
             f"BTC,Non Staking,BTC,961893,{A},1.5,I am an OKX address,sig,,,,",
             f"BTC,Native Staking,BTC,961893,{A},1.5,I am an OKX address,sig,,,,",
-            f"BTC,Non Staking,Lightning,961893,02abcdef,1,,,,,,",
-            f"BTC,Non Staking,BTC,961893,not_an_address,1,,,,,,",
+            "BTC,Non Staking,Lightning,961893,02abcdef,1,,,,,,",
+            "BTC,Non Staking,BTC,961893,not_an_address,1,,,,,,",
             "ETH,Non Staking,ETH,24000000,0xabc,1,,,,,,"])
         path = self.root / "por_csv_2026081100_V6.zip"
         with zipfile.ZipFile(path, "w") as archive:
@@ -98,7 +97,7 @@ class ParserTests(unittest.TestCase):
         path = self.write("huobi_por.csv", "\ufeff" + "\n".join([
             "coin,snapshot height,balance", "BTC(ALL),-,20003.96", "ThirdParty,_,1678.04", "",
             "coin,address,snapshot height,balance,message,signature",
-            f"BTC,{A},969314,5862.70,huobi,sig", f"BTC-TRC20,TDToUxX8sH4z6moQpK3ZLAN24eupu2ivA4,86703812,1,-,-"]))
+            f"BTC,{A},969314,5862.70,huobi,sig", "BTC-TRC20,TDToUxX8sH4z6moQpK3ZLAN24eupu2ivA4,86703812,1,-,-"]))
         ctx = parse("por_csv", path, entity="Huobi")
         self.assertEqual(addresses(ctx), [A])
         self.assertIn("no network column", ctx.rows[0]["historical_note"])
@@ -231,7 +230,7 @@ class ParserTests(unittest.TestCase):
         layout = "\n".join([
             "Verified Wallets", "Network                  Address", "Arbitrum                 0x00f3e09abe73aec2d6ad7b8820049b60ebc73f94",
             f"Bitcoin                  {B}", f"                         {D[:40]}", "Bitcoin", f"                         {D[40:]}",
-            "Page 3 of 9", "Network                  Address", f"Merlin                   0x1e7cd241c07a24be28a501f156719aa6774676e0",
+            "Page 3 of 9", "Network                  Address", "Merlin                   0x1e7cd241c07a24be28a501f156719aa6774676e0",
             f"Bitcoin                  {C[:20]}\u200b{C[20:]}"])
         with mock.patch.object(sources.subprocess, "check_output", lambda *args, **kwargs: layout):
             ctx = parse("pdf_table", self.write("report.pdf", b"%PDF"), entity="KuCoin",
