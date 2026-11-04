@@ -1160,8 +1160,11 @@ const CHECKS = [
         const pose0 = L.controls.getPose();
         const pw = L.controls.poseLookingAt({ x: tip / 1000 - 0.4, y: 0, z: 54 }, { distance: 14, yaw: 25, pitch: -38 });
         L.controls.setPose({ x: pw.position.x, y: pw.position.y, z: pw.position.z, yaw: pw.yaw, pitch: pw.pitch });
-        // Pixels in the owner's hue (red and blue well above green): the sky, the ground and white labels do not count.
-        const litPx = async () => { const d = (await frameImage(1600, 900)).getContext('2d').getImageData(0, 0, 1600, 900).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] > 1.2 * d[i + 1] && d[i + 2] > 1.1 * d[i + 1] && d[i] + d[i + 2] > 160) n++; return n; };
+        // Bright pixels leaning toward the owner's hue: with the rest hidden its columns are the only bright
+        // things, and the floor, the sky and white labels are dimmer or neutral (AgX turns a yellow pale, so
+        // the hue alone would miss it).
+        const tint = chroma(rgb(ent.color)).map((v) => v - 1 / 3);
+        const litPx = async () => { const d = (await frameImage(1600, 900)).getContext('2d').getImageData(0, 0, 1600, 900).data; let n = 0; for (let i = 0; i < d.length; i += 4) { const s = d[i] + d[i + 1] + d[i + 2]; if (s > 480 && (d[i] / s - 1 / 3) * tint[0] + (d[i + 1] / s - 1 / 3) * tint[1] + (d[i + 2] / s - 1 / 3) * tint[2] > 0) n++; } return n; };
         await settled(800, 15000); out.widthPx1 = await litPx();
         L.settings.set('geo.columnWidth', 2.5); await settled(800, 15000); out.widthPx25 = await litPx();
         L.settings.set('geo.columnWidth', 1); L.controls.setPose(pose0); await settled(800, 15000);
