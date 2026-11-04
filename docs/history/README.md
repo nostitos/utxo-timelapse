@@ -13,6 +13,7 @@ These dated records preserve prior decisions and cleanup evidence. Paths, render
 - [October 23 site update, both releases in one PR](site-update-2026-10-23.md)
 - [November 2 site update, the first from a window master](site-update-2026-11-02.md)
 - [November 3 update of the 3D landscape only](landscape-update-2026-11-03.md)
+- [November 4 owner highlight release](owner-highlight-2026-11-04.md)
 - [Artifact manifest](cleanup-audit-2026-09-09/artifact-manifest.csv)
 - [Audit summary](cleanup-audit-2026-09-09/audit-summary.json)
 - [Completion record](cleanup-audit-2026-09-09/completion.json)

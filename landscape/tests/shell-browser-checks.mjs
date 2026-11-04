@@ -1084,6 +1084,8 @@ const CHECKS = [
   {
     name: 'owners',
     shot: 'owners.png',
+    // Pixel counts assume High; an online first visit starts at Balanced (ui/online.js).
+    query: 'startup=high',
     timeout: 120000,
     // The owner layer, when the server has owner data (serve.mjs --owners, or the Worker's
     // /owners/index.json); without it the check only confirms the Owners button stays hidden.
@@ -1310,6 +1312,8 @@ const CHECKS = [
   {
     name: 'owners-flat',
     shot: 'owners-flat.png',
+    // Pixel counts assume High; an online first visit starts at Balanced (ui/online.js).
+    query: 'startup=high',
     timeout: 180000,
     // Flatten the rest (owners.flat), when the server has owner data: heights and columns count
     // only the lit owner, every other cell keeps its colour, flat and dimmed, and near the camera
