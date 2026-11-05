@@ -4,6 +4,7 @@
 // owner data unpublished and published, and the headers on every response.
 //   node scripts/check_landscape_worker.mjs
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -32,11 +33,23 @@ else {
   rowsBytes = new Uint8Array(t.buffer);
 }
 const chunk = new Uint8Array(64).map((_, i) => i);
+const snapshot = new Uint8Array(100);
+const sha = (b) => createHash('sha256').update(b).digest('hex');
+const CHUNK_KEY = 'landscape/blobs/' + sha(chunk);
+const SNAPSHOT_KEY = 'landscape/blobs/' + sha(snapshot);
+const MANIFEST = JSON.stringify({ format: 'utxo-landscape-1', snapshots: [{ file: 'snapshots/0000000.bin', sha256: sha(snapshot) }] });
+const CHUNKS = JSON.stringify({ chunks: [{ file: 'chunks/00001.bin', sha256: sha(chunk) }] });
+const OLD = RELEASE.retainedDatasetIds[0];
 const objects = new Map([
-  [P + 'manifest.json', enc.encode('{"format":"utxo-landscape-1"}')],
+  [P + 'manifest.json', enc.encode(MANIFEST)],
+  [P + 'chunks.json', enc.encode(CHUNKS)],
   [P + 'rows.bin', rowsBytes],
-  [P + 'chunks/00001.bin', chunk],
-  [P + 'snapshots/0000000.bin', new Uint8Array(100)],
+  [CHUNK_KEY, chunk],
+  [SNAPSHOT_KEY, snapshot],
+  // A retained dataset lists the same chunk; its old per-dataset copy must never be served.
+  ['landscape/' + OLD + '/manifest.json', enc.encode(JSON.stringify({ snapshots: [] }))],
+  ['landscape/' + OLD + '/chunks.json', enc.encode(CHUNKS)],
+  ['landscape/' + OLD + '/chunks/00001.bin', new Uint8Array(64).fill(7)],
   ['explorer/v5/site/explorer.html', enc.encode('private')],
 ]);
 const r2 = { heads: 0, gets: 0 };
@@ -52,7 +65,8 @@ const VIDEO_BUCKET = {
     const b = objects.get(key);
     if (!b) return null;
     const part = opts && opts.range ? b.slice(opts.range.offset, opts.range.offset + opts.range.length) : b;
-    return { size: b.byteLength, httpEtag: etagOf(key), body: new Blob([part]).stream(), arrayBuffer: async () => part.slice().buffer };
+    return { size: b.byteLength, httpEtag: etagOf(key), body: new Blob([part]).stream(), arrayBuffer: async () => part.slice().buffer,
+      json: async () => JSON.parse(new TextDecoder().decode(part)) };
   },
 };
 const cacheStore = new Map();
@@ -160,7 +174,7 @@ await check('dataset objects: immutable, CORS, ETag, whole and HEAD', async () =
   assert.equal(m.headers.get('Accept-Ranges'), 'bytes');
   assert.equal(m.headers.get('ETag'), etagOf(P + 'manifest.json'));
   assert.equal(m.headers.get('X-Object-Size'), null);
-  assert.equal(await m.text(), '{"format":"utxo-landscape-1"}');
+  assert.equal(await m.text(), MANIFEST);
   securityHeadersOk(m, 'manifest');
   const head = await req('/dataset/' + ID + '/chunks/00001.bin', { method: 'HEAD' });
   assert.equal(head.status, 200);
@@ -196,7 +210,7 @@ await check('byte ranges: closed, suffix, open, unsatisfiable, multiple', async 
 
 await check('conditional requests and the edge cache', async () => {
   const url = '/dataset/' + ID + '/snapshots/0000000.bin';
-  const etag = etagOf(P + 'snapshots/0000000.bin');
+  const etag = etagOf(SNAPSHOT_KEY);
   const nm = await req(url, { headers: { 'If-None-Match': etag } });
   assert.equal(nm.status, 304);
   assert.equal(nm.headers.get('ETag'), etag);
@@ -220,6 +234,18 @@ await check('conditional requests and the edge cache', async () => {
   assert.equal(whole2.headers.get('Content-Length'), '100');
   assert.equal((await bytes(whole2)).length, 100);
   assert.deepEqual(r2, before2, 'a cached whole object needs no R2 call');
+});
+
+await check('shared files: snapshots and chunks come from landscape/blobs/<sha256> of the dataset\'s tables', async () => {
+  const cur = await req('/dataset/' + ID + '/chunks/00001.bin');
+  assert.deepEqual(await bytes(cur), chunk);
+  assert.equal(cur.headers.get('ETag'), etagOf(CHUNK_KEY));
+  const old = await req('/dataset/' + OLD + '/chunks/00001.bin');
+  assert.equal(old.status, 200);
+  assert.deepEqual(await bytes(old), chunk, 'a retained dataset reads the shared file, not its old copy');
+  for (const path of ['/dataset/' + ID + '/chunks/00002.bin', '/dataset/' + OLD + '/snapshots/0000000.bin']) {
+    assert.equal((await req(path)).status, 404, path + ' is not in that dataset\'s tables');
+  }
 });
 
 await check('dataset allowlist: unknown ids, files and traversal never reach R2', async () => {
