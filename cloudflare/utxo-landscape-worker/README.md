@@ -11,7 +11,7 @@
 | `/guide/` | The guide, *What remains* (`landscape/web/guide/`), from the same static assets. Its previews and captions (`.mp4`, `.webm`, `.m4a`, `.mp3`, `.vtt`) answer single byte ranges, 304 and HEAD with the security headers. The guide's HTML is `no-cache`; its other files are cached for an hour. Every spelling of the address (`/guide`, `/Guide/`, `/GUIDE`, `/guide.html`, `/guide/index.html`) and any page path below it without a file (`/guide/views`) redirect to `/guide/` (302, query kept); a missing file such as `/guide/missing.css` stays a 404. |
 | `/guide/film/<name>.mp4` | The guide's film, R2 object `landscape/guide/film/<name>.mp4` (lowercase letters, digits, dots and hyphens). It is too large for a static asset, so it is served like the dataset: single byte ranges, ETag and 304, immutable caching. The name carries the file's content hash. |
 | `/dataset/index.json` | Names the current dataset (`src/release.js`). The app reads it on startup. |
-| `/dataset/<id>/<file>` | R2 objects `landscape/<id>/<file>`, only for the ids in `src/release.js` and the dataset's file names. Single byte ranges, ETag and 304, immutable caching, CORS `*`, and an edge cache for whole objects and ranges up to 8 MiB. |
+| `/dataset/<id>/<file>` | R2 objects `landscape/<id>/<file>`, except snapshots and chunks, which every dataset shares at `landscape/blobs/<sha256>` under the SHA-256 in the dataset's `manifest.json` and `chunks.json` (read once per Worker instance). Only for the ids in `src/release.js` and the dataset's file names. Single byte ranges, ETag and 304, immutable caching, CORS `*`, and an edge cache for whole objects and ranges up to 8 MiB. |
 | `/owners/index.json` | Names the current owner highlight data, `{id, url, tip}` from `owners` in `src/release.js`, `no-store`. While `owners` is `null` it is a 404, and the app hides its Owners view. |
 | `/owners/<id>/<file>` | R2 objects `landscape/owners/<id>/<file>` (`owners.json`, `long.bin`, `short/NNNN.bin`), only for the current and retained owner ids in `src/release.js`, served like the dataset. |
 | `/api/landscape/cell?block&col&row` | The inspector's history index: the lifecycle of one landscape cell from the 2D explorer's history shards, through the shared `lifecycleJson` in `../utxo-video-worker/src/history.js`. Satoshi ranges come from the dataset's `rows.bin`, the compiled row table, so they equal the native explorer's on every row. Rate limit 8 requests/s, burst 20, per IP and isolate; cached 24 h per release. |
@@ -58,33 +58,22 @@ Record its `url`, `r2Key`, `bytes` and `sha256` under the film's `remote` entry 
 Datasets are immutable: each one gets a new prefix `landscape/d<tip>-<yyyymmdd>`. The upload scripts need boto3 (`python3 -m venv /tmp/landscape_r2_venv && /tmp/landscape_r2_venv/bin/pip install boto3`). The checksum variables keep every upload a plain single PUT whose ETag is the file's MD5.
 
 1. Build and verify the dataset locally (`landscape_build`, `landscape_verify`; see `docs/landscape.md`).
-2. Upload everything except the manifest. `scripts/landscape_r2_publish.py` copies every file whose SHA-256 and size match the previous dataset (the chunks and snapshots before the old tip) inside R2 and uploads only the rest. The previous dataset directory needs only its `manifest.json` and `chunks.json`, which can be downloaded from `/dataset/<old-id>/`:
+2. Upload everything except the manifest. `scripts/landscape_r2_publish.py` stores each snapshot and chunk once for all datasets, at `landscape/blobs/<sha256>` under the SHA-256 that `manifest.json` and `chunks.json` record, and uploads only content the bucket does not hold yet: the update's new snapshots and chunks and the rewritten last chunk. `rows.bin`, `blocktimes.bin` and `chunks.json` go to the dataset's prefix. A rerun skips everything already present, and a first publication uploads everything:
    ```sh
    export AWS_REQUEST_CHECKSUM_CALCULATION=when_required AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
    /tmp/landscape_r2_venv/bin/python scripts/landscape_r2_publish.py "/Volumes/4T Data/buv_render/landscape_<tip>" \
-     "/Volumes/4T Data/buv_render/landscape_<old-tip>" --prefix landscape/<id> --old-prefix landscape/<old-id> \
-     --state ~/.config/utxo-r2/landscape-<id>-publish.json --no-manifest
+     --prefix landscape/<id> --no-manifest
    ```
-   On October 9, 2026 it copied 4,382 chunks (18.3 GB) in about 3 minutes; the 1,101 snapshots still had to be uploaded (57.8 GB, 36 minutes at 27 MB/s), because their headers recorded the grid size of the dataset. Snapshots now describe their own grid: the first dataset built with that format, `d971587-20261015` on October 15, copied 4,416 chunks (18.5 GB) and uploaded its 1,103 snapshots once more with the new chunks (58.0 GB in 52 minutes at about 19 MB/s); later datasets copy every snapshot before the old tip. On October 18, `d972052-20261018` copied 5,527 files (76.4 GB) inside R2 and uploaded 10 (195 MB) in 8 minutes. On October 23, `d972848-20261023` copied 5,532 files (76.5 GB) and uploaded 14 (295 MB) in 9 minutes. On November 2, `d974310-20261102` copied 5,541 files (76.7 GB) and uploaded 21 (407 MB) in 5 minutes with 32 workers. On November 3, `d974481-20261103` copied 5,557 files (77.0 GB) and uploaded 6 (100 MB) in 4 minutes. For a first publication, upload everything:
-   ```sh
-   export AWS_REQUEST_CHECKSUM_CALCULATION=when_required AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
-   /tmp/landscape_r2_venv/bin/python scripts/r2_upload_tree_singlepart.py "/Volumes/4T Data/buv_render/landscape_<tip>" \
-     --prefix landscape/<id> --endpoint https://f147815debbc98aca5b60c0caeeb29e6.r2.cloudflarestorage.com \
-     --credentials ~/.config/utxo-r2/credentials --state ~/.config/utxo-r2/landscape-<id>-state.json \
-     --workers 8 --include .bin chunks.json
-   ```
-3. `/tmp/landscape_r2_venv/bin/python scripts/landscape_r2_verify.py "/Volumes/4T Data/buv_render/landscape_<tip>" --prefix landscape/<id> --no-manifest` checks every object's size and MD5 and that nothing else exists under the prefix.
-4. Upload `manifest.json` (`landscape_r2_publish.py` without `--no-manifest`, or `r2_upload_tree_singlepart.py` with `--include manifest.json`), then run step 3 without `--no-manifest`.
+   Until November 2026 every dataset was a full copy of about 77 GB, mostly made by copies inside R2: the November 3 dataset `d974481-20261103` copied 5,557 files (77.0 GB) and uploaded 6 (100 MB). With shared files it stores only those 6.
+3. `/tmp/landscape_r2_venv/bin/python scripts/landscape_r2_verify.py "/Volumes/4T Data/buv_render/landscape_<tip>" --prefix landscape/<id> --no-manifest` checks every file's size and MD5, the snapshots and chunks under `landscape/blobs/`, and that nothing else exists under the prefix.
+4. Upload `manifest.json` (`landscape_r2_publish.py` without `--no-manifest`), then run step 3 without `--no-manifest`.
 5. In `src/release.js`, set `dataset` to the new id and tip, move the previous id to `retainedDatasetIds`, bump `version`, then deploy and verify.
-6. Keep the current dataset and its immediate predecessor for rollback. After older datasets have
-   had a grace period of a few days, remove their ids from `retainedDatasetIds`, deploy and verify
-   both supported datasets, then delete only their retired prefixes:
+6. A retained dataset costs only its own files under its prefix (about 1 MB), because it shares its snapshots and chunks with the others. To retire one, remove its id from `retainedDatasetIds`, deploy and verify, then delete its prefix:
    ```sh
    AWS_SHARED_CREDENTIALS_FILE=~/.config/utxo-r2/credentials aws s3 rm s3://utxo-video/landscape/<old-id>/ --recursive \
      --endpoint-url https://f147815debbc98aca5b60c0caeeb29e6.r2.cloudflarestorage.com
    ```
-
-   Server-side copies still occupy a full dataset's storage. Do not accumulate every old dataset.
+   Never delete under `landscape/blobs/` by prefix: every dataset reads from it. Shortcut: shared files that no dataset lists any more (each update's replaced last chunk, a few MB) are not pruned; add a sweep that keeps every file named by a supported dataset's tables if they ever add up.
    Retention of the 2D stream and history follows object references in the supported playlists and
    per-shard catalogues: a prefix's age does not establish that its contents are obsolete. Preserve
    current local manifests, the publication catalogue, checkpoints and append ledgers for updates.

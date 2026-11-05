@@ -1,7 +1,8 @@
 // UTXO Timelapse Landscape at 3d.bitcointimelapse.com.
 //
 // Serves the static app (Workers Static Assets, binding ASSETS), the immutable landscape
-// dataset from the private R2 bucket (landscape/<id>/… at /dataset/<id>/…), the owner
+// dataset from the private R2 bucket (landscape/<id>/… at /dataset/<id>/…, its snapshots and
+// chunks stored once for every dataset at landscape/blobs/<sha256>), the owner
 // highlight data (landscape/owners/<id>/… at /owners/<id>/…), and the cell lifecycle API
 // (/api/landscape/cell), which reuses the 2D explorer's history shards and query code. The
 // guide's film, too large for a static asset, comes from the same bucket
@@ -15,6 +16,10 @@ export const ROWS = 2072;
 const EDGE_CACHE_MAX_BYTES = 8 * 1024 * 1024;
 const DATASET_ID = /^d\d{1,7}-\d{8}$/;
 const DATASET_FILE = /^(?:manifest\.json|rows\.bin|blocktimes\.bin|chunks\.json|chunks\/\d{5}\.bin|snapshots\/\d{7}\.bin)$/;
+// Snapshots and chunks are shared by every dataset that contains them, under the SHA-256 that
+// the dataset's manifest.json and chunks.json record, so a new dataset stores only new files.
+const BLOB_FILE = /^(?:chunks\/\d{5}|snapshots\/\d{7})\.bin$/;
+const SHA256 = /^[0-9a-f]{64}$/;
 const OWNERS_ID = /^o\d{1,7}-\d{8}$/;
 const OWNERS_FILE = /^(?:owners\.json|long\.bin|short\/\d{4}\.bin)$/;
 // Films named with their content hash, so they are immutable like the dataset.
@@ -210,6 +215,32 @@ function datasetIndex() {
     current: { id: current.id, url: '/dataset/' + current.id + '/', tip: current.tip },
     datasets: datasetIds().map((id) => ({ id, url: '/dataset/' + id + '/' })),
   };
+}
+
+const blobTables = new Map();
+/** file -> SHA-256 of one dataset's snapshots and chunks, read once per isolate. */
+function blobTable(env, id) {
+  let table = blobTables.get(id);
+  if (!table) {
+    table = Promise.all(['manifest.json', 'chunks.json'].map(async (name) => {
+      const object = await env.VIDEO_BUCKET.get('landscape/' + id + '/' + name);
+      if (!object) throw new Error(id + '/' + name + ' is unavailable');
+      return object.json();
+    })).then(([manifest, chunks]) => new Map([...manifest.snapshots, ...chunks.chunks].map((e) => [e.file, e.sha256])))
+      .catch((err) => {
+        blobTables.delete(id);
+        throw err;
+      });
+    blobTables.set(id, table);
+  }
+  return table;
+}
+
+/** R2 key of an allowed dataset file, or null for a snapshot or chunk the dataset does not list. */
+async function datasetKey(env, id, file) {
+  if (!BLOB_FILE.test(file)) return 'landscape/' + id + '/' + file;
+  const sha = (await blobTable(env, id)).get(file);
+  return SHA256.test(sha || '') ? 'landscape/blobs/' + sha : null;
 }
 
 // ---- cell lifecycle API -------------------------------------------------------------------
@@ -426,7 +457,8 @@ export async function handle(request, env, ctx) {
   if (path.startsWith('/dataset/')) {
     const m = /^\/dataset\/([^/]+)\/(.+)$/.exec(path);
     if (!m || !DATASET_ID.test(m[1]) || !datasetIds().includes(m[1]) || !DATASET_FILE.test(m[2])) return notFound();
-    return serveObject(request, env, ctx, 'landscape/' + m[1] + '/' + m[2], m[2]);
+    const key = await datasetKey(env, m[1], m[2]);
+    return key ? serveObject(request, env, ctx, key, m[2]) : notFound();
   }
   if (path === '/owners/index.json') {
     const owners = RELEASE.owners;

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Verify an uploaded landscape dataset in R2 against the local copy.
 
-Every local dataset file (manifest.json, rows.bin, blocktimes.bin, chunks.json, chunks/*.bin,
-snapshots/*.bin) must exist under the prefix with the same size, a single-part ETag and that
-ETag equal to the local MD5; nothing else may exist under the prefix. The local copy is first
-checked against its own manifest and chunk table. Exits 1 on any difference.
+Every local dataset file must exist in R2 with the same size, a single-part ETag and that ETag
+equal to the local MD5: chunks/*.bin and snapshots/*.bin at landscape/blobs/<sha256> (shared by
+all datasets), manifest.json, rows.bin, blocktimes.bin and chunks.json under the prefix, where
+nothing else may exist. The local copy is first checked against its own manifest and chunk
+table. Exits 1 on any difference.
 
   python scripts/landscape_r2_verify.py "/Volumes/4T Data/buv_render/landscape_972052" \
     --prefix landscape/d972052-20261018 [--no-manifest]
@@ -28,6 +29,7 @@ import boto3
 from botocore.config import Config
 
 ENDPOINT = "https://f147815debbc98aca5b60c0caeeb29e6.r2.cloudflarestorage.com"
+BLOBS = "landscape/blobs/"
 
 
 def args() -> argparse.Namespace:
@@ -84,13 +86,24 @@ def main() -> int:
         aws_access_key_id=cfg["default"]["aws_access_key_id"], aws_secret_access_key=cfg["default"]["aws_secret_access_key"],
         config=Config(retries={"max_attempts": 8, "mode": "adaptive"}),
     )
-    remote: dict[str, dict] = {}
-    for page in s3.get_paginator("list_objects_v2").paginate(Bucket=a.bucket, Prefix=prefix):
-        for o in page.get("Contents", []):
-            remote[o["Key"][len(prefix):]] = {"size": o["Size"], "etag": o["ETag"].strip('"')}
+
+    def listing(p: str) -> dict[str, dict]:
+        out = {}
+        for page in s3.get_paginator("list_objects_v2").paginate(Bucket=a.bucket, Prefix=p):
+            for o in page.get("Contents", []):
+                out[o["Key"][len(p):]] = {"size": o["Size"], "etag": o["ETag"].strip('"')}
+        return out
+
+    manifest = json.loads((root / "manifest.json").read_text())
+    shas = {e["file"]: e["sha256"] for e in manifest["snapshots"] + json.loads((root / "chunks.json").read_text())["chunks"]}
+    remote = listing(prefix)
+    blobs = listing(BLOBS)
+    unexpected = set(remote) - (set(files) - set(shas))
+    remote = {rel: o for rel, o in remote.items() if rel not in unexpected}
+    remote.update({rel: blobs[sha] for rel, sha in shas.items() if sha in blobs})
     problems: list[str] = []
     bad: set[str] = set()
-    for rel in sorted(set(remote) - set(files)):
+    for rel in sorted(unexpected):
         problems.append(f"unexpected remote object {rel}")
     for rel in sorted(set(files) - set(remote)):
         problems.append(f"missing remote object {rel}")
