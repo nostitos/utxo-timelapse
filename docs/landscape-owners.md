@@ -191,7 +191,11 @@ current block. For `o974310-20261104` that is an 81 MB file of 11.2 million reco
 
 Tests: `"$PY" -m unittest scripts/tests/test_landscape_owners.py scripts/tests/test_landscape_owners_sources.py scripts/tests/test_address_coverage_labels.py`.
 
-## Updating with each site update
+## Refreshing the owner data
+
+The owner refresh is not part of a routine site or 3D update. `extract` currently rescans all 687,047
+addresses, which takes about an hour, so ask the founder before running `extract`, `build` or the publish
+steps. A landscape release keeps the published owner data, which can end at an earlier block. When asked:
 
 1. Run `fetch-sources` into a new `labels-$DATE/research` with `--reuse` pointing at the previous run's
    research folders (it reads every `*.json` manifest there), so archived files are linked instead of
@@ -203,7 +207,7 @@ Tests: `"$PY" -m unittest scripts/tests/test_landscape_owners.py scripts/tests/t
    address's cached height, from six blocks before it to allow for reorganisations, and only new
    transactions. A newly listed address gets its whole history, and every transaction in it is
    fetched again so outputs paying it are recorded.
-4. `build --tip` the new landscape tip, run `owners-check`, then publish.
+4. `build --tip` the current landscape tip, run `owners-check`, then publish.
 
 ## Adding an exchange
 

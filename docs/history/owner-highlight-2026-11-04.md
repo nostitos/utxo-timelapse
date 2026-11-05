@@ -21,5 +21,6 @@ The 3D landscape's **Owners** view is live. Release `landscape-20261104-1` (Work
 
 ## State retained for the next update
 
-- `/Volumes/4T Data/buv_owners/extract` is complete at Fulcrum tip 974,517 (`extract.json`, `records.csv.gz`). The next landscape update reruns `extract`, then `build --tip` its new tip, `owners-check` and the steps in `cloudflare/utxo-landscape-worker/README.md` (Publish owner data), moving `o974481-20261104` to `retainedOwnersIds`.
+- `/Volumes/4T Data/buv_owners/extract` is complete at Fulcrum tip 974,517 (`extract.json`, `records.csv.gz`).
+- The owner refresh is not part of a routine site or 3D update: ask the founder before running it. It reruns `extract`, which currently rescans all 687,047 addresses (about an hour), then `build --tip` the current landscape tip, `owners-check` and the steps in `cloudflare/utxo-landscape-worker/README.md` (Publish owner data), moving `o974481-20261104` to `retainedOwnersIds`. A run started on November 4 at 23:31 for tip 974,621 was stopped during its history scan; it only added to the transaction cache, so `extract.json` and `records.csv.gz` still describe tip 974,517.
 - Logs: `extract-20261104.log` and `build-974481.log` in the same folder; the node tunnel runs from `tunnel.py`.
