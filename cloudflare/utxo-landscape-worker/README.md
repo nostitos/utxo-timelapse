@@ -64,7 +64,7 @@ Datasets are immutable: each one gets a new prefix `landscape/d<tip>-<yyyymmdd>`
    /tmp/landscape_r2_venv/bin/python scripts/landscape_r2_publish.py "/Volumes/4T Data/buv_render/landscape_<tip>" \
      --prefix landscape/<id> --no-manifest
    ```
-   Until November 2026 every dataset was a full copy of about 77 GB, mostly made by copies inside R2: the November 3 dataset `d974481-20261103` copied 5,557 files (77.0 GB) and uploaded 6 (100 MB). With shared files it stores only those 6.
+   Until November 2026 every dataset was a full copy of about 77 GB, mostly made by copies inside R2: the November 3 dataset `d974481-20261103` copied 5,557 files (77.0 GB) and uploaded 6 (100 MB). With shared files it stores only those 6. On November 4, `d974621-20261104`, the first dataset published this way, uploaded 4 files (96 MB) in 9 s and shared the other 5,558.
 3. `/tmp/landscape_r2_venv/bin/python scripts/landscape_r2_verify.py "/Volumes/4T Data/buv_render/landscape_<tip>" --prefix landscape/<id> --no-manifest` checks every file's size and MD5, the snapshots and chunks under `landscape/blobs/`, and that nothing else exists under the prefix.
 4. Upload `manifest.json` (`landscape_r2_publish.py` without `--no-manifest`), then run step 3 without `--no-manifest`.
 5. In `src/release.js`, set `dataset` to the new id and tip, move the previous id to `retainedDatasetIds`, bump `version`, then deploy and verify.
@@ -121,4 +121,4 @@ curl -fsS 'https://3d.bitcointimelapse.com/api/landscape/cell?block=314000&col=4
 
 The example cell returns 1 live output of 21,236 sat and 3 spent before block 314,000, the same as the native explorer. Check real playback in a browser; HTTP 200 alone does not prove the replay works.
 
-Storage is about 76 GB per dataset (1,109 snapshots and 4,451 chunks at block 974,481), roughly 1.1 USD a month in R2. Egress is free; browsers read with ranges, and the edge cache absorbs repeated ranges.
+Storage is about 77 GB for all datasets together, because they share their snapshots and chunks (1,109 snapshots and 4,453 chunks at block 974,621), roughly 1.2 USD a month in R2. Egress is free; browsers read with ranges, and the edge cache absorbs repeated ranges.

@@ -1,5 +1,7 @@
 # Current render and update files
 
+**November 4 3D-only update:** the working BLK and the 3D landscape (`d974621-20261104`) cover block 974,621; the 2D video streams and the exact history still end at 974,310, so the 3D inspector shows lifecycle details through 974,310. The next 2D update keeps 974,310 as its video and history old end, while its sync appends to the BLK from 974,621. See the [November 4 report](history/landscape-update-2026-11-04.md).
+
 **November 4 R2 change:** the 3D datasets share their snapshots and chunks at `landscape/blobs/<sha256>`, so the bucket holds 327.15 GB, and a 3D update stores only its new files. Publish with `scripts/landscape_r2_publish.py` as the [Worker README](../cloudflare/utxo-landscape-worker/README.md#publish-a-dataset) describes. See the [November 4 record](history/r2-shared-landscape-2026-11-04.md).
 
 **November 3 3D-only update:** the working BLK and the 3D landscape (`d974481-20261103`) cover block 974,481. The 2D video streams and the exact history, local and in the cloud, still end at 974,310, so the 3D inspector shows lifecycle details through 974,310. The next 2D update keeps 974,310 as its video and history old end, while its sync appends to the BLK from 974,481; check that its driver expects those two different tips. See the [November 3 report](history/landscape-update-2026-11-03.md).
@@ -30,7 +32,7 @@ All large working files are in `/Volumes/4T Data/buv_render/`:
 |---|---|---:|
 | `utxo_4k_epoch105k_60fps_transition_crf21_window972600_to_974310.mp4` | Window master: blocks 972,600–974,310 and the ending. Source for the next append, with `masterStartFrame` 972,600; `master_window_current.json` points at it | 230 MB |
 | `utxo_4k_epoch105k_60fps_transition_crf21_to_972848.mp4` | Last full master (blocks 0–972,848) and the window's base: its blocks before 972,600 plus the window make a full export. The native explorer plays it | 84.93 GB |
-| `changes.blk1.full964k` | Working render input, blocks 0–974,481 (video and history end at 974,310) | 18.60 GB |
+| `changes.blk1.full964k` | Working render input, blocks 0–974,621 (video and history end at 974,310) | 18.61 GB |
 | `utxo_history.bin` | Pixel-explorer history, extendable with `utxo_history_update` | 59.48 GB |
 | `renderer_before_972900.bin` | Validated renderer ledger before block 972,900; skips genesis replay on the next compatible append | 982 MB |
 | `renderer_checkpoint_current.json` | Pointer to the validated checkpoint, source/config and raw-frame proof | Small |
@@ -40,9 +42,9 @@ All large working files are in `/Volumes/4T Data/buv_render/`:
 | `history_delta_objects/` | Read-through cache of small published spend patches; new staged objects can share hard links | About 46 MB initially |
 | `history_publication_current.json` | Pointer to the validated current-data publication catalog | Small |
 | `compat1440-append974310-20261102/` | 1440p append run; its ledger and `update_20261102/compat-staged/segments.json` (with object URIs) are the previous ledger for the next 1440p append. The init segment is still `compat1440-20260918/ledger/5156c6f2….mp4` | 100 MB |
-| `update_20261103/extract/checkpoint_v3.utxo` | v3 updater checkpoint at block 974,481, matching `changes.blk1.full964k`; the next extraction resumes from it (the node's pair is older) | 11.26 GB |
-| `landscape_974481/` | Current 3D dataset, published as `d974481-20261103`; its `manifest.json` and `chunks.json` are what the next publish compares against | 77.07 GB |
-| `landscape_974310/`, `landscape_972848/`, `landscape_972052/` and `landscape_971587/` | Retained cloud editions `d974310-20261102`, `d972848-20261023`, `d972052-20261018` (the guide's capture dataset) and `d971587-20261015`; keep each until its R2 prefix is retired | 77.07, 76.75, 76.55 and 76.45 GB |
+| `update_20261104/extract/checkpoint_v3.utxo` | v3 updater checkpoint at block 974,621, matching `changes.blk1.full964k`; the next extraction resumes from it (the node's pair is older) | 11.27 GB |
+| `landscape_974621/` | Current 3D dataset, published as `d974621-20261104` | 77.08 GB |
+| `landscape_974481/`, `landscape_972052/` and `landscape_971587/` | The rollback edition `d974481-20261103`, the guide's capture dataset `d972052-20261018` and `d971587-20261015`, which the replay and data tests read. The cloud editions share their snapshots and chunks under `landscape/blobs/`, so serving one needs no local copy; `landscape_974310/` and `landscape_972848/` were removed on November 4 | 77.07, 76.55 and 76.45 GB |
 | `compat1440-20260918/ledger/` | Retained published compatibility objects and original init. Duplicate `encode/` output and media in both publication staging directories were removed; small metadata remains | 19.84 GB |
 
 Render settings: `configs/buv_render_full_weighted.json`.
@@ -57,7 +59,7 @@ The previous full HLS staging directory was removed during cleanup. The current 
 
 | File | Purpose | Size |
 |---|---|---:|
-| `/home/umbrel/buv_data/changes.blk1.v3` | Full incremental changes stream, currently through block 970,658 (the Mac is ahead at 974,481) | 18.46 GB |
+| `/home/umbrel/buv_data/changes.blk1.v3` | Full incremental changes stream, currently through block 970,658 (the Mac is ahead at 974,621) | 18.46 GB |
 | `/home/umbrel/buv_data/checkpoint_v3.utxo` | Matching state for processing new blocks, at 970,658 | 10.95 GB |
 
 Use the v3 implementation: retained container `buv_blk_v3`, image `buv:checkpoint-v3`, and `/home/umbrel/buv_v3_patch/buv_node_checkpoint_v3.json`. The checkpoint's marker, height, recorded BLK length, final record hash and EOF were checked against the node during cleanup. The two files must remain matched.
@@ -96,7 +98,7 @@ running), so the October 15, 18 and 23 and November 2 updates ran the updater on
 [October 15 report](history/site-update-2026-10-15.md)). Anything installed outside `/home` on the
 node disappears at the next umbrelOS update.
 
-The core working files are the window master and its base (the October 23 master), local BLK/history, the Mac's updater checkpoint at 974,481 and the node BLK/checkpoint at 970,658, excluding Bitcoin Core data, software and cloud-hosted copies. The October 18 master, the October 18 and 23 updater checkpoints, `renderer_before_970620.bin` and `renderer_before_971460.bin` remain until they are removed as superseded. They are not inputs for the next append. `renderer_checkpoint_current.json` now points to the validated rolling checkpoint before 972,900. The Mac input is a working dataset and an updater checkpoint is the updater's state; there is no extra backup pair. Historical run configs, scripts, receipts and small publication metadata remain, but their old payload paths are historical records and must not be reused as current inputs.
+The core working files are the window master and its base (the October 23 master), local BLK/history, the Mac's updater checkpoint at 974,621 and the node BLK/checkpoint at 970,658, excluding Bitcoin Core data, software and cloud-hosted copies. The October 18 master, the October 18 and 23 updater checkpoints, `renderer_before_970620.bin` and `renderer_before_971460.bin` remain until they are removed as superseded. They are not inputs for the next append. `renderer_checkpoint_current.json` now points to the validated rolling checkpoint before 972,900. The Mac input is a working dataset and an updater checkpoint is the updater's state; there is no extra backup pair. Historical run configs, scripts, receipts and small publication metadata remain, but their old payload paths are historical records and must not be reused as current inputs.
 
 After a future update verifies, retain the new current master and current updater/renderer
 state, then remove superseded copies under the same lean policy. Retain current and supported
