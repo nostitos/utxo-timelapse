@@ -17,7 +17,8 @@ evidence types it accepts. Every exchange accepts all the types the catalog hold
 disclosures and the addresses others attribute to it (the reported tier), so suspected addresses are
 lit too and the app says which kind each count is. Eight historic exchanges that GraphSense files
 under services (AllCoin, BitNZ, BitoEX, BtcExchange.ro, Coin-Swap, Cryptorush, HaoBTC, MPEx) were
-added by name. The spec contains no addresses. Addresses come
+added by name. Okcoin's lists count as OKX's: Okcoin was OKX's US arm, and both exchanges' lists name
+the same 2,324 wallets. The spec contains no addresses. Addresses come
 from the label catalog that `scripts/address_coverage_labels.py` builds (see
 [address-coverage-labels.md](address-coverage-labels.md)); the extraction reads its
 `labels_extended_resolved.csv`, in which conflicting addresses are already excluded.
@@ -43,11 +44,15 @@ recognisable address table fails its source; `fetch_report.json` records every o
 sources still run.
 
 - Every published snapshot is read: monthly patterns (Binance, Bybit), every link on OKX's download
-  page and its Wayback captures, APIs that list files (Okcoin, KuCoin), every version of a file in Git
-  (HTX, Bitfinex, SwissBorg), daily lists (Korbit), every page (Bitstamp) and every Wayback capture
+  page and its Wayback captures (plus eight March–May 2024 files that neither lists, found by trying
+  every hour of those months on its file host), APIs that list files (Okcoin, KuCoin), every version of a file in Git
+  (HTX, Bitfinex, SwissBorg), daily lists (Korbit, MEXC), every page (Bitstamp) and every Wayback capture
   of pages edited in place (NBX, BingX, CEX.IO, Deribit, Coinbase's cbBTC reserves). A 403 or 404 is
   recorded as not published. Files an operator withdrew come from the Wayback Machine: BitMEX's
   2021 reserves (the exchange closed in 2026), Gemini's Trust Center list and Deribit's page.
+- A run also reads every file the previous run archived for the same source (the `--reuse` folders),
+  so a list the operator rewrites or withdraws keeps the addresses it named. When the Wayback Machine
+  does not answer, the source's counts say `wayback: unavailable` and it reads no new captures that run.
 - Rows naming a third-party custodian, such as Ceffu, are excluded and listed, as is WOO X's only
   disclosed BTC address, which a custodian holds. BTC on other networks (BEP20, TRC20, Lightning,
   layer 2s) is counted and dropped. Strings that are not Bitcoin mainnet addresses are rejected with
@@ -114,20 +119,22 @@ PY='/Volumes/4T Data/buv_coverage/.venv/bin/python'
 OWNERS='/Volumes/4T Data/buv_owners'
 
 # 1. Every active registry source -> one supplement each, reusing archives an earlier run recorded.
-#    Reruns fetch only new or changed files; --source <id> runs one source.
-"$PY" scripts/landscape_owners.py fetch-sources --out "$OWNERS/labels-$DATE/research" \
-  $(for d in "$OWNERS/labels-<previous date>/research"/*/; do printf -- '--reuse %q ' "$d"; done)
+#    Reruns fetch only new or changed files; --source <id> runs one source. The arrays keep the
+#    space in these paths inside one argument.
+reuse=(); for d in "$OWNERS/labels-<previous date>/research"/*/; do reuse+=(--reuse "$d"); done
+"$PY" scripts/landscape_owners.py fetch-sources --out "$OWNERS/labels-$DATE/research" "${reuse[@]}"
 "$PY" scripts/landscape_owners.py fetch-sources --discover --out "$OWNERS/labels-$DATE/research" \
   --tagpacks-dir '/Volumes/4T Data/buv_coverage/916828-966827/labels/sources/graphsense-tagpacks' \
   --catalog "$OWNERS/labels-<previous date>"
 
 # 2. The label catalog, with the reported tier, the older primary supplement and every new one,
 #    then its coverage report.
+supplements=(); for f in "$OWNERS/labels-$DATE"/research/*/*_supplement.json; do supplements+=(--supplement "$f"); done
 "$PY" scripts/address_coverage_labels.py --output "$OWNERS/labels-$DATE" \
   --tagpacks-dir '/Volumes/4T Data/buv_coverage/916828-966827/labels/sources/graphsense-tagpacks' \
   --include-reported \
   --supplement '/Volumes/4T Data/buv_coverage/916828-966827/labels/research/primary_exchange_supplement.json' \
-  $(for f in "$OWNERS/labels-$DATE"/research/*/*_supplement.json; do printf -- '--supplement %q ' "$f"; done)
+  "${supplements[@]}"
 "$PY" scripts/landscape_owners.py coverage-report --labels "$OWNERS/labels-$DATE" \
   --research "$OWNERS/labels-$DATE/research" --out "$OWNERS/labels-$DATE/coverage_report.json"
 
@@ -195,9 +202,9 @@ Tests: `"$PY" -m unittest scripts/tests/test_landscape_owners.py scripts/tests/t
 
 1. Run `fetch-sources` into a new `labels-$DATE/research` with `--reuse` pointing at the previous run's
    research folders (it reads every `*.json` manifest there), so archived files are linked instead of
-   downloaded and only new months, new captures and changed live lists are fetched. Sources whose
-   file names cannot be listed from here need their new files added to the registry: CoinEx and MEXC
-   refuse connections from Canada, and Phemex names its script bundle per deployment.
+   downloaded, files the previous run read are read again, and only new months, new captures and
+   changed live lists are fetched. Two sources need their new files added to the registry by hand:
+   CoinEx's listing API refuses connections from Canada, and Phemex names its script bundle per deployment.
 2. Rebuild the catalog into `labels-$DATE` and write its coverage report.
 3. Run `preflight`, then `extract` with the same `--work`. It fetches only history pages newer than each
    address's cached height, from six blocks before it to allow for reorganisations, and only new

@@ -525,7 +525,8 @@ class SpecTests(unittest.TestCase):
         self.assertEqual(sorted(selected), sorted([A, okx]))
         self.assertEqual(len(selected[A]["evidence"]), 2)
         self.assertEqual(selected[okx]["entity"], "okx")
-        self.assertEqual([e["type"] for e in selected[okx]["evidence"]], ["service_disclosure"])
+        self.assertEqual([e["type"] for e in selected[okx]["evidence"]],
+                         ["service_disclosure", "third_party_exact_tag_via_graphsense"])  # Okcoin's tags count as OKX's
         for change in (dict(id="Bad Id"), dict(color="yellow")):
             with self.subTest(change=change), tempfile.TemporaryDirectory() as tmp:
                 path = Path(tmp) / "spec.json"
