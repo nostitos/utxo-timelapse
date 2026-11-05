@@ -15,6 +15,7 @@ These dated records preserve prior decisions and cleanup evidence. Paths, render
 - [November 3 update of the 3D landscape only](landscape-update-2026-11-03.md)
 - [November 4 owner highlight release](owner-highlight-2026-11-04.md)
 - [November 4 shared 3D landscape files in R2](r2-shared-landscape-2026-11-04.md)
+- [November 4 update of the 3D landscape only](landscape-update-2026-11-04.md)
 - [Artifact manifest](cleanup-audit-2026-09-09/artifact-manifest.csv)
 - [Audit summary](cleanup-audit-2026-09-09/audit-summary.json)
 - [Completion record](cleanup-audit-2026-09-09/completion.json)
