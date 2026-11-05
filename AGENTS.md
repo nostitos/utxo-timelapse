@@ -55,6 +55,7 @@ For a landscape change, run only the browser checks it touches (`landscape/tests
 - The HUD stays at the left. Do not claim pixel identity based on a lossy encode or claim a full outpoint from the compact lifecycle index.
 - Read section offsets from BUVHIST1; incremental updates can move arrays after records.
 - Routine history publication should use a fresh `historyDeltaFile` and the validated `history_publication_current.json` catalog, not rediscover spends with the full-scan publisher. See `docs/history-delta-publication.md`; promote the next catalog only after its release verifies.
+- The owner-data refresh (`scripts/landscape_owners.py` `extract` and `build`, and publishing owner data) is not part of a routine site or 3D update. `extract` currently rescans all 687,047 addresses, which takes about an hour, so always ask the founder before running any of those steps. A landscape release keeps the published owner data until then.
 - Verify process exits, final FFmpeg summary, frame counts, decoded boundary samples, and live playback. File growth alone is not success.
 
 ## Presentation and releases
