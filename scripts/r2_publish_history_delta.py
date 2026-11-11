@@ -10,10 +10,10 @@ import numpy as np
 import boto3
 from botocore.config import Config
 from r2_publish_cloud_history import HISTORY_HEADER,RECORD_DTYPE,SHARD_HEADER,SHARD_MAGIC,UNSPENT,build_shard,load_credentials,save_json
+from r2_config import ENDPOINT
 from update_video_append import step,event
 
 PATCH_MAGIC=b'BUVSPN1\0'
-ENDPOINT='https://f147815debbc98aca5b60c0caeeb29e6.r2.cloudflarestorage.com'
 
 def make_patch(payload,old_tip,base_etag):
     magic,version,rows,h1,h2,n=SHARD_HEADER.unpack_from(payload)

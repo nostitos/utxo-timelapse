@@ -17,7 +17,6 @@ Needs boto3 (python3 -m venv /tmp/landscape_r2_venv && /tmp/landscape_r2_venv/bi
 from __future__ import annotations
 
 import argparse
-import configparser
 import hashlib
 import json
 import sys
@@ -28,7 +27,9 @@ from pathlib import Path
 import boto3
 from botocore.config import Config
 
-ENDPOINT = "https://f147815debbc98aca5b60c0caeeb29e6.r2.cloudflarestorage.com"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from r2_config import ENDPOINT, load_credentials
+
 BLOBS = "landscape/blobs/"
 
 
@@ -79,11 +80,10 @@ def main() -> int:
     root = a.dataset.resolve()
     prefix = a.prefix.rstrip("/") + "/"
     files = local_files(root, include_manifest=not a.no_manifest)
-    cfg = configparser.ConfigParser()
-    cfg.read(a.credentials)
+    access, secret = load_credentials(a.credentials)
     s3 = boto3.client(
         "s3", endpoint_url=a.endpoint, region_name="auto",
-        aws_access_key_id=cfg["default"]["aws_access_key_id"], aws_secret_access_key=cfg["default"]["aws_secret_access_key"],
+        aws_access_key_id=access, aws_secret_access_key=secret,
         config=Config(retries={"max_attempts": 8, "mode": "adaptive"}),
     )
 

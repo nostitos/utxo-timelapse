@@ -8,6 +8,9 @@ No cloud promotion or deletion is performed by this script.
 import argparse, contextlib, datetime, hashlib, json, os, re, shlex, shutil, socket, struct, subprocess, sys, time
 from pathlib import Path
 
+# The publication gates here and in the scripts that import this module are asserts.
+if not __debug__:raise SystemExit('run without python -O: its checks are asserts')
+
 ROOT=Path(__file__).resolve().parents[1]
 BASE=Path('/Volumes/4T Data/buv_render')
 OLD=BASE/'utxo_4k_epoch105k_60fps_exactledger_weighted_topband_splitpalette_transition_crf21.mp4'

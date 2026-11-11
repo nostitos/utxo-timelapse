@@ -4,6 +4,7 @@ Usage: python3 scripts/build_site_media.py --master /path/to/master.mp4 --histor
 Requires ffmpeg, cwebp and ImageMagick. Existing previews are retained unless --force.
 """
 import argparse, concurrent.futures, datetime, json, pathlib, struct, subprocess
+if not __debug__:raise SystemExit('run without python -O: its checks are asserts')
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 ASSETS=ROOT/'site/assets'
 WORK=ROOT/'buv_output/site-work'

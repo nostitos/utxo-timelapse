@@ -16,8 +16,7 @@ manifest.json and chunks.json (from /dataset/<id>/).
 import argparse, concurrent.futures, hashlib, json, re, sys, time
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from r2_publish_cloud_history import load_credentials
-from r2_publish_history_delta import ENDPOINT
+from r2_config import ENDPOINT, load_credentials
 import boto3
 from botocore.config import Config
 
