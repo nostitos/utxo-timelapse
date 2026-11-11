@@ -25,6 +25,8 @@ cmake --build build_local --parallel 6
 
 These targeted cases passed **1,965 assertions** during the presentation release. On Apple platforms, CMake excludes the legacy `src/cpp/unit` directory. A bare `./build/buv` can report success with **zero cases**; inspect the case count. The named production tasks use doctest's skip mechanism and need `-ns`.
 
+The Python scripts and their tests need the packages in `requirements-dev.txt` (`pip install -r requirements-dev.txt`, Python 3.12+): `python -m unittest discover -s scripts/tests -t scripts/tests`. On every pull request, `.github/workflows/tests.yml` runs these, the landscape tests (`node --test landscape/tests/*.test.mjs`), the Worker and site checks, and the three named `buv` cases on Ubuntu.
+
 Build Docker from the repository root: `docker build -t buv .`. The entry point is `buv`; pass task arguments directly. Ignored `buv_deploy/` directories are legacy snapshots.
 
 ## Follow the pipeline
@@ -45,7 +47,7 @@ Build Docker from the repository root: `docker build -t buv .`. The entry point 
 | Publish the guide | [`site/README.md`](../site/README.md) |
 | Explore the UTXO set in 3D | [`landscape.md`](landscape.md): `landscape_build` / `landscape_verify`, `node landscape/tools/serve.mjs`; online at [bitcoinlandscape.com](https://bitcoinlandscape.com/), [Worker and publishing](../cloudflare/utxo-landscape-worker/README.md) |
 
-The September 10 append/publish scripts are **run-specific operational records**. They contain paths, release names and ranges for that installation. In particular, `update_video_append.py` expects local private configuration and the maintainer's node/runtime. They are not portable one-command installers. Read each script, prepare a new manifest, and adapt source/range/credential locations before a future run. Never commit private configuration.
+The September 10 append/publish scripts are **run-specific operational records**. They contain paths, release names and ranges for that installation. In particular, `update_video_append.py` expects the maintainer's node/runtime and reads the node password from `SSHPASS` (`SSHPASS="$(cat ~/.config/buv-node/ssh-password)"`). They are not portable one-command installers. Read each script, prepare a new manifest, and adapt source/range/credential locations before a future run. Never commit private configuration.
 
 ## Repository map
 

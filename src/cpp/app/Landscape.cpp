@@ -1567,7 +1567,8 @@ auto verifyDataset(VerifyOptions const& o) -> bool {
                       u64(g, "l0Columns") == grid.l0Columns && u64(g, "tileSize") == kTileSize && u64(g, "border") == 1 &&
                       u64(g, "tiles") == grid.tiles;
             uint32_t l = 0;
-            for (auto lv : g["levels"].get_array().value()) {
+            auto levels = g["levels"].get_array().value(); // a copy: value() of a temporary result dangles
+            for (auto lv : levels) {
                 if (l >= kLevels) {
                     ok = false;
                     break;
@@ -1580,7 +1581,8 @@ auto verifyDataset(VerifyOptions const& o) -> bool {
             }
             auto const a = manifest["axis"].value();
             auto rect = std::vector<uint64_t>();
-            for (auto v : a["graphRect"].get_array().value()) {
+            auto graphRect = a["graphRect"].get_array().value();
+            for (auto v : graphRect) {
                 rect.push_back(v.get_uint64().value());
             }
             ok = ok && l == kLevels && rect == std::vector<uint64_t>{0, 10, 3720, kRows} && u64(a, "minSatoshi") == 1 &&
@@ -1593,7 +1595,8 @@ auto verifyDataset(VerifyOptions const& o) -> bool {
         auto const interval = u64(manifest, "snapshotIntervalBytes");
         auto const chunkTarget = u64(manifest, "chunkBytesTarget");
         auto snapshots = std::vector<ManifestSnapshot>();
-        for (auto s : manifest["snapshots"].get_array().value()) {
+        auto snapshotList = manifest["snapshots"].get_array().value();
+        for (auto s : snapshotList) {
             snapshots.push_back({static_cast<uint32_t>(u64(s, "block")), str(s, "file"), u64(s, "bytes"), str(s, "sha256"),
                                  u64(s, "blkEnd")});
         }
@@ -1649,7 +1652,8 @@ auto verifyDataset(VerifyOptions const& o) -> bool {
                 std::string file, sha;
             };
             auto list = std::vector<C>();
-            for (auto e : cj["chunks"].get_array().value()) {
+            auto chunkList = cj["chunks"].get_array().value();
+            for (auto e : chunkList) {
                 list.push_back({static_cast<uint32_t>(u64(e, "index")), static_cast<uint32_t>(u64(e, "firstBlock")),
                                 static_cast<uint32_t>(u64(e, "lastBlock")), u64(e, "blkOffset"), u64(e, "bytes"), str(e, "file"),
                                 str(e, "sha256")});

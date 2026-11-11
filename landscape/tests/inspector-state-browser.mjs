@@ -64,6 +64,14 @@ async function checkInspectorStates(L) {
     cell.countSmall = 0; cell.satsSmall = 0;
     await inspector.open(hit);
     check('empty cohort remains readable', container.textContent.includes('No unspent outputs') && container.querySelector('.in-history > svg'));
+    replay.block = 1150;
+    response = { ...initial, block: 1100 };
+    await inspector.open(hit);
+    check('history past its end says where it ends', container.textContent.includes('where the history index ends') && !container.textContent.includes('Pause playback'));
+    replay.block = 1000;
+    response = { col: 15, row: 1400, block: 900, cutoffBlock: 900, blockRange: null, satRange: [1, 2], count: 0, utxos: [] };
+    await inspector.open(hit);
+    check('a column the history does not reach says so', container.textContent.includes('History ends at block 900') && container.querySelector('.in-primary'));
     offline = true;
     await inspector.open(hit);
     check('network failure preserves replay totals', container.textContent.includes('History is unavailable') && container.querySelector('.in-primary'));

@@ -1,0 +1,4 @@
+# Python packages for scripts/ and their tests (python -m unittest; CI: .github/workflows/tests.yml).
+-r scripts/address_coverage_requirements.txt
+boto3==1.43.88
+numpy==2.4.1

@@ -10,10 +10,10 @@
 import { RELEASE } from './release.js';
 import { lifecycleJson } from '../../utxo-video-worker/src/history.js';
 import { CONFIG } from '../../utxo-video-worker/src/mapping.js';
+import { serveObject, parseRange, etagMatches } from '../../utxo-video-worker/src/r2_object.js';
 
 export const BLOCKS_PER_COLUMN = 64;
 export const ROWS = 2072;
-const EDGE_CACHE_MAX_BYTES = 8 * 1024 * 1024;
 const DATASET_ID = /^d\d{1,7}-\d{8}$/;
 const DATASET_FILE = /^(?:manifest\.json|rows\.bin|blocktimes\.bin|chunks\.json|chunks\/\d{5}\.bin|snapshots\/\d{7}\.bin)$/;
 // Snapshots and chunks are shared by every dataset that contains them, under the SHA-256 that
@@ -89,122 +89,10 @@ export function isGuidePage(path) {
     !path.slice(path.lastIndexOf('/') + 1).includes('.');
 }
 
-/**
- * Parses a Range header against an object size. Returns null for "whole object" (no header,
- * or a form this server does not support, such as multiple ranges, which RFC 9110 allows a
- * server to ignore), undefined for an unsatisfiable single range, else {offset, length}.
- */
-export function parseRange(value, size) {
-  if (!value) return null;
-  const m = /^bytes=(\d*)-(\d*)$/.exec(value.trim());
-  if (!m || (!m[1] && !m[2])) return null;
-  if (!m[1]) {
-    const suffix = Number(m[2]);
-    if (!Number.isSafeInteger(suffix) || suffix <= 0 || size === 0) return undefined;
-    const start = Math.max(0, size - suffix);
-    return { offset: start, length: size - start };
-  }
-  const start = Number(m[1]);
-  let end = m[2] ? Number(m[2]) : size - 1;
-  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start >= size || end < start) return undefined;
-  end = Math.min(end, size - 1);
-  return { offset: start, length: end - start + 1 };
-}
-
-function etagMatches(header, etag) {
-  if (!header) return false;
-  if (header.trim() === '*') return true;
-  const strip = (t) => t.trim().replace(/^W\//, '');
-  return header.split(',').some((t) => strip(t) === strip(etag));
-}
-
-function datasetHeaders(file, size, etag) {
-  const ext = file.slice(file.lastIndexOf('.') + 1);
-  return {
-    'Content-Type': CONTENT_TYPES[ext] || 'application/octet-stream',
-    'Cache-Control': 'public, max-age=31536000, immutable',
-    ETag: etag,
-    'Accept-Ranges': 'bytes',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Expose-Headers': 'Accept-Ranges, Content-Length, Content-Range, ETag',
-    'Cross-Origin-Resource-Policy': 'cross-origin',
-    'X-Object-Size': String(size),
-  };
-}
-
-function datasetResponse(status, body, base, range, size) {
-  const headers = { ...base };
-  if (range) {
-    headers['Content-Range'] = 'bytes ' + range.offset + '-' + (range.offset + range.length - 1) + '/' + size;
-    headers['Content-Length'] = String(range.length);
-  } else if (status === 200) {
-    headers['Content-Length'] = String(size);
-  }
-  delete headers['X-Object-Size'];
-  return respond(body, status, headers);
-}
-
-/** Edge-cache key for a dataset object or one closed byte range of it (same hostname as the request). */
-function cacheKeyFor(request, key, range) {
-  const u = new URL(request.url);
-  u.pathname = '/__landscape-cache/' + key;
-  u.search = '?r=' + (range ? range.offset + '-' + (range.offset + range.length - 1) : 'all');
-  return new Request(u.toString(), { method: 'GET' });
-}
-
-/** Explicit "bytes=a-b" ranges can be looked up in the edge cache before the object size is known. */
-function explicitRange(value) {
-  const m = value ? /^bytes=(\d+)-(\d+)$/.exec(value.trim()) : null;
-  if (!m) return null;
-  const a = Number(m[1]);
-  const b = Number(m[2]);
-  return Number.isSafeInteger(a) && Number.isSafeInteger(b) && b >= a ? { offset: a, length: b - a + 1 } : null;
-}
-
-/** An immutable R2 object (a dataset or owner file, or the guide's film) with single ranges, ETag and 304. */
-async function serveObject(request, env, ctx, key, file) {
-  const rangeHeader = request.headers.get('Range');
-  const isGet = request.method === 'GET';
-  const cache = globalThis.caches && caches.default;
-
-  // Fast path: a cached whole object or cached closed range (immutable, so no R2 call).
-  const early = rangeHeader ? explicitRange(rangeHeader) : null;
-  if (cache && isGet && (!rangeHeader || early)) {
-    const hit = await cache.match(cacheKeyFor(request, key, early));
-    if (hit) {
-      const size = Number(hit.headers.get('X-Object-Size'));
-      const etag = hit.headers.get('ETag');
-      const base = datasetHeaders(file, size, etag);
-      if (etagMatches(request.headers.get('If-None-Match'), etag)) return datasetResponse(304, null, base, null, size);
-      return datasetResponse(early ? 206 : 200, hit.body, base, early, size);
-    }
-  }
-
-  const meta = await env.VIDEO_BUCKET.head(key);
-  if (!meta) return notFound();
-  const size = meta.size;
-  const base = datasetHeaders(file, size, meta.httpEtag);
-  if (etagMatches(request.headers.get('If-None-Match'), meta.httpEtag)) return datasetResponse(304, null, base, null, size);
-  const range = parseRange(rangeHeader, size);
-  if (range === undefined) {
-    return respond(null, 416, { 'Content-Range': 'bytes */' + size, 'Accept-Ranges': 'bytes', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
-  }
-  const status = range ? 206 : 200;
-  if (!isGet) return datasetResponse(status, null, base, range, size);
-  const object = await env.VIDEO_BUCKET.get(key, range ? { range } : undefined);
-  if (!object) return notFound();
-  const length = range ? range.length : size;
-  let body = object.body;
-  if (cache && length <= EDGE_CACHE_MAX_BYTES) {
-    const [client, stored] = body.tee();
-    body = client;
-    const storedHeaders = new Headers({
-      'Content-Type': base['Content-Type'], 'Cache-Control': 'public, max-age=31536000, immutable',
-      ETag: meta.httpEtag, 'X-Object-Size': String(size), 'Content-Length': String(length),
-    });
-    ctx.waitUntil(cache.put(cacheKeyFor(request, key, range), new Response(stored, { status: 200, headers: storedHeaders })));
-  }
-  return datasetResponse(status, body, base, range, size);
+/** A dataset, owner or film file: an immutable R2 object (../../utxo-video-worker/src/r2_object.js). */
+function serveFile(request, env, ctx, key, file) {
+  const contentType = CONTENT_TYPES[file.slice(file.lastIndexOf('.') + 1)] || 'application/octet-stream';
+  return serveObject(request, env, ctx, key, { contentType, secure: securityHeaders });
 }
 
 function datasetIndex() {
@@ -275,19 +163,24 @@ export function rowRange(minAmt, r) {
   return hi >= lo ? [lo, hi] : null;
 }
 
-export async function cellResponse(url, env) {
+/** {block, col, row} of a cell request, block at most the history's last, or {error}. */
+export function cellQuery(url) {
   const raw = ['block', 'col', 'row'].map((n) => url.searchParams.get(n));
-  if (raw.some((v) => v === null || !/^\d{1,10}$/.test(v))) return json({ error: 'block, col, row must be non-negative integers' }, 400);
-  const [rawBlock, col, row] = raw.map(Number);
-  const numBlocks = CONFIG.numBlocks;
-  if (col >= Math.ceil(numBlocks / BLOCKS_PER_COLUMN)) return json({ error: 'col outside the landscape' }, 400);
-  if (row >= ROWS) return json({ error: 'row outside the landscape' }, 400);
-  const block = Math.min(rawBlock, numBlocks - 1);
+  if (raw.some((v) => v === null || !/^\d{1,10}$/.test(v))) return { error: 'block, col, row must be non-negative integers' };
+  const [block, col, row] = raw.map(Number);
+  if (col >= Math.ceil((RELEASE.dataset.tip + 1) / BLOCKS_PER_COLUMN)) return { error: 'col outside the landscape' };
+  if (row >= ROWS) return { error: 'row outside the landscape' };
+  return { block: Math.min(block, CONFIG.numBlocks - 1), col, row };
+}
+
+export async function cellResponse({ block, col, row }, env) {
+  const tip = CONFIG.numBlocks - 1; // the history's last block, which a 3D-only update passes
   const h1 = col * BLOCKS_PER_COLUMN;
-  const h2 = Math.min(h1 + BLOCKS_PER_COLUMN - 1, numBlocks - 1);
+  const h2 = Math.min(h1 + BLOCKS_PER_COLUMN - 1, tip);
   const lead = { col, row };
   const sats = rowRange(await rowTable(env), row);
   if (!sats) return json({ ...lead, blockRange: null, satRange: null, count: 0, utxos: [] });
+  if (h1 > tip) return json({ ...lead, block, cutoffBlock: tip, blockRange: null, satRange: sats, count: 0, utxos: [] });
   return lifecycleJson(env, { block, heights: [h1, h2], sats, row, lead });
 }
 
@@ -306,15 +199,17 @@ function tokenBucket(ip) {
 tokenBucket.entries = new Map();
 
 async function cachedCell(request, env, ctx, url) {
+  const q = cellQuery(url);
+  if (q.error) return json({ error: q.error }, 400);
   const cache = globalThis.caches && caches.default;
-  const keyUrl = new URL(url);
-  keyUrl.searchParams.set('__release', RELEASE.version);
+  // The validated query alone is the key: extra parameters and blocks past the history share one entry.
+  const keyUrl = new URL('/api/landscape/cell?block=' + q.block + '&col=' + q.col + '&row=' + q.row + '&__release=' + RELEASE.version, url);
   const cacheKey = new Request(keyUrl.toString(), { method: 'GET' });
   if (cache) {
     const hit = await cache.match(cacheKey);
     if (hit) return respond(hit.body, hit.status, Object.fromEntries(hit.headers));
   }
-  const produced = await cellResponse(url, env);
+  const produced = await cellResponse(q, env);
   if (!produced.ok) return respond(produced.body, produced.status, Object.fromEntries(produced.headers));
   const text = await produced.text();
   const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=86400, s-maxage=86400' };
@@ -458,7 +353,7 @@ export async function handle(request, env, ctx) {
     const m = /^\/dataset\/([^/]+)\/(.+)$/.exec(path);
     if (!m || !DATASET_ID.test(m[1]) || !datasetIds().includes(m[1]) || !DATASET_FILE.test(m[2])) return notFound();
     const key = await datasetKey(env, m[1], m[2]);
-    return key ? serveObject(request, env, ctx, key, m[2]) : notFound();
+    return key ? serveFile(request, env, ctx, key, m[2]) : notFound();
   }
   if (path === '/owners/index.json') {
     const owners = RELEASE.owners;
@@ -467,7 +362,7 @@ export async function handle(request, env, ctx) {
   if (path.startsWith('/owners/')) {
     const m = /^\/owners\/([^/]+)\/(.+)$/.exec(path);
     if (!m || !OWNERS_ID.test(m[1]) || !ownersIds().includes(m[1]) || !OWNERS_FILE.test(m[2])) return notFound();
-    return serveObject(request, env, ctx, 'landscape/owners/' + m[1] + '/' + m[2], m[2]);
+    return serveFile(request, env, ctx, 'landscape/owners/' + m[1] + '/' + m[2], m[2]);
   }
   if (path === '/api/landscape/cell') {
     if (request.method !== 'GET') return json({ error: 'method not allowed' }, 405);
@@ -488,7 +383,7 @@ export async function handle(request, env, ctx) {
   }
   if (path !== '/guide/' && GUIDE_ALIAS.test(path)) return toGuide(url);
   const film = GUIDE_FILM.exec(path);
-  if (film) return serveObject(request, env, ctx, 'landscape/guide/film/' + film[1], film[1]);
+  if (film) return serveFile(request, env, ctx, 'landscape/guide/film/' + film[1], film[1]);
   if (GUIDE_MEDIA.test(path)) return serveGuideMedia(request, env, path);
   const asset = await serveAsset(request, env);
   // A mistyped or retired page under the guide (/guide/views, /Guide/places/) opens the guide;

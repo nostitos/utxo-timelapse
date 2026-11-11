@@ -2,6 +2,7 @@
 """Rebase appended fMP4 timestamps, without changing any encoded video bytes."""
 from pathlib import Path
 import struct,hashlib,json
+if not __debug__:raise SystemExit('run without python -O: its checks are asserts')
 CONTAINERS={b'moof',b'traf'}
 def boxes(b,start=0,end=None):
  end=len(b) if end is None else end

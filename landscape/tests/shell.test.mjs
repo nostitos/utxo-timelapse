@@ -11,6 +11,7 @@ import {
   START_BEFORE_TIP, speedHint, downloadPace,
 } from '../web/ui/playback.js';
 import { PLACES, regionRows, resolvePlace, placeFrom } from '../web/ui/places.js';
+import { createReplayClient } from '../web/client/replay-client.js';
 import { buildMinAmtTable, rowOfAmount } from '../web/data/axis.js';
 import { existsSync, readFileSync } from 'node:fs';
 
@@ -278,18 +279,37 @@ async function setup({ start, tip, rate, seekMs, snapshots = [], speed = '1', ne
   return { clock, w, pb, events, run };
 }
 
-// The simulated worker behind a client that holds frames for the playhead (replay.showThrough):
-// the block on screen is the worker's, but never past the last showThrough limit.
-function withDisplay(w) {
-  let limit = Infinity;
-  return new Proxy(w, {
-    get(t, k) {
-      if (k === 'block') return Math.min(t.block, limit);
-      if (k === 'workerBlock') return t.block;
-      if (k === 'showThrough') return (b) => { limit = b; };
-      return Reflect.get(t, k);
-    },
-  });
+// A Worker for the real replay client that answers like ReplayEngine.runAdvance: an advance
+// applies blocks at 'rate' a second up to its target, then sends ONE frame at the block it
+// reached. stall(ms) stops it for that long (a busy worker, from the page's view).
+function messageWorker({ start, rate }) {
+  const w = { block: start, queue: [], stallLeft: 0, onmessage: null };
+  const send = (data) => w.onmessage({ data });
+  w.postMessage = (m) => {
+    if (m.type === 'init') queueMicrotask(() => send({ type: 'ready', manifest: { numBlocks: 966828 }, snapshotBlocks: [] }));
+    else if (m.type === 'seek' || m.type === 'advance') w.queue.push(m);
+  };
+  w.stall = (ms) => { w.stallLeft += ms; };
+  w.run = async (ms) => {
+    const idle = Math.min(ms, w.stallLeft);
+    w.stallLeft -= idle;
+    let left = ms - idle;
+    while (w.queue.length && left >= 1000 / rate) {
+      const m = w.queue.shift();
+      if (m.type === 'seek') {
+        w.block = m.block;
+        send({ type: 'seekDone', id: m.id, block: m.block, ms: 0 });
+      } else {
+        const n = Math.min(m.target - w.block, Math.floor((rate * Math.min(left, m.budgetMs)) / 1000));
+        w.block += n;
+        left -= (n * 1000) / rate;
+        send({ type: 'frame', frame: { block: w.block, reason: 'advance', stats: {} } });
+        send({ type: 'advanceDone', id: m.id, block: w.block, reached: w.block === m.target, blocks: n, ms: (n * 1000) / rate });
+      }
+      await flush(); // the page's next request arrives within the same frame
+    }
+  };
+  return w;
 }
 
 /** Visible motion from per-frame [ms, block] samples after fromMs: rate, longest still stretch, jumps. */
@@ -312,13 +332,16 @@ function motion(samples, fromMs) {
   };
 }
 
-test('exact speeds show one block a frame while the worker pauses 60 ms every 0.4 s', async () => {
-  const result = {};
-  for (const hold of [false, true]) {
+test('exact speeds move one step every frame through the real client while the worker pauses 60 ms every 0.4 s', async () => {
+  for (const [speed, rate] of [['1', 60], ['5', 300]]) {
     const clock = { t: 0 };
-    const w = simWorker({ start: 300000, rate: 5000 });
-    const replay = hold ? withDisplay(w) : w;
+    const w = messageWorker({ start: 300000, rate: 5000 });
+    const replay = await createReplayClient({ worker: w });
+    const seeking = replay.seek(300000);
+    await w.run(1);
+    await seeking;
     const pb = createPlayback({ replay, tip: 966827, now: () => clock.t });
+    pb.setSpeed(speed);
     pb.play();
     const samples = [];
     for (let i = 0; i < 6 * 60; i++) {
@@ -329,11 +352,11 @@ test('exact speeds show one block a frame while the worker pauses 60 ms every 0.
       await flush();
       samples.push([clock.t, replay.block]);
     }
-    result[hold] = { ...motion(samples, 1000), ahead: w.block - replay.block };
+    const m = { ...motion(samples, 1000), ahead: w.block - replay.block };
+    const step = rate / 60;
+    assert.ok(m.longestStillMs <= 17 && m.maxJump <= step + 1, speed + 'x: a step every frame, no pause and catch-up: ' + JSON.stringify(m));
+    assert.ok(Math.abs(m.rate - rate) < rate * 0.03 && m.ahead >= step && m.ahead <= rate * 0.15, speed + 'x: exact rate, the worker about 0.1 s ahead: ' + JSON.stringify(m));
   }
-  assert.ok(result.false.longestStillMs >= 50 && result.false.maxJump >= 3, 'answered directly, the blocks pause and jump: ' + JSON.stringify(result.false));
-  assert.ok(result.true.longestStillMs <= 17 && result.true.maxJump === 1, 'held for the playhead, one block every frame: ' + JSON.stringify(result.true));
-  assert.ok(Math.abs(result.true.rate - 60) < 1.5 && result.true.ahead >= 2 && result.true.ahead <= 8, 'at 60 blocks/s, the worker a few blocks ahead: ' + JSON.stringify(result.true));
 });
 
 test('1x plays 60 exact blocks per second', async () => {

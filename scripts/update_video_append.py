@@ -8,6 +8,9 @@ No cloud promotion or deletion is performed by this script.
 import argparse, contextlib, datetime, hashlib, json, os, re, shlex, shutil, socket, struct, subprocess, sys, time
 from pathlib import Path
 
+# The publication gates here and in the scripts that import this module are asserts.
+if not __debug__:raise SystemExit('run without python -O: its checks are asserts')
+
 ROOT=Path(__file__).resolve().parents[1]
 BASE=Path('/Volumes/4T Data/buv_render')
 OLD=BASE/'utxo_4k_epoch105k_60fps_exactledger_weighted_topband_splitpalette_transition_crf21.mp4'
@@ -36,10 +39,9 @@ def step(run,name):
     else:event(run,name+'_complete',seconds=time.monotonic()-start)
 
 def remote(cmd,output=None):
-    # Existing saved node credential; never log or interpolate it in argv.
-    secret=re.search(r"sshpass -p '([^']+)'",(ROOT/'.claude/settings.local.json').read_text()).group(1)
-    env=dict(os.environ,SSHPASS=secret)
-    r=subprocess.run(['sshpass','-e','ssh','-o','ConnectTimeout=20','-o','PreferredAuthentications=password','-o','PubkeyAuthentication=no','-o','NumberOfPasswordPrompts=1','-o','ControlMaster=auto','-o','ControlPersist=600','-o','ControlPath=/tmp/buv-append-node-ssh','-o','ServerAliveInterval=30','umbrel@192.168.8.234',cmd],env=env,stdout=output or subprocess.PIPE,stderr=subprocess.PIPE)
+    # sshpass -e reads the node password from the caller's SSHPASS; it is never in argv or this repository.
+    if not os.environ.get('SSHPASS'):raise RuntimeError('set SSHPASS to the node password: SSHPASS="$(cat ~/.config/buv-node/ssh-password)"')
+    r=subprocess.run(['sshpass','-e','ssh','-o','ConnectTimeout=20','-o','PreferredAuthentications=password','-o','PubkeyAuthentication=no','-o','NumberOfPasswordPrompts=1','-o','ControlMaster=auto','-o','ControlPersist=600','-o','ControlPath=/tmp/buv-append-node-ssh','-o','ServerAliveInterval=30','umbrel@192.168.8.234',cmd],stdout=output or subprocess.PIPE,stderr=subprocess.PIPE)
     if r.returncode:raise RuntimeError(r.stderr.decode())
     return None if output else r.stdout
 

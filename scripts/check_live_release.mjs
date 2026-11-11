@@ -3,9 +3,12 @@
 // from a branch (which would roll back someone else's release) is caught right away.
 //
 //   git switch master && git pull --ff-only
+//   node scripts/check_live_release.mjs --preflight
 //   ... deploy ...
 //   node scripts/check_live_release.mjs [--wait 120] [--any-commit]
 //
+// --preflight checks only the checkout, before a deploy: origin/master, and nothing uncommitted
+// in what Wrangler uploads (cloudflare/ and landscape/web/).
 // --wait N retries for up to N seconds: aliases can serve the previous release for a short
 // while after a deploy. --any-commit skips the origin/master comparison (for a rollback drill).
 // Exit 0 when every hostname answers /health with the expected X-Worker-Version.
@@ -28,6 +31,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
 const waitSeconds = args.includes('--wait') ? Number(args[args.indexOf('--wait') + 1]) : 0;
 const anyCommit = args.includes('--any-commit');
+const preflight = args.includes('--preflight');
 
 function git(...a) {
   return execFileSync('git', a, { cwd: root, encoding: 'utf8' }).trim();
@@ -46,19 +50,20 @@ let ok = true;
 if (!anyCommit) {
   const head = git('rev-parse', 'HEAD');
   const master = git('rev-parse', 'origin/master');
-  const dirty = git('status', '--porcelain', '--', 'cloudflare/utxo-landscape-worker/src/release.js',
-    'cloudflare/utxo-video-worker/src/release.js');
+  // Wrangler uploads the working tree, committed or not.
+  const dirty = git('status', '--porcelain', '--', 'cloudflare', 'landscape/web');
   if (head !== master) {
     console.log('FAIL checkout ' + head.slice(0, 7) + ' is not origin/master ' + master.slice(0, 7) +
       ' (git fetch, then deploy from master after the PR merges)');
     ok = false;
   } else if (dirty) {
-    console.log('FAIL release.js has uncommitted changes:\n' + dirty);
+    console.log('FAIL uncommitted changes in what a deploy uploads:\n' + dirty);
     ok = false;
   } else {
     console.log('ok   checkout is origin/master ' + master.slice(0, 7));
   }
 }
+if (preflight) process.exit(ok ? 0 : 1);
 
 const deadline = Date.now() + waitSeconds * 1000;
 for (const [worker, { version, hosts }] of Object.entries(HOSTS)) {

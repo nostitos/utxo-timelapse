@@ -2,6 +2,8 @@ import { RELEASE } from './release.js';
 import { navigationRoute, explorerCookie, fetchGuide, welcomeHtml } from './navigation.js';
 import { txidResponse } from "./bitcoin.js";
 import { dateResponse, pixelResponse, rangesResponse } from "./history.js";
+import { validatePixelParams } from "./mapping.js";
+import { serveObject } from "./r2_object.js";
 
 const FALLBACK_VIDEO_KEY =
   "videos/utxo_4k_epoch105k_60fps_exactledger_weighted_topband_splitpalette_transition_crf21.mp4";
@@ -83,86 +85,19 @@ function jsonError(message, status = 500) {
   );
 }
 
-function parseRange(value, size) {
-  if (!value) return null;
-  const match = /^bytes=(\d*)-(\d*)$/.exec(value.trim());
-  if (!match || (!match[1] && !match[2])) return undefined;
-  let start;
-  let end;
-  if (!match[1]) {
-    const suffix = Number(match[2]);
-    if (!Number.isSafeInteger(suffix) || suffix <= 0) return undefined;
-    start = Math.max(0, size - suffix);
-    end = size - 1;
-  } else {
-    start = Number(match[1]);
-    end = match[2] ? Number(match[2]) : size - 1;
-    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || start >= size || end < start) {
-      return undefined;
-    }
-    end = Math.min(end, size - 1);
-  }
-  return { offset: start, length: end - start + 1 };
+function serveR2(request, env, ctx, key, { contentType = CONTENT_TYPES[extension(key)], ...options } = {}) {
+  return serveObject(request, env, ctx, key, { contentType: contentType || "application/octet-stream", secure: securityHeaders, ...options });
 }
 
-async function serveR2(request, env, ctx, key, options = {}) {
-  const metadata = await env.VIDEO_BUCKET.head(key);
-  if (!metadata) return new Response("Not found\n", { status: 404 });
-  const requestedRange = parseRange(request.headers.get("Range"), metadata.size);
-  if (requestedRange === undefined) {
-    return new Response(null, {
-      status: 416,
-      headers: { "Content-Range": `bytes */${metadata.size}`, "Accept-Ranges": "bytes" },
-    });
-  }
-
-  const cacheUrl = new URL(request.url);
-  cacheUrl.search = "";
-  cacheUrl.searchParams.set("__r2key", key);
-  const cacheKey = new Request(cacheUrl.toString(), { method: "GET" });
-  if (options.edgeCache && !requestedRange && request.method === "GET") {
-    const hit = await caches.default.match(cacheKey);
-    if (hit) return hit;
-  }
-
-  const object = request.method === "HEAD"
-    ? metadata
-    : await env.VIDEO_BUCKET.get(key, requestedRange ? { range: requestedRange } : undefined);
-  if (!object) return new Response("Not found\n", { status: 404 });
-  const headers = securityHeaders(new Headers());
-  object.writeHttpMetadata(headers);
-  headers.set("Content-Type", options.contentType || CONTENT_TYPES[extension(key)] || "application/octet-stream");
-  headers.set("Accept-Ranges", "bytes");
-  headers.set("ETag", metadata.httpEtag);
-  headers.set("Content-Disposition", options.download ? "attachment" : "inline");
-  headers.set("Cache-Control", options.cacheControl || "public, max-age=31536000, immutable");
-  headers.set("Cross-Origin-Resource-Policy", "cross-origin");
-  headers.set("Access-Control-Allow-Origin", "*");
-  headers.set("Access-Control-Expose-Headers", "Accept-Ranges, Content-Length, Content-Range, ETag");
-  let status = 200;
-  let length = metadata.size;
-  if (requestedRange) {
-    status = 206;
-    length = requestedRange.length;
-    headers.set(
-      "Content-Range",
-      `bytes ${requestedRange.offset}-${requestedRange.offset + requestedRange.length - 1}/${metadata.size}`,
-    );
-  }
-  headers.set("Content-Length", String(length));
-  const response = new Response(request.method === "HEAD" ? null : object.body, { status, headers });
-  if (options.edgeCache && !requestedRange && request.method === "GET") {
-    ctx.waitUntil(caches.default.put(cacheKey, response.clone()));
-  }
-  return response;
-}
-
-async function cachedApi(request, ctx, producer, seconds) {
+// query: the validated parameters, which alone form the cache key, so extra parameters cannot make
+// each request a new history scan; null (invalid parameters) skips the cache.
+async function cachedApi(request, ctx, query, producer, seconds) {
   if (request.method !== "GET") return jsonError("method not allowed", 405);
+  if (query === null) return withHeaders(await producer());
   const cache = caches.default;
-  const versionedUrl = new URL(request.url);
-  versionedUrl.searchParams.set("__dataset", RELEASE.version);
-  const cacheKey = new Request(versionedUrl, { method: "GET" });
+  const keyUrl = new URL(request.url);
+  keyUrl.search = query + "&__dataset=" + RELEASE.version;
+  const cacheKey = new Request(keyUrl, { method: "GET" });
   const hit = await cache.match(cacheKey);
   if (hit) return withHeaders(hit);
   const produced = await producer();
@@ -183,7 +118,7 @@ async function serveExplorer(request, env, ctx, welcome) {
   const key = SITE_PREFIX + "/explorer.html";
   const cookie = { "Set-Cookie": explorerCookie(request) };
   if (!welcome) {
-    const response = await serveR2(request, env, ctx, key, { contentType: CONTENT_TYPES.html, cacheControl: "no-store" });
+    const response = await serveR2(request, env, ctx, key, { contentType: CONTENT_TYPES.html, cacheControl: "no-store", edgeCache: false });
     return response.ok ? withHeaders(response, cookie) : response;
   }
   const object = await env.VIDEO_BUCKET.get(key);
@@ -286,34 +221,32 @@ async function handle(request, env, ctx) {
   if (navigation?.kind === "guide") return withHeaders(await fetchGuide(request, navigation));
   if (navigation?.kind === "explorer") return serveExplorer(request, env, ctx, navigation.welcome);
   if (url.pathname === "/hls.min.js") {
-    return serveR2(request, env, ctx, `${SITE_PREFIX}/hls.min.js`, {
-      contentType: CONTENT_TYPES.js,
-      edgeCache: true,
-    });
+    return serveR2(request, env, ctx, `${SITE_PREFIX}/hls.min.js`, { contentType: CONTENT_TYPES.js });
   }
   if (url.pathname === "/api/info") {
-    return serveR2(request, env, ctx, `${SITE_PREFIX}/info.json`, {
-      contentType: CONTENT_TYPES.json,
-      cacheControl: "no-store",
-      edgeCache: false,
-    });
+    return serveR2(request, env, ctx, `${SITE_PREFIX}/info.json`, { contentType: CONTENT_TYPES.json, cacheControl: "no-store", edgeCache: false });
   }
 
   const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  const pixel = () => {
+    const p = validatePixelParams(url);
+    return p.error ? null : "block=" + p.block + "&x=" + p.x + "&y=" + p.y;
+  };
+  const param = (name) => name + "=" + encodeURIComponent(url.searchParams.get(name) ?? "");
   if (url.pathname === "/api/pixel") {
     if (!tokenBucket(ip, "pixel")) return jsonError("rate limited", 429);
-    return cachedApi(request, ctx, () => pixelResponse(url, env), 86400);
+    return cachedApi(request, ctx, pixel(), () => pixelResponse(url, env), 86400);
   }
   if (url.pathname === "/api/ranges") {
     if (!tokenBucket(ip, "ranges")) return jsonError("rate limited", 429);
-    return cachedApi(request, ctx, () => rangesResponse(url, env), 86400);
+    return cachedApi(request, ctx, pixel(), () => rangesResponse(url, env), 86400);
   }
   if (url.pathname === "/api/date") {
-    return cachedApi(request, ctx, () => dateResponse(url, env), 86400);
+    return cachedApi(request, ctx, param("d"), () => dateResponse(url, env), 86400);
   }
   if (url.pathname === "/api/txid") {
     if (!tokenBucket(ip, "txid")) return jsonError("rate limited", 429);
-    return cachedApi(request, ctx, () => txidResponse(url), 2592000);
+    return cachedApi(request, ctx, param("height") + "&" + param("satoshi"), () => txidResponse(url), 2592000);
   }
 
   const retiredPlaylist = await redirectRetiredPlaylist(request, env);
@@ -323,10 +256,7 @@ async function handle(request, env, ctx) {
   // private bucket keys: allow only release prefixes and exact media filenames.
   const hls = /^\/hls\/(v1|v2|v3|v4|v5|v6|v7|v8|v9|v10|mobile966360|compat1|compat2|compat3|compat4|compat5|compat6)\/(media[.]m3u8|init[.]mp4|segment_\d{5}[.]m4s|[a-f0-9]{64}[.](?:mp4|m4s))$/.exec(url.pathname);
   if (hls) {
-    return serveR2(request, env, ctx, `hls/${hls[1]}/${hls[2]}`, {
-      edgeCache: true,
-      contentType: CONTENT_TYPES[extension(hls[2])],
-    });
+    return serveR2(request, env, ctx, `hls/${hls[1]}/${hls[2]}`);
   }
 
   // Backward-compatible direct MP4 endpoint. The web application uses HLS so
@@ -346,7 +276,8 @@ async function handle(request, env, ctx) {
     if (!key || !key.startsWith("videos/") || !etag) return new Response("Not found\n", { status: 404 });
     const metadata = await env.VIDEO_BUCKET.head(key);
     if (!metadata || metadata.httpEtag !== etag) return new Response("Video version not found\n", { status: 404 });
-    return serveR2(request, env, ctx, key, { contentType: CONTENT_TYPES.mp4 });
+    // The key can be overwritten under a new ETag, so its bytes are not edge-cached by key.
+    return serveR2(request, env, ctx, key, { contentType: CONTENT_TYPES.mp4, edgeCache: false });
   }
   return withHeaders(new Response("Not found\n", { status: 404 }));
 }

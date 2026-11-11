@@ -185,12 +185,17 @@ export function createInspector({
   function historyHtml(res, block) {
     if (!res) return '<section class="in-sec"><p class="in-muted">Loading output history\u2026</p></section>';
     if (res.error || res.offline) return '<section class="in-sec"><p class="in-warn">' + (res.offline ? 'History is unavailable. Replay totals remain available.' : escapeHtml(res.error)) + '</p></section>';
-    if (!res.blockRange) return '<section class="in-sec"><p class="in-muted">No integer amount maps to this row, so it never holds outputs.</p></section>';
+    if (!res.blockRange) {
+      const end = res.cutoffBlock;
+      if (Number.isInteger(end) && columnBlocks(grid, sel.col)[0] > end) return '<section class="in-sec"><p class="in-muted">History ends at block ' + fmtInt(end) + ' \u00b7 ' + escapeHtml(res.cutoffDate || day(blocktimes, end)) + ', before these blocks. Replay totals remain available.</p></section>';
+      return '<section class="in-sec"><p class="in-muted">No integer amount maps to this row, so it never holds outputs.</p></section>';
+    }
     const count = res.count, still = res.stillUnspent, later = count - still;
     const cutoff = Number.isInteger(res.cutoffBlock) ? res.cutoffBlock : null;
     const timeline = survivalTimeline(res, block);
     let html = '<section class="in-sec in-history">';
-    if (block !== (workerAt?.block ?? replay.block) || block !== replay.block) html += '<p class="in-warn" role="status">History shown at block ' + fmtInt(block) + '. Pause playback to refresh.</p>';
+    if (block === cutoff && replay.block > cutoff) html += '<p class="in-warn" role="status">History shown at block ' + fmtInt(block) + ', where the history index ends.</p>';
+    else if (block !== (workerAt?.block ?? replay.block) || block !== replay.block) html += '<p class="in-warn" role="status">History shown at block ' + fmtInt(block) + '. Pause playback to refresh.</p>';
     html += '<div class="in-flow" aria-label="' + fmtInt(count) + ' unspent at block ' + fmtInt(block) + ', ' + fmtInt(later) + ' spent later, ' + fmtInt(still) + ' still unspent in the latest history"><span><strong>' + fmtInt(count) + '</strong> at selection</span><span aria-hidden="true">\u2192</span><span><strong>' + fmtInt(later) + '</strong> spent later</span><span aria-hidden="true">\u2192</span><span><strong>' + fmtInt(still) + '</strong> remain</span></div>';
     html += '<p class="in-cutoff">' + (cutoff == null ? 'Latest history block not supplied by this index' : 'History through block ' + fmtInt(cutoff) + ' \u00b7 ' + escapeHtml(res.cutoffDate || day(blocktimes, cutoff))) + '</p>';
     const lifetime = populationTimeline(res, block);

@@ -15,7 +15,6 @@ selected row's records.
 from __future__ import annotations
 
 import argparse
-import configparser
 import json
 import math
 import os
@@ -29,6 +28,7 @@ from pathlib import Path
 import boto3
 import numpy as np
 from botocore.config import Config
+from r2_config import load_credentials
 
 
 HISTORY_HEADER = struct.Struct("<8sQQQQQ16s")
@@ -53,13 +53,6 @@ def arguments() -> argparse.Namespace:
     p.add_argument("--workers", type=int, default=6)
     p.add_argument("--dry-run-shard", type=int)
     return p.parse_args()
-
-
-def load_credentials(path: Path) -> tuple[str, str]:
-    cfg = configparser.ConfigParser()
-    cfg.read(path)
-    section = cfg["default"]
-    return section["aws_access_key_id"], section["aws_secret_access_key"]
 
 
 def save_json(path: Path, value: dict) -> None:

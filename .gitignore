@@ -48,6 +48,7 @@ out/
 .env
 .env.*
 !.env.example
+.claude/settings.local.json
 
 # CMake output
 build*/
