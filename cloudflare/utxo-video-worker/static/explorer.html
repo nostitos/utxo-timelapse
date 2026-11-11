@@ -797,16 +797,21 @@ function blockToVideoTime(block) {
   return (block - info.videoStartBlock + 0.5) / info.fps;
 }
 function videoUrl(retry) {
-  const source = info?.videoRenditions?.[activeRendition]?.url || (info && info.videoUrl) || "/hls/v1/media.m3u8";
-  return source + (retry ? (source.includes("?") ? "&" : "?") + "retry=" + Date.now() : "");
+  const source = info?.videoRenditions?.[activeRendition]?.url || (info && info.videoUrl) || "/video.mp4";
+  // The native explorer's direct MP4 carries its version, so a previous local render cannot stay cached.
+  const params = new URLSearchParams();
+  if (!/\.m3u8(?:[?#]|$)/.test(source) && info?.videoVersion) params.set("v", info.videoVersion);
+  if (retry) params.set("retry", Date.now());
+  return source + (params.size ? (source.includes("?") ? "&" : "?") + params : "");
 }
 function fallbackVideoUrl(retry) {
   return "https://utxo-cdn.hat39.com/latest-v2/video.mp4" + (retry ? "?retry=" + Date.now() : "");
 }
 function attachVideo(retry) {
   const source = videoUrl(retry);
-  // Safari can play HEVC HLS natively. Chromium uses hls.js over MediaSource.
-  if (vid.canPlayType("application/vnd.apple.mpegurl")) {
+  // Safari can play HEVC HLS natively, and every browser plays the native explorer's direct MP4.
+  // Chromium plays HLS with hls.js over MediaSource.
+  if (!/\.m3u8(?:[?#]|$)/.test(source) || vid.canPlayType("application/vnd.apple.mpegurl")) {
     if (hls) { hls.destroy(); hls = null; }
     vid.src = source;
     vid.load();

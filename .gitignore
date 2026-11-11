@@ -49,6 +49,8 @@ out/
 .env.*
 !.env.example
 .claude/settings.local.json
+# Written at deploy by landscape/tools/app-hash.mjs
+landscape/web/app-hash.txt
 
 # CMake output
 build*/
