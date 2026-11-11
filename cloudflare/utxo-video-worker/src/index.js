@@ -2,6 +2,7 @@ import { RELEASE } from './release.js';
 import { navigationRoute, explorerCookie, fetchGuide, welcomeHtml } from './navigation.js';
 import { txidResponse } from "./bitcoin.js";
 import { dateResponse, pixelResponse, rangesResponse } from "./history.js";
+import { validatePixelParams } from "./mapping.js";
 
 const FALLBACK_VIDEO_KEY =
   "videos/utxo_4k_epoch105k_60fps_exactledger_weighted_topband_splitpalette_transition_crf21.mp4";
@@ -157,12 +158,15 @@ async function serveR2(request, env, ctx, key, options = {}) {
   return response;
 }
 
-async function cachedApi(request, ctx, producer, seconds) {
+// query: the validated parameters, which alone form the cache key, so extra parameters cannot make
+// each request a new history scan; null (invalid parameters) skips the cache.
+async function cachedApi(request, ctx, query, producer, seconds) {
   if (request.method !== "GET") return jsonError("method not allowed", 405);
+  if (query === null) return withHeaders(await producer());
   const cache = caches.default;
-  const versionedUrl = new URL(request.url);
-  versionedUrl.searchParams.set("__dataset", RELEASE.version);
-  const cacheKey = new Request(versionedUrl, { method: "GET" });
+  const keyUrl = new URL(request.url);
+  keyUrl.search = query + "&__dataset=" + RELEASE.version;
+  const cacheKey = new Request(keyUrl, { method: "GET" });
   const hit = await cache.match(cacheKey);
   if (hit) return withHeaders(hit);
   const produced = await producer();
@@ -300,20 +304,25 @@ async function handle(request, env, ctx) {
   }
 
   const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  const pixel = () => {
+    const p = validatePixelParams(url);
+    return p.error ? null : "block=" + p.block + "&x=" + p.x + "&y=" + p.y;
+  };
+  const param = (name) => name + "=" + encodeURIComponent(url.searchParams.get(name) ?? "");
   if (url.pathname === "/api/pixel") {
     if (!tokenBucket(ip, "pixel")) return jsonError("rate limited", 429);
-    return cachedApi(request, ctx, () => pixelResponse(url, env), 86400);
+    return cachedApi(request, ctx, pixel(), () => pixelResponse(url, env), 86400);
   }
   if (url.pathname === "/api/ranges") {
     if (!tokenBucket(ip, "ranges")) return jsonError("rate limited", 429);
-    return cachedApi(request, ctx, () => rangesResponse(url, env), 86400);
+    return cachedApi(request, ctx, pixel(), () => rangesResponse(url, env), 86400);
   }
   if (url.pathname === "/api/date") {
-    return cachedApi(request, ctx, () => dateResponse(url, env), 86400);
+    return cachedApi(request, ctx, param("d"), () => dateResponse(url, env), 86400);
   }
   if (url.pathname === "/api/txid") {
     if (!tokenBucket(ip, "txid")) return jsonError("rate limited", 429);
-    return cachedApi(request, ctx, () => txidResponse(url), 2592000);
+    return cachedApi(request, ctx, param("height") + "&" + param("satoshi"), () => txidResponse(url), 2592000);
   }
 
   const retiredPlaylist = await redirectRetiredPlaylist(request, env);

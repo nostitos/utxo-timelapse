@@ -275,14 +275,18 @@ export function rowRange(minAmt, r) {
   return hi >= lo ? [lo, hi] : null;
 }
 
-export async function cellResponse(url, env) {
+/** {block, col, row} of a cell request, block at most the history's last, or {error}. */
+export function cellQuery(url) {
   const raw = ['block', 'col', 'row'].map((n) => url.searchParams.get(n));
-  if (raw.some((v) => v === null || !/^\d{1,10}$/.test(v))) return json({ error: 'block, col, row must be non-negative integers' }, 400);
-  const [rawBlock, col, row] = raw.map(Number);
-  if (col >= Math.ceil((RELEASE.dataset.tip + 1) / BLOCKS_PER_COLUMN)) return json({ error: 'col outside the landscape' }, 400);
-  if (row >= ROWS) return json({ error: 'row outside the landscape' }, 400);
+  if (raw.some((v) => v === null || !/^\d{1,10}$/.test(v))) return { error: 'block, col, row must be non-negative integers' };
+  const [block, col, row] = raw.map(Number);
+  if (col >= Math.ceil((RELEASE.dataset.tip + 1) / BLOCKS_PER_COLUMN)) return { error: 'col outside the landscape' };
+  if (row >= ROWS) return { error: 'row outside the landscape' };
+  return { block: Math.min(block, CONFIG.numBlocks - 1), col, row };
+}
+
+export async function cellResponse({ block, col, row }, env) {
   const tip = CONFIG.numBlocks - 1; // the history's last block, which a 3D-only update passes
-  const block = Math.min(rawBlock, tip);
   const h1 = col * BLOCKS_PER_COLUMN;
   const h2 = Math.min(h1 + BLOCKS_PER_COLUMN - 1, tip);
   const lead = { col, row };
@@ -307,15 +311,17 @@ function tokenBucket(ip) {
 tokenBucket.entries = new Map();
 
 async function cachedCell(request, env, ctx, url) {
+  const q = cellQuery(url);
+  if (q.error) return json({ error: q.error }, 400);
   const cache = globalThis.caches && caches.default;
-  const keyUrl = new URL(url);
-  keyUrl.searchParams.set('__release', RELEASE.version);
+  // The validated query alone is the key: extra parameters and blocks past the history share one entry.
+  const keyUrl = new URL('/api/landscape/cell?block=' + q.block + '&col=' + q.col + '&row=' + q.row + '&__release=' + RELEASE.version, url);
   const cacheKey = new Request(keyUrl.toString(), { method: 'GET' });
   if (cache) {
     const hit = await cache.match(cacheKey);
     if (hit) return respond(hit.body, hit.status, Object.fromEntries(hit.headers));
   }
-  const produced = await cellResponse(url, env);
+  const produced = await cellResponse(q, env);
   if (!produced.ok) return respond(produced.body, produced.status, Object.fromEntries(produced.headers));
   const text = await produced.text();
   const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=86400, s-maxage=86400' };

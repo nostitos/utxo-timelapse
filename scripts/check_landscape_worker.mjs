@@ -321,6 +321,13 @@ await check('cell API: validation, empty rows, rate limit', async () => {
   assert.equal(await e.text(), JSON.stringify({ col: 3, row: empty, blockRange: null, satRange: null, count: 0, utxos: [] }));
   assert.equal(e.headers.get('Cache-Control'), 'public, max-age=86400, s-maxage=86400');
   securityHeadersOk(e, 'cell');
+  // Only the validated query keys the cache: extra parameters, their order and blocks past the
+  // history reuse the entry the request above stored.
+  const entries = cacheStore.size;
+  for (const q of ['block=999999999&col=3&row=' + empty + '&a=1', 'row=' + empty + '&col=3&block=' + (VIDEO_RELEASE.numBlocks - 1) + '&b=2']) {
+    assert.equal((await req('/api/landscape/cell?' + q)).status, 200, q);
+  }
+  assert.equal(cacheStore.size, entries, 'no new cache entry');
   // A column of the 3D dataset that the history does not reach yet: where the history ends, no scan.
   const past = Math.ceil(VIDEO_RELEASE.numBlocks / 64);
   if (past < cols) {
