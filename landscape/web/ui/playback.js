@@ -25,6 +25,8 @@
 // for SHOW_BEHIND_S of blocks beyond the playhead and each block is shown when the playhead
 // reaches it. Blocks then appear at an even pace even when the worker answers a frame late or
 // pauses briefly; a longer pause holds the playhead instead of making it jump afterwards.
+// The worker answers each request with one frame, which the client releases whole, so each
+// request asks for at most one display frame of blocks.
 //
 // At Bitcoin's 10-minute target, 1x shows about 10 hours of the chain every second, 36,000
 // times real time (speedHint, shown as the speed buttons' tooltips).
@@ -255,10 +257,12 @@ export function createPlayback({ replay, tip, snapshots = [], now = () => perfor
     const block = workerBlock();
     if (block == null) return;
     if (playing) {
-      const ahead = holding() ? (paced && paceRate !== null ? paceRate : speedById(speed).rate) * SHOW_BEHIND_S : 0;
-      const plan = planPlay({ speed, block, target: (target ?? block) + ahead, tip: tipBlock, frameMs, paced });
+      const hold = holding();
+      const rate = paced && paceRate !== null ? paceRate : speedById(speed).rate;
+      const plan = planPlay({ speed, block, target: (target ?? block) + (hold ? rate * SHOW_BEHIND_S : 0), tip: tipBlock, frameMs, paced });
       if (!plan) return;
-      issueAdvance(plan.target, plan.budgetMs);
+      const step = Math.max(1, Math.round((rate * frameMs) / 1000));
+      issueAdvance(hold ? Math.min(plan.target, block + step) : plan.target, plan.budgetMs);
       return;
     }
     if (requested == null || requested === block) return;
