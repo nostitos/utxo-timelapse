@@ -36,10 +36,9 @@ def step(run,name):
     else:event(run,name+'_complete',seconds=time.monotonic()-start)
 
 def remote(cmd,output=None):
-    # Existing saved node credential; never log or interpolate it in argv.
-    secret=re.search(r"sshpass -p '([^']+)'",(ROOT/'.claude/settings.local.json').read_text()).group(1)
-    env=dict(os.environ,SSHPASS=secret)
-    r=subprocess.run(['sshpass','-e','ssh','-o','ConnectTimeout=20','-o','PreferredAuthentications=password','-o','PubkeyAuthentication=no','-o','NumberOfPasswordPrompts=1','-o','ControlMaster=auto','-o','ControlPersist=600','-o','ControlPath=/tmp/buv-append-node-ssh','-o','ServerAliveInterval=30','umbrel@192.168.8.234',cmd],env=env,stdout=output or subprocess.PIPE,stderr=subprocess.PIPE)
+    # sshpass -e reads the node password from the caller's SSHPASS; it is never in argv or this repository.
+    if not os.environ.get('SSHPASS'):raise RuntimeError('set SSHPASS to the node password: SSHPASS="$(cat ~/.config/buv-node/ssh-password)"')
+    r=subprocess.run(['sshpass','-e','ssh','-o','ConnectTimeout=20','-o','PreferredAuthentications=password','-o','PubkeyAuthentication=no','-o','NumberOfPasswordPrompts=1','-o','ControlMaster=auto','-o','ControlPersist=600','-o','ControlPath=/tmp/buv-append-node-ssh','-o','ServerAliveInterval=30','umbrel@192.168.8.234',cmd],stdout=output or subprocess.PIPE,stderr=subprocess.PIPE)
     if r.returncode:raise RuntimeError(r.stderr.decode())
     return None if output else r.stdout
 
