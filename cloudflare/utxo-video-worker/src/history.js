@@ -9,7 +9,7 @@ import {
   validatePixelParams,
 } from "./mapping.js";
 
-const BLOCK_TIMES_KEY = RELEASE.historyBlockTimesKey || `${RELEASE.historyDeltaPrefix}/block_times.bin`;
+const BLOCK_TIMES_KEY = RELEASE.historyBlockTimesKey;
 const SHARD_BLOCKS = 512;
 const ROWS = CONFIG.graphRect.h;
 const SHARD_HEADER_BYTES = 32;
