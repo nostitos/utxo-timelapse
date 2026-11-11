@@ -1,7 +1,7 @@
 export const RELEASE = Object.freeze({
   "numBlocks": 974311,
   "sitePrefix": "explorer/append974310-20261102/site",
-  "version": "append-974310-20261111-audit-1",
+  "version": "append-974310-20261111-audit-2",
   "historyBlockTimesKey": "explorer/append974310-20261102/history/block_times.bin",
   "historyShardSources": {
     "0": {
