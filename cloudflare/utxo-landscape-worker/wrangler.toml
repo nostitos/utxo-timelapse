@@ -4,6 +4,11 @@ compatibility_date = "2026-09-04"
 workers_dev = true
 preview_urls = false
 
+# Hashes the app files into landscape/web/app-hash.txt before each deploy, so the Worker can
+# serve them under /app/<hash>/ as immutable (landscape/tools/app-hash.mjs).
+[build]
+command = "node ../../landscape/tools/app-hash.mjs"
+
 # The static app (landscape/web) is served by Workers Static Assets; the Worker runs first so
 # every response gets the security headers. dev/ harness pages are excluded by
 # landscape/web/.assetsignore.

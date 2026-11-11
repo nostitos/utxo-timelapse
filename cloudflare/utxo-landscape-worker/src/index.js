@@ -39,12 +39,13 @@ export function ownersIds() {
   return [...(RELEASE.owners ? [RELEASE.owners.id] : []), ...RELEASE.retainedOwnersIds];
 }
 
-export function contentSecurityPolicy() {
+/** mapHash: the CSP hash of the page's inline import map (index.html's by default). */
+export function contentSecurityPolicy(mapHash = RELEASE.importMapHash) {
   return [
     "default-src 'self'",
     // Cloudflare Web Analytics: the edge injects its beacon script, which reports to
     // cloudflareinsights.com. It loads with CORS, as cross-origin isolation requires.
-    "script-src 'self' '" + RELEASE.importMapHash + "' https://static.cloudflareinsights.com",
+    "script-src 'self' '" + mapHash + "' https://static.cloudflareinsights.com",
     "style-src 'self' 'unsafe-inline'",
     "worker-src 'self'",
     "connect-src 'self' https://cloudflareinsights.com",
@@ -237,7 +238,57 @@ function assetResponse(response, pathname) {
 }
 
 async function serveAsset(request, env) {
-  return assetResponse(await env.ASSETS.fetch(request), new URL(request.url).pathname);
+  const pathname = new URL(request.url).pathname;
+  const hash = pathname === '/' ? await appHash(env) : null;
+  if (!hash) return assetResponse(await env.ASSETS.fetch(request), pathname);
+  // The app shell names this deployment's files by content hash. Rewritten, it carries no
+  // validator, so a browser never keeps a copy that names an older deployment's files.
+  const headers = new Headers(request.headers);
+  headers.delete('If-None-Match');
+  headers.delete('If-Modified-Since');
+  const shell = await env.ASSETS.fetch(new Request(request.url, { method: request.method, headers }));
+  if (shell.status !== 200) return assetResponse(shell, pathname);
+  const html = (await shell.text()).replace(APP_LINKS, '$1="/app/' + hash + '/$2"').replaceAll('"./vendor/', '"/app/' + hash + '/vendor/');
+  const out = assetResponse(new Response(request.method === 'HEAD' ? null : html, shell), pathname);
+  for (const name of ['ETag', 'Last-Modified', 'Content-Length']) out.headers.delete(name);
+  // The rewritten import map has its own hash, which the policy allows instead of index.html's.
+  const map = /<script type="importmap">([\s\S]*?)<\/script>/.exec(html);
+  if (map) {
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(map[1])));
+    out.headers.set('Content-Security-Policy', contentSecurityPolicy('sha256-' + btoa(String.fromCharCode(...digest))));
+  }
+  return out;
+}
+
+// The app shell's own references to app files (landscape/web/index.html); its import map's
+// "./vendor/" addresses are rewritten too.
+const APP_LINKS = /(src|href)="\.\/(entry\.js|app\.css|fonts\/fonts\.css)"/g;
+let appHashPromise = null;
+/** Content hash of the deployed app files (landscape/tools/app-hash.mjs, run at deploy), or null. */
+function appHash(env) {
+  appHashPromise ??= env.ASSETS.fetch(new Request('https://assets.local/app-hash.txt'))
+    .then(async (r) => {
+      const text = r.ok ? (await r.text()).trim() : '';
+      return /^[0-9a-f]{16}$/.test(text) ? text : null;
+    })
+    .catch(() => null);
+  return appHashPromise;
+}
+
+/**
+ * /app/<hash>/<file>: an app file. Under the current hash its bytes never change, so browsers keep
+ * it as immutable; an older tab's hash gets today's file, revalidated like any asset.
+ */
+async function serveAppFile(request, env, hash, file) {
+  if (/^(?:guide|dev)\//.test(file) || file.split('/').some((p) => p.startsWith('.'))) return notFound();
+  const url = new URL(request.url);
+  url.pathname = '/' + file;
+  const asset = await env.ASSETS.fetch(new Request(url, request));
+  const out = assetResponse(asset, url.pathname);
+  if (hash === await appHash(env) && (asset.status === 200 || asset.status === 304)) {
+    out.headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+  }
+  return out;
 }
 
 // Guide media (<video>, <audio>, <track>): Workers Static Assets ignores Range, and Safari only
@@ -382,6 +433,8 @@ export async function handle(request, env, ctx) {
     return serveAsset(new Request(app, request), env);
   }
   if (path !== '/guide/' && GUIDE_ALIAS.test(path)) return toGuide(url);
+  const appFile = /^\/app\/([0-9a-f]{16})\/(.+)$/.exec(path);
+  if (appFile) return serveAppFile(request, env, appFile[1], appFile[2]);
   const film = GUIDE_FILM.exec(path);
   if (film) return serveFile(request, env, ctx, 'landscape/guide/film/' + film[1], film[1]);
   if (GUIDE_MEDIA.test(path)) return serveGuideMedia(request, env, path);

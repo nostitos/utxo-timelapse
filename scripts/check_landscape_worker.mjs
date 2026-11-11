@@ -12,6 +12,7 @@ import { pathToFileURL } from 'node:url';
 import worker, { rowRange, contentSecurityPolicy, ROWS } from '../cloudflare/utxo-landscape-worker/src/index.js';
 import { parseRange } from '../cloudflare/utxo-video-worker/src/r2_object.js';
 import { RELEASE } from '../cloudflare/utxo-landscape-worker/src/release.js';
+import { importMapHash } from '../landscape/tools/csp-hash.mjs';
 import { RELEASE as VIDEO_RELEASE } from '../cloudflare/utxo-video-worker/src/release.js';
 import { rowSatoshiRange } from '../cloudflare/utxo-video-worker/src/mapping.js';
 
@@ -137,10 +138,10 @@ async function check(name, fn) {
   passed++;
   console.log('PASS ' + name);
 }
-function securityHeadersOk(res, what) {
+function securityHeadersOk(res, what, mapHash = RELEASE.importMapHash) {
   const h = res.headers;
-  assert.equal(h.get('Content-Security-Policy'), contentSecurityPolicy(), what + ' CSP');
-  assert.ok(h.get('Content-Security-Policy').includes("'" + RELEASE.importMapHash + "'"), what + ' import map hash');
+  assert.equal(h.get('Content-Security-Policy'), contentSecurityPolicy(mapHash), what + ' CSP');
+  assert.ok(h.get('Content-Security-Policy').includes("'" + mapHash + "'"), what + ' import map hash');
   assert.ok(!h.get('Content-Security-Policy').includes('unsafe-inline') || /style-src 'self' 'unsafe-inline'/.test(h.get('Content-Security-Policy')), what + ' no inline scripts');
   assert.equal(h.get('Cross-Origin-Opener-Policy'), 'same-origin', what);
   assert.equal(h.get('Cross-Origin-Embedder-Policy'), 'require-corp', what);
@@ -386,6 +387,44 @@ await check('explicit explorer entry serves the app shell and canonicalizes trai
     assert.equal(redirect.headers.get('Location'), '/explorer?webgl=1');
     assert.equal(redirect.headers.get('Cache-Control'), 'no-store');
   }
+});
+
+await check('app files: the shell names them by content hash, kept as immutable', async () => {
+  const HASH = '0123456789abcdef';
+  const shell = ASSET_FILES['/'];
+  ASSET_FILES['/app-hash.txt'] = ['text/plain; charset=utf-8', HASH + '\n'];
+  ASSET_FILES['/'] = ['text/html; charset=utf-8', readFileSync(new URL('../landscape/web/index.html', import.meta.url), 'utf8')];
+  try {
+    const w = await workerWith(RELEASE.owners, RELEASE.retainedOwnersIds); // a fresh isolate reads the hash
+    for (const path of ['/', '/explorer']) {
+      const html = await req(path, { headers: { 'If-None-Match': '"a1"' } }, w);
+      assert.equal(html.status, 200, path + ': never a 304 of a copy that names other files');
+      assert.equal(html.headers.get('ETag'), null);
+      assert.equal(html.headers.get('Cache-Control'), 'no-cache');
+      const text = await html.text();
+      securityHeadersOk(html, path, importMapHash(text)); // the rewritten map's own hash
+      for (const f of ['entry.js', 'app.css', 'fonts/fonts.css']) assert.ok(text.includes('"/app/' + HASH + '/' + f + '"'), path + ' names ' + f);
+      assert.ok(text.includes('"three": "/app/' + HASH + '/vendor/three/three.webgpu.js"'), path + ' import map');
+      assert.ok(!/(?:src|href)="\.\/(?:entry\.js|app\.css|fonts\/)|"\.\/vendor\//.test(text), path + ': no relative app file left');
+    }
+    const js = await req('/app/' + HASH + '/main.js', {}, w);
+    assert.equal(js.status, 200);
+    assert.equal(assetRequests.at(-1).path, '/main.js');
+    assert.equal(js.headers.get('Cache-Control'), 'public, max-age=31536000, immutable');
+    assert.equal(js.headers.get('Cross-Origin-Resource-Policy'), 'same-origin');
+    securityHeadersOk(js, 'app file');
+    const older = await req('/app/fedcba9876543210/main.js', {}, w);
+    assert.equal(older.status, 200, "an older tab's hash gets today's file");
+    assert.equal(older.headers.get('Cache-Control'), 'public, max-age=0, must-revalidate');
+    for (const path of ['/app/' + HASH + '/guide/guide.js', '/app/' + HASH + '/dev/x.js', '/app/' + HASH + '/.assetsignore', '/app/' + HASH + '/missing.js']) {
+      assert.equal((await req(path, {}, w)).status, 404, path);
+    }
+  } finally {
+    delete ASSET_FILES['/app-hash.txt'];
+    ASSET_FILES['/'] = shell;
+  }
+  // Without app-hash.txt (the isolate above found none), the shell stays as it is.
+  assert.equal(await (await req('/')).text(), '<!doctype html>');
 });
 
 const MP4 = '/guide/assets/clips/sample.mp4';
