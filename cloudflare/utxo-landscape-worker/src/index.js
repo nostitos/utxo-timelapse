@@ -279,15 +279,16 @@ export async function cellResponse(url, env) {
   const raw = ['block', 'col', 'row'].map((n) => url.searchParams.get(n));
   if (raw.some((v) => v === null || !/^\d{1,10}$/.test(v))) return json({ error: 'block, col, row must be non-negative integers' }, 400);
   const [rawBlock, col, row] = raw.map(Number);
-  const numBlocks = CONFIG.numBlocks;
-  if (col >= Math.ceil(numBlocks / BLOCKS_PER_COLUMN)) return json({ error: 'col outside the landscape' }, 400);
+  if (col >= Math.ceil((RELEASE.dataset.tip + 1) / BLOCKS_PER_COLUMN)) return json({ error: 'col outside the landscape' }, 400);
   if (row >= ROWS) return json({ error: 'row outside the landscape' }, 400);
-  const block = Math.min(rawBlock, numBlocks - 1);
+  const tip = CONFIG.numBlocks - 1; // the history's last block, which a 3D-only update passes
+  const block = Math.min(rawBlock, tip);
   const h1 = col * BLOCKS_PER_COLUMN;
-  const h2 = Math.min(h1 + BLOCKS_PER_COLUMN - 1, numBlocks - 1);
+  const h2 = Math.min(h1 + BLOCKS_PER_COLUMN - 1, tip);
   const lead = { col, row };
   const sats = rowRange(await rowTable(env), row);
   if (!sats) return json({ ...lead, blockRange: null, satRange: null, count: 0, utxos: [] });
+  if (h1 > tip) return json({ ...lead, block, cutoffBlock: tip, blockRange: null, satRange: sats, count: 0, utxos: [] });
   return lifecycleJson(env, { block, heights: [h1, h2], sats, row, lead });
 }
 

@@ -305,8 +305,9 @@ await check('cell API: validation, empty rows, rate limit', async () => {
     assert.equal(res.status, 400, q);
     assert.match((await res.json()).error, /non-negative integers/);
   }
-  // The landscape is as wide as the bundled 2D release: one column per 64 blocks.
-  const col = await req('/api/landscape/cell?block=1&col=' + Math.ceil(VIDEO_RELEASE.numBlocks / 64) + '&row=1');
+  // The landscape is as wide as its dataset: one column per 64 blocks.
+  const cols = Math.ceil((RELEASE.dataset.tip + 1) / 64);
+  const col = await req('/api/landscape/cell?block=1&col=' + cols + '&row=1');
   assert.equal(col.status, 400);
   assert.equal((await col.json()).error, 'col outside the landscape');
   const row = await req('/api/landscape/cell?block=1&col=1&row=2072');
@@ -320,6 +321,18 @@ await check('cell API: validation, empty rows, rate limit', async () => {
   assert.equal(await e.text(), JSON.stringify({ col: 3, row: empty, blockRange: null, satRange: null, count: 0, utxos: [] }));
   assert.equal(e.headers.get('Cache-Control'), 'public, max-age=86400, s-maxage=86400');
   securityHeadersOk(e, 'cell');
+  // A column of the 3D dataset that the history does not reach yet: where the history ends, no scan.
+  const past = Math.ceil(VIDEO_RELEASE.numBlocks / 64);
+  if (past < cols) {
+    assert.ok(rowRange(minAmt, 1000), 'row 1000 holds amounts');
+    const before = { ...r2 };
+    const p = await req('/api/landscape/cell?block=999999999&col=' + past + '&row=1000');
+    assert.equal(p.status, 200);
+    const tip = VIDEO_RELEASE.numBlocks - 1;
+    assert.deepEqual(await p.json(), { col: past, row: 1000, block: tip, cutoffBlock: tip, blockRange: null,
+      satRange: rowRange(minAmt, 1000), count: 0, utxos: [] });
+    assert.deepEqual(r2, before, 'no history shard is read');
+  }
   let limited = 0;
   for (let i = 0; i < 30; i++) {
     const res = await req('/api/landscape/cell?block=1&col=3&row=' + empty, { headers: { 'CF-Connecting-IP': '203.0.113.9' } });
