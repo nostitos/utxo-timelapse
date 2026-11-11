@@ -1,0 +1,61 @@
+name: Tests
+on:
+  pull_request:
+  push:
+    branches: [master]
+permissions:
+  contents: read
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  scripts:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Install FFmpeg 9.0 and the Python packages
+        # Production runs a current FFmpeg; Ubuntu's 6.1 muxes the HEVC fixtures with other decode times.
+        run: |
+          mkdir -p "$RUNNER_TEMP/ffmpeg"
+          curl -fsSL https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-linux64-gpl-9.0.tar.xz | tar -xJ -C "$RUNNER_TEMP/ffmpeg" --strip-components=1
+          echo "$RUNNER_TEMP/ffmpeg/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/ffmpeg/bin/ffmpeg" -version | head -1
+          pip install -r requirements-dev.txt
+      - run: node --test landscape/tests/*.test.mjs
+      - run: node landscape/tools/csp-hash.mjs --check
+      - run: node scripts/check_landscape_worker.mjs
+      - run: node scripts/check_hls_routes.mjs
+      - run: node scripts/check_explorer_navigation.mjs
+      - run: node scripts/check_explorer_sharing.cjs
+      - run: node scripts/check_explorer_quality.cjs
+      - run: node scripts/tests/test_history_response.mjs && node scripts/tests/test_history_sources.mjs && node scripts/tests/test_explorer_video_url.cjs
+      - run: python -m unittest discover -s scripts/tests -t scripts/tests
+      - run: python -m unittest discover -s tests
+      - run: python3 scripts/check_site.py && node scripts/check_site_mapping.mjs
+  native:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - run: sudo apt-get update && sudo apt-get install -y cmake libopencv-dev libtbb-dev
+      - name: Build buv
+        run: |
+          # The pinned doctest uses SIGSTKSZ in a constant expression, which current glibc rejects (as in the Dockerfile).
+          sed -i 's/SIGSTKSZ/8192/g' src/third_party/doctest/doctest/doctest.h
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_FLAGS="-Wno-error=sign-compare -Wno-error=stringop-overflow -Wno-error=unused-parameter"
+          cmake --build build --parallel
+      - name: Run the three named cases
+        run: |
+          ./build/buv -ns '-tc=density_palette,epoch_transition_mapping,checkpoint_v3' | tee buv-tests.log
+          # A filter that matches nothing still exits 0, so require all three cases.
+          grep -E 'test cases: +3 \| +3 passed' buv-tests.log

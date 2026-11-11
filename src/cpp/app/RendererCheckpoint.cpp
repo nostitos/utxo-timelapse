@@ -82,9 +82,10 @@ auto le(uint64_t n) -> std::array<uint8_t,8> {
     for (size_t i=0;i<8;++i) b[i]=static_cast<uint8_t>(n>>(8*i));
     return b;
 }
-using File=std::unique_ptr<FILE,decltype(&std::fclose)>;
+struct CloseFile { void operator()(FILE* f) const { std::fclose(f); } };
+using File=std::unique_ptr<FILE,CloseFile>;
 auto openRead(std::filesystem::path const& p) -> File {
-    File f(std::fopen(p.c_str(),"rb"),&std::fclose);
+    File f(std::fopen(p.c_str(),"rb"));
     if (!f) fail("cannot open input file");
     return f;
 }
@@ -188,7 +189,7 @@ void saveRendererCheckpoint(std::filesystem::path const& path,Density const& den
     auto temp=path.string()+".tmp.XXXXXX";
     std::vector<char> name(temp.begin(),temp.end());name.push_back('\0');
     auto fd=::mkstemp(name.data());if (fd<0) fail("cannot create temporary checkpoint");
-    File f(::fdopen(fd,"wb"),&std::fclose);
+    File f(::fdopen(fd,"wb"));
     if (!f) { ::close(fd);::unlink(name.data());fail("fdopen failed"); }
     try {
         Output out{f.get(),{}};

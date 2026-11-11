@@ -25,6 +25,8 @@ cmake --build build_local --parallel 6
 
 These targeted cases passed **1,965 assertions** during the presentation release. On Apple platforms, CMake excludes the legacy `src/cpp/unit` directory. A bare `./build/buv` can report success with **zero cases**; inspect the case count. The named production tasks use doctest's skip mechanism and need `-ns`.
 
+The Python scripts and their tests need the packages in `requirements-dev.txt` (`pip install -r requirements-dev.txt`, Python 3.12+): `python -m unittest discover -s scripts/tests -t scripts/tests`. On every pull request, `.github/workflows/tests.yml` runs these, the landscape tests (`node --test landscape/tests/*.test.mjs`), the Worker and site checks, and the three named `buv` cases on Ubuntu.
+
 Build Docker from the repository root: `docker build -t buv .`. The entry point is `buv`; pass task arguments directly. Ignored `buv_deploy/` directories are legacy snapshots.
 
 ## Follow the pipeline
