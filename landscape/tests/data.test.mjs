@@ -1,10 +1,11 @@
-// Tests for landscape/web/data/grid.js and axis.js (owner: js_replay).
+// Tests for landscape/web/data/grid.js, axis.js and source.js (owner: js_replay).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as G from '../web/data/grid.js';
 import * as A from '../web/data/axis.js';
+import { httpSource } from '../web/data/source.js';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const mapping = await import(new URL('cloudflare/utxo-video-worker/src/mapping.js', 'file://' + ROOT).href);
@@ -246,4 +247,31 @@ test('rows.bin of built datasets equals the JS film table except the known C++ b
     assert.deepEqual(diff, [], dir + ': rows.bin differs from the JS film table beyond the known boundary');
     assert.equal(A.rowOfAmount(rows, KNOWN_CPP_BOUNDARY.cpp), rows[49] === KNOWN_CPP_BOUNDARY.cpp ? 49 : 50);
   }
+});
+
+test('httpSource retries a dropped connection or a 5xx twice, and nothing else', async () => {
+  const answers = (...list) => {
+    const calls = [];
+    const fetch = async (href, init) => {
+      calls.push(init);
+      const a = list.shift();
+      if (a instanceof Error) throw a;
+      return new Response(a === 206 ? new Uint8Array([1, 2, 3, 4]) : 'x', { status: a });
+    };
+    return { calls, source: httpSource('https://data.test/d/', { fetch }) };
+  };
+  let s = answers(new TypeError('network'), 503, 206);
+  assert.deepEqual([...await s.source.bytes('chunks/00001.bin', 0, 4)], [1, 2, 3, 4]);
+  assert.equal(s.calls.length, 3);
+  assert.equal(s.calls[2].headers.Range, 'bytes=0-3', 'every attempt asks for the same range');
+  s = answers(404);
+  await assert.rejects(s.source.bytes('chunks/00001.bin'), /-> 404/);
+  assert.equal(s.calls.length, 1, 'a 404 is final');
+  s = answers(503, 503, 502);
+  await assert.rejects(s.source.bytes('chunks/00001.bin'), /-> 502/);
+  assert.equal(s.calls.length, 3);
+  const aborted = AbortSignal.abort();
+  s = answers(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+  await assert.rejects(s.source.bytes('chunks/00001.bin', undefined, undefined, { signal: aborted }), /aborted/);
+  assert.equal(s.calls.length, 1, 'an aborted request is not retried');
 });

@@ -12,11 +12,23 @@ export function httpSource(baseUrl, opts = {}) {
   const url = (path) => new URL(path, base).href;
   let requests = 0;
   let bytesFetched = 0;
+  // A dropped connection or a 5xx is tried twice more, so one bad response does not stop playback.
+  async function get(href, init) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const r = await fetchImpl(href, init);
+        if (r.status < 500 || attempt === 2) return r;
+      } catch (err) {
+        if (attempt === 2 || (init.signal && init.signal.aborted)) throw err;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
+    }
+  }
   return {
     url,
     async json(path, { signal } = {}) {
       requests++;
-      const r = await fetchImpl(url(path), { signal, cache: 'no-cache' });
+      const r = await get(url(path), { signal, cache: 'no-cache' });
       if (!r.ok) throw new Error('GET ' + url(path) + ' -> ' + r.status);
       const text = await r.text();
       bytesFetched += text.length;
@@ -28,7 +40,7 @@ export function httpSource(baseUrl, opts = {}) {
       const ranged = start !== undefined;
       if (ranged && !(end > start)) throw new RangeError('bytes: empty range ' + start + '-' + end + ' of ' + path);
       const headers = ranged ? { Range: 'bytes=' + start + '-' + (end - 1) } : undefined;
-      const r = await fetchImpl(url(path), { headers, signal });
+      const r = await get(url(path), { headers, signal });
       if (r.status !== 200 && r.status !== 206) throw new Error('GET ' + url(path) + (ranged ? ' [' + start + ',' + end + ')' : '') + ' -> ' + r.status);
       let buf = new Uint8Array(await r.arrayBuffer());
       if (ranged && r.status === 200) buf = buf.subarray(start, end); // server ignored Range
