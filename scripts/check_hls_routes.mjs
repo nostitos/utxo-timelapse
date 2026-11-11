@@ -19,7 +19,7 @@ const env={VIDEO_BUCKET:{
       videoUrl:'/hls/v10/media.m3u8',
       videoRenditions:{full:{url:'/hls/v10/media.m3u8'},compat:{url:'/hls/compat6/media.m3u8'}}
     })};
-    return {...meta,body:options?.range ? body.slice(options.range.offset,options.range.offset+options.range.length):body};
+    return {...meta,body:new Blob([options?.range ? body.slice(options.range.offset,options.range.offset+options.range.length):body]).stream()};
   }
 }};
 let pending=[];
@@ -55,6 +55,21 @@ for(const path of ['/hls/compat1/segments.json','/hls/compat1/short.mp4','/hls/c
   assert.equal(r.status,404,path);assert.equal(seen.length,count,'unallowlisted R2 read');
 }
 console.log('PASS: current/rollback HLS, retired-playlist redirects, shared old segments, HEAD/range, and private-object rejection');
+
+// The edge cache answers a segment again, and its 304, without an R2 call (r2_object.js).
+const segment='https://example.test/hls/v10/segment_01624.m4s';
+const first=await worker.fetch(new Request(segment),env,ctx);
+assert.equal(first.status,200);assert.deepEqual([...new Uint8Array(await first.arrayBuffer())],[1,2,3,4]);await settle();
+const calls=seen.length+gets.length;
+const again=await worker.fetch(new Request(segment),env,ctx);
+assert.equal(again.status,200);assert.deepEqual([...new Uint8Array(await again.arrayBuffer())],[1,2,3,4]);
+assert.equal(again.headers.get('Content-Type'),'video/iso.segment');assert.equal(again.headers.get('X-Worker-Version'),RELEASE.version);
+const unchanged=await worker.fetch(new Request(segment,{headers:{'If-None-Match':'"fixture"'}}),env,ctx);
+assert.equal(unchanged.status,304);
+assert.equal(seen.length+gets.length,calls,'a cached segment needs no R2 call');
+const two=await worker.fetch(new Request(segment,{headers:{Range:'bytes=0-0,2-3'}}),env,ctx);
+assert.equal(two.status,200,'a multi-range request gets the whole object');
+console.log('PASS: cached segments and 304 without R2 calls; multi-range requests get the whole object');
 
 // API answers are cached under their validated parameters alone (index.js cachedApi).
 const entries=cache.size;

@@ -9,7 +9,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import worker, { parseRange, rowRange, contentSecurityPolicy, ROWS } from '../cloudflare/utxo-landscape-worker/src/index.js';
+import worker, { rowRange, contentSecurityPolicy, ROWS } from '../cloudflare/utxo-landscape-worker/src/index.js';
+import { parseRange } from '../cloudflare/utxo-video-worker/src/r2_object.js';
 import { RELEASE } from '../cloudflare/utxo-landscape-worker/src/release.js';
 import { RELEASE as VIDEO_RELEASE } from '../cloudflare/utxo-video-worker/src/release.js';
 import { rowSatoshiRange } from '../cloudflare/utxo-video-worker/src/mapping.js';
