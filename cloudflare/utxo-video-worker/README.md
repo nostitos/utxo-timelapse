@@ -45,13 +45,14 @@ For a UI-only release:
 Deployment for the maintainer's configured installation:
 
 ```sh
+node scripts/check_live_release.mjs --preflight   # origin/master, nothing uncommitted
 cd cloudflare/utxo-video-worker
 CLOUDFLARE_API_TOKEN="$(cat ~/.config/utxo-r2/workers-token)" npx wrangler deploy
 curl -fsS https://utxo-cdn.hat39.com/health
 cd ../.. && node scripts/check_live_release.mjs --wait 120
 ```
 
-Deploy from master after the release change has merged (`git switch master && git pull --ff-only`); a deploy from a branch that lacks another merged release rolls it back. `scripts/check_live_release.mjs` fails unless the checkout is `origin/master` and every hostname of both Workers serves the `version` in its `release.js`. Credentials remain outside Git. The bucket stays private; Worker routing allowlists objects. A deployment does not upload static objects automatically.
+Deploy from master after the release change has merged (`git switch master && git pull --ff-only`); a deploy from a branch that lacks another merged release rolls it back. `scripts/check_live_release.mjs` fails unless the checkout is `origin/master` and every hostname of both Workers serves the `version` in its `release.js`; `--preflight` checks only the checkout, before the deploy, and also fails on uncommitted files under `cloudflare/` or `landscape/web/`, which a deploy would upload. Credentials remain outside Git. The bucket stays private; Worker routing allowlists objects. A deployment does not upload static objects automatically.
 
 ## Video and history updates
 

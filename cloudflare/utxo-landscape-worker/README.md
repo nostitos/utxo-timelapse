@@ -32,6 +32,7 @@ node landscape/tools/csp-hash.mjs --check
 node scripts/check_landscape_worker.mjs
 node --test landscape/tests/*.test.mjs
 git switch master && git pull --ff-only   # deploy what master holds, after the PR merges
+node scripts/check_live_release.mjs --preflight   # origin/master, nothing uncommitted
 cd cloudflare/utxo-landscape-worker
 CLOUDFLARE_API_TOKEN="$(cat ~/.config/utxo-r2/workers-token)" npx wrangler@4.86.0 deploy
 cd ../..
@@ -39,7 +40,7 @@ node scripts/check_live_release.mjs --wait 120
 curl -fsS https://bitcoinlandscape.com/dataset/index.json
 ```
 
-A deploy uploads the working tree's `landscape/web` and bundles `../utxo-video-worker/src/history.js`, `mapping.js` and that Worker's `release.js`, so the cell API follows the history routing current at deploy time. Deploy only from master after the change has merged: a deploy from a branch that lacks another merged release rolls that release back. Responses carry `X-Worker-Version`; bump `version` in `src/release.js` for every release. `scripts/check_live_release.mjs` fails unless the checkout is the fetched `origin/master` and every hostname of both Workers answers with the version in its `release.js` (`--wait` gives aliases time to catch up). Roll back with `npx wrangler@4.86.0 rollback`.
+A deploy uploads the working tree's `landscape/web` and bundles `../utxo-video-worker/src/history.js`, `mapping.js` and that Worker's `release.js`, so the cell API follows the history routing current at deploy time. Deploy only from master after the change has merged: a deploy from a branch that lacks another merged release rolls that release back. Responses carry `X-Worker-Version`; bump `version` in `src/release.js` for every release. `scripts/check_live_release.mjs` fails unless the checkout is the fetched `origin/master` and every hostname of both Workers answers with the version in its `release.js` (`--wait` gives aliases time to catch up); `--preflight` checks only the checkout, before the deploy, and also fails on uncommitted files under `cloudflare/` or `landscape/web/`, which a deploy would upload. Roll back with `npx wrangler@4.86.0 rollback`.
 
 ### Publish the guide's film
 
