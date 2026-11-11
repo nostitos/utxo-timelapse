@@ -321,6 +321,7 @@ export class ReplayEngine {
 
   dispose() {
     this.disposed = true;
+    if (this.chunks) this.chunks.ahead = null; // no new read-ahead downloads
     this.kick();
   }
 
@@ -600,6 +601,7 @@ export class ReplayEngine {
     let blocks = 0;
     let changes = 0;
     const t0 = now();
+    let waitMs = 0; // awaited chunk downloads and yields: wall time that is not replay work
     let lastChunk = -1;
     const total = Math.abs(to - from);
     while (b !== to) {
@@ -607,7 +609,9 @@ export class ReplayEngine {
       const blk = forward ? b + 1 : b;
       let rec = this.chunks.record(blk);
       if (rec === null) {
+        const w0 = now();
         await this.chunks.loadBlock(blk);
+        waitMs += now() - w0;
         if (isCancelled()) break;
         continue;
       }
@@ -638,18 +642,19 @@ export class ReplayEngine {
           if (onProgress) onProgress(b, total ? blocks / total : 1);
           await this.yieldTask();
           lastYield = now();
+          waitMs += lastYield - t;
           if (isCancelled()) break;
         }
       }
     }
-    const ms = now() - t0;
+    const ms = now() - t0 - waitMs;
     if (opts.counters) {
       opts.counters.blocks += blocks;
       opts.counters.changes += changes;
       opts.counters.applyMs += ms;
     }
     if (opts.rate && bytes > 262144 && ms > 1) this.rates[opts.rate] = ema(this.rates[opts.rate], bytes / ms);
-    this.lastReplay = { blocks, bytes, changes, ms };
+    this.lastReplay = { blocks, bytes, changes, ms, waitMs };
     return b;
   }
 
@@ -815,20 +820,23 @@ export class ReplayEngine {
       return;
     }
     const from = st.block;
+    let waited = 0; // advanceDone.ms is replay time: downloads and yields are left out
     if (this.ownersOn && target !== from) {
       // Owner files load ahead of playback; wait here only when the next one is missing.
       const span = this.owners.life;
       target = target > from ? Math.min(target, from + span) : Math.max(target, from - span);
       if (!this.owners.ready(from, target)) {
+        const w0 = now();
         try {
           await this.owners.ensure(from, target);
         } catch (err) {
           this.failOwners(err);
         }
+        waited += now() - w0;
       }
     }
     if (target === from) {
-      this.post({ type: 'advanceDone', id: req.id, block: from, reached: true, blocks: 0, ms: now() - t0 });
+      this.post({ type: 'advanceDone', id: req.id, block: from, reached: true, blocks: 0, ms: now() - t0 - waited });
       return;
     }
     const forward = target > from;
@@ -842,10 +850,12 @@ export class ReplayEngine {
         ahead: forward ? PLAY_AHEAD_CHUNKS : 2,
         isCancelled: () => this.seekReq !== null || this.disposed,
       });
+      waited += this.lastReplay.waitMs;
       if (reached === from && !this.seekReq) {
         reached = await this.replayRange(st.slotOf, from, forward ? from + 1 : from - 1, {
           totals: st.totals, heat: forward, counters: this.counters,
         });
+        waited += this.lastReplay.waitMs;
       }
     } catch (err) {
       this.post({ type: 'advanceDone', id: req.id, error: String(err && err.message || err) });
@@ -858,7 +868,7 @@ export class ReplayEngine {
       if (this.ownersOn) this.owners.prefetch(reached, reached + (forward ? 1 : -1) * (this.owners.life >> 1));
       this.emit('advance');
     }
-    this.post({ type: 'advanceDone', id: req.id, block: reached, reached: reached === target, blocks: Math.abs(reached - from), ms: now() - t0,
+    this.post({ type: 'advanceDone', id: req.id, block: reached, reached: reached === target, blocks: Math.abs(reached - from), ms: now() - t0 - waited,
       buffer: this.bufferInfo() });
   }
 

@@ -2,7 +2,7 @@
 // worker) over a synthetic dataset in the SPEC §4 format (owner: js_replay).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createReplayClient } from '../web/client/replay-client.js';
@@ -238,4 +238,33 @@ test('client rejects unknown measures and reports init errors', async () => {
   replay.dispose();
   const bad = inProcessWorker(fileSource(join(dir, 'missing')));
   await assert.rejects(createReplayClient({ worker: bad }), /init failed/);
+});
+
+test('worker timings leave out the wait for a slow chunk', async () => {
+  const slow = JSON.parse(readFileSync(join(dir, 'chunks.json'), 'utf8')).chunks[5];
+  const base = fileSource(dir);
+  const reading = new Set();
+  const source = { ...base, bytes(p, s, e) {
+    const read = (async () => {
+      if (p === slow.file) await new Promise((r) => setTimeout(r, 600));
+      return base.bytes(p, s, e);
+    })();
+    reading.add(read);
+    read.finally(() => reading.delete(read)).catch(() => {});
+    return read;
+  } };
+  const replay = await createReplayClient({ worker: inProcessWorker(source) });
+  const frames = [];
+  replay.onFrame((f) => frames.push(f));
+  await replay.seek(slow.firstBlock - 1);
+  const t0 = performance.now();
+  const res = await replay.advance(slow.firstBlock + 20, { budgetMs: 5000 });
+  const wall = performance.now() - t0;
+  const stats = frames.at(-1).stats;
+  replay.dispose();
+  while (reading.size) await Promise.allSettled([...reading]); // read-ahead downloads still in flight
+  assert.equal(res.block, slow.firstBlock + 20);
+  assert.ok(wall >= 200, 'the advance waited for the chunk: ' + wall.toFixed(0) + ' ms');
+  assert.ok(res.ms < wall / 2 && stats.applyMs < wall / 2,
+    'replay time without the wait: advance ' + res.ms.toFixed(0) + ' ms, frame ' + stats.applyMs.toFixed(0) + ' ms of ' + wall.toFixed(0) + ' ms');
 });
