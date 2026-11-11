@@ -20,4 +20,9 @@ context.info = {};
 assert.equal(url(false), '/video.mp4');
 context.info = null;
 assert.equal(url(false), '/video.mp4');
-console.log('Native explorer configured video URL: 5 checks passed');
+// The cloud explorer's HLS renditions stay unversioned; a retry still adds its parameter.
+context.activeRendition = 'full';
+context.info = { videoVersion: '3', videoRenditions: { full: { url: '/hls/v10/media.m3u8' } } };
+assert.equal(url(false), '/hls/v10/media.m3u8');
+assert.match(url(true), /^\/hls\/v10\/media\.m3u8\?retry=\d+$/);
+console.log('Explorer video URL, native and cloud: 7 checks passed');

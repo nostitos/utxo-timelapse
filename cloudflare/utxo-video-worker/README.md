@@ -37,7 +37,7 @@ The full MP4 and its legacy download routes are retained separately.
 For a UI-only release:
 
 1. Verify the existing `/health`, `/api/info` and source release descriptor. Retain every video/history routing field.
-2. Test the local HTML against the current production video and read-only APIs. Keep the native explorer's HTML in sync.
+2. Test the local HTML against the current production video and read-only APIs. The native explorer serves the same page: `src/cpp/app/explorer_ui/explorer.html` is a symlink to `static/explorer.html`, which plays HLS renditions when `/api/info` names them and the native server's direct MP4 otherwise.
 3. Upload the three static assets to a **fresh** `explorer/vN/site` prefix with `scripts/r2_upload_tree_singlepart.py`. Use a separate upload state file for this prefix.
 4. Verify the new objects, then change only `sitePrefix` and `version` in `src/release.js`.
 5. Deploy the Worker and verify the returned release version, actual video playback, paused block/HUD alignment and a shared pixel query. Retain the prior descriptor for rollback.
