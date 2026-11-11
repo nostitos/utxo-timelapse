@@ -9,13 +9,15 @@
 // ?startup=adaptive|high the first-visit quality (ui/online.js). The URL hash keeps b, cam,
 // mode, follow and the settings preset and overrides.
 
-import { createPlayback, defaultStartBlock, speedById, SPEED_KEYS, STEP_LARGE } from './ui/playback.js';
+import { createPlayback, defaultStartBlock } from './ui/playback.js';
 import { createTipFollow } from './ui/follow.js';
 import { decodeHash, encodeHash, ownerIds } from './ui/hash.js';
 import { createShare } from './ui/share.js';
 import { buildShareUrl } from './ui/share-link.js';
 import { resolvePlace } from './ui/places.js';
-import { createControls, isTypingTarget } from './ui/controls.js';
+import { createControls } from './ui/controls.js';
+import { handleKey } from './ui/keys.js';
+import { startFrameLoop } from './ui/frame-loop.js';
 import { createPlaneHud } from './ui/plane-hud.js';
 import { createPlaneSound } from './ui/plane-sound.js';
 import { createSound } from './ui/sound.js';
@@ -818,105 +820,9 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     });
 
     // ---- keyboard -------------------------------------------------------------------
-    window.addEventListener('keydown', (e) => {
-      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || share.open) return;
-      if (isTypingTarget(e.target) || (e.target && e.target.closest && e.target.closest('#panel input, #panel select, #panel textarea'))) return;
-      if (help.open && !['Escape', 'KeyH', 'Slash'].includes(e.code)) return;
-      switch (e.code) {
-        case 'Space':
-          e.preventDefault();
-          playback.toggle();
-          break;
-        case 'BracketLeft':
-          e.preventDefault();
-          playback.step(e.shiftKey ? -STEP_LARGE : -1);
-          break;
-        case 'BracketRight':
-          e.preventDefault();
-          playback.step(e.shiftKey ? STEP_LARGE : 1);
-          break;
-        case 'Digit0':
-        case 'Digit1':
-        case 'Digit2':
-        case 'Digit3':
-        case 'Digit4': {
-          const s = speedById(SPEED_KEYS[e.code]);
-          playback.setSpeed(s.id);
-          notice('Speed ' + s.label, 'info', 'speed');
-          break;
-        }
-        case 'KeyI': {
-          // In plane mode, inspect where the nose points (its circle), else as the controls say.
-          const p = (controls.mode === 'plane' && planeHud.noseClient()) || controls.inspectPoint();
-          if (p) inspectAt(p.x, p.y);
-          break;
-        }
-        case 'KeyF':
-          controls.toggleFlight();
-          break;
-        case 'KeyT':
-          if (!touchOnly) {
-            funMenu.close();
-            controls.togglePlane();
-          }
-          break;
-        case 'KeyC':
-          if (!touchOnly) cycleCraft();
-          break;
-        case 'Enter':
-        case 'NumpadEnter':
-          // A focused button (the end card's Again, a menu item) or link handles Enter itself.
-          if (e.target && e.target.closest && e.target.closest('a, button')) break;
-          if (!touchOnly && controls.mode === 'plane') {
-            e.preventDefault();
-            startRun();
-          }
-          break;
-        case 'KeyN':
-          setFollow(!follow.active);
-          break;
-        case 'KeyM':
-          toggleSound();
-          break;
-        case 'KeyG':
-          // Panels need the cursor: leave plane mode (and its pointer lock) first.
-          if (controls.mode === 'plane') controls.setMode('map');
-          funMenu.close();
-          togglePanel();
-          break;
-        case 'KeyP':
-          if (controls.mode === 'plane') controls.setMode('map');
-          funMenu.close();
-          ownersMenu.close();
-          placesMenu.toggle();
-          break;
-        case 'KeyO':
-          toggleOwnersMenu();
-          break;
-        case 'KeyH':
-          if (controls.mode === 'plane') controls.setMode('map');
-          funMenu.close();
-          help.toggle();
-          break;
-        case 'Slash':
-          if (e.shiftKey) {
-            if (controls.mode === 'plane') controls.setMode('map');
-            funMenu.close();
-            help.toggle();
-          }
-          break;
-        case 'Escape':
-          if (controls.mode !== 'map') controls.setMode('map');
-          else if (help.open) help.close();
-          else if (funMenu.open) funMenu.close();
-          else if (placesMenu.open) placesMenu.close();
-          else if (ownersMenu.open) ownersMenu.close();
-          else if (inspector.isOpen) inspector.close();
-          else if (panelOpen()) togglePanel(false);
-          break;
-        default:
-      }
-    });
+    const keyTargets = { playback, controls, planeHud, follow, help, share, inspector, funMenu, placesMenu, ownersMenu, touchOnly,
+      notice, inspectAt, cycleCraft, startRun, setFollow, toggleSound, togglePanel, panelOpen, toggleOwnersMenu };
+    window.addEventListener('keydown', (e) => handleKey(e, keyTargets));
     // Browsers may keep the sound suspended until a gesture; any key press or click retries.
     window.addEventListener('keydown', () => sound.unlock(), true);
     window.addEventListener('pointerdown', () => sound.unlock(), true);
@@ -1054,82 +960,72 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       idle: () => !replay.busy && !playback.state.op && replay.block != null,
     });
 
-    let last = performance.now();
     let lastDesired = '';
     let lastBlockSeen = null;
-    let errors = 0;
-    const seenErrors = new Map(); // message -> last time logged (dedupe per 5 s)
-    function frame(now) {
-      requestAnimationFrame(frame);
-      const dt = clamp((now - last) / 1000, 0, 0.1);
-      last = now;
-      try {
-        // Follow tip before the controls, so their update draws the shifted camera. Plane mode
-        // holds it, so following resumes from wherever the camera lands.
-        if (controls.mode === 'plane') follow.hold(replay.block);
-        else {
-          const dx = follow.step(dt);
-          if (dx !== 0) controls.shiftX(dx);
-        }
-        controls.update(dt);
-        // Stack sats steps once the craft has taken off; otherwise only the coin fades advance.
-        const flying = controls.mode === 'plane' && !controls.takingOff ? controls.plane : null;
-        const ev = stepStackSats(game, game.running ? flying : null, dt, { ground, extent: groundExtent });
-        for (const c of ev.collected) {
-          planeHud.pop('+' + fmtAmount(c.value));
-          planeSound.coin();
-        }
-        if (ev.ended) finishRun();
-        if (coinModels) coinModels.update(game);
-        if (planeModel) planeModel.update(controls.plane, dt);
-        planeHud.update(controls.plane, replay.block, game);
-        planeSound.update(controls.plane);
-        playback.tick(dt);
-        const u = view.update(dt);
-        const desired = u && u.desiredTiles;
-        if (desired) {
-          const key = desired.join(',');
-          if (key !== lastDesired) {
-            lastDesired = key;
-            replay.setTiles(desired);
-          }
-        }
-        const r = view.render();
-        if (r && typeof r.catch === 'function') r.catch((err) => console.error('render', err));
-        if (gotData && !hook.ready) {
-          hook.ready = true;
-          loading.done();
-          if (startup && startup.notice) notice(startup.notice, 'info', 'startup');
-          if (touchOnly) toast.show('Drag to pan \u00b7 pinch to zoom \u00b7 twist to turn \u00b7 two fingers up or down to tilt \u00b7 tap to inspect', 'info', 'touch-hint', 6500);
-        }
-        const block = replay.block;
-        const pstate = playback.state;
-        hud.update({ block, meta: replay.meta, playback: pstate, status: lastStatus, backend: view.backend, preset: store.preset, scale: view.stats && view.stats.scale });
-        timeline.update(block, pstate);
-        if (block !== lastBlockSeen) {
-          lastBlockSeen = block;
-          inspector.onBlock(block, { playing: pstate.playing });
-        }
-        inspector.updateMarker();
-        hover.update(now);
-        syncPanel();
-        if (!$('minimap').hidden) minimap.draw({ block, pose: controls.getPose(), footprint: controls.footprint() });
-        syncHash(now);
-        errors = 0;
-      } catch (err) {
-        errors++;
-        const msg = err && err.message ? err.message : String(err);
-        const lastLogged = seenErrors.get(msg);
-        if (lastLogged === undefined || now - lastLogged > 5000) {
-          seenErrors.set(msg, now);
-          console.error('frame', err);
-          notice('Frame error: ' + msg, 'error', 'frame-error');
-        }
-        hook.frameError = { message: msg, count: errors };
-        if (!hook.ready && errors === 30) loading.problem('The renderer fails on every frame: ' + msg);
+    // One display frame of the app, in order: camera, games, playback, view, then the interface.
+    function step(dt, now) {
+      // Follow tip before the controls, so their update draws the shifted camera. Plane mode
+      // holds it, so following resumes from wherever the camera lands.
+      if (controls.mode === 'plane') follow.hold(replay.block);
+      else {
+        const dx = follow.step(dt);
+        if (dx !== 0) controls.shiftX(dx);
       }
+      controls.update(dt);
+      // Stack sats steps once the craft has taken off; otherwise only the coin fades advance.
+      const flying = controls.mode === 'plane' && !controls.takingOff ? controls.plane : null;
+      const ev = stepStackSats(game, game.running ? flying : null, dt, { ground, extent: groundExtent });
+      for (const c of ev.collected) {
+        planeHud.pop('+' + fmtAmount(c.value));
+        planeSound.coin();
+      }
+      if (ev.ended) finishRun();
+      if (coinModels) coinModels.update(game);
+      if (planeModel) planeModel.update(controls.plane, dt);
+      planeHud.update(controls.plane, replay.block, game);
+      planeSound.update(controls.plane);
+      playback.tick(dt);
+      const u = view.update(dt);
+      const desired = u && u.desiredTiles;
+      if (desired) {
+        const key = desired.join(',');
+        if (key !== lastDesired) {
+          lastDesired = key;
+          replay.setTiles(desired);
+        }
+      }
+      const r = view.render();
+      if (r && typeof r.catch === 'function') r.catch((err) => console.error('render', err));
+      if (gotData && !hook.ready) {
+        hook.ready = true;
+        loading.done();
+        if (startup && startup.notice) notice(startup.notice, 'info', 'startup');
+        if (touchOnly) toast.show('Drag to pan \u00b7 pinch to zoom \u00b7 twist to turn \u00b7 two fingers up or down to tilt \u00b7 tap to inspect', 'info', 'touch-hint', 6500);
+      }
+      const block = replay.block;
+      const pstate = playback.state;
+      hud.update({ block, meta: replay.meta, playback: pstate, status: lastStatus, backend: view.backend, preset: store.preset, scale: view.stats && view.stats.scale });
+      timeline.update(block, pstate);
+      if (block !== lastBlockSeen) {
+        lastBlockSeen = block;
+        inspector.onBlock(block, { playing: pstate.playing });
+      }
+      inspector.updateMarker();
+      hover.update(now);
+      syncPanel();
+      if (!$('minimap').hidden) minimap.draw({ block, pose: controls.getPose(), footprint: controls.footprint() });
+      syncHash(now);
     }
-    requestAnimationFrame(frame);
+    startFrameLoop(step, {
+      onError(err, { message, count, logged }) {
+        if (logged) {
+          console.error('frame', err);
+          notice('Frame error: ' + message, 'error', 'frame-error');
+        }
+        hook.frameError = { message, count };
+        if (!hook.ready && count === 30) loading.problem('The renderer fails on every frame: ' + message);
+      },
+    });
     return hook;
   } catch (err) {
     hook.error = String(err && err.stack ? err.stack : err);

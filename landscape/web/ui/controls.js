@@ -29,6 +29,7 @@
 import { Vector3, Quaternion, Euler } from 'three';
 import { TAP_SLOP_PX, TAP_MAX_MS, DOUBLE_TAP_MS, pairOf, pairDelta, classifyTwoFinger, createTapTracker } from './touch.js';
 import { CRAFTS, craftSpec, createPlane, switchCraft, stepPlane, stickByMouse, chasePose, shakeOffset, gamepadInput } from './plane.js';
+import { isTypingTarget } from './keys.js';
 
 const DEG = Math.PI / 180;
 const UP = new Vector3(0, 1, 0);
@@ -56,17 +57,6 @@ const wrap = (a) => {
 };
 const shortest = (from, to) => wrap(to - from);
 const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
-
-export function isTypingTarget(el) {
-  if (!el || el === document.body) return false;
-  const tag = el.tagName;
-  if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
-  if (tag === 'INPUT') {
-    const type = (el.type || 'text').toLowerCase();
-    return !['button', 'checkbox', 'radio', 'range', 'color', 'submit', 'reset', 'file'].includes(type);
-  }
-  return !!el.isContentEditable;
-}
 
 /** Unit view direction for a yaw/pitch pair. */
 export function forwardOf(yaw, pitch, out = new Vector3()) {
