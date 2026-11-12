@@ -15,7 +15,7 @@ import { serveObject, parseRange, etagMatches } from '../../utxo-video-worker/sr
 export const BLOCKS_PER_COLUMN = 64;
 export const ROWS = 2072;
 const DATASET_ID = /^d\d{1,7}-\d{8}$/;
-const DATASET_FILE = /^(?:manifest\.json|rows\.bin|blocktimes\.bin|chunks\.json|chunks\/\d{5}\.bin|snapshots\/\d{7}\.bin)$/;
+const DATASET_FILE = /^(?:manifest\.json|rows\.bin|blocktimes\.bin|blocktimes-delta\.bin|chunks\.json|chunks\/\d{5}\.bin|snapshots\/\d{7}\.bin)$/;
 // Snapshots and chunks are shared by every dataset that contains them, under the SHA-256 that
 // the dataset's manifest.json and chunks.json record, so a new dataset stores only new files.
 const BLOB_FILE = /^(?:chunks\/\d{5}|snapshots\/\d{7})\.bin$/;
@@ -30,6 +30,11 @@ const GUIDE_ALIAS = /^\/guide(?:\/(?:index\.html?)?|\.html?)?$/i;
 const INT64_MAX_AS_JSON = 9223372036854776000; // C++ INT64_MAX after JSON's double conversion (as /api/pixel)
 
 const CONTENT_TYPES = { json: 'application/json', bin: 'application/octet-stream', mp4: 'video/mp4' };
+// Change chunks and the delta-coded block times are read whole and shrink by about a third when
+// compressed. Cloudflare compresses responses by content type and leaves application/octet-stream
+// alone, so these are labelled with a binary type it does compress; the app reads them as bytes.
+// Snapshots stay octet-stream: they are read in ranges (206), which are never compressed.
+const COMPRESSED_FILE = /^(?:chunks\/\d{5}\.bin|blocktimes-delta\.bin)$/;
 
 export function datasetIds() {
   return [RELEASE.dataset.id, ...RELEASE.retainedDatasetIds];
@@ -92,7 +97,8 @@ export function isGuidePage(path) {
 
 /** A dataset, owner or film file: an immutable R2 object (../../utxo-video-worker/src/r2_object.js). */
 function serveFile(request, env, ctx, key, file) {
-  const contentType = CONTENT_TYPES[file.slice(file.lastIndexOf('.') + 1)] || 'application/octet-stream';
+  const contentType = COMPRESSED_FILE.test(file) ? 'application/x-protobuf'
+    : CONTENT_TYPES[file.slice(file.lastIndexOf('.') + 1)] || 'application/octet-stream';
   return serveObject(request, env, ctx, key, { contentType, secure: securityHeaders });
 }
 

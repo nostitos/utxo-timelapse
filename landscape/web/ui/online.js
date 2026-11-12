@@ -71,7 +71,7 @@ export function startupMode({ query = new URLSearchParams(), local }) {
   return local ? 'high' : 'adaptive';
 }
 
-/** Device traits for chooseStartup (touch-only = coarse primary pointer without hover). */
+/** Device traits for chooseStartup (touch-only = coarse primary pointer without hover; dpr = device pixel ratio). */
 export function deviceTraits(win = globalThis) {
   const mm = (q) => {
     try {
@@ -81,21 +81,32 @@ export function deviceTraits(win = globalThis) {
     }
   };
   const mem = win.navigator && typeof win.navigator.deviceMemory === 'number' ? win.navigator.deviceMemory : NaN;
-  return { coarseOnly: mm('(pointer: coarse)') && !mm('(hover: hover)'), deviceMemory: mem };
+  return { coarseOnly: mm('(pointer: coarse)') && !mm('(hover: hover)'), deviceMemory: mem, dpr: Number(win.devicePixelRatio) || 1 };
+}
+
+/**
+ * A device that gets the light settings: no WebGPU, a software (fallback) WebGPU adapter, touch
+ * only, or 4 GB of memory or less (only Chromium reports memory).
+ */
+export function isLowEnd({ backend, fallback = false, coarseOnly = false, deviceMemory = NaN }) {
+  return backend !== 'webgpu' || !!fallback || !!coarseOnly || (Number.isFinite(deviceMemory) && deviceMemory <= 4);
 }
 
 /**
  * Startup quality. Only an adaptive first visit (no saved settings; a link's settings do not
  * count, since links never set the quality) changes anything: Balanced with auto resolution
- * scaling, or Performance with a notice on a WebGL2-only, touch-only or low-memory (4 GB or
- * less) device. Returns null otherwise.
+ * scaling, or Performance with a notice on a low-end device (isLowEnd). A touch-only screen
+ * above 2 device pixels per CSS pixel renders at most about 2 (0.65 of a 3x screen).
+ * Returns null otherwise.
  */
-export function chooseStartup({ mode, firstVisit, backend, coarseOnly = false, deviceMemory = NaN }) {
+export function chooseStartup({ mode, firstVisit, backend, fallback = false, coarseOnly = false, deviceMemory = NaN, dpr = 1 }) {
   if (mode !== 'adaptive' || !firstVisit) return null;
-  const lowEnd = backend !== 'webgpu' || !!coarseOnly || (Number.isFinite(deviceMemory) && deviceMemory <= 4);
+  const lowEnd = isLowEnd({ backend, fallback, coarseOnly, deviceMemory });
+  const settings = { ...ADAPTIVE_DISPLAY };
+  if (coarseOnly && dpr > 2) settings['display.scaleMax'] = Math.max(0.5, Math.floor((2 / dpr) * 20) / 20);
   return {
     preset: lowEnd ? 'Performance' : 'Balanced',
-    settings: { ...ADAPTIVE_DISPLAY },
+    settings,
     notice: lowEnd ? LOW_END_NOTICE : null,
   };
 }

@@ -173,6 +173,7 @@ export function createStubView({ canvas, settings, manifest }) {
     update() {
       return { desiredTiles: null };
     },
+    holdScaling() {},
     resize() {
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       canvas.width = Math.round(canvas.clientWidth * dpr);

@@ -352,6 +352,20 @@ TEST_CASE("landscape_state") {
     CHECK(lsc::hex(lsc::sha256("", 0)) == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
     CHECK(lsc::hex(lsc::sha256("abc", 3)) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
 
+    // blocktimes-delta.bin: block times may run backwards; a round trip is exact and the decoder
+    // refuses a different block count and a truncated or overlong file.
+    {
+        auto const times = std::vector<uint32_t>{1231006505, 1231469665, 1231469744, 1231469600, 0, UINT32_MAX, 1231470988};
+        auto const delta = lsc::encodeBlockTimesDelta(times);
+        auto const* bytes = reinterpret_cast<uint8_t const*>(delta.data());
+        CHECK(delta.size() < times.size() * 4 + 8);
+        CHECK(lsc::decodeBlockTimesDelta(bytes, delta.size(), uint32_t(times.size())) == times);
+        CHECK_THROWS((void)lsc::decodeBlockTimesDelta(bytes, delta.size(), uint32_t(times.size()) - 1));
+        CHECK_THROWS((void)lsc::decodeBlockTimesDelta(bytes, delta.size(), uint32_t(times.size()) + 1));
+        CHECK_THROWS((void)lsc::decodeBlockTimesDelta(bytes, delta.size() - 1, uint32_t(times.size())));
+        CHECK(lsc::encodeBlockTimesDelta({}).empty());
+    }
+
     // Grid and tile ids (SPEC section 2).
     auto const g = lsc::Grid::make(966'828);
     CHECK(g.l0Columns == 15107);

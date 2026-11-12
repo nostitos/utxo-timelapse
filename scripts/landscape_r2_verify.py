@@ -3,9 +3,9 @@
 
 Every local dataset file must exist in R2 with the same size, a single-part ETag and that ETag
 equal to the local MD5: chunks/*.bin and snapshots/*.bin at landscape/blobs/<sha256> (shared by
-all datasets), manifest.json, rows.bin, blocktimes.bin and chunks.json under the prefix, where
-nothing else may exist. The local copy is first checked against its own manifest and chunk
-table. Exits 1 on any difference.
+all datasets), manifest.json, rows.bin, blocktimes.bin, blocktimes-delta.bin (when the dataset has
+it) and chunks.json under the prefix, where nothing else may exist. The local copy is first checked
+against its own manifest and chunk table. Exits 1 on any difference.
 
   python scripts/landscape_r2_verify.py "/Volumes/4T Data/buv_render/landscape_972052" \
     --prefix landscape/d972052-20261018 [--no-manifest]
@@ -49,6 +49,8 @@ def local_files(root: Path, include_manifest: bool) -> dict[str, Path]:
     manifest = json.loads((root / "manifest.json").read_text())
     chunks = json.loads((root / "chunks.json").read_text())["chunks"]
     files = {"rows.bin": root / "rows.bin", "blocktimes.bin": root / "blocktimes.bin", "chunks.json": root / "chunks.json"}
+    if (root / "blocktimes-delta.bin").is_file():
+        files["blocktimes-delta.bin"] = root / "blocktimes-delta.bin"
     if include_manifest:
         files["manifest.json"] = root / "manifest.json"
     for c in chunks:

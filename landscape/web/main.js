@@ -40,7 +40,7 @@ import { createHelp } from './ui/help.js';
 import { createToast } from './ui/toast.js';
 import { createLoading } from './ui/loading.js';
 import { fmtInt, fmtAmount, escapeHtml, isoUtc } from './ui/format.js';
-import { resolveEndpoints, resolveDataUrl, startupMode, chooseStartup, deviceTraits, ownersUrl } from './ui/online.js';
+import { resolveEndpoints, resolveDataUrl, startupMode, chooseStartup, deviceTraits, isLowEnd, ownersUrl } from './ui/online.js';
 import { checkOwnerManifest } from './replay/owners.js';
 import { gridFromManifest, columnBlocks, worldX, worldZ } from './data/grid.js';
 import { FILM_AXIS, rowAmountRange } from './data/axis.js';
@@ -102,10 +102,10 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       console.warn('settings: stored values ignored', err);
     }
     const initial = decodeHash(location.hash);
-    const startup = chooseStartup({
-      mode: startupMode({ query, local: endpoints.local }), firstVisit: !stored,
-      backend: forceWebGL ? 'webgl2' : caps.backend || (caps.webgpu ? 'webgpu' : 'webgl2'), ...deviceTraits(),
-    });
+    const device = {
+      backend: forceWebGL ? 'webgl2' : caps.backend || (caps.webgpu ? 'webgpu' : 'webgl2'), fallback: !!caps.fallback, ...deviceTraits(),
+    };
+    const startup = chooseStartup({ mode: startupMode({ query, local: endpoints.local }), firstVisit: !stored, ...device });
     if (startup) {
       store.applyPreset(startup.preset);
       store.setMany(startup.settings);
@@ -122,7 +122,9 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     stage = 'data';
     loading.set('Opening the dataset');
     dataUrl = await resolveDataUrl({ query, href: location.href });
-    const replay = await deps.createReplayClient({ dataUrl, maxResidentTiles: store.get('geo.tileBudget'), chunkCacheMB: 512 });
+    // A low-end device keeps fewer downloaded change chunks: playback then refetches more when it
+    // rewinds, but the worker stays well inside a phone's memory.
+    const replay = await deps.createReplayClient({ dataUrl, maxResidentTiles: store.get('geo.tileBudget'), chunkCacheMB: isLowEnd(device) ? 128 : 512 });
     const manifest = replay.manifest;
     const grid = gridFromManifest(manifest);
     const tip = manifest.tip;
@@ -140,9 +142,14 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     stage = 'renderer';
     loading.set('Starting the renderer');
     const canvas = $('view');
+    let deviceLost = false;
     const view = await deps.createLandscapeView({
       canvas, settings: store, manifest, rows: replay.rows, blocktimes: replay.blocktimes,
       forceWebGL, labelsElement: $('labels'), overlayElement: $('overlay'),
+      onDeviceLost: () => {
+        deviceLost = true;
+        loading.fatal('The graphics device was lost.', '<p>Reload the page to continue.</p>');
+      },
     });
     if (typeof store.setCapabilities === 'function') {
       store.setCapabilities({ ...(view.capabilities || {}), backend: view.backend, webgpu: view.backend === 'webgpu' });
@@ -605,7 +612,11 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       // camera afterwards.
       if (controls.mode === 'plane') follow.hold(frame.block);
       else follow.frame(frame.block);
-      if (!frame.partial && frame.block != null) gotData = true;
+      if (!frame.partial && frame.block != null && !gotData) {
+        gotData = true;
+        // The first complete frame uploads its tiles; resolution scaling waits for the frames after it.
+        view.holdScaling(1500);
+      }
       hook.lastFrame = { seq: frame.seq, block: frame.block, reason: frame.reason, partial: frame.partial, full: (frame.full || []).length, deltas: frame.deltas && frame.deltas.ids ? frame.deltas.ids.length : 0, stats: frame.stats };
     });
 
@@ -964,6 +975,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     let lastBlockSeen = null;
     // One display frame of the app, in order: camera, games, playback, view, then the interface.
     function step(dt, now) {
+      if (deviceLost) return;
       // Follow tip before the controls, so their update draws the shifted camera. Plane mode
       // holds it, so following resumes from wherever the camera lands.
       if (controls.mode === 'plane') follow.hold(replay.block);
@@ -994,7 +1006,12 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
           replay.setTiles(desired);
         }
       }
-      const r = view.render();
+      const pstate = playback.state;
+      // Frames that must be drawn whatever the camera does; otherwise the view skips frames
+      // that would repeat the last one (render/idle.js).
+      const active = !hook.ready || pstate.playing || !!pstate.op || replay.busy || controls.mode === 'plane' || game.running ||
+        game.coins.length > 0;
+      const r = view.render(active);
       if (r && typeof r.catch === 'function') r.catch((err) => console.error('render', err));
       if (gotData && !hook.ready) {
         hook.ready = true;
@@ -1003,7 +1020,6 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         if (touchOnly) toast.show('Drag to pan \u00b7 pinch to zoom \u00b7 twist to turn \u00b7 two fingers up or down to tilt \u00b7 tap to inspect', 'info', 'touch-hint', 6500);
       }
       const block = replay.block;
-      const pstate = playback.state;
       hud.update({ block, meta: replay.meta, playback: pstate, status: lastStatus, backend: view.backend, preset: store.preset, scale: view.stats && view.stats.scale });
       timeline.update(block, pstate);
       if (block !== lastBlockSeen) {

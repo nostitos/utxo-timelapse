@@ -2,7 +2,7 @@
 //
 // createTerrain({ renderer, scene, camera, settings, manifest, rows, blocktimes, capabilities,
 //   labelsElement }) → { object3d, applyFrame, setBlock, update, pick, heightAt, focusDistance,
-//   setDetailAhead, onFlashes, stats, dispose }
+//   setDetailAhead, onFlashes, setOwners, drawSignature, stats, dispose }
 import {
   Group, Mesh, PlaneGeometry, MeshStandardNodeMaterial, MeshBasicNodeMaterial, DoubleSide, Vector3, Matrix4,
   Color,
@@ -34,7 +34,7 @@ export const TERRAIN_DEFAULTS = Object.freeze({
   'amp.heatFloor': 0.35, 'amp.heatReference': 100, 'amp.heatEdge': 0.15, 'amp.heatEdgeBlocks': 4032,
   'amp.flashSize': 1, 'amp.flashThreshold': 0.0001, 'amp.edgeGlow': 0.25, 'amp.edgeBlocks': 1008,
   'amp.nowPlane': 0.15,
-  'geo.smoothing': 'bilinear', 'geo.stepped': false, 'geo.steppedWhales': true, 'geo.subdivision': 1, 'geo.columns': true,
+  'geo.smoothing': 'bilinear', 'geo.stepped': false, 'geo.steppedWhales': true, 'geo.whaleShadows': true, 'geo.subdivision': 1, 'geo.columns': true,
   'geo.uniform': false, 'geo.uniformLevel': 1,
   'geo.columnRadius': 4096, 'geo.instanceBudget': 1000000, 'geo.columnGap': 0, 'geo.columnWidth': 1, 'geo.lodBias': 0,
   'geo.columnShape': 'oval', 'geo.cylinderSides': 12, 'geo.farColumns': 'prism', 'geo.farShadows': true,
@@ -108,6 +108,9 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     }
     hfLevels.clear();
   }
+  // Whale row shadows off (Balanced, Performance): the whale band's stepped mesh, which holds
+  // about half the triangles of a view along the whale rows, stays out of the shadow maps.
+  const castsShadow = (key) => !(key === 'stepped' && mode && mode.whaleSteps && !get('geo.whaleShadows'));
   function hfLevel(key) {
     let L = hfLevels.get(key);
     if (!L) {
@@ -120,6 +123,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
       material.wireframe = !!get('geo.wireframe');
       const m = createHeightfieldMesh(geometry, material);
       m.name = 'TerrainHeightfield' + (stepped ? 'Stepped' : 'Sub' + sub);
+      m.castShadow = castsShadow(key);
       object3d.add(m);
       L = { key, sub, inst, geometry, material, mesh: m };
       hfLevels.set(key, L);
@@ -274,6 +278,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
         break;
       case 'display.labels': if (labels) labels.setVisible(!!value); break;
       case 'geo.wireframe': for (const L of hfLevels.values()) { L.material.wireframe = !!value; L.material.needsUpdate = true; } break;
+      case 'geo.whaleShadows': { const L = hfLevels.get('stepped'); if (L) L.mesh.castShadow = castsShadow('stepped'); break; }
       case 'geo.tileBudget': needs.capacity = true; break;
       case 'amp.nowPlane': nowOpacity.value = value; placeNowPlane(); break;
       case 'amp.flashSize': if (!(value > 0)) flashes.clear(); break;
@@ -786,10 +791,24 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
    * Owner layer: entity colours (sRGB hex, in owners.json order) turn it on, null turns it
    * off. The atlas gains or frees its owner plane and the materials rebuild on the next update.
    */
+  let ownerVersion = 0;
   function setOwners(colors) {
     shading.setOwnerColors(colors || []);
     U.ownersOn.value = colors ? 1 : 0;
     atlas.setOwners(!!colors);
+    ownerVersion++;
+  }
+
+  /**
+   * What the terrain contributes to the picture besides the camera and the settings, as one
+   * string: it changes with tile data, residency and layout, uploads still pending (WebGL2),
+   * the block, column rebuilds and their counts, and the owner colours. The view skips drawing
+   * while it and everything else stay the same (render/idle.js).
+   */
+  function drawSignature() {
+    const c = columns && mode.columns ? columns.state : null;
+    return [atlas.version, atlas.layoutVersion, atlas.residencyVersion, atlas.pendingLayers.size, atlas.pendingOwnerLayers.size,
+      currentBlock, c ? c.dispatches : -1, c ? c.near : -1, c ? c.far : -1, ownerVersion].join();
   }
 
   function dispose() {
@@ -808,7 +827,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
   }
 
   return {
-    object3d, applyFrame, setBlock, update, pick, heightAt, focusDistance, setDetailAhead, onFlashes, setOwners, stats, dispose,
+    object3d, applyFrame, setBlock, update, pick, heightAt, focusDistance, setDetailAhead, onFlashes, setOwners, drawSignature, stats, dispose,
     // extras for dev pages and tests
     atlas, shading, grid, cellAt, get mode() { return mode; }, get drawn() { return drawn; },
     get meshes() { return { heightfield: [...hfLevels.values()].map((L) => L.mesh), floor, nowPlane, columns: columns ? columns.mesh : null }; },

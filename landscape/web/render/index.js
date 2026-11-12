@@ -7,6 +7,7 @@ import { createPost } from './post.js';
 import { createOverlay, createGpuTimer } from './overlay.js';
 import { AutoScaler, clampScale, internalSize } from './scale.js';
 import { readSettings } from './post-plan.js';
+import { createIdleGate, idleGate } from './idle.js';
 
 export { probeCapabilities };
 
@@ -40,14 +41,23 @@ export function horizonFar(y, density, falloff) {
  * @param {boolean} [o.forceWebGL]
  * @param {HTMLElement} [o.labelsElement] @param {HTMLElement} [o.overlayElement]
  * @param {Function} [o.createTerrain] terrain factory override (dev pages use the stub)
+ * @param {Function} [o.onDeviceLost] called with three's loss info when the GPU device (or WebGL context) is lost
  */
 export async function createLandscapeView({
   canvas, settings, manifest = null, rows = null, blocktimes = null, forceWebGL = false,
-  labelsElement = null, overlayElement = null, createTerrain = null,
+  labelsElement = null, overlayElement = null, createTerrain = null, onDeviceLost = null,
 } = {}) {
   if (!canvas) throw new Error('createLandscapeView: canvas required');
   const ctx = await createRenderContext({ canvas, forceWebGL });
   const { renderer, capabilities } = ctx;
+  if (onDeviceLost) {
+    // three logs the loss and stops drawing; the app is told too, so it can say so.
+    const logLoss = renderer.onDeviceLost;
+    renderer.onDeviceLost = (info) => {
+      logLoss.call(renderer, info);
+      onDeviceLost(info);
+    };
+  }
 
   const scene = new Scene();
   scene.name = 'utxo-landscape';
@@ -80,17 +90,21 @@ export async function createLandscapeView({
     enabled: !!s['display.autoScale'], min: Number(s['display.scaleMin']), max: Number(s['display.scaleMax']),
     targetFps: Number(s['display.targetFps']), scale: Number(s['display.scale']),
   });
+  // Pipelines compile and the first tiles upload during the first seconds; they say nothing about
+  // the steady frame rate.
+  scaler.hold(performance.now() + 3000);
 
   let scale = clampScale(Number(s['display.scale']) || 1);
   let lastCss = '';
   let dirty = true;
+  let syncs = 0;
   let rebuilds = 0;
   let workerStats = null;
   const stats = {
     backend: capabilities.backend, fps: NaN, frameMs: NaN, cpuMs: NaN, gpuMs: NaN, gpuPasses: {},
     triangles: 0, drawCalls: 0, instances: 0, tiles: 0, resident: 0, maxTiles: capabilities.maxTileBudget,
     scale, dpr: 1, width: 0, height: 0, autoScale: false, targetFps: 60, stages: [], worker: null,
-    rebuilds: 0, error: null,
+    rebuilds: 0, error: null, drawn: 0, idle: false,
   };
 
   function cssSize() {
@@ -118,12 +132,15 @@ export async function createLandscapeView({
   }
 
   function syncSettings() {
+    syncs++;
     s = readSettings(settings);
     groundHorizon = readGroundHorizon();
     env.sync(s, { groundHorizon });
     if (post.sync(s)) {
       rebuilds++;
-      scaler.reset(performance.now());
+      const now = performance.now();
+      scaler.reset(now);
+      scaler.hold(now + 3000);
     }
     ctx.setDisplayP3(!!(post.plan && post.plan.p3));
     const fov = Number(s['camera.fov']);
@@ -186,6 +203,10 @@ export async function createLandscapeView({
   let frameEMA = NaN;
   let cpuEMA = NaN;
   let lastDt = 1 / 60;
+  const gate = createIdleGate();
+  let lastKey = '';
+  let invalidated = false;
+  let skipping = false;
 
   const view = {
     get backend() { return capabilities.backend; },
@@ -225,7 +246,10 @@ export async function createLandscapeView({
       camera.updateMatrixWorld();
       env.update(camera, stats.height || 1);
       const [, h, dpr] = cssSize();
-      const desiredTiles = terrain.update ? terrain.update(camera, h * dpr) : null;
+      // Detail follows the pixels actually rendered: a lower resolution scale asks for less
+      // geometry and fewer tiles, and a scale above 1 (supersampling) adds none.
+      const px = h * dpr;
+      const desiredTiles = terrain.update ? terrain.update(camera, Math.min(stats.height || px, px)) : null;
       if (post.plan && post.plan.dof) {
         let fd = null;
         if (s['fx.dofAutoFocus']) { try { fd = terrain.focusDistance(camera); } catch { fd = null; } }
@@ -234,8 +258,40 @@ export async function createLandscapeView({
       return { desiredTiles: desiredTiles || null };
     },
 
-    render() {
+    /** The next render() draws whatever changed (frame grabs in tests read the canvas after it). */
+    invalidate() { invalidated = true; },
+
+    /** Resolution scaling ignores frames for the next ms milliseconds (main.js: the first data). */
+    holdScaling(ms) { scaler.hold(performance.now() + ms); },
+
+    /**
+     * Draws the frame unless nothing on screen can have changed (render/idle.js). active: the app
+     * needs every frame (playback, a pending seek, plane mode, the game); dev pages leave it true.
+     */
+    render(active = true) {
       const t0 = performance.now();
+      const plan = post.plan;
+      const busy = active || (terrain.stats && terrain.stats.flashes > 0) || !!s['display.overlay'] ||
+        !!(plan && (plan.traa || plan.grain || plan.autoExposure || plan.motionBlur || plan.dof));
+      const key = camera.matrixWorld.elements.join() + '|' + camera.projectionMatrix.elements.join() + '|' + stats.width + 'x' +
+        stats.height + '|' + syncs + '|' + (terrain.drawSignature ? terrain.drawSignature() : '');
+      const changed = invalidated || key !== lastKey;
+      lastKey = key;
+      invalidated = false;
+      if (!idleGate(gate, { changed, busy, now: t0 })) {
+        // The next drawn frame starts a new frame interval, so the time spent idle is not taken
+        // for a slow frame.
+        skipping = true;
+        lastFrameTime = NaN;
+        stats.idle = true;
+        return;
+      }
+      if (skipping) {
+        skipping = false;
+        scaler.hold(t0 + 500);
+      }
+      stats.idle = false;
+      stats.drawn++;
       post.render(lastDt);
       const t1 = performance.now();
       const cpu = t1 - t0;

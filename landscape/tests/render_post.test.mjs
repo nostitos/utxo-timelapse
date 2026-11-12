@@ -3,6 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { AutoScaler, clampScale, quantizeScale, internalSize } from '../web/render/scale.js';
+import { createIdleGate, idleGate, AFTER_CHANGE_FRAMES, IDLE_REDRAW_MS } from '../web/render/idle.js';
 import { parseCubeLUT, identityCubeLUT, sampleCubeLUT } from '../web/render/cube-lut.js';
 import {
   POST_DEFAULTS, POST_IDS, readSettings, planPipeline, planKey, planStages, gradeIsNeutral, lutText,
@@ -54,6 +55,69 @@ test('AutoScaler shrinks when the GPU is slow, grows when fast, and settles in b
   assert.equal(d.sample(100, 100, 1000), null);
   // configure clamps to the new bounds.
   assert.equal(new AutoScaler({ scale: 1.8 }).configure({ max: 1.5 }), 1.5);
+});
+
+test('AutoScaler without GPU timing probes a larger scale, backs off when it is too slow, and holds', () => {
+  // A 60 Hz display that keeps up: the frame interval sits at the target, so only a probe can grow.
+  const a = new AutoScaler({ enabled: true, min: 0.5, max: 1, targetFps: 60, scale: 0.5, windowFrames: 10, settleMs: 500 });
+  let t = 0;
+  const run = (ms, frameMs, gpuMs = NaN) => {
+    const changes = [];
+    for (const end = t + ms; t < end;) { t += frameMs; const n = a.sample(frameMs, gpuMs, t); if (n !== null) changes.push([Math.round(t), n]); }
+    return changes;
+  };
+  assert.deepEqual(run(7500, 16.7), [], 'no probe before 8 s');
+  const first = run(1000, 16.7);
+  assert.equal(first.length, 1);
+  assert.equal(first[0][1], 0.55, 'one step up (+0.05, more than x1.1 here)');
+  // The probe holds: the next one comes 8 s later and goes x1.1 once that is more than 0.05.
+  assert.deepEqual(run(7000, 16.7), []);
+  assert.equal(run(2000, 16.7)[0][1], 0.6);
+  // Too slow right after a probe: shrinks as usual and waits twice as long before probing again.
+  while (a.scale < 0.65) { t += 16.7; a.sample(16.7, NaN, t); }
+  let slow = null;
+  for (const end = t + 2000; slow === null && t < end;) { t += 22; slow = a.sample(22, NaN, t); }
+  assert.ok(slow !== null && slow < 0.65, 'a probe that is too slow shrinks: ' + slow);
+  const after = a.scale;
+  assert.deepEqual(run(15000, 16.7), [], 'waits 16 s after a failed probe');
+  assert.ok(run(2000, 16.7)[0][1] > after);
+  // With GPU timing headroom shows directly, so there is no probing at the target.
+  const g = new AutoScaler({ enabled: true, min: 0.5, max: 1, targetFps: 60, scale: 0.5, windowFrames: 10, settleMs: 0 });
+  for (let i = 1; i <= 2000; i++) assert.equal(g.sample(16.7, 16, i * 16.7), null);
+  // At the maximum there is nothing to probe.
+  const m = new AutoScaler({ enabled: true, min: 0.5, max: 1, targetFps: 60, scale: 1, windowFrames: 10, settleMs: 0 });
+  for (let i = 1; i <= 2000; i++) assert.equal(m.sample(16.7, NaN, i * 16.7), null);
+});
+
+test('AutoScaler.hold ignores frames until the hold ends', () => {
+  const a = new AutoScaler({ enabled: true, min: 0.5, max: 2, targetFps: 60, scale: 1, windowFrames: 10, settleMs: 0 });
+  a.hold(3000);
+  for (let t = 33; t < 3000; t += 33) assert.equal(a.sample(33, 33, t), null, 'slow startup frames are ignored');
+  let next = null;
+  for (let t = 3000; t < 3500 && next === null; t += 33) next = a.sample(33, 33, t);
+  assert.ok(next !== null && next < 1, 'slow frames after the hold shrink');
+  // A later, shorter hold does not cut an earlier, longer one.
+  a.hold(10000);
+  a.hold(5000);
+  for (let t = 4000; t < 10000; t += 33) assert.equal(a.sample(33, 33, t), null);
+});
+
+test('idle gate: draws after a change for a while, then once a second; busy frames always draw', () => {
+  const g = createIdleGate();
+  let now = 0;
+  const frame = (o = {}) => idleGate(g, { changed: false, busy: false, now: (now += 16), ...o });
+  assert.equal(frame({ changed: true }), true);
+  let drawn = 0;
+  for (let i = 0; i < AFTER_CHANGE_FRAMES; i++) drawn += frame() ? 1 : 0;
+  assert.equal(drawn, AFTER_CHANGE_FRAMES, 'the frames after a change are drawn');
+  assert.equal(frame(), false, 'then the view is idle');
+  drawn = 0;
+  const start = now;
+  while (now - start < 3 * IDLE_REDRAW_MS) drawn += frame() ? 1 : 0;
+  assert.ok(drawn >= 2 && drawn <= 3, drawn + ' safety frames in 3 s');
+  assert.equal(frame({ busy: true }), true, 'busy draws');
+  assert.equal(frame(), true, 'and the frames after it count as after a change');
+  assert.equal(frame({ changed: true }), true);
 });
 
 test('cube LUT parser: identity, comments, domain and errors', () => {

@@ -595,6 +595,52 @@ auto crc32(void const* data, size_t size) -> uint32_t {
 #endif
 }
 
+auto encodeBlockTimesDelta(std::vector<uint32_t> const& times) -> std::string {
+    auto out = std::string(times.size() * 10, '\0');
+    auto* const begin = reinterpret_cast<uint8_t*>(out.data());
+    auto* p = begin;
+    int64_t previous = 0;
+    for (auto const t : times) {
+        auto const d = int64_t(t) - previous;
+        previous = t;
+        p = putVarint(p, (uint64_t(d) << 1U) ^ uint64_t(d >> 63)); // zigzag
+    }
+    out.resize(size_t(p - begin));
+    return out;
+}
+
+auto decodeBlockTimesDelta(uint8_t const* data, size_t size, uint32_t numBlocks) -> std::vector<uint32_t> {
+    auto out = std::vector<uint32_t>();
+    out.reserve(numBlocks);
+    int64_t t = 0;
+    size_t p = 0;
+    while (p < size) {
+        uint64_t z = 0;
+        for (unsigned shift = 0;; shift += 7) {
+            if (p >= size || shift > 63) {
+                fail(fmt::format("blocktimes-delta.bin: truncated varint at block {}", out.size()));
+            }
+            auto const b = data[p++];
+            z |= uint64_t(b & 0x7FU) << shift;
+            if (b < 0x80U) {
+                break;
+            }
+        }
+        t += int64_t(z >> 1U) ^ -int64_t(z & 1U);
+        if (t < 0 || t > int64_t(UINT32_MAX)) {
+            fail(fmt::format("blocktimes-delta.bin: time {} at block {}", t, out.size()));
+        }
+        if (out.size() == numBlocks) {
+            fail(fmt::format("blocktimes-delta.bin: more than {} blocks", numBlocks));
+        }
+        out.push_back(uint32_t(t));
+    }
+    if (out.size() != numBlocks) {
+        fail(fmt::format("blocktimes-delta.bin: {} blocks, expected {}", out.size(), numBlocks));
+    }
+    return out;
+}
+
 auto Grid::make(uint32_t numBlocks) -> Grid {
     if (numBlocks == 0) {
         fail("the grid needs at least one block");
@@ -1431,6 +1477,7 @@ void buildDataset(BuildOptions const& o) {
         put32(reinterpret_cast<uint8_t*>(timeBytes.data()) + size_t(h) * 4, times[h]);
     }
     writeText(o.out / "blocktimes.bin", timeBytes);
+    writeText(o.out / "blocktimes-delta.bin", encodeBlockTimesDelta(times));
 
     uint64_t chunkBytes = 0;
     auto cj = std::string("{\"format\": \"utxo-landscape-chunks-1\", \"chunks\": [");
@@ -1467,7 +1514,8 @@ void buildDataset(BuildOptions const& o) {
                      c.graphRect.x, c.graphRect.y, c.graphRect.w, c.graphRect.h, c.minSatoshi, c.maxSatoshi,
                      c.whiteHotTailMinSatoshi, c.epochBlocks, c.epochRatio, c.epochTransitionBlocks);
     m += fmt::format("  \"weightThresholdSatoshi\": {},\n", kSmallMaxSatoshi);
-    m += "  \"files\": {\"rows\": \"rows.bin\", \"blocktimes\": \"blocktimes.bin\", \"chunks\": \"chunks.json\"},\n";
+    m += "  \"files\": {\"rows\": \"rows.bin\", \"blocktimes\": \"blocktimes.bin\", \"blocktimesDelta\": \"blocktimes-delta.bin\", "
+         "\"chunks\": \"chunks.json\"},\n";
     m += fmt::format("  \"chunkBytesTarget\": {},\n", o.chunkBytes);
     m += fmt::format("  \"snapshotIntervalBytes\": {},\n", o.snapshotIntervalBytes);
     m += "  \"snapshots\": " + sj + ",\n";
@@ -1637,6 +1685,17 @@ auto verifyDataset(VerifyOptions const& o) -> bool {
             }
             checks.add("blocktimes.bin vs history", bad == 0,
                        fmt::format("{} blocks compared, {} mismatches", covered, bad));
+        }
+        // blocktimes-delta.bin, when the manifest names it (datasets built since November 2026).
+        if (auto const delta = manifest["files"]["blocktimesDelta"]; !delta.error()) {
+            auto const bytes = readFileBytes(o.data / std::string(delta.get_string().value()));
+            auto const decoded = decodeBlockTimesDelta(bytes.data(), bytes.size(), numBlocks);
+            uint64_t bad = 0;
+            for (uint32_t h = 0; h < numBlocks; ++h) {
+                bad += decoded[h] != get32(timesFile.data() + size_t(h) * 4) ? 1 : 0;
+            }
+            checks.add("blocktimes-delta.bin", bad == 0,
+                       fmt::format("{} bytes for {} blocks, {} differ from blocktimes.bin", bytes.size(), numBlocks, bad));
         }
 
         // Chunks.

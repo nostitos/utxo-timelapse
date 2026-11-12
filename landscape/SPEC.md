@@ -58,8 +58,9 @@ more specific, this file wins.
   `/api/landscape/cell` (same JSON as §5's native endpoint, from the 2D explorer's history shards). The app
   decides online versus local in `landscape/web/ui/online.js`: online it reads `/dataset/index.json` for the
   current dataset URL, calls the cell API on its own origin, links the 2D view to
-  `https://bitcointimelapse.com/explorer` and starts a first visit at Balanced (Performance on WebGL2,
-  touch-only or low-memory devices) with auto resolution scaling. Local behaviour is unchanged. Changing the
+  `https://bitcointimelapse.com/explorer` and starts a first visit at Balanced (Performance on WebGL2, a
+  software WebGPU adapter, touch-only or low-memory devices; at most scale 0.65 on a 3× touch screen) with
+  auto resolution scaling. Local behaviour is unchanged. Changing the
   inline import map in `index.html` requires the new CSP hash in the Worker's `release.js`
   (`node landscape/tools/csp-hash.mjs --check`).
 
@@ -161,6 +162,8 @@ All integers little-endian. Written by `landscape_build`; `manifest.json` last
 manifest.json
 rows.bin                 2072 × float64: minAmt[r] = smallest integer amount a ≥ 1 with row(a) ≤ r
 blocktimes.bin           numBlocks × u32: block timestamp (BUVHIST1 blockTimes, via header offsets)
+blocktimes-delta.bin     the same times, numBlocks × varuint zigzag(time[h] − time[h−1]), time[−1] = 0
+                         (datasets built since November 2026; readers use it when files.blocktimesDelta names it)
 chunks.json              chunk table
 chunks/00000.bin …       exact copies of consecutive BLK2 records, block-aligned, ≤ 4 MiB each
 snapshots/0000000.bin …  BUVLSN1 snapshots, file name = 7-digit block height
@@ -186,7 +189,8 @@ alone for exactness.
            "whiteHotTailMinSatoshi": 1000000000, "epochBlocks": 105000,
            "epochRatio": 0.5, "epochTransitionBlocks": 120},
   "weightThresholdSatoshi": 500000000,
-  "files": {"rows": "rows.bin", "blocktimes": "blocktimes.bin", "chunks": "chunks.json"},
+  "files": {"rows": "rows.bin", "blocktimes": "blocktimes.bin", "blocktimesDelta": "blocktimes-delta.bin",
+            "chunks": "chunks.json"},
   "chunkBytesTarget": 4194304,
   "snapshotIntervalBytes": 16777216,
   "snapshots": [{"block": 0, "file": "snapshots/0000000.bin", "bytes": 0,
@@ -467,19 +471,23 @@ Render modules use `three/webgpu` + `three/tsl` (import map in index.html):
 ```js
 const caps = await probeCapabilities({ forceWebGL });   // before the view: lets the store cap presets
 const view = await createLandscapeView({ canvas, settings, manifest, rows, blocktimes,
-  forceWebGL, labelsElement, overlayElement });
+  forceWebGL, labelsElement, overlayElement, onDeviceLost });  // onDeviceLost(info): GPU device or WebGL context lost
 view.backend            // 'webgpu' | 'webgl2'
 view.capabilities       // {compute, timestamp, maxTileBudget, limits}
 view.renderer; view.scene; view.camera   // PerspectiveCamera owned here, moved by ui controls
 view.setBlock(block)    // exact block of the delivered state (uniforms: now plane, heat decay, edge glow)
 view.applyFrame(frame)  // forwards worker frames to the terrain atlas
 view.update(dt)         // per frame before render; returns {desiredTiles: number[] | null}
-view.render()           // full pipeline
+view.render(active)     // full pipeline, skipped when nothing on screen can have changed and active is false
+                        // (render/idle.js: 30 frames after a change, then one a second); dev pages leave active true
+view.invalidate()       // the next render() draws (frame grabs read the canvas in the frame that drew it)
+view.holdScaling(ms)    // automatic scaling ignores frames for ms
 view.resize()
 view.pick(clientX, clientY) // {x, y, z, level, col, row, l0Col, l0Row, value, colorValue, heat} | null
 view.heightAt(x, z)
 view.focusDistance()    // terrain distance at screen centre (DOF autofocus, flight)
-view.stats              // {fps, cpuMs, gpuMs, gpuPasses, triangles, instances, tiles, resident, scale, width, height}
+view.stats              // {fps, cpuMs, gpuMs, gpuPasses, triangles, instances, tiles, resident, scale, width, height,
+                        //  drawn (frames drawn), idle (the last frame was skipped)}
 view.setAnimationLoop(fn) // optional; a plain rAF loop in main.js also works (three's loop starts at init)
 view.dispose()
 ```
@@ -487,11 +495,16 @@ view.dispose()
 `render/terrain/index.js` (render_terrain) exports `createTerrain({ renderer, scene,
 camera, settings, manifest, rows, blocktimes, capabilities, labelsElement })` returning
 `{ object3d, applyFrame, setBlock, update(camera, viewportHeightPx) → desiredTiles|null,
-pick(ray) → hit|null, heightAt(x,z), focusDistance(camera), stats, dispose }`.
+pick(ray) → hit|null, heightAt(x,z), focusDistance(camera), drawSignature() → string, stats, dispose }`.
+The view passes the rendered height as viewportHeightPx (drawing buffer, at most CSS height × device pixel
+ratio), so every terrain pixel threshold counts rendered pixels. drawSignature changes with whatever the
+terrain draws besides the camera and the settings (tile data, residency and layout, pending uploads, block,
+column rebuilds and counts, owner colours); the view's idle drawing compares it.
 Terrain owns: GPU tile atlas (storage buffer on WebGPU, texture on WebGL2), page table,
 LOD selection (always drawing the deepest fully resident level so there are no holes or
 overlaps; L6 is always resident), heightfield mesh with skirts, stepped cells (everywhere, or
-on the whale rows only, at least 1.5 px wide far away: `geo.steppedWhales`),
+on the whale rows only, at least 1.5 px wide far away: `geo.steppedWhales`; with `geo.whaleShadows`
+off the whale rows' stepped mesh casts no shadows),
 smoothing, subdivision, instanced columns, palette LUTs and colour transfer, heat
 emissive and flash sprites, creation-edge glow, now plane, grid, axis labels
 (HTML positioned by projection into `labelsElement`), CPU tile copies for picking.
@@ -644,7 +657,7 @@ ui_settings with the consumers):
   linear), `amp.exponent`, `amp.exposure`, `amp.reference`, `amp.exaggeration`,
   `amp.floor`, `amp.whale`, `amp.heatHalfLife` (blocks), `amp.heatFloor`, `amp.heatReference` (BTC), `amp.heatEdge`, `amp.heatEdgeBlocks`, `amp.flashSize`,
   `amp.flashThreshold` (BTC), `amp.edgeGlow`, `amp.edgeBlocks`, `amp.nowPlane`.
-- Geometry: `geo.smoothing` (none, bilinear, bicubic), `geo.stepped`, `geo.steppedWhales`,
+- Geometry: `geo.smoothing` (none, bilinear, bicubic), `geo.stepped`, `geo.steppedWhales`, `geo.whaleShadows`,
   `geo.subdivision` (1, 2, 4), `geo.columns`, `geo.columnShape` (cylinder, oval, box),
   `geo.cylinderSides` (6–32),
   `geo.columnRadius` (L0 cells), `geo.columnPixels` (px),
@@ -706,6 +719,9 @@ default since 2026-10-09) it measures about 35–40 fps in close and middle view
 budgets, subdivision 2). Cylinder detail falls toward Performance: Column detail 4 px on
 High and above, 6 px on Balanced, 12 px with 8 sides and at most 250,000 stacks on
 Performance; BitcoinTimelapse.com draws stepped cells without cylinders.
+Balanced and Performance keep the stepped whale rows out of the shadow maps
+(`geo.whaleShadows` off), about half the triangles of a frame that shows them, and Performance keeps
+64 resident tiles (96 until November 2026; settings saved before revision 2 move with it).
 
 Consumers: worker ← `amp.measure`, `color.measure`, `amp.heatHalfLife`,
 `geo.tileBudget` (via the client in main.js); terrain ← color.* transfer/palette/heat,

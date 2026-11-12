@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { existsSync, openSync, readSync, closeSync, readFileSync } from 'node:fs';
 import { gridFromManifest, SLOT_CELLS, tileInfo } from '../web/data/grid.js';
 import { rowOfAmount, parseRowsBin } from '../web/data/axis.js';
-import { DecodedBlock, decodeBlock, encodeBlock, indexRecords } from '../web/replay/blk2.js';
+import { DecodedBlock, decodeBlock, encodeBlock, indexRecords, decodeBlocktimesDelta } from '../web/replay/blk2.js';
 import {
   crc32, encodeTileBlob, decodeTileBlob, buildSnapshotFile, parseSnapshotHeader, parseSnapshotDirectory,
   snapshotPrefixBytes, checkSnapshotHeader, readSnapshotDirectory,
@@ -15,7 +15,7 @@ import { LandscapeState, TileSlot, makeApplier, makeGenericApplier, markDirty, D
 import { FrameBuilder, packFull, measureCode } from '../web/replay/pack.js';
 import { planSeek, snapshotAtOrBelow } from '../web/replay/planner.js';
 import { ChunkStore } from '../web/replay/chunks.js';
-import { rng, syntheticChain, ReferenceState, cppLikeRows, fileSource } from './replay-fixtures.mjs';
+import { rng, syntheticChain, ReferenceState, cppLikeRows, fileSource, encodeBlocktimesDelta } from './replay-fixtures.mjs';
 
 const BLK = '/Volumes/4T Data/buv_render/changes.blk1.full964k';
 const HAVE_BLK = existsSync(BLK) && existsSync(BLK + '.idx');
@@ -163,6 +163,22 @@ test('BLK2 encode/decode round trip on synthetic blocks', () => {
   joined.set(r1);
   joined.set(r2, r1.length);
   assert.throws(() => indexRecords(joined, 3), /consecutive/);
+});
+
+test('blocktimes-delta.bin decodes to the block times and rejects a wrong count or stray bytes', () => {
+  // Times run backwards at times; the first delta is the whole genesis time; u32 extremes.
+  const times = [1231006505, 1231469665, 1231469744, 1231469600, 0, 4294967295, 1231470988];
+  const u8 = encodeBlocktimesDelta(times);
+  assert.ok(u8.length < times.length * 4);
+  assert.deepEqual([...decodeBlocktimesDelta(u8, times.length)], times);
+  assert.throws(() => decodeBlocktimesDelta(u8, times.length + 1), /6 bytes|7 blocks, expected 8/);
+  assert.throws(() => decodeBlocktimesDelta(u8, times.length - 1), /bytes after block 5/);
+  assert.throws(() => decodeBlocktimesDelta(u8.subarray(0, u8.length - 1), times.length), /truncated|past the buffer/);
+  assert.throws(() => decodeBlocktimesDelta(Uint8Array.of(0x80), 1), /truncated|past the buffer/);
+  const r = rng(11);
+  const real = [];
+  for (let h = 0, t = 1231006505; h < 5000; h++) real.push((t += Math.round(600 + (r() - 0.45) * 1200)));
+  assert.deepEqual([...decodeBlocktimesDelta(encodeBlocktimesDelta(real), real.length)], real);
 });
 
 // -------------------------------------------------------------- snapshot

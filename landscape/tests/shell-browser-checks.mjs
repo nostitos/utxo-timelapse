@@ -83,11 +83,12 @@ const ptr = (type, x, y, o = {}) => canvas.dispatchEvent(new PointerEvent(type, 
 // map looks straight down on the most recent 370,000 blocks, so the landscape fills the frame.
 const POSES = { close: { x: 845, y: 9, z: 214, yaw: -25, pitch: -16 }, low: { x: 700, y: 40, z: 260, yaw: -40, pitch: -8 },
   back: { x: 640, y: 30, z: -45, yaw: 180, pitch: -20 }, map: { x: 780, y: 225, z: 104, yaw: 0, pitch: -89 } };
-const frameImage = (w, h) => new Promise((resolve) => requestAnimationFrame(() => {
+// The view skips frames that would repeat the last one (render/idle.js), so a grab asks for one.
+const frameImage = (w, h) => new Promise((resolve) => { L.view.invalidate(); requestAnimationFrame(() => {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const ctx = c.getContext('2d', { willReadFrequently: true }); ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(canvas, 0, 0, w, h); resolve(c);
-}));
+}); });
 async function grid() {
   const d = (await frameImage(48, 27)).getContext('2d').getImageData(0, 0, 48, 27).data;
   const out = new Uint8Array(48 * 27 * 3);
@@ -123,6 +124,33 @@ const COLUMN_COUNT_HELPERS = readFileSync(join(here, 'column-count-browser.mjs')
 const INSPECTOR_STATES = readFileSync(join(here, 'inspector-state-browser.mjs'), 'utf8');
 
 const SHARE_CHECKS = readFileSync(join(here, 'share-browser.mjs'), 'utf8');
+
+// Device balance (device-balance checks): Landscape at block 840,000 from the middle camera of the
+// November 2026 measurements, values read once the tiles, the columns and the scale stop changing.
+const DEVICE_BALANCE = String.raw`await idle(); await sleep(500);
+      const S = L.settings; const V = L.view; const T = V.terrain;
+      L.playback.pause(); L.follow.set(false);
+      await L.seek(inData(840000)); await idle();
+      const middle = L.controls.poseLookingAt({ x: 820, y: 0, z: 110 }, { distance: 30, yaw: 28, pitch: -30 });
+      const overview = L.controls.poseLookingAt({ x: 600, y: 0, z: 104 }, { distance: 700, yaw: 36, pitch: -31 });
+      const go = (p) => L.controls.setPose({ x: p.position.x, y: p.position.y, z: p.position.z, yaw: p.yaw, pitch: p.pitch });
+      const steady = async () => { let last = ''; let same = 0;
+        for (let i = 0; i < 160 && same < 8; i++) { await sleep(250);
+          const k = [T.stats.resident, T.stats.desired, T.stats.columns, T.stats.triangles, V.stats.height].join();
+          if (k === last && !L.replay.busy) same++; else { same = 0; last = k; } }
+        V.invalidate(); await frame(); await frame(); };
+      const stepped = () => T.meshes.heightfield.find((m) => m.name === 'TerrainHeightfieldStepped');
+      // quality null keeps the device's own (phone) settings. Each measurement comes from the
+      // overview, so tiles a finer setting split earlier (kept by the LOD's hysteresis) do not count.
+      const measure = async (quality, sets = {}) => {
+        if (quality) { S.setQuality(quality); S.setMany({ 'display.autoScale': false, ...sets }); }
+        go(overview); await steady();
+        go(middle);
+        await steady();
+        const m = stepped();
+        return { tris: V.stats.triangles, columns: T.stats.columns, desired: T.stats.desired, height: V.stats.height, whaleShadow: m ? m.castShadow : null };
+      };`;
+
 
 const CHECKS = [
   {
@@ -1824,13 +1852,13 @@ const CHECKS = [
       S.setMany({ 'display.autoScale': false, 'camera.fov': 70, 'amp.exaggeration': 16.1 });
       const POSE = { x: 991.128, y: 34.356, z: 166.546, yaw: 60.08, pitch: -16.77 };
       // A 700 x 400 crop of the landscape (1600 x 900 frame) in the frame that drew it.
-      const crop = () => new Promise((resolve) => requestAnimationFrame(() => {
+      const crop = () => new Promise((resolve) => { L.view.invalidate(); requestAnimationFrame(() => {
         const k = canvas.width / 1600; const w = Math.round(700 * k); const h = Math.round(400 * k);
         const c = document.createElement('canvas'); c.width = w; c.height = h;
         const ctx = c.getContext('2d', { willReadFrequently: true });
         ctx.drawImage(canvas, Math.round(420 * k), Math.round(380 * k), w, h, 0, 0, w, h);
         resolve({ w, h, c, d: ctx.getImageData(0, 0, w, h).data });
-      }));
+      }); });
       const gray = ({ w, h, d }) => { const g = new Float32Array(w * h); for (let i = 0; i < w * h; i++) g[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2]; return g; };
       const aoNoise = (withAO, withoutAO) => { const { w, h } = withAO; const a = gray(withAO); const b = gray(withoutAO);
         const d = new Float32Array(w * h); for (let i = 0; i < d.length; i++) d[i] = a[i] - b[i];
@@ -1956,6 +1984,110 @@ const CHECKS = [
         v.backend !== 'webgpu' || (v.volumetric.on && v.volumetric.diff < 3)],
       ['other looks keep the 6,000-unit far plane (' + v.otherFar + ')', v.otherFar === 6000],
       ['no frame errors', v.frameError === null],
+    ],
+  },
+  {
+    // Detail follows the rendered pixels and Balanced keeps the whale rows out of the shadow maps
+    // (November 2026). At block 840,000 in the middle view, Balanced drew 38.6M triangles a frame,
+    // 7.2M of them whale-row cells redrawn by each shadow cascade; at half resolution it still
+    // drew 139,000 columns.
+    name: 'device-balance',
+    viewport: { width: 1440, height: 900, dpr: 2 },
+    timeout: 180000,
+    script: DEVICE_BALANCE + `
+      const out = { backend: L.view.backend };
+      S.setLook('Landscape');
+      out.high = await measure('High');
+      out.balanced = await measure('Balanced');
+      out.half = await measure('Balanced', { 'display.scale': 0.5 });
+      out.double = await measure('Balanced', { 'display.scale': 2 });
+      S.reset('display.scale'); S.setQuality('High');
+      out.frameError = L.frameError || null;
+      return out;`,
+    expect: (v) => [
+      ['Balanced draws at most 21M triangles a frame in the middle view (' + (v.balanced.tris / 1e6).toFixed(2) + 'M; High ' + (v.high.tris / 1e6).toFixed(2) + 'M)',
+        v.backend !== 'webgpu' || v.balanced.tris <= 21e6],
+      ['the whale rows cast shadows at High and not at Balanced', v.high.whaleShadow === true && v.balanced.whaleShadow === false],
+      ['at half resolution Balanced draws at most 32,000 columns and wants at most 52 tiles (' + v.half.columns + ', ' + v.half.desired + ', buffer ' + v.half.height + ' px)',
+        v.half.height === 900 && v.half.columns <= 32000 && v.half.desired <= 52],
+      ['supersampling adds no columns (' + v.double.columns + ' at scale 2, ' + v.balanced.columns + ' at 1)',
+        v.double.height > v.balanced.height && Math.abs(v.double.columns - v.balanced.columns) <= 0.02 * v.balanced.columns],
+      ['no frame errors', v.frameError === null],
+    ],
+  },
+  {
+    name: 'device-balance-phone',
+    mobile: { width: 390, height: 844, dpr: 3 },
+    query: 'startup=adaptive',
+    timeout: 120000,
+    script: DEVICE_BALANCE + `
+      const out = { startup: L.startup ? L.startup.preset : null, quality: S.quality, scaleMax: S.get('display.scaleMax'),
+        tiles: S.get('geo.tileBudget'), atlasMiB: Math.round(L.view.terrain.stats.atlasBytes / 1048576 * 100) / 100 };
+      out.middle = await measure(null);
+      out.frameError = L.frameError || null;
+      return out;`,
+    expect: (v) => [
+      ['a phone starts at Performance with 64 tiles and renders at most 0.65 of its 3x screen (buffer height ' + v.middle.height + ')',
+        v.startup === 'Performance' && v.quality === 'Performance' && v.tiles === 64 && v.scaleMax === 0.65 && v.middle.height <= 1646],
+      ['tile memory at most 82 MiB (' + v.atlasMiB + ')', v.atlasMiB <= 82],
+      ['the middle view draws at most 34,000 columns (' + v.middle.columns + ')', v.middle.columns <= 34000],
+      ['no frame errors', v.frameError === null],
+    ],
+  },
+  {
+    // A parked, paused view drew the same frame at the display rate (123 frames in 2 s at 60 Hz).
+    name: 'idle',
+    timeout: 120000,
+    script: `await idle(); await sleep(500);
+      L.playback.pause(); L.follow.set(false);
+      const V = L.view;
+      const drawn = async (ms) => { const d0 = V.stats.drawn; await sleep(ms); return V.stats.drawn - d0; };
+      // The pixels of the next frame the view draws by itself (no invalidate), at most 2 s away.
+      const ownFrame = () => new Promise((resolve) => { const d0 = V.stats.drawn; const t0 = performance.now();
+        const tick = () => requestAnimationFrame(() => {
+          if (V.stats.drawn === d0 && performance.now() - t0 < 2000) return tick();
+          const c = document.createElement('canvas'); c.width = 48; c.height = 27;
+          const ctx = c.getContext('2d', { willReadFrequently: true }); ctx.drawImage(canvas, 0, 0, 48, 27);
+          const d = ctx.getImageData(0, 0, 48, 27).data; const g = new Uint8Array(48 * 27 * 3);
+          for (let i = 0, j = 0; i < d.length; i += 4) { g[j++] = d[i]; g[j++] = d[i + 1]; g[j++] = d[i + 2]; }
+          resolve({ g, own: V.stats.drawn !== d0 }); });
+        tick(); });
+      await sleep(1500);
+      const out = { parked: await drawn(2000) };
+      const p = L.controls.getPose();
+      const turning = (async () => { for (let i = 1; i <= 120; i++) { L.controls.setPose({ ...p, yaw: p.yaw + i * 0.1 }); await frame(); } })();
+      out.turning = await drawn(2000); await turning;
+      L.controls.setPose(p); await sleep(1500);
+      const before = await ownFrame();
+      await L.seek(inData(600000)); await idle();
+      out.afterSeek = await drawn(300);
+      const after = await ownFrame();
+      out.seekDiff = Math.round(gridDiff(before.g, after.g) * 100) / 100; out.ownFrames = before.own && after.own;
+      L.playback.play(); await sleep(300);
+      out.playing = await drawn(2000);
+      L.playback.pause(); await idle();
+      out.frameError = L.frameError || null;
+      return out;`,
+    expect: (v) => [
+      ['parked and paused, at most 4 frames in 2 s (' + v.parked + ')', v.parked <= 4],
+      ['a turning camera draws at least 60 frames in 2 s (' + v.turning + ')', v.turning >= 60],
+      ['a seek while parked is drawn without being asked (' + v.afterSeek + ' frames in the 0.3 s after it, mean RGB difference ' + v.seekDiff + ')',
+        v.ownFrames && v.afterSeek >= 5 && v.seekDiff > 1],
+      ['1x playback draws at least 100 frames in 2 s (' + v.playing + ')', v.playing >= 100],
+      ['no frame errors', v.frameError === null],
+    ],
+  },
+  {
+    name: 'device-lost',
+    script: `await idle(); await sleep(300);
+      const V = L.view; const root = document.getElementById('loading');
+      V.renderer.onDeviceLost({ api: 'WebGPU', message: 'simulated by the device-lost check', reason: null });
+      await sleep(200);
+      const d0 = V.stats.drawn; await sleep(500);
+      return { fatal: root.classList.contains('fatal') && !root.hidden, text: root.textContent.trim(), drawnAfter: V.stats.drawn - d0 };`,
+    expect: (v) => [
+      ['a lost GPU device shows the reload card (' + v.text.slice(0, 120) + ')', v.fatal && /graphics device was lost/.test(v.text) && /Reload the page/.test(v.text)],
+      ['and the app stops drawing (' + v.drawnAfter + ' frames)', v.drawnAfter === 0],
     ],
   },
   {
@@ -2107,11 +2239,12 @@ for (const check of CHECKS) {
   if (check.hash) url += check.hash.replace('BLOCK', String(hashBlock));
   const file = join(tmp, check.name + '.js');
   writeFileSync(file, PRELUDE + '\n' + check.script);
-  const m = check.mobile;
+  // mobile: a phone (touch input, mobile viewport); viewport: another desktop window size.
+  const m = check.mobile || check.viewport;
   const cli = [checker, '--url', url, '--wait-for', 'window.__landscape && window.__landscape.ready', '--timeout', String(check.timeout || 60000),
     '--settle', '300', '--script', file, '--width', String(m ? m.width : width), '--height', String(m ? m.height : height),
     '--dpr', String(m ? m.dpr : dpr), '--browser', browser];
-  if (m) cli.push('--mobile');
+  if (check.mobile) cli.push('--mobile');
   if (shots && check.shot) cli.push('--screenshot', join(shots, check.shot));
   const run = spawnSync(process.execPath, cli, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: (check.timeout || 60000) + 60000 });
   let report;

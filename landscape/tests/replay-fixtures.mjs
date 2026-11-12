@@ -25,6 +25,23 @@ export function rng(seed) {
   };
 }
 
+/** blocktimes-delta.bin (SPEC §4), written independently of the reader: varuint zigzag(time[h] - time[h - 1]). */
+export function encodeBlocktimesDelta(times) {
+  const out = [];
+  let prev = 0;
+  for (const t of times) {
+    const d = t - prev;
+    prev = t;
+    let z = d >= 0 ? 2 * d : -2 * d - 1;
+    while (z >= 128) {
+      out.push((z % 128) + 128);
+      z = Math.floor(z / 128);
+    }
+    out.push(z);
+  }
+  return Uint8Array.from(out);
+}
+
 // The C++ rows table differs from the JS film table at one boundary (row 49); the fixture
 // uses that table so tests prove the worker follows rows.bin, not the float formula.
 export function cppLikeRows() {
@@ -212,6 +229,7 @@ export async function writeDataset(dir, { numBlocks = 20000, seed = 1, chunkByte
   const tv = new DataView(times.buffer);
   blocks.forEach((b, i) => tv.setUint32(i * 4, b.time, true));
   writeFileSync(join(dir, 'blocktimes.bin'), times);
+  writeFileSync(join(dir, 'blocktimes-delta.bin'), encodeBlocktimesDelta(blocks.map((b) => b.time)));
   writeFileSync(join(dir, 'chunks.json'), JSON.stringify({ format: 'utxo-landscape-chunks-1', chunks }));
   const manifest = {
     format: 'utxo-landscape-1', createdUtc: new Date(0).toISOString(), numBlocks: blocks.length, tip: blocks.length - 1,
@@ -219,7 +237,7 @@ export async function writeDataset(dir, { numBlocks = 20000, seed = 1, chunkByte
     grid: { blocksPerColumn: 64, rows: 2072, l0Columns: grid.l0Columns, tileSize: 256, border: 1, tiles: grid.tiles, levels: grid.levels },
     axis: { ...FILM_AXIS, graphRect: [...FILM_AXIS.graphRect] },
     weightThresholdSatoshi: 500000000,
-    files: { rows: 'rows.bin', blocktimes: 'blocktimes.bin', chunks: 'chunks.json' },
+    files: { rows: 'rows.bin', blocktimes: 'blocktimes.bin', blocktimesDelta: 'blocktimes-delta.bin', chunks: 'chunks.json' },
     chunkBytesTarget: chunkBytes, snapshotIntervalBytes, snapshots,
     source: { blk: 'synthetic', blkBytes: off, history: 'synthetic', historyNumBlocks: blocks.length, historyNumRecords: 0 },
     build: { seconds: 0, snapshotBytes: snapshots.reduce((a, s) => a + s.bytes, 0), chunkBytes: off },
