@@ -46,6 +46,7 @@ const objects = new Map([
   [P + 'manifest.json', enc.encode(MANIFEST)],
   [P + 'chunks.json', enc.encode(CHUNKS)],
   [P + 'rows.bin', rowsBytes],
+  [P + 'blocktimes-delta.bin', Uint8Array.of(169, 196, 225, 149, 9, 194, 194, 56)],
   [CHUNK_KEY, chunk],
   [SNAPSHOT_KEY, snapshot],
   // A retained dataset lists the same chunk; its old per-dataset copy must never be served.
@@ -166,7 +167,7 @@ await check('health, robots and the dataset index', async () => {
   assert.deepEqual(body.datasets.map((d) => d.id), [ID, ...RELEASE.retainedDatasetIds]);
 });
 
-await check('dataset objects: immutable, CORS, ETag, whole and HEAD', async () => {
+await check('dataset objects: immutable, CORS, ETag, whole and HEAD; compressible types for whole-file reads', async () => {
   const m = await req('/dataset/' + ID + '/manifest.json');
   assert.equal(m.status, 200);
   assert.equal(m.headers.get('Content-Type'), 'application/json');
@@ -181,8 +182,18 @@ await check('dataset objects: immutable, CORS, ETag, whole and HEAD', async () =
   const head = await req('/dataset/' + ID + '/chunks/00001.bin', { method: 'HEAD' });
   assert.equal(head.status, 200);
   assert.equal(head.headers.get('Content-Length'), '64');
-  assert.equal(head.headers.get('Content-Type'), 'application/octet-stream');
+  // Chunks and the delta-coded block times carry a type Cloudflare compresses; snapshots, read in
+  // ranges, stay octet-stream.
+  assert.equal(head.headers.get('Content-Type'), 'application/x-protobuf');
   assert.equal((await bytes(head)).length, 0);
+  const delta = await req('/dataset/' + ID + '/blocktimes-delta.bin');
+  assert.equal(delta.status, 200);
+  assert.equal(delta.headers.get('Content-Type'), 'application/x-protobuf');
+  assert.equal((await bytes(delta)).length, 8);
+  const snap = await req('/dataset/' + ID + '/snapshots/0000000.bin', { headers: { Range: 'bytes=0-9' } });
+  assert.equal(snap.status, 206);
+  assert.equal(snap.headers.get('Content-Type'), 'application/octet-stream');
+  assert.equal((await req('/dataset/' + ID + '/rows.bin', { method: 'HEAD' })).headers.get('Content-Type'), 'application/octet-stream');
 });
 
 await check('byte ranges: closed, suffix, open, unsatisfiable, multiple', async () => {

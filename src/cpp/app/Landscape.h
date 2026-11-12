@@ -313,6 +313,12 @@ auto compareSnapshot(Grid const& grid, SnapshotView const& view, std::array<Cell
 [[nodiscard]] auto readFileBytes(std::filesystem::path const& path) -> std::vector<uint8_t>;
 void writeFileDurable(std::filesystem::path const& path, void const* data, size_t size);
 
+// blocktimes-delta.bin (SPEC section 4): one unsigned LEB128 per block holding
+// zigzag(time[h] - time[h - 1]), with time[-1] = 0; about half of blocktimes.bin.
+[[nodiscard]] auto encodeBlockTimesDelta(std::vector<uint32_t> const& times) -> std::string;
+// Fails on a truncated varint, a time outside u32, a different block count or bytes left over.
+[[nodiscard]] auto decodeBlockTimesDelta(uint8_t const* data, size_t size, uint32_t numBlocks) -> std::vector<uint32_t>;
+
 struct BuildOptions {
     Cfg cfg{};
     std::filesystem::path out{};

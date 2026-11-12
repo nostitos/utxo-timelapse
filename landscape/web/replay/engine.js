@@ -6,7 +6,7 @@ import { parseRowsBin } from '../data/axis.js';
 import {
   readSnapshotDirectory, snapshotPrefixBytes, decodeTileBlob, crc32,
 } from '../data/snapshot.js';
-import { DecodedBlock, decodeBlock } from './blk2.js';
+import { DecodedBlock, decodeBlock, decodeBlocktimesDelta } from './blk2.js';
 import { LandscapeState } from './state.js';
 import { FrameBuilder, measureCode } from './pack.js';
 import { ChunkStore } from './chunks.js';
@@ -98,13 +98,18 @@ export class ReplayEngine {
     const [chunkTable, rowsBuf, timesBuf] = await Promise.all([
       this.source.json(files.chunks || 'chunks.json'),
       this.source.bytes(files.rows || 'rows.bin'),
-      this.source.bytes(files.blocktimes || 'blocktimes.bin'),
+      // Datasets built since November 2026 also carry the block times delta-coded (half the bytes).
+      this.source.bytes(files.blocktimesDelta || files.blocktimes || 'blocktimes.bin'),
     ]);
     const rows = parseRowsBin(rowsBuf, grid.rows);
-    if (timesBuf.byteLength !== grid.numBlocks * 4) throw new Error('blocktimes.bin: ' + timesBuf.byteLength + ' bytes, expected ' + grid.numBlocks * 4);
-    const blocktimes = new Uint32Array(grid.numBlocks);
-    const tdv = new DataView(timesBuf.buffer, timesBuf.byteOffset, timesBuf.byteLength);
-    for (let i = 0; i < grid.numBlocks; i++) blocktimes[i] = tdv.getUint32(i * 4, true);
+    let blocktimes;
+    if (files.blocktimesDelta) blocktimes = decodeBlocktimesDelta(timesBuf, grid.numBlocks);
+    else {
+      if (timesBuf.byteLength !== grid.numBlocks * 4) throw new Error('blocktimes.bin: ' + timesBuf.byteLength + ' bytes, expected ' + grid.numBlocks * 4);
+      blocktimes = new Uint32Array(grid.numBlocks);
+      const tdv = new DataView(timesBuf.buffer, timesBuf.byteOffset, timesBuf.byteLength);
+      for (let i = 0; i < grid.numBlocks; i++) blocktimes[i] = tdv.getUint32(i * 4, true);
+    }
     const snaps = (manifest.snapshots || []).slice().sort((a, b) => a.block - b.block);
     if (!snaps.length || snaps[0].block !== 0) throw new Error('manifest: no snapshot at block 0');
     for (let i = 1; i < snaps.length; i++) {

@@ -89,6 +89,27 @@ export function unzigzag(z) {
   return z % 2 === 0 ? z / 2 : -(z + 1) / 2;
 }
 
+/**
+ * Block times from blocktimes-delta.bin (SPEC §4): one varuint per block holding
+ * zigzag(time[h] - time[h - 1]), with time[-1] = 0. Throws on a wrong block count, a time outside
+ * u32 or bytes left over.
+ */
+export function decodeBlocktimesDelta(u8, numBlocks) {
+  const out = new Uint32Array(numBlocks);
+  let p = 0;
+  let t = 0;
+  for (let h = 0; h < numBlocks; h++) {
+    if (p >= u8.byteLength) throw new Error('blocktimes-delta.bin: ' + h + ' blocks, expected ' + numBlocks);
+    t += unzigzag(readVarUint(u8, p));
+    p = readVarUint.position();
+    if (p > u8.byteLength) throw new Error('blocktimes-delta.bin: truncated at block ' + h);
+    if (!(t >= 0 && t <= 0xffffffff)) throw new Error('blocktimes-delta.bin: time ' + t + ' at block ' + h);
+    out[h] = t;
+  }
+  if (p !== u8.byteLength) throw new Error('blocktimes-delta.bin: ' + (u8.byteLength - p) + ' bytes after block ' + (numBlocks - 1));
+  return out;
+}
+
 /** Reads the 12-byte record header at pos: {magic, height, payloadBytes}. */
 export function readRecordHeader(dv, pos) {
   return { magic: dv.getUint32(pos, true), height: dv.getUint32(pos + 4, true), payloadBytes: dv.getUint32(pos + 8, true) };

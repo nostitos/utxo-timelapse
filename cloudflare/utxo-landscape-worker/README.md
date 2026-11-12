@@ -60,7 +60,7 @@ Record its `url`, `r2Key`, `bytes` and `sha256` under the film's `remote` entry 
 Datasets are immutable: each one gets a new prefix `landscape/d<tip>-<yyyymmdd>`. The upload scripts need boto3 (`python3 -m venv /tmp/landscape_r2_venv && /tmp/landscape_r2_venv/bin/pip install boto3`). The checksum variables keep every upload a plain single PUT whose ETag is the file's MD5.
 
 1. Build and verify the dataset locally (`landscape_build`, `landscape_verify`; see `docs/landscape.md`).
-2. Upload everything except the manifest. `scripts/landscape_r2_publish.py` stores each snapshot and chunk once for all datasets, at `landscape/blobs/<sha256>` under the SHA-256 that `manifest.json` and `chunks.json` record, and uploads only content the bucket does not hold yet: the update's new snapshots and chunks and the rewritten last chunk. `rows.bin`, `blocktimes.bin` and `chunks.json` go to the dataset's prefix. A rerun skips everything already present, and a first publication uploads everything:
+2. Upload everything except the manifest. `scripts/landscape_r2_publish.py` stores each snapshot and chunk once for all datasets, at `landscape/blobs/<sha256>` under the SHA-256 that `manifest.json` and `chunks.json` record, and uploads only content the bucket does not hold yet: the update's new snapshots and chunks and the rewritten last chunk. `rows.bin`, `blocktimes.bin`, `blocktimes-delta.bin` (datasets built since November 2026) and `chunks.json` go to the dataset's prefix. A rerun skips everything already present, and a first publication uploads everything:
    ```sh
    export AWS_REQUEST_CHECKSUM_CALCULATION=when_required AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
    /tmp/landscape_r2_venv/bin/python scripts/landscape_r2_publish.py "/Volumes/4T Data/buv_render/landscape_<tip>" \
@@ -118,9 +118,12 @@ To roll back, set `owners` to the previous id (kept in `retainedOwnersIds`), or 
 curl -fsSI https://3d.bitcointimelapse.com/
 curl -fsS -H 'Range: bytes=0-127' https://3d.bitcointimelapse.com/dataset/<id>/snapshots/0966827.bin | xxd | head -2
 curl -fsS 'https://3d.bitcointimelapse.com/api/landscape/cell?block=314000&col=4287&row=1515'
+curl -sS -o /dev/null -H 'Accept-Encoding: br, gzip, zstd' -D - https://3d.bitcointimelapse.com/dataset/<id>/chunks/00000.bin | grep -i -E 'content-(type|encoding)'
 ~/.nvm/versions/node/v22.23.2/bin/node landscape/tests/shell-browser-checks.mjs --url https://3d.bitcointimelapse.com/ --explorer https://3d.bitcointimelapse.com
 ```
 
 The example cell returns 1 live output of 21,236 sat and 3 spent before block 314,000, the same as the native explorer. Check real playback in a browser; HTTP 200 alone does not prove the replay works.
+
+Change chunks and `blocktimes-delta.bin` are read whole, so the Worker labels them `application/x-protobuf`, a type Cloudflare compresses for browsers that accept Brotli, gzip or Zstandard (a chunk shrinks by about a third); the app reads them as bytes and checks each chunk's SHA-256 after decoding. Snapshots stay `application/octet-stream`: they are read in ranges, and partial (206) responses are never compressed. The chunk check above must show a `content-encoding` header; without one, set the type back to `application/octet-stream` and add a Cloudflare Compression Rule for `/dataset/*/chunks/*` instead.
 
 Storage is about 77 GB for all datasets together, because they share their snapshots and chunks (1,109 snapshots and 4,453 chunks at block 974,621), roughly 1.2 USD a month in R2. Egress is free; browsers read with ranges, and the edge cache absorbs repeated ranges.

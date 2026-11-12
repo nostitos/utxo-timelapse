@@ -4,7 +4,8 @@
 Snapshots and chunks are stored once for all datasets at landscape/blobs/<sha256>, the SHA-256 that
 the dataset's manifest.json and chunks.json record; the Worker serves /dataset/<id>/<file> from
 there. Only content the bucket does not hold yet is uploaded, so an update stores only its new
-files. rows.bin, blocktimes.bin, chunks.json and, last, manifest.json go to the dataset's prefix.
+files. rows.bin, blocktimes.bin, blocktimes-delta.bin (datasets built since November 2026),
+chunks.json and, last, manifest.json go to the dataset's prefix.
 A rerun skips everything already present. Verify with scripts/landscape_r2_verify.py.
 
 --copy-from PREFIX copies missing content from PREFIX/<file> inside R2 instead of uploading it. It
@@ -22,7 +23,8 @@ from botocore.config import Config
 
 BUCKET = 'utxo-video'
 BLOBS = 'landscape/blobs/'
-META = ('rows.bin', 'blocktimes.bin', 'chunks.json', 'manifest.json')  # upload order: manifest last
+# Upload order: manifest last. A file the dataset lacks (blocktimes-delta.bin before November 2026) is skipped.
+META = ('rows.bin', 'blocktimes.bin', 'blocktimes-delta.bin', 'chunks.json', 'manifest.json')
 
 
 def table(d):
