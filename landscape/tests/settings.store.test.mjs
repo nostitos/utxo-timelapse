@@ -58,6 +58,36 @@ test('settings saved before a retune take the tier\'s new value; later choices s
   assert.equal(reloaded.preset, 'Custom');
 });
 
+test('Performance settings saved with 96 tiles (before revision 2) load at 64; 96 chosen since stays', () => {
+  const saved = (revision) => {
+    const s = make();
+    s.setQuality('Performance');
+    const json = s.toJSON();
+    json.revision = revision;
+    json.values['geo.tileBudget'] = 96;
+    return json;
+  };
+  for (const revision of [undefined, 1]) {
+    const s = make();
+    const report = s.fromJSON(saved(revision));
+    assert.equal(s.get('geo.tileBudget'), 64, 'revision ' + revision);
+    assert.equal(s.preset, 'Performance');
+    assert.deepEqual(report.retired, ['geo.tileBudget']);
+  }
+  const chosen = make();
+  chosen.fromJSON(saved(2));
+  assert.equal(chosen.get('geo.tileBudget'), 96);
+  assert.equal(chosen.preset, 'Custom');
+  // Balanced never had 96 tiles, so 96 there was chosen by hand.
+  const balanced = make();
+  balanced.setQuality('Balanced');
+  const json = balanced.toJSON();
+  json.revision = 1;
+  json.values['geo.tileBudget'] = 96;
+  balanced.fromJSON(json);
+  assert.equal(balanced.get('geo.tileBudget'), 96);
+});
+
 function memoryStorage(limit = Infinity) {
   const map = new Map();
   return {

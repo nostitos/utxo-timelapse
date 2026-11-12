@@ -31,6 +31,11 @@
   }
 }
 </script>
+<!-- After the import map (a module load before it would disable the map): three.js loads while
+     entry.js shows the welcome and imports main.js. -->
+<link rel="modulepreload" href="./vendor/three/three.webgpu.js">
+<link rel="modulepreload" href="./vendor/three/three.core.js">
+<link rel="modulepreload" href="./vendor/three/three.tsl.js">
 <script type="module" src="./entry.js"></script>
 </head>
 <body>

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   resolveEndpoints, resolveDataUrl, ownersUrl, startupMode, chooseStartup, deviceTraits, isLocalHost,
-  ADAPTIVE_DISPLAY, LOW_END_NOTICE, LOCAL_EXPLORER,
+  ADAPTIVE_DISPLAY, LOW_END_NOTICE, LOCAL_EXPLORER, isLowEnd,
 } from '../web/ui/online.js';
 import { SCHEMA, PRESETS } from '../web/settings.schema.js';
 import { createSettingsStore } from '../web/settings.js';
@@ -88,21 +88,35 @@ test('startup: adaptive first visits online, High locally and for returning visi
   const desktop = chooseStartup({ mode: 'adaptive', firstVisit: true, backend: 'webgpu', coarseOnly: false, deviceMemory: 8 });
   assert.deepEqual(desktop, { preset: 'Balanced', settings: { ...ADAPTIVE_DISPLAY }, notice: null });
   assert.equal(chooseStartup({ mode: 'adaptive', firstVisit: true, backend: 'webgpu', deviceMemory: NaN }).preset, 'Balanced');
-  for (const low of [{ backend: 'webgl2' }, { backend: 'none' }, { backend: 'webgpu', coarseOnly: true }, { backend: 'webgpu', deviceMemory: 4 }]) {
+  for (const low of [{ backend: 'webgl2' }, { backend: 'none' }, { backend: 'webgpu', coarseOnly: true }, { backend: 'webgpu', deviceMemory: 4 },
+    { backend: 'webgpu', fallback: true }]) {
     const s = chooseStartup({ mode: 'adaptive', firstVisit: true, ...low });
     assert.equal(s.preset, 'Performance', JSON.stringify(low));
     assert.equal(s.notice, LOW_END_NOTICE);
     assert.equal(s.settings['display.autoScale'], true);
+    assert.equal(isLowEnd(low), true, JSON.stringify(low));
   }
+  assert.equal(isLowEnd({ backend: 'webgpu', deviceMemory: 8 }), false);
+});
+
+test('startup: touch-only screens above 2x render at most about 2 device pixels per CSS pixel', () => {
+  const phone = (dpr) => chooseStartup({ mode: 'adaptive', firstVisit: true, backend: 'webgpu', coarseOnly: true, dpr }).settings['display.scaleMax'];
+  assert.equal(phone(3), 0.65);
+  assert.equal(phone(2.625), 0.75);
+  assert.equal(phone(4), 0.5);
+  assert.equal(phone(2), ADAPTIVE_DISPLAY['display.scaleMax']);
+  const laptop = chooseStartup({ mode: 'adaptive', firstVisit: true, backend: 'webgpu', coarseOnly: false, dpr: 3 });
+  assert.equal(laptop.settings['display.scaleMax'], ADAPTIVE_DISPLAY['display.scaleMax'], 'a mouse and a 3x screen keep the full resolution');
 });
 
 test('device traits: touch-only means a coarse pointer without hover', () => {
-  const win = (matches, deviceMemory) => ({ matchMedia: (m) => ({ matches: !!matches[m] }), navigator: { deviceMemory } });
-  assert.deepEqual(deviceTraits(win({ '(pointer: coarse)': true }, 2)), { coarseOnly: true, deviceMemory: 2 });
+  const win = (matches, deviceMemory, devicePixelRatio) => ({ matchMedia: (m) => ({ matches: !!matches[m] }), navigator: { deviceMemory }, devicePixelRatio });
+  assert.deepEqual(deviceTraits(win({ '(pointer: coarse)': true }, 2, 3)), { coarseOnly: true, deviceMemory: 2, dpr: 3 });
   assert.equal(deviceTraits(win({ '(pointer: coarse)': true, '(hover: hover)': true }, 8)).coarseOnly, false);
   const t = deviceTraits({ navigator: {} });
   assert.equal(t.coarseOnly, false);
   assert.ok(Number.isNaN(t.deviceMemory));
+  assert.equal(t.dpr, 1);
 });
 
 test('the adaptive start keeps the preset clean and survives a save/load round trip', () => {

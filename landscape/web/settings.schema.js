@@ -86,8 +86,8 @@ export const DEFAULT_LOOK = 'Landscape';
 export const PRESET_NAMES = Object.freeze([...LOOKS, ...QUALITY_ORDER]);
 
 export const QUALITY_INFO = Object.freeze({
-  Performance: '75% resolution, FXAA, no shadows or ambient occlusion, bloom with 4 mips, 96 resident tiles, coarser terrain detail (6 px per cell) and 8-sided cylinders only close to the camera (cells 12 px wide or more, at most 250,000).',
-  Balanced: 'Native resolution, SMAA, two 2048 PCF shadow cascades, SSAO with 8 samples, bloom, 160 resident tiles and cylinders where cells are 6 px wide or more.',
+  Performance: '75% resolution, FXAA, no shadows or ambient occlusion, bloom with 4 mips, 64 resident tiles, coarser terrain detail (6 px per cell) and 8-sided cylinders only close to the camera (cells 12 px wide or more, at most 250,000).',
+  Balanced: 'Native resolution, SMAA, two 2048 PCF shadow cascades (the whale rows cast none), SSAO with 8 samples, bloom, 160 resident tiles and cylinders where cells are 6 px wide or more.',
   High: 'Startup quality (schema defaults): native resolution, SMAA, three 2048 PCF shadow cascades, SSAO with 16 samples, bloom, fog, sky, stars, 225 resident tiles and 12-sided cylinders where cells are 4 px wide or more.',
   Ultra: 'High plus three 4096 shadow cascades, volumetric light (32 steps), god rays, and bicubic smoothing (applies once Subdivision is raised). At 4K on an M4 Max: 60 fps in the overview, about 35 to 40 fps among cylinders (about 60 with Column cells off).',
   Extreme: 'Deliberately GPU-bound, for GPUs beyond an M4 Max: Ultra plus a fourth shadow cascade, 2x supersampling under SMAA, softer shadows (softness 1.5), SSAO with 32 samples, SSR, 64 volumetric steps, subdivision 2, finer detail (2 px per cell, 320 resident tiles) and up to 2M cylinders. At 4K on an M4 Max: about 55 fps in the overview, 13 to 15 fps among cylinders.',
@@ -290,6 +290,8 @@ const ENTRIES = [
     help: 'Flat-topped cells with vertical walls; each cell shows exactly one palette colour. Ignores Smoothing and Subdivision. Applies to the heightfield, which draws the landscape beyond the cylinders of Column cells (and everywhere on WebGL2). About four times the triangles of the smooth surface.' },
   { id: 'geo.steppedWhales', section: 'Surface', label: 'Stepped whale rows', type: 'bool', default: true, rebuild: 'material',
     help: 'Draws the whale rows (amounts at or above the whale threshold, 10 BTC by default) as stepped cells while the rest of the surface stays smooth. Large amounts are sparse, and the smooth surface turns a lone tall cell into a pyramid that narrows to a point, so whale spikes break into dotted hairs from a distance; a stepped cell keeps its width to the top, and far away it is widened to at least 1.5 px. Costs about four times the triangles on those rows.' },
+  { id: 'geo.whaleShadows', section: 'Surface', label: 'Whale row shadows', type: 'bool', default: true,
+    help: 'The stepped whale rows cast sun shadows. Off, they still receive shadows but the shadow maps skip them, which halves the triangles of a frame that shows the whale rows; only the shadows whale spikes throw on one another go, and those show mainly from behind the landscape. Balanced and Performance turn it off.' },
   { id: 'geo.subdivision', section: 'Surface', label: 'Subdivision', type: 'enum', options: [1, 2, 4],
     optionLabels: { 1: '1x', 2: '2x', 4: '4x' }, default: 1, rebuild: 'terrain',
     help: 'Heightfield vertices per cell edge (more = smoother bicubic surfaces, more triangles).' },
@@ -627,6 +629,7 @@ export const NEEDS = deepFreeze({
   'geo.smoothing': [{ id: 'geo.stepped', is: false }, { id: 'geo.subdivision', ne: 1 }],
   'geo.subdivision': [{ id: 'geo.stepped', is: false }],
   'geo.steppedWhales': [{ id: 'geo.stepped', is: false }, ADAPTIVE],
+  'geo.whaleShadows': [on('geo.steppedWhales'), { id: 'geo.stepped', is: false }, on('light.shadows'), ADAPTIVE],
   'geo.columnShape': [on('geo.columns'), ADAPTIVE],
   'geo.cylinderSides': [on('geo.columns'), { id: 'geo.columnShape', ne: 'box' }, ADAPTIVE],
   'geo.columnRadius': [on('geo.columns'), ADAPTIVE],
@@ -773,7 +776,8 @@ export const QUALITY_PRESETS = deepFreeze({
     'fx.ao': 'off',
     'fx.aoSamples': 8,
     'fx.bloomMips': 4,
-    'geo.tileBudget': 96,
+    'geo.tileBudget': 64,
+    'geo.whaleShadows': false,
     'geo.pixelsPerCell': 6,
     'geo.columnPixels': 12,
     'geo.cylinderSides': 8,
@@ -784,6 +788,7 @@ export const QUALITY_PRESETS = deepFreeze({
     'light.shadowMapSize': 2048,
     'fx.aoSamples': 8,
     'geo.tileBudget': 160,
+    'geo.whaleShadows': false,
     'geo.pixelsPerCell': 4,
     'geo.columnPixels': 6,
   },
@@ -822,13 +827,15 @@ export const QUALITY_PRESETS = deepFreeze({
 // value as a change of its own. Settings saved before a revision (toJSON writes
 // SETTINGS_REVISION) load such a value as the tier's current one, unless the look sets it;
 // settings saved since keep whatever was chosen by hand.
-export const SETTINGS_REVISION = 1;
+// Revision 2 (November 2026) took Performance from 96 to 64 resident tiles.
+export const SETTINGS_REVISION = 2;
 export const RETIRED_QUALITY_VALUES = deepFreeze([
   { revision: 1, values: {
     High: { 'display.aa': 'traa', 'fx.ao': 'gtao' },
     Ultra: { 'display.aa': 'traa', 'fx.ao': 'gtao' },
     Extreme: { 'display.aa': 'traa', 'fx.ao': 'gtao', 'fx.motionBlur': true },
   } },
+  { revision: 2, values: { Performance: { 'geo.tileBudget': 96 } } },
 ]);
 
 // The data looks (Outputs, Money map, Linear, Paper) share one plain stage: a high white sun

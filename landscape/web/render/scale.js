@@ -47,6 +47,11 @@ function median(values) {
  * frame time), otherwise the frame interval. Pixel cost scales with scale², so a measured cost
  * ratio r moves the scale by about sqrt(r). Changes are quantised, bounded per step, and
  * followed by a settle period because resizing reallocates every render target.
+ *
+ * The frame interval cannot show headroom beyond the display's refresh, so without timestamps a
+ * scale that holds the target is probed: after probeMs at one scale it tries a step larger. A
+ * probe that holds resets the wait; one that is too slow shrinks back as usual and doubles the
+ * wait, up to probeMaxMs.
  */
 export class AutoScaler {
   constructor(options = {}) {
@@ -61,10 +66,16 @@ export class AutoScaler {
     this.upThreshold = options.upThreshold ?? 1.15; // target/cost above this → grow
     this.maxUpFactor = options.maxUpFactor ?? 1.12;
     this.maxDownFactor = options.maxDownFactor ?? 0.7;
+    this.probeMs = options.probeMs ?? 8000;
+    this.probeMaxMs = options.probeMaxMs ?? 64000;
     this.scale = clampScale(options.scale ?? 1, this.min, this.max);
     this._samples = [];
     this._lastChange = -Infinity;
     this._usesGpu = false;
+    this._holdUntil = -Infinity;
+    this._probeWait = this.probeMs;
+    this._probing = false;
+    this._probeFrom = null; // when the current scale started counting toward a probe (the first frame, or the last change)
   }
 
   configure({ enabled, min, max, targetFps, scale } = {}) {
@@ -82,6 +93,13 @@ export class AutoScaler {
   reset(nowMs = -Infinity) {
     this._samples.length = 0;
     this._lastChange = nowMs;
+    if (Number.isFinite(nowMs)) this._probeFrom = nowMs;
+  }
+
+  /** Ignore frames until untilMs: startup, a pipeline rebuild, the first data, the end of an idle stretch. */
+  hold(untilMs) {
+    this._holdUntil = Math.max(this._holdUntil, untilMs);
+    this._samples.length = 0;
   }
 
   /**
@@ -92,6 +110,8 @@ export class AutoScaler {
    */
   sample(frameMs, gpuMs, nowMs) {
     if (!this.enabled) return null;
+    if (nowMs < this._holdUntil) return null;
+    if (this._probeFrom === null) this._probeFrom = nowMs;
     const useGpu = Number.isFinite(gpuMs) && gpuMs > 0;
     if (useGpu !== this._usesGpu) { this._samples.length = 0; this._usesGpu = useGpu; }
     const cost = useGpu ? gpuMs : frameMs;
@@ -103,21 +123,32 @@ export class AutoScaler {
 
     const targetMs = 1000 / this.targetFps;
     const ratio = targetMs / median(this._samples);
+    if (this._probing && ratio >= this.downThreshold) this._probeWait = this.probeMs;
+    const probing = this._probing;
+    this._probing = false;
     let next = this.scale;
     if (ratio < this.downThreshold) {
       next = this.scale * Math.max(this.maxDownFactor, Math.sqrt(ratio) * 0.98);
+      if (probing) this._probeWait = Math.min(this.probeMaxMs, this._probeWait * 2);
     } else if (ratio > this.upThreshold) {
       // Frame-interval measurements cannot show headroom beyond the display refresh, so
       // growth on them only happens when the measured rate is clearly above the target.
       next = this.scale * Math.min(this.maxUpFactor, Math.sqrt(ratio) * 0.98);
+    } else if (!useGpu && this.scale < this.max && nowMs - Math.max(this._probeFrom, this._holdUntil) >= this._probeWait) {
+      next = Math.max(this.scale * 1.1, this.scale + this.step);
+      this._probing = true;
     } else {
       return null;
     }
     next = clampScale(quantizeScale(next, this.step), this.min, this.max);
-    if (Math.abs(next - this.scale) < this.step * 0.5) return null;
+    if (Math.abs(next - this.scale) < this.step * 0.5) {
+      this._probing = false;
+      return null;
+    }
     this.scale = next;
     this._samples.length = 0;
     this._lastChange = nowMs;
+    this._probeFrom = nowMs;
     return next;
   }
 }

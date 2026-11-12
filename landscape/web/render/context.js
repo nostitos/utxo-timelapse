@@ -41,6 +41,11 @@ function adapterInfo(adapter) {
   return { vendor: info.vendor || '', architecture: info.architecture || '', device: info.device || '', description: info.description || '' };
 }
 
+/** A software (fallback) adapter such as SwiftShader: GPUAdapterInfo.isFallbackAdapter, or the older adapter flag. */
+function isFallback(adapter) {
+  return !!(adapter && ((adapter.info && adapter.info.isFallbackAdapter) || adapter.isFallbackAdapter));
+}
+
 function displaySupportsP3() {
   try { return typeof matchMedia === 'function' && matchMedia('(color-gamut: p3)').matches; } catch { return false; }
 }
@@ -79,7 +84,7 @@ export async function probeCapabilities({ forceWebGL = false } = {}) {
         return {
           backend: 'webgpu', compute: true, timestamp: adapter.features.has('timestamp-query'),
           maxTileBudget: WEBGPU_TILE_CAP, maxInstances: Math.min(8000000, Math.floor((limits.maxStorageBufferBindingSize || 134217728) / 16)),
-          limits, adapter: adapterInfo(adapter), p3: true,
+          limits, adapter: adapterInfo(adapter), fallback: isFallback(adapter), p3: true,
           p3Display: displaySupportsP3(), maxDimension: limits.maxTextureDimension2D || 8192, probe: true,
         };
       }
@@ -172,6 +177,7 @@ export async function createRenderContext({ canvas, forceWebGL = false, powerPre
       limits,
       features: [...device.features].sort(),
       adapter: adapterInfo(adapter),
+      fallback: isFallback(adapter),
       p3: true,
       p3Display: displaySupportsP3(),
       maxDimension: limits.maxTextureDimension2D || 8192,
