@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Source adapters: one test per parser on a trimmed layout of its real source (example addresses
 replace the real ones), plus fetching, archiving, reuse and the registry."""
+import datetime as dt
 import io
 import json
 import subprocess
@@ -366,6 +367,66 @@ class FetchTests(unittest.TestCase):
                 (old / "wallet_address_20230201.zip").write_bytes(b"changed")
                 record = sources.Fetcher(Path(tmp) / "newer", [old]).archive(url, "wallet_address_20230201.zip")
             self.assertEqual((calls, (Path(tmp) / "newer" / record["local_path"]).read_bytes()), ([url], b"fresh bytes"))
+
+    def test_reused_versions_sharing_a_name_keep_their_own_files(self):
+        first, second = (f"https://web.archive.org/web/2025010{n}000000id_/https://x/page" for n in (1, 2))
+        with tempfile.TemporaryDirectory() as tmp:
+            old = Path(tmp) / "old"
+            old.mkdir()
+            (old / "page").write_bytes(b"first capture")
+            (old / "page.0123456789ab").write_bytes(b"second capture")
+            (old / "x_supplement.json").write_text(json.dumps(dict(sources=[
+                dict(url=url, sha256=labels.sha256(old / local), local_path=local, fetched_at="2026-11-03T00:00:00+00:00")
+                for url, local in ((first, "page"), (second, "page.0123456789ab"))])))
+            fetcher = sources.Fetcher(Path(tmp) / "new", [old])
+            with mock.patch.object(sources, "http_get", fake_http({})):
+                records = [fetcher.archive(url, "page") for url in (first, second)]
+            self.assertEqual([(Path(tmp) / "new" / record["local_path"]).read_bytes() for record in records],
+                             [b"first capture", b"second capture"])
+
+    def test_files_of_earlier_runs_carry_forward(self):
+        listed, live = "https://x/listed.json", "https://x/live.json"
+        body = lambda *found: json.dumps(dict(data=[dict(currency="btc", address=a) for a in found]))  # noqa: E731
+        options = dict(path="data", address_key="address", chain_key="currency", chain_values=["btc"], list="list")
+        first = source(id="x", fetch="list", parse="json_list", options=dict(
+            options, files=[dict(url=listed, observed="2026-01-01"), dict(url=live, observed="2026-02-01")]))
+        later = source(id="x", fetch="single", cadence="live", url=live, parse="json_list", options=options)
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(sources, "log"):
+            with mock.patch.object(sources, "http_get", fake_http({listed: body(A), live: body(B)})):
+                sources.run_source(first, Path(tmp) / "old")
+            with mock.patch.object(sources, "http_get", fake_http({live: body(C)})):  # the list was rewritten
+                counts = sources.run_source(later, Path(tmp) / "new", reuse=[Path(tmp) / "old" / "x"])
+            rows, _ = labels.load_supplement(Path(tmp) / "new" / "x" / "x_supplement.json")
+        self.assertEqual((counts["files"], counts["carried"]), (3, 2))
+        self.assertEqual({row["address"] for row in rows}, {A, B, C})
+
+    def test_a_wayback_outage_keeps_the_operators_own_links(self):
+        live = "https://static.okx.com/cdn/okx/por/chain/okx_por_2023072019.csv.zip"
+        body = io.BytesIO()
+        with zipfile.ZipFile(body, "w") as archive:
+            archive.writestr("x.csv", f"coin,address,amount\nBTC,{A},1\n")
+        calls = []
+        registry = source(id="okx-por", entity="OKX", fetch="page_links", parse="por_csv", options=dict(
+            pages=["https://www.okx.com/download"], wayback_pages=["www.okx.com/download"],
+            wayback_prefixes=["static.okx.com/cdn/okx/por/"],
+            link_pattern=r"static\.okx\.com/cdn/okx/por/(?:chain/)?okx_por_[0-9]+\.csv\.zip",
+            date_pattern=r"(20\d{2})(\d{2})(\d{2})"))
+        replies = {"https://www.okx.com/download": f'<a href="{live}">x</a>', live: body.getvalue()}  # CDX answers 404
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(sources, "log"), \
+                mock.patch.object(sources, "http_get", fake_http(replies, calls)):
+            counts = sources.run_source(registry, Path(tmp))
+        self.assertEqual((counts["files"], counts["unique_addresses"], counts["wayback"]), (1, 1, "unavailable"))
+        self.assertEqual(len([url for url in calls if "/cdx/" in url]), 1)
+
+    def test_dates_name_files_and_keep_api_replies_as_json(self):
+        start = dt.datetime.now(dt.timezone.utc).date() - dt.timedelta(days=2)
+        days = [start, start + dt.timedelta(days=1)]
+        files, _ = sources.enum_dates(source(url="https://f/list_{YYYYMMDD}.csv", options={"from": start.isoformat()}), None)
+        replies, _ = sources.enum_dates(source(url="https://k/w?d={date}", options={"from": start.isoformat()}), None)
+        self.assertEqual([(item["url"], item["name"], item["observed"]) for item in files],
+                         [(f"https://f/list_{day:%Y%m%d}.csv", f"list_{day:%Y%m%d}.csv", day.isoformat()) for day in days])
+        self.assertEqual([(item["url"], item["name"]) for item in replies],
+                         [(f"https://k/w?d={day.isoformat()}", f"{day.isoformat()}.json") for day in days])
 
     def test_placeholder_replies_count_as_missing_and_are_fetched_again(self):
         base = json.dumps(dict(data=[dict(currency="btc", address=A)]))
