@@ -36,7 +36,7 @@ class FakeS3:
         return {'CopyObjectResult': {'ETag': '"%s"' % hashlib.md5(self.objects[Key]).hexdigest()}}
 
 
-def dataset(root, skip=()):
+def dataset(root, skip=(), delta=True):
     for rel, b in FILES.items():
         if rel not in skip:
             (root / rel).parent.mkdir(parents=True, exist_ok=True); (root / rel).write_bytes(b)
@@ -44,6 +44,8 @@ def dataset(root, skip=()):
     (root / 'manifest.json').write_text(json.dumps({'snapshots': [entry(r) for r in FILES if r.startswith('snapshots/')]}))
     (root / 'chunks.json').write_text(json.dumps({'chunks': [entry(r) for r in FILES if r.startswith('chunks/')]}))
     (root / 'rows.bin').write_bytes(b'r'); (root / 'blocktimes.bin').write_bytes(b't')
+    if delta:  # datasets built since November 2026
+        (root / 'blocktimes-delta.bin').write_bytes(b'u')
 
 
 def run(s3, *argv):
@@ -85,6 +87,18 @@ class PublishTest(unittest.TestCase):
                 run(s3, root, '--prefix', NEW)
             self.assertNotIn(pub.BLOBS + sha(FILES['chunks/00001.bin']), s3.objects)
             self.assertFalse(any(k.endswith('manifest.json') for k in s3.objects))
+
+    def test_an_older_dataset_without_delta_block_times_publishes_and_verifies(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); dataset(root, delta=False)
+            s3 = FakeS3({})
+            run(s3, root, '--prefix', NEW)
+            self.assertEqual([k for k in s3.puts if k.startswith(NEW + '/')],
+                             [NEW + '/' + r for r in pub.META if r != 'blocktimes-delta.bin'])
+            creds = Path(d) / '.creds'; creds.write_text('[default]\naws_access_key_id = k\naws_secret_access_key = s\n')
+            with patch.object(verify.boto3, 'client', return_value=s3), \
+                 patch.object(sys, 'argv', ['landscape_r2_verify.py', str(root), '--prefix', NEW, '--credentials', str(creds)]):
+                self.assertEqual(verify.main(), 0)
 
 
 if __name__ == '__main__':
