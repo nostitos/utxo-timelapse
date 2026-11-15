@@ -114,19 +114,27 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
   // (High and above) a smooth copy of its patches ('whaleShadow', drawn into the shadow maps
   // only) casts them.
   const castsShadow = (key) => (key === 'whaleShadow' ? !!get('geo.whaleShadows') : !(key === 'stepped' && mode && mode.whaleSteps));
+  // The cards cast no shadows: a card facing a low sun covers far more of a shadow map than the
+  // ground it stands on, and 800,000 of them cost more than the rest of the shadow pass. The
+  // patches hidden under them cast instead ('cardShadow': smooth, in the shadow maps only), as
+  // the landscape beyond the cards does, so shadows fall the same on both sides of their edge.
   function hfLevel(key) {
     let L = hfLevels.get(key);
     if (!L) {
       const stepped = key === 'stepped';
-      const sub = stepped ? 1 : key;
-      const band = mode.whaleSteps ? (stepped ? 'in' : 'out') : null;
+      const shadowOnly = key === 'cardShadow';
+      const sub = stepped || shadowOnly ? 1 : key;
+      // Under the cards the whale rows cast with the rest, unless Whale row shadows is off.
+      let band = mode.whaleSteps ? (stepped ? 'in' : 'out') : null;
+      if (shadowOnly && get('geo.whaleShadows')) band = null;
       const inst = createPatchInstances(instCapacity);
       const geometry = buildPatchGeometry({ sub, stepped });
       const material = buildTerrainMaterial({ atlas, shading, instances: inst, mode: { ...mode, stepped, sub, band }, view: viewU });
       material.wireframe = !!get('geo.wireframe');
       const m = createHeightfieldMesh(geometry, material);
-      m.name = 'TerrainHeightfield' + (stepped ? 'Stepped' : 'Sub' + sub);
+      m.name = 'TerrainHeightfield' + (stepped ? 'Stepped' : shadowOnly ? 'CardShadow' : 'Sub' + sub);
       m.castShadow = castsShadow(key);
+      if (shadowOnly) { m.layers.set(SHADOW_LAYER); m.receiveShadow = false; }
       object3d.add(m);
       L = { key, sub, inst, geometry, material, mesh: m };
       hfLevels.set(key, L);
@@ -312,7 +320,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
         break;
       case 'display.labels': if (labels) labels.setVisible(!!value); break;
       case 'geo.wireframe': for (const L of hfLevels.values()) { L.material.wireframe = !!value; L.material.needsUpdate = true; } break;
-      case 'geo.whaleShadows': { const L = hfLevels.get('whaleShadow'); if (L) L.mesh.castShadow = castsShadow('whaleShadow'); break; }
+      case 'geo.whaleShadows': { const L = hfLevels.get('whaleShadow'); if (L) L.mesh.castShadow = castsShadow('whaleShadow'); needs.rebuild = true; break; }
       case 'geo.tileBudget': needs.capacity = true; break;
       case 'amp.nowPlane': nowOpacity.value = value; placeNowPlane(); break;
       case 'amp.flashSize': if (!(value > 0)) flashes.clear(); break;
@@ -443,26 +451,28 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     const maxSub = mode.stepped ? 1 : mode.sub;
     const whiteRow = mode.whaleSteps ? shading.heightParams().whiteRow : -1;
     const L0 = grid.levels[0];
+    // 0: drawn; 1: hidden under the cards (it still casts their shadows); 2: hidden under the columns.
+    const shadowsOn = !!get('light.shadows');
     const insideColumns = (t, px, py) => {
-      if (!(outR > 0)) return false;
+      if (!(outR > 0)) return 0;
       const { cw, ch } = cellSize(grid, t.level);
       const x0 = (t.col0 + px * PATCH_CELLS) * cw;
       const z0 = (t.row0 + py * PATCH_CELLS) * ch;
       const x1 = (t.col0 + Math.min(t.cols, (px + 1) * PATCH_CELLS)) * cw;
       const z1 = (t.row0 + Math.min(t.rows, (py + 1) * PATCH_CELLS)) * ch;
-      const fx = Math.max(Math.abs(x0 - region.cardFocus[0]), Math.abs(x1 - region.cardFocus[0]));
-      const fz = Math.max(Math.abs(z0 - region.cardFocus[1]), Math.abs(z1 - region.cardFocus[1]));
-      if (fx * fx + fz * fz >= outR * outR) return false;
-      if (t.level === 0) return true;
+      const far2 = (f) => Math.max(Math.abs(x0 - f[0]), Math.abs(x1 - f[0])) ** 2 + Math.max(Math.abs(z0 - f[1]), Math.abs(z1 - f[1])) ** 2;
+      if (far2(region.cardFocus) >= outR * outR) return 0;
+      const under = far2(region.focus) < colR * colR ? 2 : 1;
+      if (t.level === 0) return under;
       // A coarser patch hides only where every L0 tile under it is resident (the mask's test).
       const tx0 = Math.floor(x0 / 0.064 / 256);
       const tx1 = Math.min(L0.tilesX - 1, Math.floor((x1 / 0.064 - 1e-6) / 256));
       const tz0 = Math.floor(z0 / 0.1 / 256);
       const tz1 = Math.min(L0.tilesY - 1, Math.floor((z1 / 0.1 - 1e-6) / 256));
       for (let ty = tz0; ty <= tz1; ty++) {
-        for (let tx = tx0; tx <= tx1; tx++) if (!atlas.isResident(L0.firstTile + ty * L0.tilesX + tx)) return false;
+        for (let tx = tx0; tx <= tx1; tx++) if (!atlas.isResident(L0.firstTile + ty * L0.tilesX + tx)) return 0;
       }
-      return true;
+      return under;
     };
     let hiddenPatches = 0;
     for (const { id, mask } of sel.draw) {
@@ -482,8 +492,10 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
         const py = (b / PATCHES_PER_SIDE) | 0;
         const bb = patchBounds(grid, id, px, py, heightBound(maxV));
         if (!boxVisible(planes, bb)) continue;
-        if (insideColumns(t, px, py)) {
+        const hidden = insideColumns(t, px, py);
+        if (hidden) {
           hiddenPatches++;
+          if (hidden === 1 && shadowsOn) list.push({ id, slot, px, py, d: 0, key: 'cardShadow', t });
           continue;
         }
         const d = boxDistance(pos.x, pos.y, pos.z, bb);
@@ -516,7 +528,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     const counts = new Map();
     let n = 0;
     let triangles = 0;
-    for (const key of HF_KEYS) {
+    for (const key of [...HF_KEYS, 'cardShadow']) {
       let k = 0;
       for (const p of list) if (p.key === key) k++;
       if (!k) {
@@ -550,6 +562,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
       L.inst.count = i;
       L.geometry.instanceCount = i;
       L.mesh.visible = i > 0;
+      if (key === 'cardShadow') continue; // not in the picture: stats count what the camera draws
       counts.set(key, i);
       n += i;
       triangles += i * L.geometry.userData.triangles;
@@ -569,9 +582,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
         budget: Math.round(get('geo.instanceBudget')), gap: get('geo.columnGap'), width: get('geo.columnWidth'), dataVersion: atlas.version,
         shape: get('geo.columnShape'), sides: Number(get('geo.cylinderSides')),
         farStyle: get('geo.farColumns'), farShadows: !!get('geo.farShadows'),
-        // The cards stand where the heightfield cast shadows: without theirs, the columns around
-        // the camera threw one long shadow across a ring that cast none, which moved with the camera.
-        cardCells: region.cardCells, cardFocus: region.cardFocus, cardShadows: !!get('geo.farShadows'), planes,
+        cardCells: region.cardCells, cardFocus: region.cardFocus, planes,
         // Off-screen columns stay listed while their shadow can reach the view.
         sun: get('light.shadows') ? sunDirection(Number(get('light.sunAzimuth')), Number(get('light.sunElevation'))).toArray() : null,
       });

@@ -418,29 +418,40 @@ export function buildTerrainMaterial({ atlas, shading, instances, mode, view = n
   material.roughnessNode = U.roughness;
   material.metalnessNode = U.metalness;
   let keep = null;
+  let keepShadow = null;
   if (mode.band === 'in' || mode.band === 'out') {
     const bandEnd = ceil(U.whiteRow.add(1).div(rowScaleF)).mul(rowScaleF).mul(ROW_Z);
     keep = mode.band === 'in' ? wp.z.lessThanEqual(bandEnd.add(BAND_EPS)) : wp.z.greaterThan(bandEnd);
   }
   if (mode.columns) {
     // Column mode: hide the heightfield where the columns stand (L0 cell centres inside the
-    // focus circle, on resident L0 tiles). The same test selects the columns.
-    const cf = U.columnFocus;
+    // focus circle, on resident L0 tiles). The same test selects the columns. In the shadow
+    // maps it hides only under the columns proper: the cards cast no shadows, so the surface
+    // under them casts for them.
     const L0 = atlas.grid.levels[0];
     const l0c = clamp(floor(wp.x.div(0.064)), 0, L0.columns - 1);
     const l0r = clamp(floor(wp.z.div(0.1)), 0, L0.rows - 1);
-    const dx = l0c.add(0.5).mul(0.064).sub(cf.x);
-    const dz = l0r.add(0.5).mul(0.1).sub(cf.y);
-    const inside = dx.mul(dx).add(dz.mul(dz)).lessThan(cf.z.mul(cf.z));
     const tid = int(l0r).div(I256).mul(int(L0.tilesX)).add(int(l0c).div(I256)).add(int(L0.firstTile));
     const resident = atlas.page(tid).greaterThanEqual(0);
-    let outside = inside.and(resident).not();
+    const outsideOf = (cf) => {
+      const dx = l0c.add(0.5).mul(0.064).sub(cf.x);
+      const dz = l0r.add(0.5).mul(0.1).sub(cf.y);
+      return dx.mul(dx).add(dz.mul(dz)).lessThan(cf.z.mul(cf.z)).and(resident).not();
+    };
+    let outside = outsideOf(U.columnFocus);
+    let outsideShadow = outsideOf(U.columnInner);
     // Columns stand only where the height value is above 0, so a cell Flatten the rest leaves with
     // colour but no height keeps its terrain. Gated on the owner layer: other views keep their material.
-    if (atlas.ownersOn) outside = outside.or(cell.x.lessThanEqual(0).and(cell.w.greaterThan(0)));
+    if (atlas.ownersOn) {
+      const flat = cell.x.lessThanEqual(0).and(cell.w.greaterThan(0));
+      outside = outside.or(flat);
+      outsideShadow = outsideShadow.or(flat);
+    }
+    keepShadow = keep ? keep.and(outsideShadow) : outsideShadow;
     keep = keep ? keep.and(outside) : outside;
   }
   if (keep) material.maskNode = keep;
+  if (keepShadow) material.maskShadowNode = keepShadow;
   material.userData.mode = { ...mode };
   return material;
 }

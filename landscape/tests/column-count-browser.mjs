@@ -60,7 +60,7 @@ async function columnLayerPixels(renderer) {
   atlas.flush();
   const shading = {
     uniforms: { albedo: uniform(0), emissive: uniform(1), roughness: uniform(1), metalness: uniform(0),
-      columnFocus: uniform(new Vector3()) },
+      columnFocus: uniform(new Vector3()), columnInner: uniform(new Vector3()) },
     heightOf: () => float(1), cellColor: () => vec3(0.7), heatEmissive: () => vec3(0),
     edgeGlow: () => float(0), rimTerm: () => vec3(0),
   };

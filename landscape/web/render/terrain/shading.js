@@ -58,6 +58,7 @@ export function createShading({ rows }) {
     skirt: uniform(1),
     skirtDepth: uniform(0.02),
     columnFocus: uniform(new Vector3(0, 0, 0)), // (x, z, radius) in world units; radius 0 = off
+    columnInner: uniform(new Vector3(0, 0, 0)), // the column disc inside it (the rest of columnFocus holds cards)
     ownersDim: uniform(0.2 ** 2.2), // owner layer: linear-light factor for the cells and layers no shown entity holds
     ownersOn: uniform(0),            // owner layer on (1) or off (0); the floor dims with the rest while it is on
   };
