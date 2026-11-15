@@ -111,6 +111,8 @@ export function createHud(container, { onDismiss = null } = {}) {
       if (status && Number.isFinite(status.residentTiles)) foot.push(fmtCompact(status.residentTiles) + (status.residentTiles === 1 ? ' tile' : ' tiles'));
       const m = status && mb(status.memoryBytes);
       if (m) foot.push('worker ' + m);
+      // The release this tab's code came from (the online shell names it; a local run has none).
+      foot.push(container.ownerDocument.documentElement.dataset.release);
       set('foot', foot.filter(Boolean).join(' \u00b7 '));
     },
   };

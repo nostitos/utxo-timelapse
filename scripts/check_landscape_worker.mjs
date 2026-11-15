@@ -416,6 +416,7 @@ await check('app files: the shell names them by content hash, kept as immutable'
       securityHeadersOk(html, path, importMapHash(text)); // the rewritten map's own hash
       for (const f of ['entry.js', 'app.css', 'fonts/fonts.css']) assert.ok(text.includes('"/app/' + HASH + '/' + f + '"'), path + ' names ' + f);
       assert.ok(text.includes('"three": "/app/' + HASH + '/vendor/three/three.webgpu.js"'), path + ' import map');
+      assert.ok(text.includes('<html data-release="' + RELEASE.version + '" lang="en">'), path + ' names its release');
       assert.ok(!/(?:src|href)="\.\/(?:entry\.js|app\.css|fonts\/)|"\.\/vendor\//.test(text), path + ': no relative app file left');
     }
     const js = await req('/app/' + HASH + '/main.js', {}, w);

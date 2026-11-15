@@ -254,7 +254,9 @@ async function serveAsset(request, env) {
   headers.delete('If-Modified-Since');
   const shell = await env.ASSETS.fetch(new Request(request.url, { method: request.method, headers }));
   if (shell.status !== 200) return assetResponse(shell, pathname);
-  const html = (await shell.text()).replace(APP_LINKS, '$1="/app/' + hash + '/$2"').replaceAll('"./vendor/', '"/app/' + hash + '/vendor/');
+  // The shell also names its release (ui/hud.js and ui/help.js show it), so a tab says which code it runs.
+  const html = (await shell.text()).replace(APP_LINKS, '$1="/app/' + hash + '/$2"').replaceAll('"./vendor/', '"/app/' + hash + '/vendor/')
+    .replace('<html ', '<html data-release="' + RELEASE.version + '" ');
   const out = assetResponse(new Response(request.method === 'HEAD' ? null : html, shell), pathname);
   for (const name of ['ETag', 'Last-Modified', 'Content-Length']) out.headers.delete(name);
   // The rewritten import map has its own hash, which the policy allows instead of index.html's.
