@@ -40,7 +40,7 @@ test('AutoScaler shrinks when the GPU is slow, grows when fast, and settles in b
   // Settle period: no change immediately after.
   assert.equal(a.sample(33, 33, t + 10), null);
   // Fast GPU: grows by at most maxUpFactor per step, never beyond max.
-  const b = new AutoScaler({ enabled: true, min: 0.5, max: 1.2, targetFps: 60, scale: 1, windowFrames: 10, settleMs: 0 });
+  const b = new AutoScaler({ enabled: true, min: 0.5, max: 1.2, targetFps: 60, scale: 1, windowFrames: 10, settleMs: 0, growMs: 0 });
   let grown = null;
   t = 0;
   for (let i = 0; i < 10 && grown === null; i++) { t += 16; grown = b.sample(16.6, 4, t); }
@@ -49,7 +49,11 @@ test('AutoScaler shrinks when the GPU is slow, grows when fast, and settles in b
   assert.equal(b.scale, 1.2);
   // Inside the band: unchanged.
   const c = new AutoScaler({ enabled: true, targetFps: 60, scale: 1, windowFrames: 10, settleMs: 0 });
-  for (let i = 0; i < 30; i++) assert.equal(c.sample(16.6, 15.5, i * 16), null);
+  for (let i = 0; i < 30; i++) assert.equal(c.sample(16.6, 12.5, i * 16), null);
+  // GPU time is held to four fifths of the frame: 15.5 ms of 16.7 leaves the page too little.
+  let over = null;
+  for (let i = 30; i < 60 && over === null; i++) over = c.sample(16.6, 15.5, i * 16);
+  assert.ok(over !== null && over < 1);
   // Disabled: never changes.
   const d = new AutoScaler({ enabled: false });
   assert.equal(d.sample(100, 100, 1000), null);
@@ -83,10 +87,35 @@ test('AutoScaler without GPU timing probes a larger scale, backs off when it is 
   assert.ok(run(2000, 16.7)[0][1] > after);
   // With GPU timing headroom shows directly, so there is no probing at the target.
   const g = new AutoScaler({ enabled: true, min: 0.5, max: 1, targetFps: 60, scale: 0.5, windowFrames: 10, settleMs: 0 });
-  for (let i = 1; i <= 2000; i++) assert.equal(g.sample(16.7, 16, i * 16.7), null);
+  for (let i = 1; i <= 2000; i++) assert.equal(g.sample(16.7, 13, i * 16.7), null);
   // At the maximum there is nothing to probe.
   const m = new AutoScaler({ enabled: true, min: 0.5, max: 1, targetFps: 60, scale: 1, windowFrames: 10, settleMs: 0 });
   for (let i = 1; i <= 2000; i++) assert.equal(m.sample(16.7, NaN, i * 16.7), null);
+});
+
+test('AutoScaler waits before a step up and waits twice as long after one that is undone', () => {
+  // Near the target the scale went up and down about once a second (16.7 ms frames, GPU timing).
+  const a = new AutoScaler({ enabled: true, min: 0.5, max: 1, targetFps: 60, scale: 0.7, windowFrames: 10, settleMs: 500 });
+  let t = 0;
+  let changed = 0;
+  const until = (end, gpuMs) => {
+    const changes = [];
+    while (t < end) { t += 16.7; const n = a.sample(16.7, gpuMs, t); if (n !== null) { changes.push(n); changed = t; } }
+    return changes;
+  };
+  assert.deepEqual(until(2900, 10), [], 'headroom alone does not grow the scale before 3 s');
+  assert.equal(until(3300, 10).length, 1);
+  const up = a.scale;
+  assert.ok(up > 0.7);
+  // Too slow at the larger scale: shrinks at once; the next step up waits 6 s.
+  assert.ok(until(t + 1500, 19).length >= 1 && a.scale < up, 'a slow frame time still shrinks at once');
+  assert.deepEqual(until(changed + 5900, 10), [], 'waits 6 s after a step up that was undone');
+  assert.equal(until(changed + 6500, 10).length, 1);
+  // That step held: one more after the same wait, and then the wait is 3 s again.
+  assert.deepEqual(until(changed + 5900, 10), []);
+  assert.equal(until(changed + 6500, 10).length, 1);
+  assert.deepEqual(until(changed + 2900, 10), []);
+  assert.equal(until(changed + 3300, 10).length, 1);
 });
 
 test('AutoScaler.hold ignores frames until the hold ends', () => {
