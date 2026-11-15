@@ -552,7 +552,9 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
         budget: Math.round(get('geo.instanceBudget')), gap: get('geo.columnGap'), width: get('geo.columnWidth'), dataVersion: atlas.version,
         shape: get('geo.columnShape'), sides: Number(get('geo.cylinderSides')),
         farStyle: get('geo.farColumns'), farShadows: !!get('geo.farShadows'),
-        cardCells: region.cardCells, planes,
+        // The cards stand where the heightfield cast shadows: without theirs, the columns around
+        // the camera threw one long shadow across a ring that cast none, which moved with the camera.
+        cardCells: region.cardCells, cardShadows: !!get('geo.farShadows'), planes,
         // Off-screen columns stay listed while their shadow can reach the view.
         sun: get('light.shadows') ? sunDirection(Number(get('light.sunAzimuth')), Number(get('light.sunElevation'))).toArray() : null,
       });
