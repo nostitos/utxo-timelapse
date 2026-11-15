@@ -137,7 +137,8 @@ const DEVICE_BALANCE = String.raw`await idle(); await sleep(500);
       const steady = async () => { let last = ''; let same = 0;
         for (let i = 0; i < 160 && same < 8; i++) { await sleep(250);
           const k = [T.stats.resident, T.stats.desired, T.stats.columns, T.stats.triangles, V.stats.height].join();
-          if (k === last && !L.replay.busy) same++; else { same = 0; last = k; } }
+          // Wanted tiles still loading (slow online) would otherwise pass for a steady view.
+          if (k === last && !L.replay.busy && !T.stats.missing) same++; else { same = 0; last = k; } }
         V.invalidate(); await frame(); await frame(); };
       const whaleShadow = () => T.meshes.heightfield.find((m) => m.name === 'TerrainHeightfieldWhaleShadow');
       const stepped = () => T.meshes.heightfield.find((m) => m.name === 'TerrainHeightfieldStepped');
