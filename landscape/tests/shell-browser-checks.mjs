@@ -2078,6 +2078,13 @@ const CHECKS = [
       await L.seek(inData(973265)); await idle();
       L.controls.setPose({ x: 958.924, y: 54.626, z: 150.858, yaw: 74.09, pitch: -44.76 }); await steady();
       const lit = await rows(); const cards = T.stats.cards;
+      // The cards are centred toward the point looked at, not on the ground under the camera:
+      // how far inside their edge the centre of the screen lies (world units; negative = outside).
+      const hit = V.pick(canvas.clientWidth / 2, canvas.clientHeight / 2); const cam = V.camera.position;
+      const ahead = T.stats.cardAhead; const yawR = 74.09 * Math.PI / 180;
+      const fx = cam.x - Math.sin(yawR) * ahead, fz = cam.z - Math.cos(yawR) * ahead;
+      out.gaze = { ahead: Math.round(ahead * 10) / 10, radius: Math.round(T.stats.cardRadius * 6.4) / 100,
+        inside: hit ? Math.round((T.stats.cardRadius * 0.064 - Math.hypot(hit.x - fx, hit.z - fz)) * 10) / 10 : null };
       S.set('light.shadows', false); await steady();
       const unlit = await rows(); S.reset('light.shadows'); await steady();
       out.shade = { cards, drop: unlit.map((u, i) => Math.round((u - lit[i]) * 10) / 10) };
@@ -2097,6 +2104,8 @@ const CHECKS = [
           r.tris <= allow(k) * before[k]]),
         ['from 55 units up the cards near the camera darken with shadows as the land beyond them does (' + v.shade.cards + ' cards; darker by ' + v.shade.drop.join(', ') + ' from top to bottom)',
           v.shade.cards > 50000 && far > 5 && v.shade.drop.slice(3).every((d) => d > 0.6 * far)],
+        ['from 55 units up the cards reach past the centre of the screen (' + v.gaze.inside + ' units inside their edge; centre ' + v.gaze.ahead + ' ahead of the camera, radius ' + v.gaze.radius + ')',
+          v.gaze.inside !== null && v.gaze.inside >= 5],
         ['no frame errors', v.frameError === null],
       ];
     },

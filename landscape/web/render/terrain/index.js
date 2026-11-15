@@ -17,7 +17,7 @@ import {
   buildPatchGeometry, buildTerrainMaterial, createPatchInstances, createHeightfieldMesh, MAX_PATCH_INSTANCES, whaleBandEnd,
 } from './heightfield.js';
 import {
-  selectTiles, cellSize, patchBounds, boxVisible, boxDistance, PATCH_CELLS, PATCHES_PER_SIDE,
+  selectTiles, cellSize, patchBounds, boxVisible, boxDistance, gazeSlide, PATCH_CELLS, PATCHES_PER_SIDE,
 } from './lod.js';
 import { createColumns, NEAR_PX } from './columns.js';
 import { createAxisLabels } from './labels.js';
@@ -258,14 +258,23 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
   function columnRegion(cam, projScale) {
     const o = cam.position;
     const h = Math.max(0, o.y - Math.max(0, heightAt(o.x, o.z)));
-    const reach = (px) => {
-      const d = (0.064 * projScale) / Math.max(0.5, px);
-      return d > h ? Math.sqrt(d * d - h * h) / 0.064 : 0;
-    };
+    const far = (px) => (0.064 * projScale) / Math.max(0.5, px); // eye distance where a cell is px wide
+    const reach = (px, height = h) => (far(px) > height ? Math.sqrt(far(px) ** 2 - height * height) / 0.064 : 0);
     const px = get('geo.columnPixels') / aheadReach;
     const cardPx = get('geo.cardPixels') / aheadReach;
+    // Seen from high up, the ground under the camera is off screen or at its bottom edge, so
+    // the cards are measured from a point ahead of the eye on its line of sight (gazeSlide) and
+    // follow the view. The slide stops where the finest tiles end (their cells are half the
+    // terrain's pixel threshold wide), so it loads none, and keeps the columns inside the cards.
+    let slide = 0;
+    if (cardPx > 0 && aheadShift === 0 && aheadReach === 1 && !cam.isOrthographicCamera) {
+      cam.getWorldDirection(aheadDir);
+      const tiles = far((get('geo.pixelsPerCell') * 2 ** -get('geo.lodBias')) / 2);
+      slide = gazeSlide(far(cardPx), h, -aheadDir.y, Math.min(far(cardPx) - far(px), tiles - far(cardPx)));
+    }
     return { focus: [o.x, o.z], eye: [o.x, o.z], radiusCells: Math.min(get('geo.columnRadius'), reach(px)), nearCells: reach(NEAR_PX),
-      cardCells: cardPx > 0 ? Math.min(get('geo.columnRadius'), reach(cardPx)) : 0 };
+      cardFocus: [o.x + slide * aheadDir.x, o.z + slide * aheadDir.z],
+      cardCells: cardPx > 0 ? Math.min(get('geo.columnRadius'), reach(cardPx, h + slide * aheadDir.y)) : 0 };
   }
 
   // Detail ahead (plane mode): the column disc reaches "reach" times farther (cells down to
@@ -288,6 +297,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     // Looking straight down keeps the disc centred: the shift scales with the horizontal part.
     const s = (aheadShift * R * Math.min(1, m * 1.5)) / m;
     region.focus = [region.eye[0] + aheadDir.x * s, region.eye[1] + aheadDir.z * s];
+    region.cardFocus = region.focus;
   }
   const needs = { rebuild: false, capacity: false };
   function applySetting(id, value) {
@@ -402,6 +412,13 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     // The card ring hides the heightfield out to its radius; it adds no tiles (resident L0 only).
     const outR = region ? Math.max(colR, Math.min(region.cardCells, columns ? columns.state.cardBudgetCells : Infinity) * 0.064) : 0;
     if (region) moveRegionAhead(region, cam, colR);
+    if (region) {
+      // The column disc stays inside the card disc, whose circle masks the heightfield.
+      const [fx, fz] = region.focus;
+      const off = Math.hypot(region.cardFocus[0] - fx, region.cardFocus[1] - fz);
+      const k = off > outR - colR ? Math.max(0, outR - colR) / off : 1;
+      region.cardFocus = [fx + (region.cardFocus[0] - fx) * k, fz + (region.cardFocus[1] - fz) * k];
+    }
     const mustRefine = colR > 0
       ? (id) => {
         const t = tileInfo(grid, id);
@@ -433,8 +450,8 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
       const z0 = (t.row0 + py * PATCH_CELLS) * ch;
       const x1 = (t.col0 + Math.min(t.cols, (px + 1) * PATCH_CELLS)) * cw;
       const z1 = (t.row0 + Math.min(t.rows, (py + 1) * PATCH_CELLS)) * ch;
-      const fx = Math.max(Math.abs(x0 - region.focus[0]), Math.abs(x1 - region.focus[0]));
-      const fz = Math.max(Math.abs(z0 - region.focus[1]), Math.abs(z1 - region.focus[1]));
+      const fx = Math.max(Math.abs(x0 - region.cardFocus[0]), Math.abs(x1 - region.cardFocus[0]));
+      const fz = Math.max(Math.abs(z0 - region.cardFocus[1]), Math.abs(z1 - region.cardFocus[1]));
       if (fx * fx + fz * fz >= outR * outR) return false;
       if (t.level === 0) return true;
       // A coarser patch hides only where every L0 tile under it is resident (the mask's test).
@@ -554,7 +571,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
         farStyle: get('geo.farColumns'), farShadows: !!get('geo.farShadows'),
         // The cards stand where the heightfield cast shadows: without theirs, the columns around
         // the camera threw one long shadow across a ring that cast none, which moved with the camera.
-        cardCells: region.cardCells, cardShadows: !!get('geo.farShadows'), planes,
+        cardCells: region.cardCells, cardFocus: region.cardFocus, cardShadows: !!get('geo.farShadows'), planes,
         // Off-screen columns stay listed while their shadow can reach the view.
         sun: get('light.shadows') ? sunDirection(Number(get('light.sunAzimuth')), Number(get('light.sunElevation'))).toArray() : null,
       });
@@ -589,6 +606,8 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     stats.uniformCoarser = fixedLevel === null ? 0 : sel.draw.filter((d) => tileInfo(grid, d.id).level > fixedLevel).length;
     // How far the column disc sits ahead of the camera (world units; plane mode moves it).
     stats.columnAhead = region ? Math.hypot(region.focus[0] - region.eye[0], region.focus[1] - region.eye[1]) : 0;
+    // How far the cards' centre sits from the camera's base (map mode slides it toward the view).
+    stats.cardAhead = region ? Math.hypot(region.cardFocus[0] - region.eye[0], region.cardFocus[1] - region.eye[1]) : 0;
     stats.instances = n + stats.columns;
     stats.patches = n;
     stats.patchesUnderColumns = hiddenPatches;
