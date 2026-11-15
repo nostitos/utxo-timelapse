@@ -594,6 +594,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     stats.resident = resident;
     stats.selected = sel.selected;
     stats.desired = sel.desired.length;
+    stats.missing = sel.desired.filter((id) => !atlas.isResident(id)).length; // still loading
     stats.columnShape = columns && mode.columns ? columns.state.shape : null;
     const cs = columns && mode.columns && columns.state.tiles > 0 ? columns.state : null;
     stats.triangles = triangles + (cs ? cs.near * cs.trianglesPerColumn + cs.far * cs.trianglesFar + cs.cards * cs.trianglesCard : 0);
