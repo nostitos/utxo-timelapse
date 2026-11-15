@@ -507,7 +507,8 @@ on the whale rows only, at least 1.5 px wide far away: `geo.steppedWhales`; with
 off the whale rows' stepped mesh casts no shadows),
 smoothing, subdivision, instanced columns (near cylinders, far prisms or `geo.farColumns`, and beyond them
 shadowless camera-facing cards on resident L0 tiles out to `geo.cardPixels`, with the heightfield hidden under all
-three), palette LUTs and colour transfer, heat
+three; the compute pass lists only cells inside the view's side planes or, for shadow-casting levels, whose column swept
+away from the sun reaches them), palette LUTs and colour transfer, heat
 emissive and flash sprites, creation-edge glow, now plane, grid, axis labels
 (HTML positioned by projection into `labelsElement`), CPU tile copies for picking.
 Terrain materials are NodeMaterials (`MeshStandardNodeMaterial`) so lights, shadows

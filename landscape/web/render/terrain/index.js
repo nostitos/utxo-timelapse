@@ -23,6 +23,7 @@ import { createColumns, NEAR_PX } from './columns.js';
 import { createAxisLabels } from './labels.js';
 import { createFlashes } from './flashes.js';
 import { noGBufferWrites } from '../gbuffer.js';
+import { sunDirection } from '../env.js';
 
 // Fallback values for ids the settings store might not provide (SPEC §7 defaults).
 export const TERRAIN_DEFAULTS = Object.freeze({
@@ -524,7 +525,9 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
         budget: Math.round(get('geo.instanceBudget')), gap: get('geo.columnGap'), width: get('geo.columnWidth'), dataVersion: atlas.version,
         shape: get('geo.columnShape'), sides: Number(get('geo.cylinderSides')),
         farStyle: get('geo.farColumns'), farShadows: !!get('geo.farShadows'),
-        cardCells: region.cardCells,
+        cardCells: region.cardCells, planes,
+        // Off-screen columns stay listed while their shadow can reach the view.
+        sun: get('light.shadows') ? sunDirection(Number(get('light.sunAzimuth')), Number(get('light.sunElevation'))).toArray() : null,
       });
     } else if (columns) {
       columns.update({ enabled: false, gap: get('geo.columnGap') });
