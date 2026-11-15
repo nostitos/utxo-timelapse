@@ -2038,6 +2038,49 @@ const CHECKS = [
     ],
   },
   {
+    // Column horizon (November 2026): beyond the columns, cards reach to cells 2 px wide (2.6 at
+    // Balanced) so the end of the columns no longer shows as a line, and only cells that can show are
+    // listed. The cameras of that work: a, c and e, set above the 95th percentile of the terrain ahead.
+    // Triangles on master before it: Balanced 26.76M, 25.16M, 15.43M; High 81.05M, 53.37M, 55.34M.
+    name: 'column-horizon',
+    viewport: { width: 1600, height: 900, dpr: 2 },
+    timeout: 240000,
+    script: DEVICE_BALANCE + `
+      const HORIZON = { a: [700, 150, 60, -8, 3], c: [500, 120, 110, -10, 5], e: [840, 110, 28, -30, 12] };
+      const fwd = (yaw) => [-Math.sin(yaw * Math.PI / 180), -Math.cos(yaw * Math.PI / 180)];
+      async function place(x, z, yaw, pitch, above) {
+        L.controls.setPose({ x, y: 60, z, yaw, pitch: -60 }); await steady();
+        const f = fwd(yaw); const hs = [];
+        for (let d = 0; d <= 40; d += 0.5) for (let s = -15; s <= 15; s += 1.5) hs.push(V.heightAt(x + f[0] * d - f[1] * s, z + f[1] * d + f[0] * s) || 0);
+        hs.sort((p, q) => p - q);
+        L.controls.setPose({ x, y: hs[Math.floor(hs.length * 0.95)] + above, z, yaw, pitch }); await steady();
+      }
+      S.setLook('Landscape');
+      const out = {};
+      for (const q of ['Balanced', 'High']) {
+        S.setQuality(q); S.setMany({ 'display.autoScale': false });
+        for (const [name, p] of Object.entries(HORIZON)) {
+          await place(...p);
+          out[q + ' ' + name] = { tris: V.stats.triangles, cards: T.stats.cards, columnReach: T.stats.columnRadius * 0.064, cardReach: T.stats.cardRadius * 0.064 };
+        }
+      }
+      S.setQuality('High');
+      out.frameError = L.frameError || null;
+      return out;`,
+    expect: (v) => {
+      const before = { 'Balanced a': 26.76e6, 'Balanced c': 25.16e6, 'Balanced e': 15.43e6, 'High a': 81.05e6, 'High c': 53.37e6, 'High e': 55.34e6 };
+      const rows = Object.keys(before).map((k) => [k, v[k]]);
+      const f = (n) => (n / 1e6).toFixed(2) + 'M';
+      return [
+        ...rows.map(([k, r]) => ['cards reach ' + r.cardReach.toFixed(1) + ' units at ' + k + ', past the columns at ' + r.columnReach.toFixed(1) + ' (' + r.cards + ' cards)',
+          r.cards > 50000 && r.cardReach >= (k.startsWith('High') ? 55 : 40) && r.cardReach > 1.5 * r.columnReach]),
+        ...rows.map(([k, r]) => ['at ' + k + ' no more triangles than before the cards (' + f(r.tris) + ' against ' + f(before[k]) + ')',
+          r.tris <= before[k]]),
+        ['no frame errors', v.frameError === null],
+      ];
+    },
+  },
+  {
     // A parked, paused view drew the same frame at the display rate (123 frames in 2 s at 60 Hz).
     name: 'idle',
     timeout: 120000,

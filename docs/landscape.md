@@ -624,6 +624,18 @@ Measured on 2026-11-12 in headless Chrome with WebGPU on this Mac, Landscape loo
 
 On the phone the tile atlas now reserves 81 MiB (64 tiles) instead of 122 MiB (96 tiles); the seven views of the browser checks (overview, middle, close, close to the whale rows, behind, low and straight down) wanted 5 to 30 tiles, against 12 to 43 before. Parked and paused, the view draws 2 frames in 2 s (123 before), at least 60 while the camera turns and every frame during 1× playback. Compressed locally with Brotli level 4 and Zstandard level 3, `chunks/04450.bin` shrinks from 4.17 MB to 2.71–2.75 MB; the Worker README's Verify step checks that Cloudflare serves chunks compressed. `blocktimes-delta.bin` would be 1.86 MB for the 974,622 blocks of the current dataset, against 3.90 MB for `blocktimes.bin`; a dataset built from blocks 0–60,000 with this build has 115,735 bytes against 240,004, and `landscape_verify` checks every time against `blocktimes.bin`.
 
+### Column horizon
+
+Measured on 2026-11-15 in headless Chrome with WebGPU on this Mac, Landscape look, at block 840,000 in a 1600 × 900 window at 2×. Cameras a (x 700, z 150, yaw 60°, pitch −8°), c (500, 120, 110°, −10°) and e (840, 110, 28°, −30°) stand 3, 5 and 12 units above the 95th percentile of the terrain within 40 units ahead; the middle camera is the one of Device balance. Triangles count every pass, shadow cascades included. The `column-horizon` browser check repeats the a, c and e figures.
+
+| Quality | Reach: columns, then cards | a | c | e | middle | Before (a, c, e, middle) |
+|---|---|---|---|---|---|---|
+| Balanced | 20, then 47 units | 26.2M | 24.5M | 14.0M | 18.5M | 26.8M, 25.2M, 15.4M, 20.8M |
+| High | 30, then 61 units | 56.0M | 45.6M | 25.6M | 34.1M | 81.1M, 53.4M, 55.3M, 65.2M |
+| Extreme | 30, then 95 units | 106.4M | 87.0M | 30.2M | 44.3M | 174.5M, 115.7M, 98.5M |
+
+The cards alone, which replace the heightfield under them, kept the totals within 0.2M of before at Balanced and lowered them by up to 3M at High. Listing only the cells that can show then took 17% to 46% of the cards out and, at dusk, few columns: the low sun behind cameras a and c can throw any column's shadow into view. The smooth whale shadows made the large drop at High and above. These are counts, not frame rates: no phone or weaker laptop was available, and Safari and Firefox were not tried.
+
 ## Limitations
 
 - Every block has the same width, so early eras look sparse next to the film. Horizontal detail stops at 64-block cells, although the HUD, stepping and playback are exact per block.
