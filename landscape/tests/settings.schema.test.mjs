@@ -19,7 +19,7 @@ const REQUIRED = {
   amp: ['measure', 'curve', 'exponent', 'exposure', 'reference', 'exaggeration', 'floor', 'whale',
     'heatHalfLife', 'heatFloor', 'heatReference', 'heatEdge', 'heatEdgeBlocks', 'flashSize', 'flashThreshold', 'edgeGlow', 'edgeBlocks', 'nowPlane'],
   geo: ['smoothing', 'stepped', 'steppedWhales', 'whaleShadows', 'subdivision', 'columns', 'columnShape', 'cylinderSides',
-    'columnRadius', 'columnPixels', 'instanceBudget', 'columnGap', 'columnWidth', 'farColumns', 'farShadows',
+    'columnRadius', 'columnPixels', 'cardPixels', 'instanceBudget', 'columnGap', 'columnWidth', 'farColumns', 'farShadows',
     'lodBias', 'pixelsPerCell', 'tileBudget', 'uniform', 'uniformLevel', 'skirts', 'groundHorizon', 'wireframe'],
   light: ['sunAzimuth', 'sunElevation', 'sunIntensity', 'sunColor', 'skyColor', 'groundColor', 'ambient',
     'emissive', 'albedo', 'rim', 'rimColor', 'roughness', 'metalness', 'shadows', 'cascades', 'shadowMapSize',
@@ -62,7 +62,7 @@ test('schema ids: exactly the SPEC section 7 required ids, unique, grouped by pr
     assert.ok(groupIds.includes(e.group), e.id + ' group');
     assert.equal(SCHEMA_BY_ID.get(e.id), e);
   }
-  assert.equal(SCHEMA.length, 151);
+  assert.equal(SCHEMA.length, 152);
 });
 
 test('quality tiers below High keep the whale rows out of the shadow maps; Performance keeps 64 tiles', () => {
@@ -135,7 +135,7 @@ test('schema entries: types, labels, help, flags and ranges are well formed', ()
 test('schema flags: compute-dependent entries need WebGPU; preferences stay out of presets', () => {
   const webgpuIds = SCHEMA.filter((e) => e.webgpu).map((e) => e.id).sort();
   assert.deepEqual(webgpuIds, ['color.autoExposureMax', 'color.autoExposureMin', 'color.autoExposureSpeed',
-    'fx.ssgi', 'fx.ssgiIntensity', 'fx.ssgiSamples', 'geo.columnGap',
+    'fx.ssgi', 'fx.ssgiIntensity', 'fx.ssgiSamples', 'geo.cardPixels', 'geo.columnGap',
     'geo.columnPixels', 'geo.columnRadius', 'geo.columnShape', 'geo.columnWidth', 'geo.columns', 'geo.cylinderSides',
     'geo.farColumns', 'geo.instanceBudget']);
   assert.deepEqual(SCHEMA_BY_ID.get('color.exposureMode').webgpuOptions, ['auto']);
@@ -311,7 +311,7 @@ test('looks: each one changes the appearance in at least 8 settings and leaves c
     assert.ok(LOOK_INFO[name].length > 40, name + ' description');
   }
   // Quality-only settings belong to the tiers (BitcoinTimelapse.com alone pins its resolution and anti-aliasing).
-  const costIds = ['geo.tileBudget', 'geo.pixelsPerCell', 'geo.columnPixels', 'geo.instanceBudget', 'light.cascades',
+  const costIds = ['geo.tileBudget', 'geo.pixelsPerCell', 'geo.columnPixels', 'geo.cardPixels', 'geo.instanceBudget', 'light.cascades',
     'light.shadowMapSize', 'fx.aoSamples', 'light.volumetricSteps'];
   for (const name of LOOKS) {
     for (const id of costIds) assert.equal(Object.hasOwn(LOOK_PRESETS[name], id), false, name + ' sets ' + id);

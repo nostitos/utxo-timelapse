@@ -505,7 +505,9 @@ LOD selection (always drawing the deepest fully resident level so there are no h
 overlaps; L6 is always resident), heightfield mesh with skirts, stepped cells (everywhere, or
 on the whale rows only, at least 1.5 px wide far away: `geo.steppedWhales`; with `geo.whaleShadows`
 off the whale rows' stepped mesh casts no shadows),
-smoothing, subdivision, instanced columns, palette LUTs and colour transfer, heat
+smoothing, subdivision, instanced columns (near cylinders, far prisms or `geo.farColumns`, and beyond them
+shadowless camera-facing cards on resident L0 tiles out to `geo.cardPixels`, with the heightfield hidden under all
+three), palette LUTs and colour transfer, heat
 emissive and flash sprites, creation-edge glow, now plane, grid, axis labels
 (HTML positioned by projection into `labelsElement`), CPU tile copies for picking.
 Terrain materials are NodeMaterials (`MeshStandardNodeMaterial`) so lights, shadows
@@ -660,7 +662,7 @@ ui_settings with the consumers):
 - Geometry: `geo.smoothing` (none, bilinear, bicubic), `geo.stepped`, `geo.steppedWhales`, `geo.whaleShadows`,
   `geo.subdivision` (1, 2, 4), `geo.columns`, `geo.columnShape` (cylinder, oval, box),
   `geo.cylinderSides` (6–32),
-  `geo.columnRadius` (L0 cells), `geo.columnPixels` (px),
+  `geo.columnRadius` (L0 cells), `geo.columnPixels` (px), `geo.cardPixels` (px, 0 = off),
   `geo.instanceBudget` (≤ 8,000,000), `geo.columnGap`, `geo.columnWidth` (1–4×), `geo.farColumns` (prism, card, flat,
   cross), `geo.farShadows`, `geo.lodBias`,
   `geo.pixelsPerCell`, `geo.tileBudget` (32–400), `geo.uniform`, `geo.uniformLevel` (0–4), `geo.skirts`,

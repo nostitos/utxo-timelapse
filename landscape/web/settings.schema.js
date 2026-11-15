@@ -319,6 +319,9 @@ const ENTRIES = [
   { id: 'geo.columnPixels', section: 'Columns', label: 'Column detail', type: 'number',
     min: 1, max: 32, step: 0.1, scale: 'log', default: 4, unit: 'px', webgpu: true,
     help: 'Columns are drawn where a cell is at least this many pixels wide on screen, measured from the camera to the ground, so they follow the camera; smaller cells are drawn by the heightfield. Lower = columns reach farther and cost more (quick setting Column distance).' },
+  { id: 'geo.cardPixels', section: 'Columns', label: 'Card detail', type: 'number',
+    min: 0, max: 8, step: 0.1, default: 2, unit: 'px', webgpu: true,
+    help: 'Beyond the columns, every occupied cell at least this many pixels wide on screen is drawn as a card: one rectangle turned to face the camera, 4 triangles. Without them the smooth heightfield takes over where the columns end and turns lone cells into narrow pyramids, which shows as a line across the landscape. Cards stand only on finest-level tiles already loaded, so they add no tile loads. 0 = off.' },
   { id: 'geo.instanceBudget', section: 'Columns', label: 'Instance budget', type: 'int',
     min: 10000, max: 8000000, step: 1000, scale: 'log', default: 1000000, webgpu: true,
     rebuild: 'terrain', capMax: 'maxInstances',
@@ -634,6 +637,7 @@ export const NEEDS = deepFreeze({
   'geo.cylinderSides': [on('geo.columns'), { id: 'geo.columnShape', ne: 'box' }, ADAPTIVE],
   'geo.columnRadius': [on('geo.columns'), ADAPTIVE],
   'geo.columnPixels': [on('geo.columns'), ADAPTIVE],
+  'geo.cardPixels': [on('geo.columns'), ADAPTIVE],
   'geo.instanceBudget': [on('geo.columns'), ADAPTIVE],
   'geo.columnGap': [on('geo.columns'), ADAPTIVE],
   'geo.columnWidth': [on('geo.columns'), ADAPTIVE],
@@ -780,6 +784,7 @@ export const QUALITY_PRESETS = deepFreeze({
     'geo.whaleShadows': false,
     'geo.pixelsPerCell': 6,
     'geo.columnPixels': 12,
+    'geo.cardPixels': 0,
     'geo.cylinderSides': 8,
     'geo.instanceBudget': 250000,
   },
@@ -791,6 +796,7 @@ export const QUALITY_PRESETS = deepFreeze({
     'geo.whaleShadows': false,
     'geo.pixelsPerCell': 4,
     'geo.columnPixels': 6,
+    'geo.cardPixels': 2.6,
   },
   High: {},
   Ultra: {
@@ -819,6 +825,7 @@ export const QUALITY_PRESETS = deepFreeze({
     'geo.instanceBudget': 2000000,
     'geo.tileBudget': 320,
     'geo.pixelsPerCell': 2,
+    'geo.cardPixels': 1.3,
   },
 });
 

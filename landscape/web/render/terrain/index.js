@@ -38,7 +38,7 @@ export const TERRAIN_DEFAULTS = Object.freeze({
   'geo.uniform': false, 'geo.uniformLevel': 1,
   'geo.columnRadius': 4096, 'geo.instanceBudget': 1000000, 'geo.columnGap': 0, 'geo.columnWidth': 1, 'geo.lodBias': 0,
   'geo.columnShape': 'oval', 'geo.cylinderSides': 12, 'geo.farColumns': 'prism', 'geo.farShadows': true,
-  'geo.columnPixels': 4,
+  'geo.columnPixels': 4, 'geo.cardPixels': 2,
   'geo.pixelsPerCell': 3, 'geo.tileBudget': 225, 'geo.skirts': true, 'geo.wireframe': false,
   'light.emissive': 0.4, 'light.albedo': 0.85, 'light.rim': 0.35, 'light.rimColor': '#99bbff',
   'light.roughness': 0.65, 'light.metalness': 0.05, 'light.floorReflection': 0,
@@ -231,7 +231,8 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
    * shape to show, and the stepped heightfield draws them. Measured from the ground under
    * the camera, that is a disc of radius sqrt(dMax^2 - h^2) around it (h = height above the
    * terrain there), capped by geo.columnRadius. Cells at least NEAR_PX wide get the full
-   * cylinder (nearCells). Returns {focus: [x, z], radiusCells, nearCells}.
+   * cylinder (nearCells). Cards continue to cells geo.cardPixels wide (cardCells; 0 = off).
+   * Returns {focus: [x, z], radiusCells, nearCells, cardCells}.
    */
   function columnRegion(cam, projScale) {
     const o = cam.position;
@@ -241,7 +242,9 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
       return d > h ? Math.sqrt(d * d - h * h) / 0.064 : 0;
     };
     const px = get('geo.columnPixels') / aheadReach;
-    return { focus: [o.x, o.z], eye: [o.x, o.z], radiusCells: Math.min(get('geo.columnRadius'), reach(px)), nearCells: reach(NEAR_PX) };
+    const cardPx = get('geo.cardPixels') / aheadReach;
+    return { focus: [o.x, o.z], eye: [o.x, o.z], radiusCells: Math.min(get('geo.columnRadius'), reach(px)), nearCells: reach(NEAR_PX),
+      cardCells: cardPx > 0 ? Math.min(get('geo.columnRadius'), reach(cardPx)) : 0 };
   }
 
   // Detail ahead (plane mode): the column disc reaches "reach" times farther (cells down to
@@ -375,6 +378,8 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     // reaches, also when Column distance asks for cells smaller than the terrain's detail.
     const region = mode.columns ? columnRegion(cam, projScale) : null;
     const colR = region ? Math.min(region.radiusCells, columns ? columns.state.budgetCells : Infinity) * 0.064 : 0;
+    // The card ring hides the heightfield out to its radius; it adds no tiles (resident L0 only).
+    const outR = region ? Math.max(colR, Math.min(region.cardCells, columns ? columns.state.cardBudgetCells : Infinity) * 0.064) : 0;
     if (region) moveRegionAhead(region, cam, colR);
     const mustRefine = colR > 0
       ? (id) => {
@@ -401,7 +406,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     const whiteRow = mode.whaleSteps ? shading.heightParams().whiteRow : -1;
     const L0 = grid.levels[0];
     const insideColumns = (t, px, py) => {
-      if (!(colR > 0)) return false;
+      if (!(outR > 0)) return false;
       const { cw, ch } = cellSize(grid, t.level);
       const x0 = (t.col0 + px * PATCH_CELLS) * cw;
       const z0 = (t.row0 + py * PATCH_CELLS) * ch;
@@ -409,7 +414,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
       const z1 = (t.row0 + Math.min(t.rows, (py + 1) * PATCH_CELLS)) * ch;
       const fx = Math.max(Math.abs(x0 - region.focus[0]), Math.abs(x1 - region.focus[0]));
       const fz = Math.max(Math.abs(z0 - region.focus[1]), Math.abs(z1 - region.focus[1]));
-      if (fx * fx + fz * fz >= colR * colR) return false;
+      if (fx * fx + fz * fz >= outR * outR) return false;
       if (t.level === 0) return true;
       // A coarser patch hides only where every L0 tile under it is resident (the mask's test).
       const tx0 = Math.floor(x0 / 0.064 / 256);
@@ -519,6 +524,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
         budget: Math.round(get('geo.instanceBudget')), gap: get('geo.columnGap'), width: get('geo.columnWidth'), dataVersion: atlas.version,
         shape: get('geo.columnShape'), sides: Number(get('geo.cylinderSides')),
         farStyle: get('geo.farColumns'), farShadows: !!get('geo.farShadows'),
+        cardCells: region.cardCells,
       });
     } else if (columns) {
       columns.update({ enabled: false, gap: get('geo.columnGap') });
@@ -536,6 +542,8 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     flashes.update(performance.now(), 1 / projScale);
     stats.flashes = flashes.stats.active;
     stats.columns = columns && mode.columns ? columns.state.drawn : 0;
+    stats.cards = columns && mode.columns ? columns.state.cards : 0;
+    stats.cardRadius = columns && mode.columns && columns.state.cards > 0 ? columns.state.cardCells : 0;
     stats.columnTiles = columns && mode.columns ? columns.state.tiles : 0;
     stats.columnRadius = columns && mode.columns ? columns.state.effectiveCells : 0;
     // What the column disc asked for and how many columns it needed (the budget may cut it).
@@ -558,7 +566,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     stats.desired = sel.desired.length;
     stats.columnShape = columns && mode.columns ? columns.state.shape : null;
     const cs = columns && mode.columns && columns.state.tiles > 0 ? columns.state : null;
-    stats.triangles = triangles + (cs ? cs.near * cs.trianglesPerColumn + cs.far * cs.trianglesFar : 0);
+    stats.triangles = triangles + (cs ? cs.near * cs.trianglesPerColumn + cs.far * cs.trianglesFar + cs.cards * cs.trianglesCard : 0);
     stats.patchesBySub = { 1: counts.get(1) || 0, 2: counts.get(2) || 0, 4: counts.get(4) || 0, stepped: counts.get('stepped') || 0 };
     stats.lodMs = performance.now() - t0;
 
@@ -808,7 +816,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
   function drawSignature() {
     const c = columns && mode.columns ? columns.state : null;
     return [atlas.version, atlas.layoutVersion, atlas.residencyVersion, atlas.pendingLayers.size, atlas.pendingOwnerLayers.size,
-      currentBlock, c ? c.dispatches : -1, c ? c.near : -1, c ? c.far : -1, ownerVersion].join();
+      currentBlock, c ? c.dispatches : -1, c ? c.near : -1, c ? c.far : -1, c ? c.cards : -1, ownerVersion].join();
   }
 
   function dispose() {
