@@ -734,6 +734,7 @@ body.plane #legend { display: none; }
 .help-grid dl { margin: 0; }
 .help-grid dl div { display: grid; grid-template-columns: 160px 1fr; gap: 12px; align-items: center; padding: 5px 0; border-bottom: 1px solid rgba(44, 57, 59, 0.6); }
 .help-grid dd { margin: 0; font-size: 12.5px; color: #c7cfcc; }
+.help-release { margin: 0; font: 10.5px var(--mono); color: var(--dim); }
 kbd {
   display: inline-block;
   min-width: 20px;

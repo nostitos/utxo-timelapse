@@ -76,6 +76,7 @@ export function createHelp(dialog, { touchFirst = false } = {}) {
   const list = touchFirst ? [TOUCH, ...sections] : [...sections, TOUCH];
   // The Owners line appears once the site has owner data (setOwners).
   let owners = false;
+  const release = dialog.ownerDocument.documentElement.dataset.release;
   const html = () => list.map(([title, rows]) =>
     '<section><h3>' + title + '</h3><dl>' +
     rows.filter((r) => owners || !(r[2] && r[2].owners)).map(([keys, v]) => '<div><dt>' + keys.map(keyHtml).join('') + '</dt><dd>' + v + '</dd></div>').join('') +
@@ -89,7 +90,9 @@ export function createHelp(dialog, { touchFirst = false } = {}) {
     'Front to back: its amount, on the film\u2019s 2,072 rows, with the largest amounts farthest away. ' +
     'Height and colour measure the outputs still unspent at the current block. ' +
     'Your browser replays that state exactly from the change log, block by block.</p>' +
-    '<div class="help-grid">' + html() + '</div>';
+    '<div class="help-grid">' + html() + '</div>' +
+    // The release this tab's code came from (the online shell names it; a local run has none).
+    (release ? '<p class="help-release">Version ' + release + '</p>' : '');
   dialog.querySelector('[data-close]').addEventListener('click', () => dialog.close());
   dialog.addEventListener('click', (e) => {
     if (e.target === dialog) dialog.close();
