@@ -16,6 +16,8 @@ import {
 import { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js';
 
 export const VOLUME_LAYER = 10;
+/** Meshes drawn only into the sun's and the volume's shadow maps (the main camera sees layer 0). */
+export const SHADOW_LAYER = 29;
 const CASTER_EXTRA_LAYER = 30; // keeps a shadow camera's layer mask from being overwritten
 const DEG = Math.PI / 180;
 const SUN_DISTANCE = 1000;
@@ -163,6 +165,9 @@ export function createEnvironment({ renderer, scene, camera, capabilities }) {
     sun.shadow.mapSize.set(s.mapSize, s.mapSize);
     sun.shadow.camera.near = 1;
     sun.shadow.camera.far = SHADOW_DEPTH_RANGE;
+    // Layer 0 plus the shadow-only meshes; the cascades copy this camera.
+    sun.shadow.camera.layers.set(0);
+    sun.shadow.camera.layers.enable(SHADOW_LAYER);
     sun.shadow.bias = s.bias;
     sun.shadow.normalBias = 0;
     sun.shadow.radius = s.softness;
@@ -289,6 +294,7 @@ export function createEnvironment({ renderer, scene, camera, capabilities }) {
     light.shadow.filterNode = singleTapFilter;
     light.shadow.camera.layers.set(0);
     light.shadow.camera.layers.enable(CASTER_EXTRA_LAYER);
+    light.shadow.camera.layers.enable(SHADOW_LAYER);
     light.target.layers.set(VOLUME_LAYER);
     scene.add(mesh, light, light.target);
     vol = { material, mesh, light, radius: 400, height: 140 };

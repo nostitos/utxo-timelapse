@@ -139,6 +139,7 @@ const DEVICE_BALANCE = String.raw`await idle(); await sleep(500);
           const k = [T.stats.resident, T.stats.desired, T.stats.columns, T.stats.triangles, V.stats.height].join();
           if (k === last && !L.replay.busy) same++; else { same = 0; last = k; } }
         V.invalidate(); await frame(); await frame(); };
+      const whaleShadow = () => T.meshes.heightfield.find((m) => m.name === 'TerrainHeightfieldWhaleShadow');
       const stepped = () => T.meshes.heightfield.find((m) => m.name === 'TerrainHeightfieldStepped');
       // quality null keeps the device's own (phone) settings. Each measurement comes from the
       // overview, so tiles a finer setting split earlier (kept by the LOD's hysteresis) do not count.
@@ -147,8 +148,9 @@ const DEVICE_BALANCE = String.raw`await idle(); await sleep(500);
         go(overview); await steady();
         go(middle);
         await steady();
-        const m = stepped();
-        return { tris: V.stats.triangles, columns: T.stats.columns, desired: T.stats.desired, height: V.stats.height, whaleShadow: m ? m.castShadow : null };
+        const m = whaleShadow();
+        return { tris: V.stats.triangles, columns: T.stats.columns, desired: T.stats.desired, height: V.stats.height,
+          whaleShadow: m ? m.castShadow && m.visible : null, steppedShadow: stepped()?.castShadow ?? null };
       };`;
 
 
@@ -2007,7 +2009,8 @@ const CHECKS = [
     expect: (v) => [
       ['Balanced draws at most 21M triangles a frame in the middle view (' + (v.balanced.tris / 1e6).toFixed(2) + 'M; High ' + (v.high.tris / 1e6).toFixed(2) + 'M)',
         v.backend !== 'webgpu' || v.balanced.tris <= 21e6],
-      ['the whale rows cast shadows at High and not at Balanced', v.high.whaleShadow === true && v.balanced.whaleShadow === false],
+      ['the whale rows cast shadows at High and not at Balanced, from the smooth surface (the stepped mesh casts none)',
+        v.high.whaleShadow === true && v.balanced.whaleShadow === false && v.high.steppedShadow === false],
       ['at half resolution Balanced draws at most 32,000 columns and wants at most 52 tiles (' + v.half.columns + ', ' + v.half.desired + ', buffer ' + v.half.height + ' px)',
         v.half.height === 900 && v.half.columns <= 32000 && v.half.desired <= 52],
       ['supersampling adds no columns (' + v.double.columns + ' at scale 2, ' + v.balanced.columns + ' at 1)',

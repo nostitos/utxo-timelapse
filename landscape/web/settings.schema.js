@@ -291,7 +291,7 @@ const ENTRIES = [
   { id: 'geo.steppedWhales', section: 'Surface', label: 'Stepped whale rows', type: 'bool', default: true, rebuild: 'material',
     help: 'Draws the whale rows (amounts at or above the whale threshold, 10 BTC by default) as stepped cells while the rest of the surface stays smooth. Large amounts are sparse, and the smooth surface turns a lone tall cell into a pyramid that narrows to a point, so whale spikes break into dotted hairs from a distance; a stepped cell keeps its width to the top, and far away it is widened to at least 1.5 px. Costs about four times the triangles on those rows.' },
   { id: 'geo.whaleShadows', section: 'Surface', label: 'Whale row shadows', type: 'bool', default: true,
-    help: 'The stepped whale rows cast sun shadows. Off, they still receive shadows but the shadow maps skip them, which halves the triangles of a frame that shows the whale rows; only the shadows whale spikes throw on one another go, and those show mainly from behind the landscape. Balanced and Performance turn it off.' },
+    help: 'The whale rows cast sun shadows, from the smooth surface under their stepped cells: a quarter of the stepped cells\' triangles, and a lone spike throws a shadow that narrows toward its tip. Off, they still receive shadows but the shadow maps skip them; only the shadows whale spikes throw on one another go, and those show mainly from behind the landscape. Balanced and Performance turn it off.' },
   { id: 'geo.subdivision', section: 'Surface', label: 'Subdivision', type: 'enum', options: [1, 2, 4],
     optionLabels: { 1: '1x', 2: '2x', 4: '4x' }, default: 1, rebuild: 'terrain',
     help: 'Heightfield vertices per cell edge (more = smoother bicubic surfaces, more triangles).' },

@@ -23,7 +23,7 @@ import { createColumns, NEAR_PX } from './columns.js';
 import { createAxisLabels } from './labels.js';
 import { createFlashes } from './flashes.js';
 import { noGBufferWrites } from '../gbuffer.js';
-import { sunDirection } from '../env.js';
+import { sunDirection, SHADOW_LAYER } from '../env.js';
 
 // Fallback values for ids the settings store might not provide (SPEC §7 defaults).
 export const TERRAIN_DEFAULTS = Object.freeze({
@@ -109,9 +109,11 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     }
     hfLevels.clear();
   }
-  // Whale row shadows off (Balanced, Performance): the whale band's stepped mesh, which holds
-  // about half the triangles of a view along the whale rows, stays out of the shadow maps.
-  const castsShadow = (key) => !(key === 'stepped' && mode && mode.whaleSteps && !get('geo.whaleShadows'));
+  // The whale band's stepped mesh holds about half the triangles of a view along the whale rows,
+  // four times those of its smooth surface, so it never casts shadows: with Whale row shadows on
+  // (High and above) a smooth copy of its patches ('whaleShadow', drawn into the shadow maps
+  // only) casts them.
+  const castsShadow = (key) => (key === 'whaleShadow' ? !!get('geo.whaleShadows') : !(key === 'stepped' && mode && mode.whaleSteps));
   function hfLevel(key) {
     let L = hfLevels.get(key);
     if (!L) {
@@ -128,6 +130,24 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
       object3d.add(m);
       L = { key, sub, inst, geometry, material, mesh: m };
       hfLevels.set(key, L);
+    }
+    return L;
+  }
+  /** The whale band's shadow caster: smooth sub-1 patches on the stepped level's instances. */
+  function whaleShadowLevel() {
+    let L = hfLevels.get('whaleShadow');
+    if (!L) {
+      const S = hfLevel('stepped');
+      const geometry = buildPatchGeometry({ sub: 1, stepped: false });
+      const material = buildTerrainMaterial({ atlas, shading, instances: S.inst, mode: { ...mode, stepped: false, sub: 1, band: 'in' }, view: viewU });
+      const m = createHeightfieldMesh(geometry, material);
+      m.name = 'TerrainHeightfieldWhaleShadow';
+      m.layers.set(SHADOW_LAYER);
+      m.receiveShadow = false;
+      m.castShadow = castsShadow('whaleShadow');
+      object3d.add(m);
+      L = { key: 'whaleShadow', sub: 1, inst: S.inst, geometry, material, mesh: m };
+      hfLevels.set('whaleShadow', L);
     }
     return L;
   }
@@ -282,7 +302,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
         break;
       case 'display.labels': if (labels) labels.setVisible(!!value); break;
       case 'geo.wireframe': for (const L of hfLevels.values()) { L.material.wireframe = !!value; L.material.needsUpdate = true; } break;
-      case 'geo.whaleShadows': { const L = hfLevels.get('stepped'); if (L) L.mesh.castShadow = castsShadow('stepped'); break; }
+      case 'geo.whaleShadows': { const L = hfLevels.get('whaleShadow'); if (L) L.mesh.castShadow = castsShadow('whaleShadow'); break; }
       case 'geo.tileBudget': needs.capacity = true; break;
       case 'amp.nowPlane': nowOpacity.value = value; placeNowPlane(); break;
       case 'amp.flashSize': if (!(value > 0)) flashes.clear(); break;
@@ -516,6 +536,13 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
       counts.set(key, i);
       n += i;
       triangles += i * L.geometry.userData.triangles;
+    }
+    // The whale band's shadows: the stepped patches again, smooth and in the shadow maps only.
+    const steppedCount = mode.whaleSteps ? counts.get('stepped') || 0 : 0;
+    if (steppedCount > 0 || hfLevels.has('whaleShadow')) {
+      const W = steppedCount > 0 ? whaleShadowLevel() : hfLevels.get('whaleShadow');
+      W.geometry.instanceCount = steppedCount;
+      W.mesh.visible = steppedCount > 0 && W.mesh.castShadow;
     }
 
     atlas.flush();
