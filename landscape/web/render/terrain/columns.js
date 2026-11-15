@@ -64,6 +64,12 @@ export const HEAT_TOP = 0.25;
 export const HEAT_SIDE = 0.3;
 const COL_W = 0.064;
 const ROW_D = 0.1;
+/**
+ * A card is as wide as its cell's column seen from the camera, times this: cards side by side in
+ * a row only touched when seen straight along the rows, and the ground showed through the crack
+ * as a thin dark line down the screen.
+ */
+export const CARD_OVERLAP = 1.03;
 
 function boxGeometry() {
   // Unit box x, z in [0, 1], y in [0, 1] without the bottom face: 8 shared corners and
@@ -130,7 +136,7 @@ export function columnGeometry(shape = 'cylinder', sides = 12) {
 }
 
 /**
- * A rectangle (and with cap a square top) in billboard coordinates: x across the column
+ * A rectangle (and with cap a flat top) in billboard coordinates: x across the column
  * (0..1), y up (0..1), z along the direction to the camera (0..1; the rectangle at 0.5).
  */
 export function cardGeometry(cap = true) {
@@ -354,6 +360,15 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
     const w = float(1).sub(uGap).mul(uWidth);
     const sx = w.mul(COL_W);
     const sz = shape === 'cylinder' ? sx : w.mul(ROW_D);
+    // A card's half-width across the view and half-depth along it (t: unit (x, z) toward the
+    // camera): the extent of the column's footprint, an ellipse or a box, in those directions.
+    const cardHalf = (t) => {
+      const A = sx.mul(0.5);
+      const B = sz.mul(0.5);
+      if (shape === 'box') return vec2(A.mul(abs(t.y)).add(B.mul(abs(t.x))).mul(CARD_OVERLAP), A.mul(abs(t.x)).add(B.mul(abs(t.y))));
+      return vec2(sqrt(A.mul(A).mul(t.y.mul(t.y)).add(B.mul(B).mul(t.x.mul(t.x)))).mul(CARD_OVERLAP),
+        sqrt(A.mul(A).mul(t.x.mul(t.x)).add(B.mul(B).mul(t.y.mul(t.y)))));
+    };
     m.positionNode = Fn(() => {
       const r = level.read.element(level.slot);
       const v = atlas.readNode.element(int(r.x));
@@ -367,8 +382,9 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
         const czW = float(row).add(0.5).mul(ROW_D);
         const d = vec2(cameraPosition.x.sub(cxW), cameraPosition.z.sub(czW));
         const t = d.div(max(length(d), 1e-4));
-        const a = p.x.sub(0.5).mul(sx);
-        const b = p.z.sub(0.5).mul(sx);
+        const half = cardHalf(t);
+        const a = p.x.sub(0.5).mul(half.x.mul(2));
+        const b = p.z.sub(0.5).mul(half.y.mul(2));
         return vec3(cxW.add(t.y.mul(a)).add(t.x.mul(b)), p.y.mul(h), czW.sub(t.x.mul(a)).add(t.y.mul(b)));
       }
       const x0 = float(col).add(0.5).mul(COL_W).sub(sx.mul(0.5));
@@ -433,7 +449,7 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
       const d = vec2(cameraPosition.x.sub(cx), cameraPosition.z.sub(cz));
       const t = d.div(max(length(d), 1e-4));
       const r = vec2(t.y, t.x.negate());
-      const u = clamp(dot(vec2(wp.x.sub(cx), wp.z.sub(cz)), r).div(sx.mul(0.5)), -1, 1);
+      const u = clamp(dot(vec2(wp.x.sub(cx), wp.z.sub(cz)), r).div(billboard ? cardHalf(t).x : sx.mul(0.5)), -1, 1);
       const s = sqrt(max(float(1).sub(u.mul(u)), 0));
       const round3 = normalize(vec3(r.x.mul(u).add(t.x.mul(s)), 0, r.y.mul(u).add(t.y.mul(s))));
       m.normalNode = select(side.greaterThan(0.5), transformNormalToView(round3), normalView);

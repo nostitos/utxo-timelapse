@@ -335,7 +335,7 @@ const ENTRIES = [
   { id: 'geo.farColumns', section: 'Columns', label: 'Far columns', type: 'enum', options: ['prism', 'card', 'flat', 'cross'],
     optionLabels: { prism: 'Box', card: 'Card', flat: 'Flat card', cross: 'Cross' },
     default: 'prism', webgpu: true, rebuild: 'material',
-    help: 'How columns narrower than 20 px on screen are drawn (most columns, far from the camera). Box: a 4-sided box shaded round, 12 triangles. Card: one rectangle that turns to face the camera, with a flat top, 4 triangles. Flat card: the rectangle alone, 2 triangles; seen from straight above it thins to nothing. Cross: two crossed rectangles that stay put, 4 triangles. The rectangles are shaded as if round.' },
+    help: 'How columns narrower than 20 px on screen are drawn (most columns, far from the camera). Box: a 4-sided box shaded round, 12 triangles. Card: one rectangle that turns to face the camera, as wide as the column seen from there, with a flat top, 4 triangles. Flat card: the rectangle alone, 2 triangles; seen from straight above it thins to nothing. Cross: two crossed rectangles that stay put, 4 triangles. The rectangles are shaded as if round.' },
   { id: 'geo.farShadows', section: 'Columns', label: 'Far column shadows', type: 'bool', default: true,
     help: 'Far columns (narrower than 20 px on screen) cast sun shadows. Off saves most of the shadow cost of the columns; the near columns and the landscape beyond the columns keep their shadows.' },
 
