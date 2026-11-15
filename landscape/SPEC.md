@@ -503,9 +503,13 @@ column rebuilds and counts, owner colours); the view's idle drawing compares it.
 Terrain owns: GPU tile atlas (storage buffer on WebGPU, texture on WebGL2), page table,
 LOD selection (always drawing the deepest fully resident level so there are no holes or
 overlaps; L6 is always resident), heightfield mesh with skirts, stepped cells (everywhere, or
-on the whale rows only, at least 1.5 px wide far away: `geo.steppedWhales`; with `geo.whaleShadows`
-off the whale rows' stepped mesh casts no shadows),
-smoothing, subdivision, instanced columns, palette LUTs and colour transfer, heat
+on the whale rows only, at least 1.5 px wide far away: `geo.steppedWhales`; their stepped mesh casts no
+shadows: with `geo.whaleShadows` a smooth copy of its patches on layer `SHADOW_LAYER` (render/env.js), which only the
+sun's and the volume's shadow cameras draw, casts the whale rows' shadows),
+smoothing, subdivision, instanced columns (near cylinders, far prisms or `geo.farColumns`, and beyond them
+shadowless camera-facing cards on resident L0 tiles out to `geo.cardPixels`, with the heightfield hidden under all
+three; the compute pass lists only cells inside the view's side planes or, for shadow-casting levels, whose column swept
+away from the sun reaches them), palette LUTs and colour transfer, heat
 emissive and flash sprites, creation-edge glow, now plane, grid, axis labels
 (HTML positioned by projection into `labelsElement`), CPU tile copies for picking.
 Terrain materials are NodeMaterials (`MeshStandardNodeMaterial`) so lights, shadows
@@ -660,7 +664,7 @@ ui_settings with the consumers):
 - Geometry: `geo.smoothing` (none, bilinear, bicubic), `geo.stepped`, `geo.steppedWhales`, `geo.whaleShadows`,
   `geo.subdivision` (1, 2, 4), `geo.columns`, `geo.columnShape` (cylinder, oval, box),
   `geo.cylinderSides` (6–32),
-  `geo.columnRadius` (L0 cells), `geo.columnPixels` (px),
+  `geo.columnRadius` (L0 cells), `geo.columnPixels` (px), `geo.cardPixels` (px, 0 = off),
   `geo.instanceBudget` (≤ 8,000,000), `geo.columnGap`, `geo.columnWidth` (1–4×), `geo.farColumns` (prism, card, flat,
   cross), `geo.farShadows`, `geo.lodBias`,
   `geo.pixelsPerCell`, `geo.tileBudget` (32–400), `geo.uniform`, `geo.uniformLevel` (0–4), `geo.skirts`,
@@ -719,8 +723,8 @@ default since 2026-10-09) it measures about 35–40 fps in close and middle view
 budgets, subdivision 2). Cylinder detail falls toward Performance: Column detail 4 px on
 High and above, 6 px on Balanced, 12 px with 8 sides and at most 250,000 stacks on
 Performance; BitcoinTimelapse.com draws stepped cells without cylinders.
-Balanced and Performance keep the stepped whale rows out of the shadow maps
-(`geo.whaleShadows` off), about half the triangles of a frame that shows them, and Performance keeps
+Balanced and Performance keep the whale rows out of the shadow maps
+(`geo.whaleShadows` off; on, a smooth copy casts them at a quarter of the stepped mesh's triangles), and Performance keeps
 64 resident tiles (96 until November 2026; settings saved before revision 2 move with it).
 
 Consumers: worker ← `amp.measure`, `color.measure`, `amp.heatHalfLife`,

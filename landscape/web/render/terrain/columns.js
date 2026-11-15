@@ -15,9 +15,17 @@
 // and the box leave no ground between occupied cells. When the occupied cells exceed
 // geo.instanceBudget, the disc shrinks (measured by an asynchronous read of the counter) so the
 // heightfield never shows holes, and it grows back toward the budget while there is room.
+// Beyond the disc, a ring of cards (one rectangle per occupied cell, turned to the camera, 4
+// triangles) reaches to geo.cardPixels on resident L0 tiles, so the columns do not end in a
+// visible line where the smooth heightfield would turn lone cells into pyramids. The cards have
+// their own buffer and budget; the heightfield hides itself under them as under the columns.
+// Only cells whose column can show are listed: inside the view's four side planes, or, for a
+// level that casts shadows, with its shadow (the column swept away from the sun, up to the
+// ground or twice the disc radius) reaching into the view. Off-screen cells stay under the
+// heightfield's mask, so nothing shows there either way.
 import {
   Group, InstancedBufferGeometry, BufferAttribute, Mesh, StorageBufferAttribute, IndirectStorageBufferAttribute,
-  Vector2, DoubleSide, FrontSide,
+  Vector2, Vector3, Vector4, DoubleSide, FrontSide,
 } from 'three/webgpu';
 import {
   Fn, uniform, int, uint, float, vec3, vec4, uvec2, storage, instanceIndex, atomicAdd, atomicLoad,
@@ -56,6 +64,12 @@ export const HEAT_TOP = 0.25;
 export const HEAT_SIDE = 0.3;
 const COL_W = 0.064;
 const ROW_D = 0.1;
+/**
+ * A card is as wide as its cell's column seen from the camera, times this: cards side by side in
+ * a row only touched when seen straight along the rows, and the ground showed through the crack
+ * as a thin dark line down the screen.
+ */
+export const CARD_OVERLAP = 1.03;
 
 function boxGeometry() {
   // Unit box x, z in [0, 1], y in [0, 1] without the bottom face: 8 shared corners and
@@ -122,7 +136,7 @@ export function columnGeometry(shape = 'cylinder', sides = 12) {
 }
 
 /**
- * A rectangle (and with cap a square top) in billboard coordinates: x across the column
+ * A rectangle (and with cap a flat top) in billboard coordinates: x across the column
  * (0..1), y up (0..1), z along the direction to the camera (0..1; the rectangle at 0.5).
  */
 export function cardGeometry(cap = true) {
@@ -171,33 +185,56 @@ export function columnLevels(shape, sides) {
   return { near: S, far: Math.min(S, FAR_SIDES) };
 }
 
+/** The disc's radius cap after reading back how many cells it needed (Infinity: no cap). */
+export function adaptCells(cap, asked, requested, needed, budget) {
+  if (needed > budget) return Math.max(8, asked * Math.sqrt((FILL * budget) / needed));
+  if (Number.isFinite(cap) && asked >= cap - 1e-6 && needed < GROW_BELOW * budget) {
+    const next = asked * Math.min(GROW_MAX, Math.sqrt((FILL * budget) / Math.max(1, needed)));
+    return next >= requested ? Infinity : next;
+  }
+  return cap;
+}
+
 export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000000 }) {
   const U = shading.uniforms;
   const budgetCap = Math.max(1, maxBudget | 0);
+  // shortcut: cards hold at most 4M cells (32 MB); they are frustum-limited, so a view needs far fewer.
+  const cardCap = Math.min(budgetCap, 4000000);
   const tilesAttr = new StorageBufferAttribute(new Float32Array(MAX_COLUMN_TILES * 4), 4);
-  const counterAttr = new StorageBufferAttribute(new Uint32Array(3), 1); // total, near, far
+  const counterAttr = new StorageBufferAttribute(new Uint32Array(4), 1); // total, near, far, cards
   const instAttr = new StorageBufferAttribute(new Uint32Array(budgetCap * 2), 2);
+  const cardAttr = new StorageBufferAttribute(new Uint32Array(cardCap * 2), 2);
 
   const uFocus = uniform(new Vector2());
   const uEye = uniform(new Vector2());
   const uR2 = uniform(0);
+  const uOut2 = uniform(0); // cards to here (at least uR2)
   const uNear2 = uniform(0);
   const uBudget = uniform(0, 'uint');
+  const uCardBudget = uniform(0, 'uint');
   const uGap = uniform(0);
   const uWidth = uniform(1);
+  // View side planes (n.p + d >= 0 inside), the direction toward the sun, the longest shadow
+  // counted, and which levels cast shadows (near, far).
+  const uPlanes = [0, 1, 2, 3].map(() => uniform(new Vector4()));
+  const uSun = uniform(new Vector3(0, 1, 0));
+  const uShadowMax = uniform(0);
+  const uCasts = uniform(new Vector2());
 
   const tilesNode = storage(tilesAttr, 'vec4', MAX_COLUMN_TILES).toReadOnly();
-  const counterAtomic = storage(counterAttr, 'uint', 3).toAtomic();
+  const counterAtomic = storage(counterAttr, 'uint', 4).toAtomic();
   const instWrite = storage(instAttr, 'uvec2', budgetCap);
   const instRead = storage(instAttr, 'uvec2', budgetCap).toReadOnly();
+  const cardWrite = storage(cardAttr, 'uvec2', cardCap);
+  const cardRead = storage(cardAttr, 'uvec2', cardCap).toReadOnly();
 
-  // One level of detail: its own geometry, indirect arguments and mesh.
-  function makeLevel(name, first) {
-    const geometry = columnGeometry('cylinder', first);
+  // One level of detail: its own geometry, indirect arguments and mesh; it reads its instance
+  // list from read at slot.
+  function makeLevel(name, geometry, read, slot) {
     const args = new IndirectStorageBufferAttribute(new Uint32Array([geometry.index.count, 0, 0, 0, 0]), 1);
     const level = {
       name, geometry, args, argsNode: storage(args, 'uint', 5), indexCount: uniform(geometry.index.count, 'uint'),
-      mesh: new Mesh(geometry, null), material: null,
+      mesh: new Mesh(geometry, null), material: null, read, slot,
     };
     level.adopt = (g) => {
       g.setIndirect(args);
@@ -214,11 +251,13 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
     level.mesh.receiveShadow = true;
     return level;
   }
-  const near = makeLevel('Near', 12);
-  const far = makeLevel('Far', FAR_SIDES);
+  const near = makeLevel('Near', columnGeometry('cylinder', 12), instRead, instanceIndex);
+  // The far list fills the instance buffer from its end.
+  const far = makeLevel('Far', columnGeometry('cylinder', FAR_SIDES), instRead, uint(budgetCap - 1).sub(instanceIndex));
+  const card = makeLevel('Card', cardGeometry(true), cardRead, instanceIndex);
   const group = new Group();
   group.name = 'TerrainColumns';
-  group.add(near.mesh, far.mesh);
+  group.add(near.mesh, far.mesh, card.mesh);
   group.visible = false;
 
   let append = null;
@@ -236,7 +275,20 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
       const row = row0.add(ly);
       const cz = float(row).add(0.5).mul(ROW_D).sub(uFocus.y);
       const cz2 = cz.mul(cz).toVar();
-      If(cz2.lessThan(uR2), () => {
+      // Whether a column at world (x, z) of height h, plus its shadow when casts is 1, can show.
+      const shows = (x, z, h, casts) => {
+        const s = min(select(uSun.y.greaterThan(0.02), h.div(uSun.y), uShadowMax), uShadowMax).mul(casts);
+        const m = uWidth.mul(0.06).add(0.02);
+        let ok = null;
+        for (const p of uPlanes) {
+          const b = p.x.mul(x).add(p.z.mul(z)).add(p.w);
+          const reach = b.add(max(p.y.mul(h), 0)).add(max(s.mul(dot(p.xyz, uSun)).negate(), 0));
+          const inside = reach.greaterThan(m.negate());
+          ok = ok ? ok.and(inside) : inside;
+        }
+        return ok;
+      };
+      If(cz2.lessThan(uOut2), () => {
         Loop(256, ({ i }) => {
           const lx = int(i);
           const raw = atlasRead.element(rowBase.add(lx));
@@ -244,19 +296,30 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
             const col = col0.add(lx);
             const cx = float(col).add(0.5).mul(COL_W).sub(uFocus.x);
             const d2 = cx.mul(cx).add(cz2).toVar();
+            const wx = float(col).add(0.5).mul(COL_W);
+            const wz = float(row).add(0.5).mul(ROW_D);
+            const h = shading.heightOf(raw.x, float(row)).toVar();
+            const ref = uvec2(uint(rowBase.add(lx)), uint(col).mul(uint(4096)).add(uint(row)));
             If(d2.lessThan(uR2), () => {
-              const t = atomicAdd(counterAtomic.element(0), uint(1)).toVar();
-              If(t.lessThan(uBudget), () => {
-                const ref = uvec2(uint(rowBase.add(lx)), uint(col).mul(uint(4096)).add(uint(row)));
-                const ex = float(col).add(0.5).mul(COL_W).sub(uEye.x);
-                const ez = float(row).add(0.5).mul(ROW_D).sub(uEye.y);
-                If(ex.mul(ex).add(ez.mul(ez)).lessThan(uNear2), () => {
+              const ex = wx.sub(uEye.x);
+              const ez = wz.sub(uEye.y);
+              const isNear = ex.mul(ex).add(ez.mul(ez)).lessThan(uNear2).toVar();
+              If(shows(wx, wz, h, select(isNear, uCasts.x, uCasts.y)), () => {
+                const t = atomicAdd(counterAtomic.element(0), uint(1)).toVar();
+                If(t.lessThan(uBudget), () => {
+                  If(isNear, () => {
                   const k = atomicAdd(counterAtomic.element(1), uint(1));
                   instWrite.element(k).assign(ref);
                 }).Else(() => {
                   const k = atomicAdd(counterAtomic.element(2), uint(1));
                   instWrite.element(uint(budgetCap - 1).sub(k)).assign(ref);
                 });
+                });
+              });
+            }).ElseIf(d2.lessThan(uOut2).and(shows(wx, wz, h, float(0))), () => {
+              const k = atomicAdd(counterAtomic.element(3), uint(1)).toVar();
+              If(k.lessThan(uCardBudget), () => {
+                cardWrite.element(k).assign(ref);
               });
             });
           });
@@ -271,22 +334,24 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
     near.argsNode.element(1).assign(atomicLoad(counterAtomic.element(1)));
     far.argsNode.element(0).assign(far.indexCount);
     far.argsNode.element(1).assign(atomicLoad(counterAtomic.element(2)));
+    card.argsNode.element(0).assign(card.indexCount);
+    card.argsNode.element(1).assign(min(atomicLoad(counterAtomic.element(3)), uCardBudget));
   })().compute(1, [1]);
   finalize.name = 'terrainColumnsFinalize';
 
   function buildMaterial(shape, level, farStyle = 'prism') {
     // The far level's rectangles (card, flat, cross) are drawn from both sides and shaded
-    // round from the camera; the prism and the near level keep their own faces.
-    const style = level === far && FAR_STYLES.includes(farStyle) ? farStyle : 'prism';
+    // round from the camera; the prism and the near level keep their own faces. The card level
+    // is always cards.
+    let style = level === far && FAR_STYLES.includes(farStyle) ? farStyle : 'prism';
+    if (level === card) style = 'card';
     const billboard = style === 'card' || style === 'flat';
     const m = new TerrainNodeMaterial();
     m.name = 'TerrainColumns' + level.name;
     m.fog = true;
     m.flatShading = true;
     m.side = style === 'prism' ? FrontSide : DoubleSide;
-    // The far list fills the instance buffer from its end.
-    const slot = level === near ? instanceIndex : uint(budgetCap - 1).sub(instanceIndex);
-    const ref = instRead.element(slot);
+    const ref = level.read.element(level.slot);
     const raw = atlas.readNode.element(int(ref.x));
     // Footprint (world units): an oval or a box filling the cell, or a round cylinder as wide as
     // the cell (its narrower side, 64 blocks); geo.columnGap (0 by default) trims a margin and
@@ -295,8 +360,17 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
     const w = float(1).sub(uGap).mul(uWidth);
     const sx = w.mul(COL_W);
     const sz = shape === 'cylinder' ? sx : w.mul(ROW_D);
+    // A card's half-width across the view and half-depth along it (t: unit (x, z) toward the
+    // camera): the extent of the column's footprint, an ellipse or a box, in those directions.
+    const cardHalf = (t) => {
+      const A = sx.mul(0.5);
+      const B = sz.mul(0.5);
+      if (shape === 'box') return vec2(A.mul(abs(t.y)).add(B.mul(abs(t.x))).mul(CARD_OVERLAP), A.mul(abs(t.x)).add(B.mul(abs(t.y))));
+      return vec2(sqrt(A.mul(A).mul(t.y.mul(t.y)).add(B.mul(B).mul(t.x.mul(t.x)))).mul(CARD_OVERLAP),
+        sqrt(A.mul(A).mul(t.x.mul(t.x)).add(B.mul(B).mul(t.y.mul(t.y)))));
+    };
     m.positionNode = Fn(() => {
-      const r = instRead.element(slot);
+      const r = level.read.element(level.slot);
       const v = atlas.readNode.element(int(r.x));
       const col = r.y.div(uint(4096));
       const row = r.y.mod(uint(4096));
@@ -308,8 +382,9 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
         const czW = float(row).add(0.5).mul(ROW_D);
         const d = vec2(cameraPosition.x.sub(cxW), cameraPosition.z.sub(czW));
         const t = d.div(max(length(d), 1e-4));
-        const a = p.x.sub(0.5).mul(sx);
-        const b = p.z.sub(0.5).mul(sx);
+        const half = cardHalf(t);
+        const a = p.x.sub(0.5).mul(half.x.mul(2));
+        const b = p.z.sub(0.5).mul(half.y.mul(2));
         return vec3(cxW.add(t.y.mul(a)).add(t.x.mul(b)), p.y.mul(h), czW.sub(t.x.mul(a)).add(t.y.mul(b)));
       }
       const x0 = float(col).add(0.5).mul(COL_W).sub(sx.mul(0.5));
@@ -374,7 +449,7 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
       const d = vec2(cameraPosition.x.sub(cx), cameraPosition.z.sub(cz));
       const t = d.div(max(length(d), 1e-4));
       const r = vec2(t.y, t.x.negate());
-      const u = clamp(dot(vec2(wp.x.sub(cx), wp.z.sub(cz)), r).div(sx.mul(0.5)), -1, 1);
+      const u = clamp(dot(vec2(wp.x.sub(cx), wp.z.sub(cz)), r).div(billboard ? cardHalf(t).x : sx.mul(0.5)), -1, 1);
       const s = sqrt(max(float(1).sub(u.mul(u)), 0));
       const round3 = normalize(vec3(r.x.mul(u).add(t.x.mul(s)), 0, r.y.mul(u).add(t.y.mul(s))));
       m.normalNode = select(side.greaterThan(0.5), transformNormalToView(round3), normalView);
@@ -403,11 +478,12 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
   const state = { tiles: 0, candidates: 0, key: '', needed: 0, drawn: 0, near: 0, far: 0, readPending: false,
     dispatches: 0, radiusCells: 0, effectiveCells: 0, budgetCells: Infinity, enabled: false, shape: 'cylinder',
     sides: 12, farSides: FAR_SIDES, farStyle: 'prism', farShadows: true, budget: 0,
-    trianglesPerColumn: near.geometry.userData.triangles, trianglesFar: far.geometry.userData.triangles };
+    trianglesPerColumn: near.geometry.userData.triangles, trianglesFar: far.geometry.userData.triangles,
+    cards: 0, cardsNeeded: 0, cardRequested: 0, cardCells: 0, cardBudgetCells: Infinity, trianglesCard: card.geometry.userData.triangles };
   let built = { shape: 'cylinder', near: 12, far: FAR_SIDES, farStyle: 'prism' };
 
   function setMaterials() {
-    for (const level of [near, far]) {
+    for (const level of [near, far, card]) {
       if (level.material) level.material.dispose();
       level.material = buildMaterial(built.shape, level, built.farStyle);
       level.mesh.material = level.material;
@@ -443,10 +519,13 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
    * outside the landscape); radiusCells: disc radius in L0 column widths (0 = no columns);
    * nearCells: radius of the full-detail cylinders around eye ([x, z], default focus); shape:
    * 'cylinder' | 'oval' | 'box'; sides: cylinder sides; farStyle: one of FAR_STYLES; farShadows:
-   * whether the far level casts shadows.
+   * whether the far level casts shadows; cardCells: radius of the card ring around the disc
+   * (L0 column widths; at most radiusCells draws none); cardShadows: whether the cards cast shadows;
+   * planes: the view's side planes (16 numbers, [nx, ny, nz, d] each, inside where n.p + d >= 0;
+   * null lists off-screen cells too); sun: unit vector toward the sun while shadows are cast, or null.
    */
   function update({ enabled, focus, eye = focus, radiusCells, nearCells = Infinity, budget, gap, width = 1, dataVersion, shape = 'cylinder',
-    sides = 12, farStyle = 'prism', farShadows = true }) {
+    sides = 12, farStyle = 'prism', farShadows = true, cardCells = 0, cardShadows = false, planes = null, sun = null }) {
     uGap.value = gap;
     uWidth.value = width;
     state.enabled = !!enabled;
@@ -459,25 +538,31 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
     ensureBuilt(COLUMN_SHAPES.includes(shape) ? shape : 'cylinder', sides, FAR_STYLES.includes(farStyle) ? farStyle : 'prism');
     far.mesh.castShadow = farShadows !== false;
     state.farShadows = far.mesh.castShadow;
+    card.mesh.castShadow = !!cardShadows;
     state.budget = Math.min(budget, budgetCap);
     // The requested radius follows the camera; budgetCells is the radius the instance budget
     // allows, learned from the counter read back after each rebuild.
     state.radiusCells = Math.max(0, radiusCells);
     state.effectiveCells = Math.min(state.radiusCells, state.budgetCells);
+    // The cards have their own budget (the same size, in their own buffer) and radius cap.
+    state.cardRequested = Math.max(0, cardCells);
+    state.cardCells = Math.max(state.effectiveCells, Math.min(state.cardRequested, state.cardBudgetCells));
     const R = state.effectiveCells * COL_W;
     const Rn = Math.min(state.effectiveCells, Math.max(0, nearCells)) * COL_W;
-    U.columnFocus.value.set(focus[0], focus[1], R);
-    if (!(R > 0)) {
+    const Rout = state.cardCells * COL_W;
+    U.columnFocus.value.set(focus[0], focus[1], Rout);
+    if (!(Rout > 0)) {
       group.visible = false;
       state.tiles = 0;
       state.drawn = 0;
+      state.cards = 0;
       return;
     }
     const L0 = grid.levels[0];
-    const c0 = Math.max(0, Math.floor(Math.floor((focus[0] - R) / COL_W) / 256));
-    const c1 = Math.min(L0.tilesX - 1, Math.floor(Math.floor((focus[0] + R) / COL_W) / 256));
-    const r0 = Math.max(0, Math.floor(Math.floor((focus[1] - R) / ROW_D) / 256));
-    const r1 = Math.min(L0.tilesY - 1, Math.floor(Math.floor((focus[1] + R) / ROW_D) / 256));
+    const c0 = Math.max(0, Math.floor(Math.floor((focus[0] - Rout) / COL_W) / 256));
+    const c1 = Math.min(L0.tilesX - 1, Math.floor(Math.floor((focus[0] + Rout) / COL_W) / 256));
+    const r0 = Math.max(0, Math.floor(Math.floor((focus[1] - Rout) / ROW_D) / 256));
+    const r1 = Math.min(L0.tilesY - 1, Math.floor(Math.floor((focus[1] + Rout) / ROW_D) / 256));
     const T = tilesAttr.array;
     let n = 0;
     let ids = '';
@@ -493,7 +578,7 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
         const z1 = (t.row0 + t.rows) * ROW_D;
         const dx = Math.max(x0 - focus[0], 0, focus[0] - x1);
         const dz = Math.max(z0 - focus[1], 0, focus[1] - z1);
-        if (dx * dx + dz * dz >= R * R) continue;
+        if (dx * dx + dz * dz >= Rout * Rout) continue;
         T[n * 4] = s;
         T[n * 4 + 1] = t.col0;
         T[n * 4 + 2] = t.row0;
@@ -506,10 +591,13 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
     group.visible = n > 0;
     if (!n) {
       state.drawn = 0;
+      state.cards = 0;
       return;
     }
     const key = ids + '|' + focus[0].toFixed(3) + ',' + focus[1].toFixed(3) + '|' + eye[0].toFixed(3) + ',' + eye[1].toFixed(3) +
-      '|' + R.toFixed(3) + '|' + Rn.toFixed(3) + '|' + budget + '|' + dataVersion;
+      '|' + R.toFixed(3) + '|' + Rn.toFixed(3) + '|' + Rout.toFixed(3) + '|' + budget + '|' + dataVersion +
+      '|' + (planes ? Array.from(planes.slice(0, 16), (v) => v.toFixed(4)).join() : '') + '|' + (sun ? sun.map((v) => v.toFixed(3)).join() : '') +
+      '|' + far.mesh.castShadow + '|' + width;
     if (key === state.key) return;
     state.key = key;
     tilesAttr.clearUpdateRanges();
@@ -518,10 +606,16 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
     counterAttr.array.fill(0);
     counterAttr.needsUpdate = true;
     uR2.value = R * R;
+    uOut2.value = Rout * Rout;
     uNear2.value = Rn * Rn;
     uBudget.value = Math.min(budget, budgetCap);
+    uCardBudget.value = Math.min(budget, cardCap);
     uFocus.value.set(focus[0], focus[1]);
     uEye.value.set(eye[0], eye[1]);
+    uPlanes.forEach((u, i) => (planes ? u.value.fromArray(planes, i * 4) : u.value.set(0, 0, 0, 1)));
+    uSun.value.set(...(sun || [0, 1, 0]));
+    uShadowMax.value = sun ? 2 * Rout : 0;
+    uCasts.value.set(sun ? 1 : 0, sun && far.mesh.castShadow ? 1 : 0);
     append.count = n * 256;
     state.candidates = n * 65536;
     renderer.compute(append);
@@ -530,8 +624,11 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
     if (!state.readPending && renderer.getArrayBufferAsync) {
       state.readPending = true;
       const b = Math.min(budget, budgetCap);
+      const cb = Math.min(budget, cardCap);
       const asked = state.effectiveCells;
       const requested = state.radiusCells;
+      const askedCards = state.cardCells;
+      const requestedCards = state.cardRequested;
       const dispatch = state.dispatches;
       renderer.getArrayBufferAsync(counterAttr).then((buf) => {
         const c = new Uint32Array(buf);
@@ -539,21 +636,22 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
         state.needed = needed;
         state.near = c[1];
         state.far = c[2];
+        state.cardsNeeded = c[3];
+        state.cards = Math.min(c[3], cb);
         near.drawn = c[1];
         far.drawn = c[2];
+        card.drawn = state.cards;
         near.mesh.geometry.instanceCount = Math.max(1, c[1]);
         far.mesh.geometry.instanceCount = Math.max(1, c[2]);
+        card.mesh.geometry.instanceCount = Math.max(1, state.cards);
         state.drawn = Math.min(needed, b);
         // Keep every masked cell covered: shrink when over budget; while the budget limits the
         // disc and leaves room, grow it back toward FILL of the budget. Columns are not spread
         // evenly (the disc runs past the landscape's edges), so each step uses the measured count
-        // and growth is capped per step; the next rebuild measures again.
-        if (needed > b) {
-          state.budgetCells = Math.max(8, asked * Math.sqrt((FILL * b) / needed));
-        } else if (Number.isFinite(state.budgetCells) && asked >= state.budgetCells - 1e-6 && needed < GROW_BELOW * b) {
-          const next = asked * Math.min(GROW_MAX, Math.sqrt((FILL * b) / Math.max(1, needed)));
-          state.budgetCells = next >= requested ? Infinity : next;
-        }
+        // and growth is capped per step; the next rebuild measures again. The card ring does the
+        // same with its outer radius (its count covers the ring only, so this is conservative).
+        state.budgetCells = adaptCells(state.budgetCells, asked, requested, needed, b);
+        if (requestedCards > asked) state.cardBudgetCells = adaptCells(state.cardBudgetCells, askedCards, requestedCards, c[3], cb);
         // Rebuilt while this count was read: rebuild once more so the latest disc is measured.
         if (dispatch !== state.dispatches) state.key = '';
         state.readPending = false;
@@ -564,8 +662,10 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
   function dispose() {
     near.geometry.dispose();
     far.geometry.dispose();
+    card.geometry.dispose();
     near.material?.dispose();
     far.material?.dispose();
+    card.material?.dispose();
   }
 
   return { mesh: group, update, state, dispose, budgetCap };

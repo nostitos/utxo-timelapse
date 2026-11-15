@@ -23,6 +23,7 @@ import { createColumns, NEAR_PX } from './columns.js';
 import { createAxisLabels } from './labels.js';
 import { createFlashes } from './flashes.js';
 import { noGBufferWrites } from '../gbuffer.js';
+import { sunDirection, SHADOW_LAYER } from '../env.js';
 
 // Fallback values for ids the settings store might not provide (SPEC §7 defaults).
 export const TERRAIN_DEFAULTS = Object.freeze({
@@ -38,7 +39,7 @@ export const TERRAIN_DEFAULTS = Object.freeze({
   'geo.uniform': false, 'geo.uniformLevel': 1,
   'geo.columnRadius': 4096, 'geo.instanceBudget': 1000000, 'geo.columnGap': 0, 'geo.columnWidth': 1, 'geo.lodBias': 0,
   'geo.columnShape': 'oval', 'geo.cylinderSides': 12, 'geo.farColumns': 'prism', 'geo.farShadows': true,
-  'geo.columnPixels': 4,
+  'geo.columnPixels': 4, 'geo.cardPixels': 2,
   'geo.pixelsPerCell': 3, 'geo.tileBudget': 225, 'geo.skirts': true, 'geo.wireframe': false,
   'light.emissive': 0.4, 'light.albedo': 0.85, 'light.rim': 0.35, 'light.rimColor': '#99bbff',
   'light.roughness': 0.65, 'light.metalness': 0.05, 'light.floorReflection': 0,
@@ -108,9 +109,11 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     }
     hfLevels.clear();
   }
-  // Whale row shadows off (Balanced, Performance): the whale band's stepped mesh, which holds
-  // about half the triangles of a view along the whale rows, stays out of the shadow maps.
-  const castsShadow = (key) => !(key === 'stepped' && mode && mode.whaleSteps && !get('geo.whaleShadows'));
+  // The whale band's stepped mesh holds about half the triangles of a view along the whale rows,
+  // four times those of its smooth surface, so it never casts shadows: with Whale row shadows on
+  // (High and above) a smooth copy of its patches ('whaleShadow', drawn into the shadow maps
+  // only) casts them.
+  const castsShadow = (key) => (key === 'whaleShadow' ? !!get('geo.whaleShadows') : !(key === 'stepped' && mode && mode.whaleSteps));
   function hfLevel(key) {
     let L = hfLevels.get(key);
     if (!L) {
@@ -127,6 +130,24 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
       object3d.add(m);
       L = { key, sub, inst, geometry, material, mesh: m };
       hfLevels.set(key, L);
+    }
+    return L;
+  }
+  /** The whale band's shadow caster: smooth sub-1 patches on the stepped level's instances. */
+  function whaleShadowLevel() {
+    let L = hfLevels.get('whaleShadow');
+    if (!L) {
+      const S = hfLevel('stepped');
+      const geometry = buildPatchGeometry({ sub: 1, stepped: false });
+      const material = buildTerrainMaterial({ atlas, shading, instances: S.inst, mode: { ...mode, stepped: false, sub: 1, band: 'in' }, view: viewU });
+      const m = createHeightfieldMesh(geometry, material);
+      m.name = 'TerrainHeightfieldWhaleShadow';
+      m.layers.set(SHADOW_LAYER);
+      m.receiveShadow = false;
+      m.castShadow = castsShadow('whaleShadow');
+      object3d.add(m);
+      L = { key: 'whaleShadow', sub: 1, inst: S.inst, geometry, material, mesh: m };
+      hfLevels.set('whaleShadow', L);
     }
     return L;
   }
@@ -231,7 +252,8 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
    * shape to show, and the stepped heightfield draws them. Measured from the ground under
    * the camera, that is a disc of radius sqrt(dMax^2 - h^2) around it (h = height above the
    * terrain there), capped by geo.columnRadius. Cells at least NEAR_PX wide get the full
-   * cylinder (nearCells). Returns {focus: [x, z], radiusCells, nearCells}.
+   * cylinder (nearCells). Cards continue to cells geo.cardPixels wide (cardCells; 0 = off).
+   * Returns {focus: [x, z], radiusCells, nearCells, cardCells}.
    */
   function columnRegion(cam, projScale) {
     const o = cam.position;
@@ -241,7 +263,9 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
       return d > h ? Math.sqrt(d * d - h * h) / 0.064 : 0;
     };
     const px = get('geo.columnPixels') / aheadReach;
-    return { focus: [o.x, o.z], eye: [o.x, o.z], radiusCells: Math.min(get('geo.columnRadius'), reach(px)), nearCells: reach(NEAR_PX) };
+    const cardPx = get('geo.cardPixels') / aheadReach;
+    return { focus: [o.x, o.z], eye: [o.x, o.z], radiusCells: Math.min(get('geo.columnRadius'), reach(px)), nearCells: reach(NEAR_PX),
+      cardCells: cardPx > 0 ? Math.min(get('geo.columnRadius'), reach(cardPx)) : 0 };
   }
 
   // Detail ahead (plane mode): the column disc reaches "reach" times farther (cells down to
@@ -278,7 +302,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
         break;
       case 'display.labels': if (labels) labels.setVisible(!!value); break;
       case 'geo.wireframe': for (const L of hfLevels.values()) { L.material.wireframe = !!value; L.material.needsUpdate = true; } break;
-      case 'geo.whaleShadows': { const L = hfLevels.get('stepped'); if (L) L.mesh.castShadow = castsShadow('stepped'); break; }
+      case 'geo.whaleShadows': { const L = hfLevels.get('whaleShadow'); if (L) L.mesh.castShadow = castsShadow('whaleShadow'); break; }
       case 'geo.tileBudget': needs.capacity = true; break;
       case 'amp.nowPlane': nowOpacity.value = value; placeNowPlane(); break;
       case 'amp.flashSize': if (!(value > 0)) flashes.clear(); break;
@@ -375,6 +399,8 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     // reaches, also when Column distance asks for cells smaller than the terrain's detail.
     const region = mode.columns ? columnRegion(cam, projScale) : null;
     const colR = region ? Math.min(region.radiusCells, columns ? columns.state.budgetCells : Infinity) * 0.064 : 0;
+    // The card ring hides the heightfield out to its radius; it adds no tiles (resident L0 only).
+    const outR = region ? Math.max(colR, Math.min(region.cardCells, columns ? columns.state.cardBudgetCells : Infinity) * 0.064) : 0;
     if (region) moveRegionAhead(region, cam, colR);
     const mustRefine = colR > 0
       ? (id) => {
@@ -401,7 +427,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     const whiteRow = mode.whaleSteps ? shading.heightParams().whiteRow : -1;
     const L0 = grid.levels[0];
     const insideColumns = (t, px, py) => {
-      if (!(colR > 0)) return false;
+      if (!(outR > 0)) return false;
       const { cw, ch } = cellSize(grid, t.level);
       const x0 = (t.col0 + px * PATCH_CELLS) * cw;
       const z0 = (t.row0 + py * PATCH_CELLS) * ch;
@@ -409,7 +435,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
       const z1 = (t.row0 + Math.min(t.rows, (py + 1) * PATCH_CELLS)) * ch;
       const fx = Math.max(Math.abs(x0 - region.focus[0]), Math.abs(x1 - region.focus[0]));
       const fz = Math.max(Math.abs(z0 - region.focus[1]), Math.abs(z1 - region.focus[1]));
-      if (fx * fx + fz * fz >= colR * colR) return false;
+      if (fx * fx + fz * fz >= outR * outR) return false;
       if (t.level === 0) return true;
       // A coarser patch hides only where every L0 tile under it is resident (the mask's test).
       const tx0 = Math.floor(x0 / 0.064 / 256);
@@ -511,6 +537,13 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
       n += i;
       triangles += i * L.geometry.userData.triangles;
     }
+    // The whale band's shadows: the stepped patches again, smooth and in the shadow maps only.
+    const steppedCount = mode.whaleSteps ? counts.get('stepped') || 0 : 0;
+    if (steppedCount > 0 || hfLevels.has('whaleShadow')) {
+      const W = steppedCount > 0 ? whaleShadowLevel() : hfLevels.get('whaleShadow');
+      W.geometry.instanceCount = steppedCount;
+      W.mesh.visible = steppedCount > 0 && W.mesh.castShadow;
+    }
 
     atlas.flush();
     if (mode.columns) {
@@ -519,6 +552,9 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
         budget: Math.round(get('geo.instanceBudget')), gap: get('geo.columnGap'), width: get('geo.columnWidth'), dataVersion: atlas.version,
         shape: get('geo.columnShape'), sides: Number(get('geo.cylinderSides')),
         farStyle: get('geo.farColumns'), farShadows: !!get('geo.farShadows'),
+        cardCells: region.cardCells, planes,
+        // Off-screen columns stay listed while their shadow can reach the view.
+        sun: get('light.shadows') ? sunDirection(Number(get('light.sunAzimuth')), Number(get('light.sunElevation'))).toArray() : null,
       });
     } else if (columns) {
       columns.update({ enabled: false, gap: get('geo.columnGap') });
@@ -536,6 +572,8 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     flashes.update(performance.now(), 1 / projScale);
     stats.flashes = flashes.stats.active;
     stats.columns = columns && mode.columns ? columns.state.drawn : 0;
+    stats.cards = columns && mode.columns ? columns.state.cards : 0;
+    stats.cardRadius = columns && mode.columns && columns.state.cards > 0 ? columns.state.cardCells : 0;
     stats.columnTiles = columns && mode.columns ? columns.state.tiles : 0;
     stats.columnRadius = columns && mode.columns ? columns.state.effectiveCells : 0;
     // What the column disc asked for and how many columns it needed (the budget may cut it).
@@ -558,7 +596,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
     stats.desired = sel.desired.length;
     stats.columnShape = columns && mode.columns ? columns.state.shape : null;
     const cs = columns && mode.columns && columns.state.tiles > 0 ? columns.state : null;
-    stats.triangles = triangles + (cs ? cs.near * cs.trianglesPerColumn + cs.far * cs.trianglesFar : 0);
+    stats.triangles = triangles + (cs ? cs.near * cs.trianglesPerColumn + cs.far * cs.trianglesFar + cs.cards * cs.trianglesCard : 0);
     stats.patchesBySub = { 1: counts.get(1) || 0, 2: counts.get(2) || 0, 4: counts.get(4) || 0, stepped: counts.get('stepped') || 0 };
     stats.lodMs = performance.now() - t0;
 
@@ -808,7 +846,7 @@ export function createTerrain({ renderer, scene, camera, settings, manifest, row
   function drawSignature() {
     const c = columns && mode.columns ? columns.state : null;
     return [atlas.version, atlas.layoutVersion, atlas.residencyVersion, atlas.pendingLayers.size, atlas.pendingOwnerLayers.size,
-      currentBlock, c ? c.dispatches : -1, c ? c.near : -1, c ? c.far : -1, ownerVersion].join();
+      currentBlock, c ? c.dispatches : -1, c ? c.near : -1, c ? c.far : -1, c ? c.cards : -1, ownerVersion].join();
   }
 
   function dispose() {
