@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { gridFromManifest, tileInfo, childTiles, parentTile, tileOfCell, SLOT } from '../web/data/grid.js';
 import {
-  selectTiles, fullPatchMask, childPatchMask, rootTiles, cellSize, boxVisible, frustumPlanes, PATCH_CELLS,
+  selectTiles, gazeSlide, GAZE_INSIDE, fullPatchMask, childPatchMask, rootTiles, cellSize, boxVisible, frustumPlanes, PATCH_CELLS,
 } from '../web/render/terrain/lod.js';
 import { recomputePatchMax, bumpPatchMax, patchesOfCell } from '../web/render/terrain/patchmax.js';
 import { heightOfCpu, heightBoundCpu, whaleFactorCpu } from '../web/render/terrain/curve.js';
@@ -308,4 +308,16 @@ test('a tile culled by its real height stays desired while its assumed-tall box 
   // Out of view even at the assumed height: dropped despite the hysteresis.
   const gone = selectTiles(grid, { ...view, planes: [0, 1, 0, -100] }, opts(new Set(first.desired)));
   assert.ok(!gone.desired.includes(kid));
+});
+
+test('gazeSlide: the cards follow the view only from high up, within the room given', () => {
+  const d = 65; // eye distance where a cell is Card detail pixels wide
+  // Low over the terrain the ground looked at is well inside the cards: no slide.
+  assert.equal(gazeSlide(d, 15, 0.5, 20), 0);
+  // 49 units up, looking 45 degrees down: the ground is 69 away, kept GAZE_INSIDE x d inside.
+  const s = gazeSlide(d, 49, Math.SQRT1_2, 100);
+  assert.ok(Math.abs(s - (49 / Math.SQRT1_2 - GAZE_INSIDE * d)) < 1e-9);
+  assert.equal(gazeSlide(d, 49, Math.SQRT1_2, 12), 12); // capped by the room
+  assert.ok(gazeSlide(d, 300, 1, 20) === 20 && gazeSlide(d, 49, 0.1, 100) <= 0.2 * 100); // shallow views slide less
+  for (const [h, sin, room] of [[49, 0, 20], [49, -0.5, 20], [0, 0.7, 20], [49, 0.7, 0], [49, 0.7, -5]]) assert.equal(gazeSlide(d, h, sin, room), 0);
 });

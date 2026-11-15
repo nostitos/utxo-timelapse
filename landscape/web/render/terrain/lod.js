@@ -146,6 +146,21 @@ class MaxHeap {
   }
 }
 
+/**
+ * How far the card region's centre slides from the eye along the view (world units), so the
+ * cards follow the point looked at instead of the ground under the camera. d: eye distance
+ * where a cell is geo.cardPixels wide; h: eye height above the ground; sinDown: sine of the
+ * view's downward pitch; room: the largest slide allowed.
+ * 0 while the ground along the view is nearer than GAZE_INSIDE x d; beyond that, enough to keep
+ * it that far inside the cards, up to room. Shallow views slide less: perspective already
+ * squeezes their edge toward the horizon.
+ */
+export const GAZE_INSIDE = 0.75;
+export function gazeSlide(d, h, sinDown, room = Infinity) {
+  if (!(d > 0) || !(h > 0) || !(sinDown > 0) || !(room > 0)) return 0;
+  return Math.max(0, Math.min(h / sinDown - GAZE_INSIDE * d, room)) * Math.min(1, 2 * sinDown);
+}
+
 /** Ids of the top-level tiles (always resident). */
 export function rootTiles(grid) {
   const L = grid.levels[grid.levels.length - 1];

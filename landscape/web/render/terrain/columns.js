@@ -206,6 +206,7 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
   const cardAttr = new StorageBufferAttribute(new Uint32Array(cardCap * 2), 2);
 
   const uFocus = uniform(new Vector2());
+  const uCardFocus = uniform(new Vector2()); // centre of the card disc, which holds the column disc
   const uEye = uniform(new Vector2());
   const uR2 = uniform(0);
   const uOut2 = uniform(0); // cards to here (at least uR2)
@@ -273,7 +274,7 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
       const row0 = int(T.z);
       const rowBase = slot.mul(int(SLOT_CELLS)).add(ly.add(int(1)).mul(int(SLOT))).add(int(1));
       const row = row0.add(ly);
-      const cz = float(row).add(0.5).mul(ROW_D).sub(uFocus.y);
+      const cz = float(row).add(0.5).mul(ROW_D).sub(uCardFocus.y);
       const cz2 = cz.mul(cz).toVar();
       // Whether a column at world (x, z) of height h, plus its shadow when casts is 1, can show.
       const shows = (x, z, h, casts) => {
@@ -294,10 +295,11 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
           const raw = atlasRead.element(rowBase.add(lx));
           If(raw.x.greaterThan(0), () => {
             const col = col0.add(lx);
-            const cx = float(col).add(0.5).mul(COL_W).sub(uFocus.x);
-            const d2 = cx.mul(cx).add(cz2).toVar();
             const wx = float(col).add(0.5).mul(COL_W);
             const wz = float(row).add(0.5).mul(ROW_D);
+            const cx = wx.sub(uCardFocus.x);
+            const out2 = cx.mul(cx).add(cz2).toVar();
+            const d2 = wx.sub(uFocus.x).mul(wx.sub(uFocus.x)).add(wz.sub(uFocus.y).mul(wz.sub(uFocus.y))).toVar();
             const h = shading.heightOf(raw.x, float(row)).toVar();
             const ref = uvec2(uint(rowBase.add(lx)), uint(col).mul(uint(4096)).add(uint(row)));
             If(d2.lessThan(uR2), () => {
@@ -316,7 +318,7 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
                 });
                 });
               });
-            }).ElseIf(d2.lessThan(uOut2).and(shows(wx, wz, h, uCasts.z)), () => {
+            }).ElseIf(out2.lessThan(uOut2).and(shows(wx, wz, h, uCasts.z)), () => {
               const k = atomicAdd(counterAtomic.element(3), uint(1)).toVar();
               If(k.lessThan(uCardBudget), () => {
                 cardWrite.element(k).assign(ref);
@@ -525,12 +527,13 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
    * nearCells: radius of the full-detail cylinders around eye ([x, z], default focus); shape:
    * 'cylinder' | 'oval' | 'box'; sides: cylinder sides; farStyle: one of FAR_STYLES; farShadows:
    * whether the far level casts shadows; cardCells: radius of the card ring around the disc
-   * (L0 column widths; at most radiusCells draws none); cardShadows: whether the cards cast shadows;
+   * (L0 column widths; at most radiusCells draws none) around cardFocus ([x, z], default focus;
+   * its disc must hold the column disc); cardShadows: whether the cards cast shadows;
    * planes: the view's side planes (16 numbers, [nx, ny, nz, d] each, inside where n.p + d >= 0;
    * null lists off-screen cells too); sun: unit vector toward the sun while shadows are cast, or null.
    */
   function update({ enabled, focus, eye = focus, radiusCells, nearCells = Infinity, budget, gap, width = 1, dataVersion, shape = 'cylinder',
-    sides = 12, farStyle = 'prism', farShadows = true, cardCells = 0, cardShadows = false, planes = null, sun = null }) {
+    sides = 12, farStyle = 'prism', farShadows = true, cardCells = 0, cardFocus = focus, cardShadows = false, planes = null, sun = null }) {
     uGap.value = gap;
     uWidth.value = width;
     state.enabled = !!enabled;
@@ -555,7 +558,7 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
     const R = state.effectiveCells * COL_W;
     const Rn = Math.min(state.effectiveCells, Math.max(0, nearCells)) * COL_W;
     const Rout = state.cardCells * COL_W;
-    U.columnFocus.value.set(focus[0], focus[1], Rout);
+    U.columnFocus.value.set(cardFocus[0], cardFocus[1], Rout);
     if (!(Rout > 0)) {
       group.visible = false;
       state.tiles = 0;
@@ -564,10 +567,10 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
       return;
     }
     const L0 = grid.levels[0];
-    const c0 = Math.max(0, Math.floor(Math.floor((focus[0] - Rout) / COL_W) / 256));
-    const c1 = Math.min(L0.tilesX - 1, Math.floor(Math.floor((focus[0] + Rout) / COL_W) / 256));
-    const r0 = Math.max(0, Math.floor(Math.floor((focus[1] - Rout) / ROW_D) / 256));
-    const r1 = Math.min(L0.tilesY - 1, Math.floor(Math.floor((focus[1] + Rout) / ROW_D) / 256));
+    const c0 = Math.max(0, Math.floor(Math.floor((cardFocus[0] - Rout) / COL_W) / 256));
+    const c1 = Math.min(L0.tilesX - 1, Math.floor(Math.floor((cardFocus[0] + Rout) / COL_W) / 256));
+    const r0 = Math.max(0, Math.floor(Math.floor((cardFocus[1] - Rout) / ROW_D) / 256));
+    const r1 = Math.min(L0.tilesY - 1, Math.floor(Math.floor((cardFocus[1] + Rout) / ROW_D) / 256));
     const T = tilesAttr.array;
     let n = 0;
     let ids = '';
@@ -581,8 +584,8 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
         const x1 = (t.col0 + t.cols) * COL_W;
         const z0 = t.row0 * ROW_D;
         const z1 = (t.row0 + t.rows) * ROW_D;
-        const dx = Math.max(x0 - focus[0], 0, focus[0] - x1);
-        const dz = Math.max(z0 - focus[1], 0, focus[1] - z1);
+        const dx = Math.max(x0 - cardFocus[0], 0, cardFocus[0] - x1);
+        const dz = Math.max(z0 - cardFocus[1], 0, cardFocus[1] - z1);
         if (dx * dx + dz * dz >= Rout * Rout) continue;
         T[n * 4] = s;
         T[n * 4 + 1] = t.col0;
@@ -599,7 +602,7 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
       state.cards = 0;
       return;
     }
-    const key = ids + '|' + focus[0].toFixed(3) + ',' + focus[1].toFixed(3) + '|' + eye[0].toFixed(3) + ',' + eye[1].toFixed(3) +
+    const key = ids + '|' + focus[0].toFixed(3) + ',' + focus[1].toFixed(3) + '|' + cardFocus[0].toFixed(3) + ',' + cardFocus[1].toFixed(3) + '|' + eye[0].toFixed(3) + ',' + eye[1].toFixed(3) +
       '|' + R.toFixed(3) + '|' + Rn.toFixed(3) + '|' + Rout.toFixed(3) + '|' + budget + '|' + dataVersion +
       '|' + (planes ? Array.from(planes.slice(0, 16), (v) => v.toFixed(4)).join() : '') + '|' + (sun ? sun.map((v) => v.toFixed(3)).join() : '') +
       '|' + far.mesh.castShadow + ',' + card.mesh.castShadow + '|' + width;
@@ -616,6 +619,7 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
     uBudget.value = Math.min(budget, budgetCap);
     uCardBudget.value = Math.min(budget, cardCap);
     uFocus.value.set(focus[0], focus[1]);
+    uCardFocus.value.set(cardFocus[0], cardFocus[1]);
     uEye.value.set(eye[0], eye[1]);
     uPlanes.forEach((u, i) => (planes ? u.value.fromArray(planes, i * 4) : u.value.set(0, 0, 0, 1)));
     uSun.value.set(...(sun || [0, 1, 0]));
