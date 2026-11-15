@@ -508,8 +508,8 @@ shadows: with `geo.whaleShadows` a smooth copy of its patches on layer `SHADOW_L
 sun's and the volume's shadow cameras draw, casts the whale rows' shadows),
 smoothing, subdivision, instanced columns (near cylinders, far prisms or `geo.farColumns`, and beyond them
 camera-facing cards on resident L0 tiles out to `geo.cardPixels`, measured from a point ahead of the eye on its line of
-sight when the ground looked at nears their edge (`gazeSlide` in `lod.js`, capped where the L0 tiles end; `stats.cardAhead`) (with `geo.farShadows` they cast shadows from the back of
-the footprint, turned to the sun, through `castShadowPositionNode`), with the heightfield hidden under all
+sight when the ground looked at nears their edge (`gazeSlide` in `lod.js`, capped where the L0 tiles end; `stats.cardAhead`) (they cast no shadows: the heightfield patches hidden under them are drawn smooth on `SHADOW_LAYER` and cast
+instead, and the heightfield's `maskShadowNode` hides only under the column disc, `columnInner`), with the heightfield hidden under all
 three; the compute pass lists only cells inside the view's side planes or, for shadow-casting levels, whose column swept
 away from the sun reaches them), palette LUTs and colour transfer, heat
 emissive and flash sprites, creation-edge glow, now plane, grid, axis labels

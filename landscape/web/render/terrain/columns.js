@@ -220,7 +220,7 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
   const uPlanes = [0, 1, 2, 3].map(() => uniform(new Vector4()));
   const uSun = uniform(new Vector3(0, 1, 0));
   const uShadowMax = uniform(0);
-  const uCasts = uniform(new Vector3()); // near, far, cards
+  const uCasts = uniform(new Vector2());
 
   const tilesNode = storage(tilesAttr, 'vec4', MAX_COLUMN_TILES).toReadOnly();
   const counterAtomic = storage(counterAttr, 'uint', 4).toAtomic();
@@ -258,6 +258,7 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
   const card = makeLevel('Card', cardGeometry(true), cardRead, instanceIndex);
   const group = new Group();
   group.name = 'TerrainColumns';
+  card.mesh.castShadow = false;
   group.add(near.mesh, far.mesh, card.mesh);
   group.visible = false;
 
@@ -318,7 +319,7 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
                 });
                 });
               });
-            }).ElseIf(out2.lessThan(uOut2).and(shows(wx, wz, h, uCasts.z)), () => {
+            }).ElseIf(out2.lessThan(uOut2).and(shows(wx, wz, h, float(0))), () => {
               const k = atomicAdd(counterAtomic.element(3), uint(1)).toVar();
               If(k.lessThan(uCardBudget), () => {
                 cardWrite.element(k).assign(ref);
@@ -371,10 +372,7 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
       return vec2(sqrt(A.mul(A).mul(t.y.mul(t.y)).add(B.mul(B).mul(t.x.mul(t.x)))).mul(CARD_OVERLAP),
         sqrt(A.mul(A).mul(t.x.mul(t.x)).add(B.mul(B).mul(t.y.mul(t.y)))));
     };
-    // shadow: the shadow pass's caster. A card turned to the sun through the column's axis would
-    // shadow half of the card the camera sees, so the caster stands at the back of the
-    // footprint, as seen from the sun, without its top.
-    const position = (shadow) => Fn(() => {
+    m.positionNode = Fn(() => {
       const r = level.read.element(level.slot);
       const v = atlas.readNode.element(int(r.x));
       const col = r.y.div(uint(4096));
@@ -389,15 +387,13 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
         const t = d.div(max(length(d), 1e-4));
         const half = cardHalf(t);
         const a = p.x.sub(0.5).mul(half.x.mul(2));
-        const b = shadow ? half.y.negate() : p.z.sub(0.5).mul(half.y.mul(2));
+        const b = p.z.sub(0.5).mul(half.y.mul(2));
         return vec3(cxW.add(t.y.mul(a)).add(t.x.mul(b)), p.y.mul(h), czW.sub(t.x.mul(a)).add(t.y.mul(b)));
       }
       const x0 = float(col).add(0.5).mul(COL_W).sub(sx.mul(0.5));
       const z0 = float(row).add(0.5).mul(ROW_D).sub(sz.mul(0.5));
       return vec3(x0.add(p.x.mul(sx)), p.y.mul(h), z0.add(p.z.mul(sz)));
     })();
-    m.positionNode = position(false);
-    if (billboard) m.castShadowPositionNode = position(true);
     const fRaw = varying(raw, 'vColRaw');
     fRaw.setInterpolation('flat');
     const fRow = varying(float(ref.y.mod(uint(4096))), 'vColRow');
@@ -528,25 +524,25 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
    * 'cylinder' | 'oval' | 'box'; sides: cylinder sides; farStyle: one of FAR_STYLES; farShadows:
    * whether the far level casts shadows; cardCells: radius of the card ring around the disc
    * (L0 column widths; at most radiusCells draws none) around cardFocus ([x, z], default focus;
-   * its disc must hold the column disc); cardShadows: whether the cards cast shadows;
+   * its disc must hold the column disc; the cards cast no shadows, the heightfield under them does);
    * planes: the view's side planes (16 numbers, [nx, ny, nz, d] each, inside where n.p + d >= 0;
    * null lists off-screen cells too); sun: unit vector toward the sun while shadows are cast, or null.
    */
   function update({ enabled, focus, eye = focus, radiusCells, nearCells = Infinity, budget, gap, width = 1, dataVersion, shape = 'cylinder',
-    sides = 12, farStyle = 'prism', farShadows = true, cardCells = 0, cardFocus = focus, cardShadows = false, planes = null, sun = null }) {
+    sides = 12, farStyle = 'prism', farShadows = true, cardCells = 0, cardFocus = focus, planes = null, sun = null }) {
     uGap.value = gap;
     uWidth.value = width;
     state.enabled = !!enabled;
     if (!enabled) {
       group.visible = false;
       U.columnFocus.value.set(0, 0, 0);
+      U.columnInner.value.set(0, 0, 0);
       state.key = '';
       return;
     }
     ensureBuilt(COLUMN_SHAPES.includes(shape) ? shape : 'cylinder', sides, FAR_STYLES.includes(farStyle) ? farStyle : 'prism');
     far.mesh.castShadow = farShadows !== false;
     state.farShadows = far.mesh.castShadow;
-    card.mesh.castShadow = !!cardShadows;
     state.budget = Math.min(budget, budgetCap);
     // The requested radius follows the camera; budgetCells is the radius the instance budget
     // allows, learned from the counter read back after each rebuild.
@@ -559,6 +555,7 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
     const Rn = Math.min(state.effectiveCells, Math.max(0, nearCells)) * COL_W;
     const Rout = state.cardCells * COL_W;
     U.columnFocus.value.set(cardFocus[0], cardFocus[1], Rout);
+    U.columnInner.value.set(focus[0], focus[1], R);
     if (!(Rout > 0)) {
       group.visible = false;
       state.tiles = 0;
@@ -605,7 +602,7 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
     const key = ids + '|' + focus[0].toFixed(3) + ',' + focus[1].toFixed(3) + '|' + cardFocus[0].toFixed(3) + ',' + cardFocus[1].toFixed(3) + '|' + eye[0].toFixed(3) + ',' + eye[1].toFixed(3) +
       '|' + R.toFixed(3) + '|' + Rn.toFixed(3) + '|' + Rout.toFixed(3) + '|' + budget + '|' + dataVersion +
       '|' + (planes ? Array.from(planes.slice(0, 16), (v) => v.toFixed(4)).join() : '') + '|' + (sun ? sun.map((v) => v.toFixed(3)).join() : '') +
-      '|' + far.mesh.castShadow + ',' + card.mesh.castShadow + '|' + width;
+      '|' + far.mesh.castShadow + '|' + width;
     if (key === state.key) return;
     state.key = key;
     tilesAttr.clearUpdateRanges();
@@ -624,7 +621,7 @@ export function createColumns({ renderer, atlas, shading, grid, maxBudget = 8000
     uPlanes.forEach((u, i) => (planes ? u.value.fromArray(planes, i * 4) : u.value.set(0, 0, 0, 1)));
     uSun.value.set(...(sun || [0, 1, 0]));
     uShadowMax.value = sun ? 2 * Rout : 0;
-    uCasts.value.set(sun ? 1 : 0, sun && far.mesh.castShadow ? 1 : 0, sun && card.mesh.castShadow ? 1 : 0);
+    uCasts.value.set(sun ? 1 : 0, sun && far.mesh.castShadow ? 1 : 0);
     append.count = n * 256;
     state.candidates = n * 65536;
     renderer.compute(append);

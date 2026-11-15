@@ -2065,10 +2065,11 @@ const CHECKS = [
           out[q + ' ' + name] = { tris: V.stats.triangles, cards: T.stats.cards, columnReach: T.stats.columnRadius * 0.064, cardReach: T.stats.cardRadius * 0.064 };
         }
       }
-      // The founder's view (November 2026): 55 units up near the tip, looking 45 degrees down. The
-      // cards cast no shadows then, so at dusk the circle they fill stayed unshaded while the land
-      // beyond shaded itself: a bright circle that moved with the camera. Rows of a 6 x 6 grid:
-      // how much darker each gets with shadows on.
+      // The founder's view (November 2026): 55 units up near the tip, looking 45 degrees down.
+      // Nothing under the cards cast shadows then, so at dusk the circle they fill stayed unshaded
+      // while the land beyond shaded itself: a bright circle that moved with the camera. The
+      // surface hidden under the cards casts for them now. Rows of a 6 x 6 grid: how much darker
+      // each gets with shadows on (unshaded, the two nearest rows darkened by 0.2 to 0.3 of the far ones).
       const rows = () => new Promise((resolve) => { V.invalidate(); requestAnimationFrame(() => requestAnimationFrame(() => {
         const c = document.createElement('canvas'); c.width = 6; c.height = 6; const g = c.getContext('2d', { willReadFrequently: true });
         g.drawImage(canvas, 0, 0, 6, 6); const d = g.getImageData(0, 0, 6, 6).data; const r = [];
@@ -2095,15 +2096,15 @@ const CHECKS = [
       const rows = Object.keys(before).map((k) => [k, v[k]]);
       const f = (n) => (n / 1e6).toFixed(2) + 'M';
       const far = (v.shade.drop[0] + v.shade.drop[1] + v.shade.drop[2]) / 3;
-      // The cards' shadows cost triangles: at dusk the low sun behind the camera keeps every card behind it listed.
-      const allow = (k) => (k.startsWith('Balanced') ? 1.15 : 1);
+      // The surface under the cards is drawn once more into each shadow cascade.
+      const allow = (k) => (k.startsWith('Balanced') ? 1.05 : 1);
       return [
         ...rows.map(([k, r]) => ['cards reach ' + r.cardReach.toFixed(1) + ' units at ' + k + ', past the columns at ' + r.columnReach.toFixed(1) + ' (' + r.cards + ' cards)',
           r.cards > 50000 && r.cardReach >= (k.startsWith('High') ? 55 : 40) && r.cardReach > 1.5 * r.columnReach]),
         ...rows.map(([k, r]) => ['at ' + k + ' at most ' + Math.round((allow(k) - 1) * 100) + '% more triangles than before the cards (' + f(r.tris) + ' against ' + f(before[k]) + ')',
           r.tris <= allow(k) * before[k]]),
         ['from 55 units up the cards near the camera darken with shadows as the land beyond them does (' + v.shade.cards + ' cards; darker by ' + v.shade.drop.join(', ') + ' from top to bottom)',
-          v.shade.cards > 50000 && far > 5 && v.shade.drop.slice(3).every((d) => d > 0.6 * far)],
+          v.shade.cards > 50000 && far > 5 && v.shade.drop.slice(3).every((d) => d > 0.45 * far)],
         ['from 55 units up the cards reach past the centre of the screen (' + v.gaze.inside + ' units inside their edge; centre ' + v.gaze.ahead + ' ahead of the camera, radius ' + v.gaze.radius + ')',
           v.gaze.inside !== null && v.gaze.inside >= 5],
         ['no frame errors', v.frameError === null],
