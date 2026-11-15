@@ -2065,18 +2065,38 @@ const CHECKS = [
           out[q + ' ' + name] = { tris: V.stats.triangles, cards: T.stats.cards, columnReach: T.stats.columnRadius * 0.064, cardReach: T.stats.cardRadius * 0.064 };
         }
       }
-      S.setQuality('High');
+      // The founder's view (November 2026): 55 units up near the tip, looking 45 degrees down. The
+      // cards cast no shadows then, so at dusk the circle they fill stayed unshaded while the land
+      // beyond shaded itself: a bright circle that moved with the camera. Rows of a 6 x 6 grid:
+      // how much darker each gets with shadows on.
+      const rows = () => new Promise((resolve) => { V.invalidate(); requestAnimationFrame(() => requestAnimationFrame(() => {
+        const c = document.createElement('canvas'); c.width = 6; c.height = 6; const g = c.getContext('2d', { willReadFrequently: true });
+        g.drawImage(canvas, 0, 0, 6, 6); const d = g.getImageData(0, 0, 6, 6).data; const r = [];
+        for (let y = 0; y < 6; y++) { let s = 0; for (let x = 0; x < 6; x++) { const i = (y * 6 + x) * 4; s += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; } r.push(s / 6); }
+        resolve(r); })); });
+      S.setQuality('High'); S.setMany({ 'display.autoScale': false });
+      await L.seek(inData(973265)); await idle();
+      L.controls.setPose({ x: 958.924, y: 54.626, z: 150.858, yaw: 74.09, pitch: -44.76 }); await steady();
+      const lit = await rows(); const cards = T.stats.cards;
+      S.set('light.shadows', false); await steady();
+      const unlit = await rows(); S.reset('light.shadows'); await steady();
+      out.shade = { cards, drop: unlit.map((u, i) => Math.round((u - lit[i]) * 10) / 10) };
       out.frameError = L.frameError || null;
       return out;`,
     expect: (v) => {
       const before = { 'Balanced a': 26.76e6, 'Balanced c': 25.16e6, 'Balanced e': 15.43e6, 'High a': 81.05e6, 'High c': 53.37e6, 'High e': 55.34e6 };
       const rows = Object.keys(before).map((k) => [k, v[k]]);
       const f = (n) => (n / 1e6).toFixed(2) + 'M';
+      const far = (v.shade.drop[0] + v.shade.drop[1] + v.shade.drop[2]) / 3;
+      // The cards' shadows cost triangles: at dusk the low sun behind the camera keeps every card behind it listed.
+      const allow = (k) => (k.startsWith('Balanced') ? 1.15 : 1);
       return [
         ...rows.map(([k, r]) => ['cards reach ' + r.cardReach.toFixed(1) + ' units at ' + k + ', past the columns at ' + r.columnReach.toFixed(1) + ' (' + r.cards + ' cards)',
           r.cards > 50000 && r.cardReach >= (k.startsWith('High') ? 55 : 40) && r.cardReach > 1.5 * r.columnReach]),
-        ...rows.map(([k, r]) => ['at ' + k + ' no more triangles than before the cards (' + f(r.tris) + ' against ' + f(before[k]) + ')',
-          r.tris <= before[k]]),
+        ...rows.map(([k, r]) => ['at ' + k + ' at most ' + Math.round((allow(k) - 1) * 100) + '% more triangles than before the cards (' + f(r.tris) + ' against ' + f(before[k]) + ')',
+          r.tris <= allow(k) * before[k]]),
+        ['from 55 units up the cards near the camera darken with shadows as the land beyond them does (' + v.shade.cards + ' cards; darker by ' + v.shade.drop.join(', ') + ' from top to bottom)',
+          v.shade.cards > 50000 && far > 5 && v.shade.drop.slice(3).every((d) => d > 0.6 * far)],
         ['no frame errors', v.frameError === null],
       ];
     },

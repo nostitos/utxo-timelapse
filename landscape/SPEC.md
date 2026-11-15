@@ -507,7 +507,8 @@ on the whale rows only, at least 1.5 px wide far away: `geo.steppedWhales`; thei
 shadows: with `geo.whaleShadows` a smooth copy of its patches on layer `SHADOW_LAYER` (render/env.js), which only the
 sun's and the volume's shadow cameras draw, casts the whale rows' shadows),
 smoothing, subdivision, instanced columns (near cylinders, far prisms or `geo.farColumns`, and beyond them
-shadowless camera-facing cards on resident L0 tiles out to `geo.cardPixels`, with the heightfield hidden under all
+camera-facing cards on resident L0 tiles out to `geo.cardPixels` (with `geo.farShadows` they cast shadows from the back of
+the footprint, turned to the sun, through `castShadowPositionNode`), with the heightfield hidden under all
 three; the compute pass lists only cells inside the view's side planes or, for shadow-casting levels, whose column swept
 away from the sun reaches them), palette LUTs and colour transfer, heat
 emissive and flash sprites, creation-edge glow, now plane, grid, axis labels
