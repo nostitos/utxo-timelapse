@@ -59,9 +59,10 @@ ALIASES = {
     "internet_archive": "Internet Archive", "internet archive": "Internet Archive",
     "protonmail": "Proton Mail", "proton mail": "Proton Mail",
     # Exchanges in the owner catalog: operators' own names, DefiLlama, CoinGecko and GraphSense spellings.
-    # Separate companies stay separate (Binance.US, Okcoin, Gate US, HashKey Exchange and Global).
+    # Separate companies stay separate (Binance.US, Gate US, HashKey Exchange and Global). Okcoin, OKX's
+    # former US arm, counts as OKX: both exchanges' reserve lists name the same 2,324 wallets.
     "binance cex": "Binance", "binance.us": "Binance.US", "binance us": "Binance.US", "binanceus": "Binance.US",
-    "okcoin": "Okcoin", "htx": "Huobi", "huobi global": "Huobi",
+    "okcoin": "OKX", "htx": "Huobi", "huobi global": "Huobi",
     "gate": "Gate", "gate.io": "Gate", "gateio": "Gate", "gate us": "Gate US",
     "bitget": "Bitget", "mexc": "MEXC", "mexc global": "MEXC", "mxc": "MEXC",
     "bingx": "BingX", "bingbon": "BingX", "bingbon/bingx": "BingX",

@@ -22,7 +22,8 @@
         "service_disclosure",
         "service_disclosure_via_graphsense",
         "service_disclosure_via_aggregator",
-        "third_party_exact_tag"
+        "third_party_exact_tag",
+        "third_party_exact_tag_via_graphsense"
       ]
     },
     {
@@ -198,7 +199,8 @@
       "color": "#A8D8A8",
       "catalogEntity": "Bitget",
       "evidenceTypes": [
-        "service_disclosure_via_aggregator"
+        "service_disclosure_via_aggregator",
+        "third_party_exact_tag"
       ]
     },
     {
@@ -511,7 +513,8 @@
       "evidenceTypes": [
         "service_disclosure",
         "service_disclosure_via_aggregator",
-        "service_disclosure_via_graphsense"
+        "service_disclosure_via_graphsense",
+        "third_party_exact_tag"
       ]
     },
     {
@@ -871,7 +874,8 @@
       "evidenceTypes": [
         "service_disclosure",
         "service_disclosure_via_aggregator",
-        "service_disclosure_via_graphsense"
+        "service_disclosure_via_graphsense",
+        "third_party_exact_tag"
       ]
     },
     {
@@ -1155,7 +1159,8 @@
       "evidenceTypes": [
         "service_disclosure",
         "service_disclosure_via_aggregator",
-        "service_disclosure_via_graphsense"
+        "service_disclosure_via_graphsense",
+        "third_party_exact_tag"
       ]
     },
     {
@@ -1311,17 +1316,6 @@
       "catalogEntity": "Niza",
       "evidenceTypes": [
         "third_party_exact_tag"
-      ]
-    },
-    {
-      "id": "okcoin",
-      "name": "Okcoin",
-      "color": "#608828",
-      "catalogEntity": "Okcoin",
-      "evidenceTypes": [
-        "service_disclosure",
-        "third_party_exact_tag",
-        "third_party_exact_tag_via_graphsense"
       ]
     },
     {

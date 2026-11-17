@@ -95,6 +95,12 @@ class EvidenceTests(unittest.TestCase):
         self.assertFalse(resolved)
         self.assertEqual(len(conflicts), 3)
 
+    def test_okcoin_counts_as_okx(self):
+        okx = {**evidence(), "entity": "OKX"}
+        okcoin = {**okx, "entity": "Okcoin", "source": "https://www.okcoin.com/proof-of-reserves"}
+        _, resolved, conflicts = labels.resolve_rows([okx, okcoin])
+        self.assertEqual(({row["entity"] for row in resolved}, conflicts), ({"OKX"}, []))
+
     def test_requires_complete_provenance(self):
         for key, value in (("source", "local-file"), ("observed_date", "2026-02-30"),
                            ("confidence", ""), ("historical_note", ""), ("evidence_type", "")):

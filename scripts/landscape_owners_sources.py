@@ -181,9 +181,10 @@ def http_get(url: str, path: Path, headers: dict | None = None, redirects: bool 
     raise RuntimeError(f"{url}: {problem!r}")
 
 
-def reuse_index(folders) -> dict[str, tuple[Path, dict]]:
-    """URL -> (local file, source record) from supplement manifests in earlier research folders."""
-    index = {}
+def reuse_index(folders) -> tuple[dict[str, tuple[Path, dict]], dict[str, list[tuple[Path, dict]]]]:
+    """From supplement manifests in earlier research folders: URL -> (local file, source record), and
+    per source id every archived (local file, source record), older versions of a live URL included."""
+    index, by_source = {}, defaultdict(list)
     for folder in folders:
         for manifest in sorted(Path(folder).glob("*.json")):
             try:
@@ -196,7 +197,9 @@ def reuse_index(folders) -> dict[str, tuple[Path, dict]]:
                     path = manifest.parent / source["local_path"]
                     if path.is_file():
                         index.setdefault(source["url"], (path, source))
-    return index
+                        if data.get("source_id"):
+                            by_source[data["source_id"]].append((path, source))
+    return index, by_source
 
 
 class Fetcher:
@@ -208,7 +211,8 @@ class Fetcher:
         folder.mkdir(parents=True, exist_ok=True)
         self.state_path = folder / "fetch_state.json"
         self.state = json.loads(self.state_path.read_text()) if self.state_path.exists() else {}
-        self.reuse = reuse_index(reuse)
+        self.reuse, self.earlier = reuse_index(reuse)
+        self.wayback_down = False  # set by the first Wayback CDX request that fails
 
     def save(self, url: str, record: dict) -> dict:
         self.state[url] = record
@@ -221,21 +225,26 @@ class Fetcher:
         (self.folder / record["local_path"]).unlink(missing_ok=True)
         write_json(self.state_path, self.state)
 
-    def link(self, url: str, name: str) -> dict | None:
-        """Hard-link (or copy) an archive an earlier run recorded for url, if its bytes still match."""
-        path, record = self.reuse[url]
+    def link(self, path: Path, record: dict, name: str, remember: bool = True) -> dict | None:
+        """Hard-link (or copy) an archive an earlier run recorded, if its bytes still match, under name or,
+        when another version holds name, name with its digest. remember records it as its URL's copy."""
         target = self.folder / name
+        if target.exists() and labels.sha256(target) != record["sha256"]:  # another version holds the name
+            stem, dot, ext = name.partition(".")
+            target = self.folder / f"{stem}.{record['sha256'][:12]}{dot}{ext}"
+            if target.exists() and labels.sha256(target) != record["sha256"]:
+                return None
         if not target.exists():
             try:
                 os.link(path, target)
             except OSError:
                 shutil.copyfile(path, target)
-        if labels.sha256(target) != record["sha256"]:
-            target.unlink()
-            return None
-        return self.save(url, dict(url=url, local_path=name, sha256=record["sha256"],
-                                   fetched_at=record["fetched_at"], bytes=target.stat().st_size,
-                                   reused_from=str(path)))
+            if labels.sha256(target) != record["sha256"]:  # the earlier archive changed after it was recorded
+                target.unlink()
+                return None
+        linked = dict(url=record["url"], local_path=target.name, sha256=record["sha256"],
+                      fetched_at=record["fetched_at"], bytes=target.stat().st_size, reused_from=str(path))
+        return self.save(record["url"], linked) if remember else linked
 
     def archive(self, url: str, name: str, live: bool = False, headers: dict | None = None,
                 redirects: bool = True) -> dict:
@@ -244,7 +253,7 @@ class Fetcher:
         if known and not live and known.get("local_path") and (self.folder / known["local_path"]).exists():
             return dict(known)
         if not live and url in self.reuse:
-            record = self.link(url, name)
+            record = self.link(*self.reuse[url], name)
             if record:
                 return record
         conditional = {}
@@ -308,19 +317,27 @@ def mirror(url: str, folder: Path, commit: str | None = None) -> Path:
 
 
 def cdx(fetcher: Fetcher, key: str, prefix: bool = False, collapse: str | None = None) -> list[tuple[str, str]]:
-    """(timestamp, original URL) of the Wayback Machine's 200 captures of key."""
+    """(timestamp, original URL) of the Wayback Machine's 200 captures of key; none once it has failed to
+    answer, so the source's own files and the archives of earlier runs still count."""
+    if fetcher.wayback_down:
+        return []
     query = dict(url=key, fl="timestamp,original", filter="statuscode:200")
     if prefix:
         query["matchType"] = "prefix"
     if collapse:
         query["collapse"] = collapse
     url = "https://web.archive.org/cdx/search/cdx?" + urllib.parse.urlencode(query)
-    record = fetcher.archive(url, f"cdx-{hashlib.sha256(url.encode()).hexdigest()[:12]}.txt", live=True)
-    if "status" in record:
-        raise RuntimeError(f"Wayback CDX {key}: HTTP {record['status']}")
-    text = (fetcher.folder / record["local_path"]).read_text(errors="replace")
-    if text.lstrip().startswith("<"):
-        raise RuntimeError(f"Wayback CDX {key}: not a CDX reply")
+    try:
+        record = fetcher.archive(url, f"cdx-{hashlib.sha256(url.encode()).hexdigest()[:12]}.txt", live=True)
+        if "status" in record:
+            raise RuntimeError(f"HTTP {record['status']}")
+        text = (fetcher.folder / record["local_path"]).read_text(errors="replace")
+        if text.lstrip().startswith("<"):
+            raise RuntimeError("not a CDX reply")
+    except RuntimeError as exc:
+        fetcher.wayback_down = True
+        log(f"Wayback CDX {key}: {exc}; this source reads no more Wayback captures")
+        return []
     return [tuple(line.split()[:2]) for line in text.splitlines() if line.strip()]
 
 
@@ -366,12 +383,14 @@ def enum_single(source: dict, fetcher: Fetcher):
 
 
 def enum_dates(source: dict, fetcher: Fetcher):
-    """One URL per day from options.from to yesterday (UTC), {date} as YYYY-MM-DD."""
+    """One URL per day from options.from to yesterday (UTC), {date} as YYYY-MM-DD and {YYYYMMDD} without
+    dashes. An API reply (a URL with a query) is archived as <date>.json, a file under its own name."""
     day, last = dt.date.fromisoformat(source["options"]["from"]), dt.datetime.now(dt.timezone.utc).date()
     items = []
     while day < last:
-        url = source["url"].replace("{date}", day.isoformat())
-        items.append(dict(url=url, name=f"{day.isoformat()}.json", observed=day.isoformat()))
+        url = source["url"].replace("{date}", day.isoformat()).replace("{YYYYMMDD}", f"{day:%Y%m%d}")
+        items.append(dict(url=url, name=f"{day.isoformat()}.json" if "?" in url else url_name(url),
+                          observed=day.isoformat()))
         day += dt.timedelta(days=1)
     return items, []
 
@@ -1283,10 +1302,21 @@ def first_and_last(rows: list[dict], files: int) -> list[dict]:
 
 
 def run_source(source: dict, research: Path, reuse=(), entities=frozenset(), operators=None) -> dict:
-    """Fetch, archive and parse one source; write its labels, rejections and supplement manifest."""
+    """Fetch, archive and parse one source; write its labels, rejections and supplement manifest. Files an
+    earlier run of this source archived (in the reuse folders) and this run did not fetch are read too, so
+    a list the operator withdraws or rewrites, or a capture Wayback cannot list today, keeps its addresses."""
     folder = research / source["id"]
     fetcher = Fetcher(folder, reuse)
-    sources, missing = [], []
+    sources, missing, contexts, carried = [], [], [], 0
+
+    def read(record: dict, item: dict, observed: str, meta: dict) -> None:
+        ctx = Context(source, record, observed, entities)
+        PARSERS[source["parse"]](folder / record["local_path"], ctx, item)
+        contexts.append(ctx)
+        sources.append(dict(record, **meta, license=source["license"], observed=ctx.observed,
+                            addresses=len({row["address"] for row in ctx.rows}), lists=ctx.lists))
+        log(f"{source['id']}: {record['local_path']} {sources[-1]['addresses']} addresses")
+
     if source["parse"] in RUNNERS:
         contexts, enumeration = RUNNERS[source["parse"]](source, fetcher, operators or {})
         for ctx in contexts:
@@ -1294,14 +1324,14 @@ def run_source(source: dict, research: Path, reuse=(), entities=frozenset(), ope
                                 addresses=len({row["address"] for row in ctx.rows})))
     else:
         items, enumeration = ENUMERATORS[source["fetch"]](source, fetcher)
-        contexts = []
+        placeholders = set(source.get("options", {}).get("placeholder_sha256", ()))
         for item in items:
             try:
                 record = item.get("record") or fetch_item(fetcher, source, item)
             except RuntimeError as exc:  # the host did not answer; the source's other files and captures still count
                 record = dict(url=item["url"], status=f"failed: {exc}", checked_at=now())
             meta = {key: item[key] for key in ("month", "found_in", "commit", "path") if key in item}
-            if record.get("sha256") in source.get("options", {}).get("placeholder_sha256", ()):
+            if record.get("sha256") in placeholders:
                 fetcher.forget(record["url"])  # the server's reply for a date it has no snapshot for yet
                 record = dict(url=item["url"], status="placeholder", checked_at=record.get("fetched_at"))
             if "status" in record:
@@ -1309,13 +1339,20 @@ def run_source(source: dict, research: Path, reuse=(), entities=frozenset(), ope
                                     observed=item.get("observed")))
                 log(f"{source['id']}: {item['url']} not available (HTTP {record['status']})")
                 continue
-            observed = item.get("observed") or (record.get("checked_at") or record["fetched_at"])[:10]
-            ctx = Context(source, record, observed, entities)
-            PARSERS[source["parse"]](folder / record["local_path"], ctx, item)
-            contexts.append(ctx)
-            sources.append(dict(record, **meta, license=source["license"], observed=ctx.observed,
-                                addresses=len({row["address"] for row in ctx.rows}), lists=ctx.lists))
-            log(f"{source['id']}: {record['local_path']} {sources[-1]['addresses']} addresses")
+            read(record, item, item.get("observed") or (record.get("checked_at") or record["fetched_at"])[:10], meta)
+        seen = {record["sha256"] for record in sources} | placeholders
+        for path, earlier in fetcher.earlier.get(source["id"], []):
+            if earlier["sha256"] in seen:
+                continue
+            seen.add(earlier["sha256"])
+            linked = fetcher.link(path, earlier, earlier["local_path"], remember=False)
+            if linked is None:
+                log(f"{source['id']}: {path} no longer matches its SHA-256 and is not carried forward")
+                continue
+            meta = {key: earlier[key] for key in ("month", "found_in", "commit", "path") if key in earlier}
+            read(dict(earlier, **linked, carried=True), dict(url=earlier["url"], name=linked["local_path"]),
+                 earlier.get("observed") or earlier["fetched_at"][:10], meta)
+            carried += 1
     if not sources:
         raise ValueError(f"{source['id']}: no file is available")
     every = [row for ctx in contexts for row in ctx.rows]
@@ -1331,12 +1368,12 @@ def run_source(source: dict, research: Path, reuse=(), entities=frozenset(), ope
     for ctx in contexts:
         dropped.update(ctx.dropped)
         skipped.update(ctx.skipped)
-    counts = dict(files=len(sources), missing=len(missing), listed_rows=len(every), evidence_rows=len(rows),
+    counts = dict(files=len(sources), carried=carried, missing=len(missing), listed_rows=len(every), evidence_rows=len(rows),
                   unique_addresses=len({row["address"] for row in rows}),
                   addresses_by_entity=dict(Counter(entity for _, entity in
                                                    {(row["address"], row["entity"]) for row in rows}).most_common()),
                   custodian_rows_excluded=len(excluded), btc_rows_on_other_networks=sum(dropped.values()),
-                  rejected_rows=len(rejected))
+                  rejected_rows=len(rejected), **({"wayback": "unavailable"} if fetcher.wayback_down else {}))
     write_json(folder / f"{source['id']}_supplement.json", dict(
         source_id=source["id"], entity=source.get("entity"), adapter=f"{source.get('fetch')}/{source['parse']}",
         evidence_type=source.get("evidence_type"), landing_page=source["landing"], license=source["license"],

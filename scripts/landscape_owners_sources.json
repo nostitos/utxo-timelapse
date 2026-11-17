@@ -52,7 +52,68 @@
         "link_pattern": "static\\.okx\\.com/cdn/okx/por/(?:chain/)?(?:okx_por|por_csv)_[0-9A-Za-z_]+(?:\\.csv)?\\.zip",
         "date_pattern": "(20\\d{2})(\\d{2})(\\d{2})"
       },
-      "note": "File names carry an hour and version that cannot be guessed, so links come from the download page, its Wayback Machine captures and the Wayback index of the file folder. Files OKX no longer serves come from their latest Wayback capture."
+      "note": "File names carry an hour and, since October 2025, a version, so links come from the download page, its Wayback Machine captures and the Wayback index of the file folder. Files OKX no longer serves come from their latest Wayback capture. March to May 2024, which none of these list, are in okx-por-2024."
+    },
+    {
+      "id": "okx-por-2024",
+      "entity": "OKX",
+      "status": "active",
+      "cadence": "snapshot",
+      "fetch": "list",
+      "parse": "por_csv",
+      "url": "https://static.okx.com/cdn/okx/por/chain/",
+      "landing": "https://www.okx.com/en-gb/proof-of-reserves/download",
+      "license": "not stated",
+      "evidence_type": "service_disclosure",
+      "operator_hosts": [
+        "okx.com/",
+        "twitter.com/okx/"
+      ],
+      "options": {
+        "files": [
+          {
+            "url": "https://static.okx.com/cdn/okx/por/chain/okx_por_2024031515.csv.zip",
+            "observed": "2024-03-15",
+            "wayback": true
+          },
+          {
+            "url": "https://static.okx.com/cdn/okx/por/chain/okx_por_2024031916.csv.zip",
+            "observed": "2024-03-19",
+            "wayback": true
+          },
+          {
+            "url": "https://static.okx.com/cdn/okx/por/chain/okx_por_2024032221.csv.zip",
+            "observed": "2024-03-22",
+            "wayback": true
+          },
+          {
+            "url": "https://static.okx.com/cdn/okx/por/chain/okx_por_2024032401.csv.zip",
+            "observed": "2024-03-24",
+            "wayback": true
+          },
+          {
+            "url": "https://static.okx.com/cdn/okx/por/chain/okx_por_2024032500.csv.zip",
+            "observed": "2024-03-25",
+            "wayback": true
+          },
+          {
+            "url": "https://static.okx.com/cdn/okx/por/chain/okx_por_2024041301.csv.zip",
+            "observed": "2024-04-13",
+            "wayback": true
+          },
+          {
+            "url": "https://static.okx.com/cdn/okx/por/chain/okx_por_2024051223.csv.zip",
+            "observed": "2024-05-12",
+            "wayback": true
+          },
+          {
+            "url": "https://static.okx.com/cdn/okx/por/chain/okx_por_2024052014.csv.zip",
+            "observed": "2024-05-20",
+            "wayback": true
+          }
+        ]
+      },
+      "note": "Reserve archives from March to May 2024, which neither OKX's download page nor the Wayback Machine lists. Their names carry only the snapshot hour, so every hour of those months was tried on OKX's file host on 2026-11-04 (2,232 requests, one a second); these 8 answered and the rest were 404."
     },
     {
       "id": "htx-por",
@@ -132,10 +193,10 @@
       "id": "mexc-por",
       "entity": "MEXC",
       "status": "active",
-      "cadence": "monthly",
-      "fetch": "list",
+      "cadence": "snapshot",
+      "fetch": "dates",
       "parse": "por_csv",
-      "url": "https://www.mexc.com/api/assetbussiness/asset/merkle/stock_info/snapshot_date",
+      "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_{YYYYMMDD}.csv",
       "landing": "https://www.mexc.com/proof-of-reserve",
       "license": "not stated",
       "evidence_type": "service_disclosure",
@@ -152,95 +213,9 @@
         "btc_networks": [
           "Bitcoin(BTC)"
         ],
-        "files": [
-          {
-            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20251108.csv",
-            "observed": "2025-11-08",
-            "wayback": true
-          },
-          {
-            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20251109.csv",
-            "observed": "2025-11-09",
-            "wayback": true
-          },
-          {
-            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20251110.csv",
-            "observed": "2025-11-10",
-            "wayback": true
-          },
-          {
-            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20251111.csv",
-            "observed": "2025-11-11",
-            "wayback": true
-          },
-          {
-            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20251112.csv",
-            "observed": "2025-11-12",
-            "wayback": true
-          },
-          {
-            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20251126.csv",
-            "observed": "2025-11-26",
-            "wayback": true
-          },
-          {
-            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20251210.csv",
-            "observed": "2025-12-10",
-            "wayback": true
-          },
-          {
-            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20260109.csv",
-            "observed": "2026-01-09",
-            "wayback": true
-          },
-          {
-            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20260210.csv",
-            "observed": "2026-02-10",
-            "wayback": true
-          },
-          {
-            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20260310.csv",
-            "observed": "2026-03-10",
-            "wayback": true
-          },
-          {
-            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20260410.csv",
-            "observed": "2026-04-10",
-            "wayback": true
-          },
-          {
-            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20260510.csv",
-            "observed": "2026-05-10",
-            "wayback": true
-          },
-          {
-            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20260610.csv",
-            "observed": "2026-06-10",
-            "wayback": true
-          },
-          {
-            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20260710.csv",
-            "observed": "2026-07-10",
-            "wayback": true
-          },
-          {
-            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20260810.csv",
-            "observed": "2026-08-10",
-            "wayback": true
-          },
-          {
-            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20260910.csv",
-            "observed": "2026-09-10",
-            "wayback": true
-          },
-          {
-            "url": "https://por.mocortech.com/MEXC_Merkle_Wallet_Address_20261009.csv",
-            "observed": "2026-10-09",
-            "wayback": true
-          }
-        ]
+        "from": "2025-11-08"
       },
-      "note": "Per-snapshot CSVs on MEXC's file host (Chinese header: asset, chain, wallet address, balance). The snapshot list API refuses plain connections from Canada, so the 17 files it led to on 2026-11-03 are named here (2025-11-08 to 2026-10-09; earlier snapshots have no file under this name, and new ones fall on about the 10th of each month). Mainnet rows are chain 'Bitcoin(BTC)'; BTC on BEP20, TRC20 and Bitcoin layer-2 chains is dropped."
+      "note": "Daily wallet lists on MEXC's file host (Chinese header: asset, chain, wallet address, balance), one a day from 2025-11-08; a day without a list answers 403. Earlier snapshots have no file under this name, and the snapshot list API, which refuses connections from Canada, is not needed. Mainnet rows are chain 'Bitcoin(BTC)'; BTC on BEP20, TRC20 and Bitcoin layer-2 chains is dropped."
     },
     {
       "id": "kucoin-por",
@@ -454,7 +429,7 @@
     },
     {
       "id": "okcoin-por",
-      "entity": "Okcoin",
+      "entity": "OKX",
       "status": "active",
       "cadence": "monthly",
       "fetch": "api_links",
@@ -471,7 +446,7 @@
         "url_key": "download",
         "time_key": "createTime"
       },
-      "note": "Monthly reserve archives listed by the download page's public API, 2023-05 to 2025-05; none after Okcoin US became OKX-branded."
+      "note": "Okcoin's monthly reserve archives, listed by the download page's public API, 2023-05 to 2025-05; none after Okcoin US became OKX-branded. Okcoin was OKX's US arm and both exchanges' lists name the same 2,324 wallets, so its rows count as OKX."
     },
     {
       "id": "swissborg-wallets",
