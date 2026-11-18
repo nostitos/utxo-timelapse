@@ -1,6 +1,6 @@
 import { RELEASE } from './release.js';
 import { navigationRoute, explorerCookie, fetchGuide, welcomeHtml } from './navigation.js';
-import { txidResponse } from "./bitcoin.js";
+import { placeTrace, traceQuery, traceResponse, txidResponse } from "./bitcoin.js";
 import { dateResponse, pixelResponse, rangesResponse } from "./history.js";
 import { validatePixelParams } from "./mapping.js";
 import { serveObject } from "./r2_object.js";
@@ -175,7 +175,7 @@ function canonicalVideoRedirect(url, key, etag) {
 
 function tokenBucket(ip, kind) {
   const now = Date.now();
-  const config = kind === "pixel" ? [8, 20] : kind === "txid" ? [0.5, 2] : [30, 60];
+  const config = kind === "pixel" ? [8, 20] : kind === "txid" ? [0.5, 2] : kind === "trace" ? [0.5, 4] : [30, 60];
   const key = `${kind}:${ip}`;
   const old = tokenBucket.entries.get(key) || { tokens: config[1], at: now };
   old.tokens = Math.min(config[1], old.tokens + ((now - old.at) / 1000) * config[0]);
@@ -247,6 +247,17 @@ async function handle(request, env, ctx) {
   if (url.pathname === "/api/txid") {
     if (!tokenBucket(ip, "txid")) return jsonError("rate limited", 429);
     return cachedApi(request, ctx, param("height") + "&" + param("satoshi"), () => txidResponse(url), 2592000);
+  }
+  if (url.pathname === "/api/trace") {
+    if (!tokenBucket(ip, "trace")) return jsonError("rate limited", 429);
+    const query = traceQuery(url);
+    if (query.error) return jsonError(query.error, 400);
+    // The lookup is cached per output. Film pixels depend on the viewed block, so they are added to the cached answer.
+    const found = await cachedApi(request, ctx, "txid=" + query.txid + "&vout=" + query.vout, () => traceResponse(query), 2592000);
+    if (!found.ok || query.block === null) return found;
+    const headers = new Headers(found.headers);
+    headers.delete("Content-Length");
+    return new Response(JSON.stringify(placeTrace(await found.json(), query.block)), { headers });
   }
 
   const retiredPlaylist = await redirectRetiredPlaylist(request, env);

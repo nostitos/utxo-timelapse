@@ -82,3 +82,60 @@ const invalid=await worker.fetch(new Request('https://example.test/api/pixel?blo
 assert.equal(invalid.status,400);await settle();
 assert.equal(cache.size,entries+1,'an invalid query is not cached');
 console.log('PASS: API cache keys hold only the validated parameters');
+
+// /api/trace: one hop either side of an output, from a stubbed mempool.space.
+{
+  const { columnBlockRange, rowSatoshiRange } = await import('../cloudflare/utxo-video-worker/src/mapping.js');
+  const id = n => n.toString(16).padStart(64, '0');
+  const confirmed = height => ({ confirmed: true, block_height: height });
+  const A = id(0xa), S = id(0x5), C = id(0xc);
+  const upstreamJson = {
+    ['/tx/' + A]: { status: confirmed(1000), vout: [{ value: 5000 }, { value: 7000 }],
+      vin: Array.from({ length: 30 }, (_, i) => ({ txid: id(100 + i), vout: i, prevout: { value: (i + 1) * 1000 } })) },
+    ['/tx/' + A + '/outspend/0']: { spent: true, txid: S, vin: 0, status: confirmed(2000) },
+    ['/tx/' + A + '/outspend/1']: { spent: false },
+    ['/tx/' + S]: { status: confirmed(2000), vin: [{}, {}], vout: [{ value: 0 }, { value: 3000 }, { value: 1000 }] },
+    ['/tx/' + C]: { status: confirmed(10), vin: [{ is_coinbase: true }], vout: [{ value: 5000000000 }] },
+    ['/tx/' + C + '/outspend/0']: { spent: true, txid: S, vin: 1, status: confirmed(RELEASE.numBlocks) },
+  };
+  for (let i = 0; i < 30; i++) upstreamJson['/tx/' + id(100 + i) + '/status'] = confirmed(100 + i);
+  const asked = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async url => {
+    const path = String(url).replace('https://mempool.space/api', '');
+    asked.push(path);
+    return path in upstreamJson ? Response.json(upstreamJson[path]) : new Response('not found', { status: 404 });
+  };
+  let client = 0;
+  const trace = async query => {
+    const r = await worker.fetch(new Request('https://example.test/api/trace?' + query, { headers: { 'CF-Connecting-IP': '10.0.0.' + client++ } }), env, ctx);
+    await settle();
+    return { status: r.status, body: await r.json() };
+  };
+
+  const early = (await trace('txid=' + A + '&vout=0&block=1500')).body;
+  assert.equal(early.inputCount, 30);
+  assert.equal(early.inputs.length, 24, 'the largest 24 inputs are listed');
+  assert.deepEqual([early.inputs[0].satoshi, early.inputs[0].height, early.inputs[23].satoshi], [30000, 129, 7000]);
+  assert.equal(asked.length, 3 + 24, 'two lookups for the output, one for the spender, one per listed input');
+  for (const point of [early.output, ...early.inputs]) {
+    const [h1, h2] = columnBlockRange(point.x, 1500), [s1, s2] = rowSatoshiRange(point.y);
+    assert(h1 <= point.height && point.height <= h2 && s1 <= point.satoshi && point.satoshi <= s2, 'a point lies in the pixel the explorer would query');
+  }
+  assert.deepEqual([early.spend.height, early.spend.inputCount, early.spend.outputCount], [2000, 2, 3]);
+  assert.deepEqual(early.spend.outputs, [{ vout: 1, satoshi: 3000 }, { vout: 2, satoshi: 1000 }], 'a spend after the viewed block has no pixels; zero-value outputs are left out');
+
+  const late = (await trace('block=2500&vout=0&txid=' + A)).body;
+  assert.equal(asked.length, 27, 'another viewed block reuses the cached lookup');
+  assert(late.spend.outputs.every(out => Number.isInteger(out.x) && Number.isInteger(out.y)));
+  assert.equal((await trace('txid=' + A + '&vout=0')).body.output.x, undefined, 'no block, no pixels');
+
+  assert.equal((await trace('txid=' + A + '&vout=1&block=1500')).body.spend, null);
+  const mined = (await trace('txid=' + C + '&vout=0&block=1500')).body;
+  assert.deepEqual([mined.coinbase, mined.inputs, mined.spend], [true, [], null], 'a spend after the film counts as unspent');
+  assert.equal((await trace('txid=' + id(0xdead) + '&vout=0&block=1500')).status, 404);
+  assert.equal((await trace('txid=' + A + '&vout=9&block=1500')).status, 404);
+  for (const bad of ['txid=' + A.toUpperCase() + '&vout=0', 'txid=' + A, 'txid=' + A + '&vout=0&block=x']) assert.equal((await trace(bad)).status, 400, bad);
+  globalThis.fetch = realFetch;
+  console.log('PASS: /api/trace lists inputs and the spender\'s outputs, places them, and caches one lookup per output');
+}

@@ -91,6 +91,17 @@
   .txbtn { font-size: 11px; padding: 1px 6px; }
   .txres { font-size: 11px; color: #9aa5b8; }
   .txres a { color: #7aa2f7; }
+  /* Trace: the inputs behind one output (blue) and the outputs of the transaction that spent it (pink). */
+  #traceLayer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; fill: none; stroke-width: 1.2; filter: drop-shadow(0 0 1px #000); }
+  #traceLayer .in { stroke: #7dcfff; }
+  #traceLayer .out { stroke: #ff7ad9; }
+  #traceLayer circle.in { fill: #7dcfff; }
+  #traceLayer circle.out { fill: #080b0e; }
+  #traceLayer .hub { fill: #fff; }
+  #traceBox { margin-bottom: 14px; }
+  #traceBox a { color: #7aa2f7; }
+  .traceIn { color: #7dcfff; }
+  .traceOut { color: #ff7ad9; }
   #hint { color: #565f74; font-size: 12.5px; }
   label.tog { display: inline-flex; gap: 5px; align-items: center; color: #9aa5b8; font-size: 12.5px; }
 
@@ -287,6 +298,7 @@
     <video id="vid" muted playsinline preload="auto" crossorigin="anonymous"></video>
     <div id="clickLayer"></div>
     <div id="crosshair"></div>
+    <svg id="traceLayer" aria-hidden="true"></svg>
     <div id="loupe"><canvas id="loupeCanvas" width="183" height="183"></canvas><div id="loupeCross"></div></div>
     <div id="panel">
       <div id="panelHeader">
@@ -420,6 +432,7 @@
 const vid = document.getElementById("vid");
 const clickLayer = document.getElementById("clickLayer");
 const crosshair = document.getElementById("crosshair");
+const traceLayer = document.getElementById("traceLayer");
 const loupe = document.getElementById("loupe");
 const loupeCanvas = document.getElementById("loupeCanvas");
 const loupeTog = document.getElementById("loupeTog");
@@ -728,6 +741,7 @@ function onFullscreenChange() {
     const d = nativeToDisplay(selPixel.nx, selPixel.ny);
     crosshair.style.left = d.x + "px"; crosshair.style.top = d.y + "px";
   }
+  drawTrace();
 }
 document.addEventListener("fullscreenchange", onFullscreenChange);
 document.addEventListener("webkitfullscreenchange", onFullscreenChange);
@@ -1294,6 +1308,7 @@ loupeTog.addEventListener("change", () => { if (!loupeTog.checked) hideLoupe(); 
 
 // ---- click -> lookup ----
 let selPixel = null; // {nx, ny} of the current selection (native coords)
+let traceData = null; // the trace on screen, kept to redraw it when the picture is resized
 
 // ---- details drawer (overlays the right edge of the video) ----
 function openDrawer() {
@@ -1303,6 +1318,7 @@ function openDrawer() {
 function closeDrawer() {
   // Closing means deselecting, including any pixel lookup still in flight.
   selPixel = null;
+  clearTrace();
   panel.classList.remove("open");
   crosshair.style.display = "none";
   hideLoupe();
@@ -1320,6 +1336,7 @@ document.addEventListener("keydown", e => {
 
 async function selectPixel(nx, ny) {
   if (!info) return;
+  clearTrace();
   nx = Math.max(0, Math.min(info.imageWidth - 1, nx));
   ny = Math.max(0, Math.min(info.imageHeight - 1, ny));
   selPixel = { nx, ny, block: null };
@@ -1490,12 +1507,107 @@ async function selectPixel(nx, ny) {
         if (r.error) { el.textContent = r.error; return; }
         if (!r.matches.length) { el.textContent = "no exact match"; return; }
         el.innerHTML = r.matches.map(m =>
-          "<a target='_blank' href='https://mempool.space/tx/" + m.txid + "'>" + m.txid.slice(0, 12) + "…:" + m.vout + "</a>"
+          "<a target='_blank' href='https://mempool.space/tx/" + m.txid + "'>" + m.txid.slice(0, 12) + "…:" + m.vout + "</a> " + traceButton(m.txid, m.vout, "trace")
         ).join("<br>");
       } catch (err) { el.textContent = "failed: " + err; }
     };
   });
 }
+
+// ---- trace contract: one hop either side of an output (/api/trace) ----
+// A transaction does not record which input paid which output. A trace therefore shows the
+// inputs of the transaction that created the output and the outputs of the one that spent it.
+function traceButton(txid, vout, label, block) {
+  return "<button class='txbtn' data-trace='" + txid + ":" + vout + "'" + (block == null ? "" : " data-block='" + block + "'") + ">" + label + "</button>";
+}
+// Most coins are spent within one pixel column of where they were created, where straight
+// lines would lie on top of each other, so a near-vertical link is drawn as an arc.
+function traceLink(a, b, side) {
+  if (Math.abs(a.x - b.x) >= 20) return "M" + a.x + " " + a.y + "L" + b.x + " " + b.y;
+  const bulge = side * Math.min(60, 14 + 0.9 * Math.abs(a.y - b.y));
+  return "M" + a.x + " " + a.y + "Q" + ((a.x + b.x) / 2 + bulge) + " " + (a.y + b.y) / 2 + " " + b.x + " " + b.y;
+}
+function traceSvg(t, toDisplay) {
+  if (t.output.x == null) return "";
+  const hub = toDisplay(t.output.x, t.output.y);
+  const dot = (kind, p, r) => "<circle class='" + kind + "' cx='" + p.x + "' cy='" + p.y + "' r='" + r + "'/>";
+  let svg = "";
+  for (const i of t.inputs) {
+    if (i.x == null) continue;
+    const p = toDisplay(i.x, i.y);
+    svg += "<path class='in' d='" + traceLink(p, hub, -1) + "'/>" + dot("in", p, 2);
+  }
+  for (const o of t.spend ? t.spend.outputs : []) {
+    if (o.x == null) continue;
+    const p = toDisplay(o.x, o.y);
+    svg += "<path class='out' d='" + traceLink(hub, p, 1) + "'/>" + dot("out", p, 3);
+  }
+  return svg + dot("hub", hub, 4);
+}
+function traceHtml(t, lastBlock) {
+  const n = v => v.toLocaleString("en-US");
+  const shown = (list, total) => n(total) + (total > list.length ? ", largest " + list.length + " shown" : "");
+  let html = "<div id='traceBox'><div class='secHead'>Trace</div><div><b>" + fmtBtc(t.output.satoshi) + "</b> created in block " + n(t.output.height) +
+    " · <a target='_blank' href='https://mempool.space/tx/" + t.txid + "'>" + t.txid.slice(0, 12) + "…:" + t.vout + "</a></div>";
+  if (t.coinbase) html += "<div class='fateHead traceIn'>● Newly mined <span class='sub'>(block reward, no inputs)</span></div>";
+  else {
+    html += "<div class='fateHead traceIn'>● Inputs of the transaction that created it <span class='sub'>(" + shown(t.inputs, t.inputCount) + ")</span></div>" +
+      "<table><tr><th>amount</th><th>created</th><th>follow</th></tr>" +
+      t.inputs.map(i => "<tr><td>" + fmtBtc(i.satoshi) + "</td><td>" + n(i.height) + "</td><td>" + traceButton(i.txid, i.vout, "trace") + "</td></tr>").join("") + "</table>";
+  }
+  if (!t.spend) return html + "<div class='fateHead unspent'>● Unspent at block " + n(lastBlock) + "</div></div>";
+  html += "<div class='fateHead traceOut'>● Outputs of the transaction that spent it in block " + n(t.spend.height) +
+    " <span class='sub'>(" + shown(t.spend.outputs, t.spend.outputCount) + (t.spend.inputCount > 1 ? "; it had " + n(t.spend.inputCount - 1) + " other inputs" : "") + ")</span></div>";
+  if (t.spend.height > t.block) return html + "<div>" + traceButton(t.txid, t.vout, "go to block " + n(t.spend.height) + " to see them", t.spend.height) + "</div></div>";
+  return html + "<table><tr><th>amount</th><th>follow</th></tr>" +
+    t.spend.outputs.map(o => "<tr><td>" + fmtBtc(o.satoshi) + "</td><td>" + traceButton(t.spend.txid, o.vout, "trace") + "</td></tr>").join("") + "</table></div>";
+}
+// ---- end trace contract ----
+
+function drawTrace() {
+  traceLayer.innerHTML = traceData ? traceSvg(traceData, nativeToDisplay) : "";
+}
+function clearTrace() {
+  traceData = null;
+  drawTrace();
+}
+function traceNotice(text) {
+  streamStatus.textContent = text;
+  setTimeout(() => { if (streamStatus.textContent === text) streamStatus.textContent = ""; }, 4000);
+}
+async function showTrace(txid, vout) {
+  const selection = selPixel;
+  const block = curBlock();
+  let t;
+  try {
+    t = await fetch("/api/trace?txid=" + txid + "&vout=" + vout + "&block=" + block).then(r => r.json());
+  } catch (err) { t = { error: "Trace failed: " + err }; }
+  if (selPixel !== selection || curBlock() !== block) return;
+  if (t.error) { traceNotice(t.error); return; }
+  // Following a trace moves the selection to the output being traced.
+  if (t.output.x != null && (!selPixel || selPixel.nx !== t.output.x || selPixel.ny !== t.output.y)) {
+    await selectPixel(t.output.x, t.output.y);
+    if (!selPixel || selPixel.nx !== t.output.x || selPixel.ny !== t.output.y || curBlock() !== block) return;
+  }
+  if (!selPixel) return;
+  document.getElementById("traceBox")?.remove();
+  panelBody.insertAdjacentHTML("afterbegin", traceHtml(t, info.videoEndBlock));
+  panel.scrollTop = 0;
+  traceData = t;
+  drawTrace();
+}
+panelBody.addEventListener("click", e => {
+  const button = e.target.closest("[data-trace]");
+  if (!button) return;
+  const [txid, vout] = button.dataset.trace.split(":");
+  button.disabled = true;
+  if (!button.dataset.block) { showTrace(txid, vout).finally(() => { button.disabled = false; }); return; }
+  // The spend is later than the block on screen: go there, then trace again in that frame.
+  userWantsPlayback = false;
+  vid.pause();
+  vid.addEventListener("seeked", () => { closeDrawer(); showTrace(txid, vout); }, { once: true });
+  vid.currentTime = blockToVideoTime(Number(button.dataset.block));
+});
 
 clickLayer.addEventListener("click", e => {
   if (!info) return;
@@ -1529,6 +1641,7 @@ vid.addEventListener("leavepictureinpicture", () => { pipNotice(false); if (vid.
 
 // ---- keep the crosshair glued to its native pixel across window resizes ----
 window.addEventListener("resize", () => {
+  drawTrace();
   if (!selPixel || crosshair.style.display === "none" || !info) return;
   const d = nativeToDisplay(selPixel.nx, selPixel.ny);
   crosshair.style.left = d.x + "px";
