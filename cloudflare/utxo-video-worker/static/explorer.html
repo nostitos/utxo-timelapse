@@ -91,6 +91,9 @@
   .txbtn { font-size: 11px; padding: 1px 6px; }
   .txres { font-size: 11px; color: #9aa5b8; }
   .txres a { color: #7aa2f7; }
+  /* A resolved transaction gets its own full-width line under its row, so it never widens the table. */
+  tr.hasTx td { border-bottom: none; }
+  tr.txRow td { text-align: left; padding: 0 6px 6px; }
   /* Trace: the inputs behind one output (blue) and the outputs of the transaction that spent it (pink). */
   #traceLayer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; fill: none; stroke-width: 1.2; filter: drop-shadow(0 0 1px #000); }
   #traceLayer .in { stroke: #7dcfff; }
@@ -1442,7 +1445,8 @@ async function selectPixel(nx, ny) {
         const stayed = leaveH - u.created;
         out += "<td class='goneLater'>@" + leaveH.toLocaleString("en-US") + (u.spentDate ? " · " + u.spentDate : "") + "</td><td>" + fmtAge(stayed) + "</td>";
       }
-      out += "<td><button class='txbtn' data-h='" + u.created + "' data-s='" + u.sat + "' data-i='" + id + "'>txid</button><div class='txres' id='txres" + id + "'></div></td></tr>";
+      out += "<td><button class='txbtn' data-h='" + u.created + "' data-s='" + u.sat + "' data-i='" + id + "'>txid</button></td></tr>" +
+        "<tr class='txRow' hidden><td colspan='" + (kind === "stay" ? 5 : 6) + "'><div class='txres' id='txres" + id + "'></div></td></tr>";
     });
     return out + "</table>";
   };
@@ -1501,6 +1505,8 @@ async function selectPixel(nx, ny) {
   panelBody.querySelectorAll(".txbtn").forEach(btn => {
     btn.onclick = async () => {
       const el = document.getElementById("txres" + btn.dataset.i);
+      el.closest("tr").hidden = false;
+      el.closest("tr").previousElementSibling.classList.add("hasTx");
       el.textContent = "resolving…";
       try {
         const r = await fetch("/api/txid?height=" + btn.dataset.h + "&satoshi=" + btn.dataset.s).then(x => x.json());
