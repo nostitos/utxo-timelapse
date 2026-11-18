@@ -20,7 +20,7 @@ export function isTypingTarget(el) {
  * toggleSound, togglePanel, panelOpen, toggleOwnersMenu}.
  */
 export function handleKey(e, app) {
-  const { playback, controls, planeHud, follow, help, share, inspector, funMenu, placesMenu, ownersMenu, touchOnly, notice,
+  const { playback, controls, planeHud, follow, help, share, inspector, tx, funMenu, placesMenu, ownersMenu, touchOnly, notice,
     inspectAt, cycleCraft, startRun, setFollow, toggleSound, togglePanel, panelOpen, toggleOwnersMenu } = app;
   if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || share.open) return;
   if (isTypingTarget(e.target) || (e.target && e.target.closest && e.target.closest('#panel input, #panel select, #panel textarea'))) return;
@@ -115,6 +115,7 @@ export function handleKey(e, app) {
       else if (placesMenu.open) placesMenu.close();
       else if (ownersMenu.open) ownersMenu.close();
       else if (inspector.isOpen) inspector.close();
+      else if (tx?.active) tx.close();
       else if (panelOpen()) togglePanel(false);
       break;
     default:

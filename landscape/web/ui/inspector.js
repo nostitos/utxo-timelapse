@@ -50,7 +50,7 @@ function chart(points, { start, end, label, firstLabel, lastLabel, sampled = fal
 }
 
 export function createInspector({
-  container, marker, replay, grid, rows, blocktimes, axis, explorerBase, camera, canvas, heightAt, onClose, onSelect, onShare,
+  container, marker, replay, grid, rows, blocktimes, axis, explorerBase, camera, canvas, heightAt, onClose, onSelect, onShare, onTrace = null,
   link2d = (block, x, y) => explorerBase + '/?block=' + block + '&x=' + x + '&y=' + y, local = true, owners = () => null,
 }) {
   let sel = null;
@@ -72,6 +72,11 @@ export function createInspector({
   container.addEventListener('click', (e) => {
     if (e.target.closest('[data-close]')) return api.close();
     if (e.target.closest('[data-share-cell]')) return onShare?.();
+    const trace = e.target.closest('[data-trace]');
+    if (trace) {
+      const [created, sat] = trace.dataset.trace.split(':').map(Number);
+      return void onTrace?.(created, sat);
+    }
     const t = e.target.closest('[data-tab]');
     const more = e.target.closest('[data-show-all]');
     if (t) { tab = t.dataset.tab; showAll = false; render(); }
@@ -170,7 +175,9 @@ export function createInspector({
         // One amount band per table: share a unit and retain exact satoshi precision.
         const big = u.sat >= 1e8;
         const amount = big ? (u.sat / 1e8).toLocaleString('en-US', { maximumFractionDigits: 8 }) : fmtInt(u.sat);
-        html += '<tr class="in-output-row"><td class="in-amount" title="' + satsText(u.sat) + ' · ' + btcText(u.sat) + '"><span class="in-cell-main">' + amount + '</span><small>' + (big ? 'BTC' : 'sats') + '</small></td>' +
+        // Trace opens the transaction that created this output (ui/tx.js).
+        const trace = onTrace ? '<button type="button" class="in-trace" data-trace="' + u.created + ':' + u.sat + '" aria-label="Open the transaction that created this output">Trace</button>' : '';
+        html += '<tr class="in-output-row"><td class="in-amount" title="' + satsText(u.sat) + ' · ' + btcText(u.sat) + '"><span class="in-cell-main">' + amount + '</span><small>' + (big ? 'BTC' : 'sats') + trace + '</small></td>' +
           '<td class="in-created">' + dateCell(created, u.created) + '</td>' +
           '<td class="in-spent ' + (spent ? 'later' : 'ok') + '">' + (spent ? dateCell(ended, u.spent) : '<span class="in-cell-main">Unspent</span><small title="No spend through block ' + fmtInt(res.cutoffBlock) + ' · ' + escapeHtml(res.cutoffDate || '') + '">to date</small>') + '</td>' +
           '<td class="in-held" title="' + escapeHtml(heldHint) + '"><span class="in-cell-main">' + escapeHtml(held.label) + '</span><small>' + (spent ? fmtInt(held.blocks) + ' blk' : 'at selection') + '</small></td></tr>';
@@ -311,7 +318,8 @@ export function createInspector({
 
   const api = {
     get isOpen() {
-      return !container.hidden;
+      // A transaction's card can hold the same panel (ui/tx.js): open means a cell is shown.
+      return !!sel && !container.hidden;
     },
     get current() {
       return current;

@@ -1130,3 +1130,29 @@ kbd {
   #share .icon-btn { width: 44px; height: 44px; }
   .share-destinations a, .share-destinations button { min-height: 44px; }
 }
+
+/* Transaction view (ui/tx.js): its card shares the inspector's panel and classes. */
+#inspector .tx-head-actions { display: flex; gap: 4px; flex-shrink: 0; }
+#inspector .tx-id { font: 11px/1.5 var(--mono); overflow-wrap: anywhere; }
+.tx-key { display: inline-block; width: 14px; height: 3px; margin: 0 6px 3px 0; vertical-align: middle; border-radius: 2px; box-shadow: 0 0 0 1px #000; }
+.tx-key-in { background: #ff3df2; }
+.tx-key-out { background: #ececec; }
+.tx-table { margin-bottom: 4px; }
+.tx-col-amount { width: 44%; }
+.tx-col-hop { width: 64px; }
+.tx-table :is(th, td):last-child { text-align: right; }
+.tx-table tr.tx-marked td { background: rgba(255, 61, 242, 0.14); }
+.tx-table tr.tx-hot td { background: rgba(255, 255, 255, 0.1); }
+.tx-table .tx-unspent { color: var(--mint); }
+.tx-hop { border: 1px solid var(--line); border-radius: 4px; background: none; color: var(--mint); font: 11.5px/1.3 var(--mono); padding: 3px 7px; min-height: 26px; cursor: pointer; white-space: nowrap; }
+/* The inspector's Trace sits beside an output's unit, so the row keeps its two lines. */
+.in-trace { margin-left: 6px; padding: 0 5px; border: 1px solid var(--line); border-radius: 3px; background: none; color: var(--mint); font: 10.5px/1.3 var(--mono); cursor: pointer; }
+.tx-hop:hover, .in-trace:hover { border-color: var(--mint); background: rgba(168, 214, 179, 0.08); }
+.tx-all summary { min-height: 30px; }
+.tx-choices { display: grid; gap: 6px; }
+.tx-choices .tx-hop { text-align: left; min-height: 34px; }
+#inspector .in-links a + a { margin-top: 8px; }
+@media (max-width: 700px) {
+  .tx-hop { min-height: 36px; padding: 6px 9px; }
+  .in-trace { display: inline-block; margin-top: 2px; padding: 6px 9px; }
+}

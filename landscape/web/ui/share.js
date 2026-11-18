@@ -8,27 +8,29 @@ export function createShare({ dialog, getSnapshot }) {
   dialog.innerHTML = '<div class="share-head"><div><span class="eyebrow">UTXO Timelapse · Landscape</span><h2 id="share-title">Share this view</h2></div><button class="icon-btn" type="button" data-close aria-label="Close share dialog">×</button></div>' +
     '<fieldset class="share-modes"><legend>What to share</legend>' +
     '<label><input type="radio" name="landscape-share" value="view" checked><span><strong>Current view</strong><small>Location, block and appearance</small></span></label>' +
-    '<label><input type="radio" name="landscape-share" value="cell"><span><strong>Selected cell</strong><small data-cell-hint>Select a cell first</small></span></label></fieldset>' +
+    '<label><input type="radio" name="landscape-share" value="cell"><span><strong>Selected cell</strong><small data-cell-hint>Select a cell first</small></span></label>' +
+    '<label><input type="radio" name="landscape-share" value="tx"><span><strong>Transaction</strong><small data-tx-hint>Open a transaction first</small></span></label></fieldset>' +
     '<div class="share-summary"><strong data-block></strong><p data-context></p></div>' +
     '<label class="share-play"><span><strong>Autoplay</strong><small data-play-hint>Start playing when the link is opened.</small></span><input type="checkbox" role="switch" aria-label="Autoplay"></label>' +
     '<label class="share-link-label" for="share-url">Link to this view</label><div class="share-link-row"><textarea id="share-url" readonly rows="3" spellcheck="false"></textarea><button type="button" data-copy>Copy link</button></div>' +
     '<p class="share-status" role="status" aria-live="polite"></p><p class="share-local" hidden>This local preview link works on this computer.</p>' +
     '<div class="share-destinations"><a data-x target="_blank" rel="noopener noreferrer">X.com ↗</a><a data-email>Email</a><button type="button" data-native hidden>More options</button></div>';
   const q = s => dialog.querySelector(s);
-  const viewMode = q('[value="view"]'), cellMode = q('[value="cell"]');
+  const viewMode = q('[value="view"]'), cellMode = q('[value="cell"]'), txMode = q('[value="tx"]');
   const play = q('[role="switch"]'), field = q('textarea'), status = q('.share-status'), copy = q('[data-copy]');
   q('[data-native]').hidden = typeof navigator.share !== 'function';
-  const title = () => 'Bitcoin Landscape · block ' + fmtInt(snapshot.block) + (cellMode.checked ? ' · selected cell' : '');
+  const title = () => 'Bitcoin Landscape · block ' + fmtInt(snapshot.block) + (cellMode.checked ? ' · selected cell' : txMode.checked ? ' · transaction' : '');
 
   function update() {
     if (!snapshot) return;
     const cell = cellMode.checked && snapshot.cell;
-    play.disabled = !!cell;
-    play.checked = !cell && autoplay;
-    q('[data-play-hint]').textContent = cell ? 'Cell links open paused, with their details visible.' : 'Start playing when the link is opened.';
+    const tx = txMode.checked && snapshot.tx;
+    play.disabled = !!(cell || tx);
+    play.checked = !(cell || tx) && autoplay;
+    q('[data-play-hint]').textContent = cell ? 'Cell links open paused, with their details visible.' : tx ? 'Transaction links open paused, with the transaction drawn.' : 'Start playing when the link is opened.';
     q('[data-block]').textContent = 'Block ' + fmtInt(snapshot.block);
-    q('[data-context]').textContent = cell ? snapshot.cellDescription : snapshot.date + ' · Same camera and appearance';
-    field.value = buildShareUrl(location.href, snapshot, { selectedCell: !!cell, autoplay: play.checked });
+    q('[data-context]').textContent = cell ? snapshot.cellDescription : tx ? snapshot.txDescription : snapshot.date + ' · Same camera and appearance';
+    field.value = buildShareUrl(location.href, snapshot, { selectedCell: !!cell, transaction: !!tx, autoplay: play.checked });
     field.setSelectionRange(0, 0);
     field.scrollTop = 0;
     q('[data-x]').href = 'https://x.com/intent/tweet?text=' + encodeURIComponent(title()) + '&url=' + encodeURIComponent(field.value);
@@ -37,7 +39,7 @@ export function createShare({ dialog, getSnapshot }) {
     status.textContent = '';
     copy.textContent = 'Copy link';
   }
-  for (const radio of [viewMode, cellMode]) radio.addEventListener('change', update);
+  for (const radio of [viewMode, cellMode, txMode]) radio.addEventListener('change', update);
   play.addEventListener('change', () => { autoplay = play.checked; update(); });
   q('[data-close]').addEventListener('click', () => dialog.close());
   dialog.addEventListener('keydown', e => e.stopPropagation());
@@ -70,16 +72,20 @@ export function createShare({ dialog, getSnapshot }) {
   return {
     get open() { return dialog.open; },
     openDialog(mode = 'view') {
-      trigger = document.activeElement?.matches('[data-share-cell], [data-act="share"]') ? document.activeElement : document.querySelector(mode === 'cell' ? '[data-share-cell]' : '[data-act="share"]');
+      trigger = document.activeElement?.matches('[data-share-cell], [data-tx-share], [data-act="share"]') ? document.activeElement
+        : document.querySelector(mode === 'cell' ? '[data-share-cell]' : mode === 'tx' ? '[data-tx-share]' : '[data-act="share"]');
       snapshot = getSnapshot();
       autoplay = snapshot.playing;
       cellMode.disabled = !snapshot.cell;
+      txMode.disabled = !snapshot.tx;
       cellMode.checked = mode === 'cell' && !!snapshot.cell;
-      viewMode.checked = !cellMode.checked;
+      txMode.checked = mode === 'tx' && !!snapshot.tx;
+      viewMode.checked = !cellMode.checked && !txMode.checked;
       q('[data-cell-hint]').textContent = snapshot.cell ? 'Open the same cell and its details' : 'Select a cell first';
+      q('[data-tx-hint]').textContent = snapshot.tx ? 'Open the same transaction, drawn' : 'Open a transaction first';
       update();
       dialog.showModal();
-      (cellMode.checked ? cellMode : viewMode).focus();
+      (cellMode.checked ? cellMode : txMode.checked ? txMode : viewMode).focus();
     },
     close() { if (dialog.open) dialog.close(); },
   };

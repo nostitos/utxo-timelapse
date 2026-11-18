@@ -36,6 +36,8 @@ import { createLegend } from './ui/legend.js';
 import { createMinimap } from './ui/minimap.js';
 import { createInspector } from './ui/inspector.js';
 import { createHover } from './ui/hover.js';
+import { createTxView } from './ui/tx.js';
+import { createTxRibbons } from './render/tx-ribbons.js';
 import { createHelp } from './ui/help.js';
 import { createToast } from './ui/toast.js';
 import { createLoading } from './ui/loading.js';
@@ -239,6 +241,9 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     // The craft models and the coins need the real scene; dev pages with a stub view run without them.
     const planeModel = view.scene ? createPlaneModel({ scene: view.scene }) : null;
     const coinModels = view.scene ? createCoins({ scene: view.scene }) : null;
+    // Transaction ribbons (ui/tx.js); dev shells without a scene get a stand-in that draws nothing.
+    const txRibbons = view.scene ? createTxRibbons() : { set() {}, update() {}, highlight() {}, picks: new Float32Array(0), highlighted: -1, vertices: 0 };
+    if (txRibbons.object3d) view.scene.add(txRibbons.object3d);
     const planeHud = createPlaneHud({
       container: $('planehud'), nose: $('plane-nose'), keys: $('planekeys'), pops: $('funpops'), camera: view.camera, canvas, grid,
       rows: replay.rows, blocktimes: replay.blocktimes, settings: store, sound: planeSound,
@@ -335,10 +340,29 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     const inspector = createInspector({
       container: $('inspector'), marker: $('marker'), replay, grid, rows: replay.rows, blocktimes: replay.blocktimes,
       axis, explorerBase, link2d: endpoints.link2d, local: endpoints.local,
-      onSelect: () => selectionChanged(), onClose: () => selectionChanged(),
+      onSelect: () => selectionChanged(),
+      onClose: () => {
+        selectionChanged();
+        txView.showCard();
+      },
+      onTrace: (created, sat) => txView.trace(created, sat),
       onShare: () => openShare('cell'),
       camera: view.camera, canvas, heightAt: (x, z) => view.heightAt(x, z),
       owners: () => ownerInfo(),
+    });
+    // A transaction (ui/tx.js): its card takes the inspector's panel while no cell is inspected.
+    const txView = createTxView({
+      container: $('inspector'), ribbons: txRibbons, camera: view.camera, canvas, heightAt: (x, z) => view.heightAt(x, z),
+      rows: replay.rows, blocktimes: replay.blocktimes, apiBase: explorerBase, local: endpoints.local,
+      seek: (b) => seekPlacingCamera(b), pause: () => playback.pause(), getBlock: () => replay.block,
+      poseLookingAt: (target, o) => controls.poseLookingAt(target, o),
+      flyTo: (pose) => {
+        if (controls.mode !== 'map') controls.setMode('map');
+        return controls.flyTo(pose);
+      },
+      lightGround: () => groundLight(), inspectorOpen: () => inspector.isOpen, closeInspector: () => inspector.close(),
+      onChange: () => selectionChanged(), onShare: () => openShare('tx'), onRender: () => view.invalidate?.(),
+      signature: () => (view.terrain?.drawSignature ? view.terrain.drawSignature() : ''), notice,
     });
     // What the pointer (the crosshair in flight mode) is aimed at, from local data only, in a
     // card docked under the HUD.
@@ -457,7 +481,8 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         cellDescription = 'Blocks ' + fmtInt(first) + '–' + fmtInt(last) + ' · ' + amount;
       }
       const snapshot = { block: replay.block, cam: controls.getPose(), follow: follow.active, own: sharedOwnerIds(),
-        settings: store.viewURL(), cell, cellDescription, date: isoUtc(replay.blocktimes[replay.block]), playing: state.playing };
+        settings: store.viewURL(), cell, cellDescription, date: isoUtc(replay.blocktimes[replay.block]), playing: state.playing,
+        tx: txView.txid, txDescription: txView.description };
       if (pause) {
         playback.pause();
         if (controls.mode !== 'map') controls.setMode('map');
@@ -471,6 +496,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     timeline = createTimeline({
       container: $('timeline'), tip, blocktimes: replay.blocktimes, playback,
       onSeek: (b) => playback.seek(b),
+      onTx: (txid) => txView.open(txid).catch((err) => notice(err.message || String(err), 'warn', 'tx')),
       onNotice: notice,
       onPlaces: () => {
         funMenu.close();
@@ -565,12 +591,15 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     }
     applyDisplay();
 
-    // Axis labels are light text for the usual dark ground; on a light one (Paper) they turn dark.
-    function applyLabelInk() {
+    // Axis labels are light text for the usual dark ground; on a light one (Paper) they turn dark,
+    // and so do a transaction's outputs (ui/tx.js).
+    function groundLight() {
       const hex = /^#([0-9a-f]{6})$/i.exec(String(store.get('color.ground')));
       const n = hex ? parseInt(hex[1], 16) : 0;
-      const luma = (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
-      $('labels').classList.toggle('lbl-on-light', luma > 0.6);
+      return (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255 > 0.6;
+    }
+    function applyLabelInk() {
+      $('labels').classList.toggle('lbl-on-light', groundLight());
     }
     applyLabelInk();
 
@@ -578,6 +607,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       const ids = new Set(changes.map((c) => c.id));
       if (ids.has('amp.measure') || ids.has('color.measure')) applyMeasures();
       if (ids.has('color.ground')) applyLabelInk();
+      txView.refresh();
       if (ids.has('amp.heatHalfLife')) replay.setHeatHalfLife(store.get('amp.heatHalfLife'));
       if ((ids.has('owners.only') || ids.has('owners.flat')) && owners.visible.length) sendOwners();
       if (ids.has('owners.only') || ids.has('owners.flat') || ids.has('owners.dim')) ownersMenu.update(ownersState());
@@ -764,14 +794,15 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     // Plane mode is not shared: a link made while flying opens in map mode at the camera.
     const shareMode = () => (controls.mode === 'plane' ? 'map' : controls.mode);
     // The address is a link to the view: it carries the look and its settings, not the quality.
-    const currentHash = () => encodeHash({ block: replay.block, mode: shareMode(), cam: controls.getPose(), follow: follow.active, cell: inspector.isOpen ? inspector.selection : null, own: sharedOwnerIds() }, store.viewURL());
-    const viewState = () => ({ b: replay.block, cam: controls.getPose(), mode: shareMode(), follow: follow.active, cell: inspector.isOpen ? inspector.selection : null, own: sharedOwnerIds() });
+    const currentHash = () => encodeHash({ block: replay.block, mode: shareMode(), cam: controls.getPose(), follow: follow.active, cell: inspector.isOpen ? inspector.selection : null, tx: txView.txid, own: sharedOwnerIds() }, store.viewURL());
+    const viewState = () => ({ b: replay.block, cam: controls.getPose(), mode: shareMode(), follow: follow.active, cell: inspector.isOpen ? inspector.selection : null, tx: txView.txid, own: sharedOwnerIds() });
     let restoringHash = true, hashRestoreId = 0;
     async function restoreLinkedView(h) {
       const my = ++hashRestoreId;
       restoringHash = true;
       hook.linkReady = false;
       playback.pause();
+      if (!h.tx) txView.close();
       inspector.close();
       const cell = h.cell && Number.isInteger(h.cell.col) && Number.isInteger(h.cell.row) &&
         h.cell.col >= 0 && h.cell.col < grid.l0Columns && h.cell.row >= 0 && h.cell.row < grid.rows ? h.cell : null;
@@ -786,6 +817,10 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
         if (my !== hashRestoreId) return;
         if (cell) await inspector.open({ l0Col: cell.col, l0Row: cell.row, shared: true,
           x: worldX((cell.col + .5) * grid.blocksPerColumn), z: worldZ(cell.row + .5) });
+        if (my !== hashRestoreId) return;
+        // A transaction link shows the linked block (its own by default) and, without a camera, frames it.
+        const txBlock = 'linkBlock' in h ? h.linkBlock : h.block;
+        if (h.tx) await txView.open(h.tx, { block: Number.isInteger(txBlock) ? clamp(txBlock, 0, tip) : null, frame: !h.cam });
         if (my !== hashRestoreId) return;
         if (h.play && !h.cell) playback.play();
       } finally {
@@ -831,7 +866,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     });
 
     // ---- keyboard -------------------------------------------------------------------
-    const keyTargets = { playback, controls, planeHud, follow, help, share, inspector, funMenu, placesMenu, ownersMenu, touchOnly,
+    const keyTargets = { playback, controls, planeHud, follow, help, share, inspector, tx: txView, funMenu, placesMenu, ownersMenu, touchOnly,
       notice, inspectAt, cycleCraft, startRun, setFollow, toggleSound, togglePanel, panelOpen, toggleOwnersMenu };
     window.addEventListener('keydown', (e) => handleKey(e, keyTargets));
     // Browsers may keep the sound suspended until a gesture; any key press or click retries.
@@ -862,13 +897,13 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       : defaultStartBlock(tip, replay.snapshotBlocks || []);
     stage = 'seek';
     loading.set('Replaying to block ' + fmtInt(startBlock));
-    restoreLinkedView({ ...initial, block: startBlock }).catch((err) => {
+    restoreLinkedView({ ...initial, block: startBlock, linkBlock: initial.block }).catch((err) => {
       hook.error = String(err && err.message ? err.message : err);
       notice('Seek failed: ' + hook.error, 'error');
     });
 
     Object.assign(hook, {
-      settings: store, replay, view, controls, playback, panel, manifest, grid,
+      settings: store, replay, view, controls, playback, panel, manifest, grid, tx: txView,
       ui: { hud, timeline, legend, minimap, inspector, share, hover, placesMenu, ownersMenu, help, toast, funMenu, funCard },
       owners: {
         get manifest() { return owners.manifest; },
@@ -1011,6 +1046,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       // that would repeat the last one (render/idle.js).
       const active = !hook.ready || pstate.playing || !!pstate.op || replay.busy || controls.mode === 'plane' || game.running ||
         game.coins.length > 0;
+      txView.update(now);
       const r = view.render(active);
       if (r && typeof r.catch === 'function') r.catch((err) => console.error('render', err));
       if (gotData && !hook.ready) {

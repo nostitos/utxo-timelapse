@@ -21,7 +21,14 @@ const SECTIONS = [
     [['M', '~Sound button'], 'Sound on or off: a click for each spend flash on screen while playing, darker for older coins, louder for more BTC and nearer the view; the engine in plane mode'],
   ]],
   ['Sharing', [
-    [['~Share button'], 'Copy the current location, block and appearance, or a selected cell with its details open. Cell links open paused; view links can autoplay.'],
+    [['~Share button'], 'Copy the current location, block and appearance, a selected cell with its details open, or an open transaction. Cell and transaction links open paused; view links can autoplay.'],
+  ]],
+  ['Transactions', [
+    [['~Block field'], 'Paste a transaction id and press Enter: the landscape goes to its block and draws it, magenta ribbons rising from the coins it spent to a bridge above the block and white ribbons falling to the coins it made'],
+    [['~Trace'], 'In a cell\u2019s outputs, open the transaction that created that output'],
+    [['~\u2190 tx', '~tx \u2192'], 'Open the transaction that created an input or spent an output; the ones before stay as a dim trail'],
+    [['~Row or ribbon'], 'Point at a row of the card or at a ribbon to light the other'],
+    [['Esc'], 'Close the cell over the transaction, then the transaction'],
   ]],
   ['Map mode', [
     [['~Drag'], 'Pan; the grabbed point stays under the cursor'],

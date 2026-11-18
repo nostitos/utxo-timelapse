@@ -4,7 +4,7 @@ import { encodeHash } from './hash.js';
 const PUBLIC_HOSTS = new Set(['bitcoinlandscape.com', 'www.bitcoinlandscape.com', '3d.bitcointimelapse.com']);
 const PREVIEW_PARAMS = ['data', 'explorer', 'explorer2d', 'startup', 'webgl'];
 
-export function buildShareUrl(href, snapshot, { selectedCell = false, autoplay = false } = {}) {
+export function buildShareUrl(href, snapshot, { selectedCell = false, transaction = false, autoplay = false } = {}) {
   const source = new URL(href);
   const url = new URL(PUBLIC_HOSTS.has(source.hostname) ? 'https://bitcoinlandscape.com/' : source.origin + source.pathname);
   // Local/custom data configurations must remain usable; public links stay canonical.
@@ -12,7 +12,8 @@ export function buildShareUrl(href, snapshot, { selectedCell = false, autoplay =
     if (source.searchParams.has(key)) url.searchParams.set(key, source.searchParams.get(key));
   }
   const cell = selectedCell ? snapshot.cell : null;
+  const tx = transaction ? snapshot.tx : null;
   url.hash = encodeHash({ block: snapshot.block, cam: snapshot.cam, mode: 'map',
-    follow: snapshot.follow, cell, play: !cell && autoplay, own: snapshot.own || null }, snapshot.settings);
+    follow: snapshot.follow, cell, tx, play: !cell && !tx && autoplay, own: snapshot.own || null }, snapshot.settings);
   return url.href;
 }

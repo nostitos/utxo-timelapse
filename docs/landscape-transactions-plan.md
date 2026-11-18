@@ -1,6 +1,6 @@
 # Transaction view for the landscape: plan
 
-Status: plan only, written 2026-11-18. No code is changed, nothing is deployed and nothing is published until the founder approves. The open choices are listed in [Decisions](#decisions).
+Status: phases 1 and 2 are built on the local branch `codex/landscape-transactions`, stacked on PR #80's `codex/trace-output`, and previewed locally (2026-11-18). Nothing is pushed, deployed or published. Phases 3 and 4 remain. The founder's answers are under [Decisions](#decisions); what the build changed from this plan is under [Built in phases 1 and 2](#built-in-phases-1-and-2).
 
 The 2D explorer's transaction view (draft PR #80, branch `codex/trace-output`, not merged) draws a transaction on the film as lines into one point and out of it. This plan brings the same view to the landscape (`landscape/web`, bitcoinlandscape.com) and uses the third dimension and the camera for the cases the film cannot separate.
 
@@ -176,20 +176,26 @@ Placing every unplaced input would cost up to three more Worker requests for the
 
 ## Decisions
 
-Recommendations are marked. Nothing starts before the approvals.
+Answered by the founder on 2026-11-18, every one as recommended.
 
-**Choices**
+1. **Shape:** a bridge with inputs and outputs on opposite ends.
+2. **Data:** PR #80's route code through the landscape Worker.
+3. **Unplaced inputs:** one dashed ribbon with a count.
+4. **Colour:** magenta and white, with ink outputs on a light ground.
+5. **Ribbon limit:** 300 a side, the smallest merged.
+6. **Motion:** one pulse on open, replayable (phase 3).
+7. **First preview:** phases 1 and 2 together.
+8. **Approvals:** change PR #80's lookup code for the landscape's tip, stack on `codex/trace-output`, and start on a branch with nothing published.
 
-1. **Shape:** bridge with inputs and outputs on opposite ends (recommended); a single raised point as in 2D; flat lines on the terrain.
-2. **Data:** reuse PR #80's route through the landscape Worker (recommended); date inputs in the browser.
-3. **Unplaced inputs:** one dashed ribbon with a count (recommended); add a "Place the rest" button that asks for more lookups; look up everything automatically.
-4. **Colour:** magenta and white with ink outputs on light pages (recommended); a tuned pair per look; a setting.
-5. **Ribbon limit:** 300 per side, smallest merged (recommended); every cell its own ribbon; 120.
-6. **Motion:** one pulse on open, replayable (recommended); particles that run the whole time; none.
-7. **First preview:** phases 1 and 2 together (recommended); phase 1 alone; all four.
+## Built in phases 1 and 2
 
-**Approvals**
+What the build changed or settled beyond the plan:
 
-1. Change `txResponse` and `dateInputs` in PR #80's `bitcoin.js` as described.
-2. Stack the work on `codex/trace-output` before PR #80 merges.
-3. Start phase 1 on a branch, with nothing published.
+- **Tip in PR #80's code.** `txResponse` takes the tip and its name (`{tip, latest}`), and `txidResponse` takes the tip too, so the inspector's Trace reaches coins created after the film's block 974,310. `dateInputs` passes the tip to its lookups. It does not return candidate blocks for unplaced inputs, because the dashed stub does not use them. The 2D explorer's behaviour and messages are unchanged.
+- **Card.** The card shares the inspector's panel and its phone sheet. A cell clicked under the ribbons opens over the card, and closing it brings the card back; Trace hands the panel to the transaction. The inspector's `isOpen` now means that a cell is shown.
+- **Framing.** On real terrain, a small transaction's bridge stood among the tall columns at the leading edge. The bridge now clears the highest terrain within 12 units, and the framed camera stays 10 units above that height and at least 40 units away. The free part of the screen beside the card or above the sheet is what gets framed.
+- **Rendering.** Strips are built on the CPU once per layout and turned toward the camera in the vertex shader, as two meshes (casings, then cores) with no new render pass. The ribbons rebuild at most every 0.5 s while the block or the resident terrain changes. On the 1,093-input sweep (17,010 vertices), the app's GPU timer could not separate their cost from its own noise: medians ranged from 3.9 to 5.8 ms with or without them, and frames held 60 fps in headless Chrome at 1600 × 900, High.
+- **Local runs.** The native explorer looks up no transactions, so a local run without the online Worker says so and links to the transaction at bitcoinlandscape.com.
+- **Checks.** `tests/tx-layout.test.mjs`, hash and share cases, a Worker check against a stubbed mempool.space, and the browser checks `tx`, `tx-looks` (every look, plus Performance and Extreme) and `tx-hops` with four recorded answers in `tests/fixtures/tx/`.
+
+Not built yet: the pulse, Follow a coin and hollow spent outputs (phase 3); owner names and the release (phase 4).
