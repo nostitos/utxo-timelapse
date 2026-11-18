@@ -100,15 +100,19 @@
   td.goneLater span { white-space: nowrap; }
   /* On a phone the spend block alone fits, which keeps the trace button in view. */
   @media (max-width: 480px) { td.goneLater span + span { display: none; } }
-  /* A transaction: lines in from the coins it spent (blue) and out to the coins it made (pink). Each path sets its own width. */
-  #traceLayer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; fill: none; filter: drop-shadow(0 0 1px #000); }
-  #traceLayer circle { stroke-width: 1.2; }
-  #traceLayer .mark { stroke: #fff; stroke-width: 1.5; }
-  #traceLayer .in { stroke: #7dcfff; }
-  #traceLayer .out { stroke: #ff7ad9; }
-  #traceLayer circle.in { fill: #7dcfff; }
-  #traceLayer circle.out { fill: #080b0e; }
+  /* A transaction: lines in from the coins it spent and out to the coins it made, each over a dark casing.
+     The film's palette runs blue, cyan, green, yellow, orange, red, so the lines use colours outside it. Each path sets its own width. */
+  :root { --trace-in: #ff3df2; --trace-out: #ffffff; }
+  #traceLayer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; fill: none; }
+  #traceLayer .case { stroke: #000; }
+  #traceLayer path.in { stroke: var(--trace-in); }
+  #traceLayer path.out { stroke: var(--trace-out); }
+  #traceLayer circle { stroke: #000; stroke-width: 1.5; }
+  #traceLayer circle.in { fill: var(--trace-in); }
+  #traceLayer circle.out { fill: var(--trace-out); }
   #traceLayer .hub { fill: #fff; }
+  #traceLayer circle.ring { fill: none; stroke: #000; stroke-width: 4.5; }
+  #traceLayer circle.mark { fill: none; stroke: #fff; stroke-width: 2; }
   #traceBox { margin-bottom: 14px; }
   #traceBox a { color: #7aa2f7; }
   #traceBox details summary { cursor: pointer; color: #9aa5b8; font-size: 12px; margin: 4px 0; }
@@ -116,8 +120,8 @@
   .txnote { color: #9aa5b8; font-size: 12px; margin: 2px 0 4px; }
   /* The block box also takes a transaction id; it keeps the width the number box had, and a pasted id scrolls inside it. */
   #blockInput { width: 90px; }
-  .traceIn { color: #7dcfff; }
-  .traceOut { color: #ff7ad9; }
+  .traceIn { color: var(--trace-in); }
+  .traceOut { color: var(--trace-out); }
   /* The drawer's main action. */
   #traceLead { margin-bottom: 12px; }
   #panel button.traceMain { background: #a8d6b3; border-color: #a8d6b3; color: #12221b; font-weight: 600; padding: 7px 14px; }
@@ -1572,7 +1576,8 @@ function traceLink(a, b, side) {
   return "M" + a.x + " " + a.y + "Q" + ((a.x + b.x) / 2 + bulge) + " " + (a.y + b.y) / 2 + " " + b.x + " " + b.y;
 }
 // Coins in one film pixel share one line, so a sweep of hundreds of inputs stays readable; a
-// line's width and opacity grow with the share of the transaction's BTC it carries.
+// line's width and opacity grow with the share of the transaction's BTC it carries. Every line
+// has a dark casing, all drawn first, so lines stay apart from the film and from each other.
 function txSvg(t, toDisplay) {
   if (!t.hub) return "";
   const hub = toDisplay(t.hub.x, t.hub.y);
@@ -1588,18 +1593,24 @@ function txSvg(t, toDisplay) {
     }
     return [...groups.values()].sort((a, b) => a.satoshi - b.satoshi); // the largest is drawn last, on top
   };
+  const dot = (kind, p, r) => "<circle class='" + kind + "' cx='" + p.x + "' cy='" + p.y + "' r='" + r + "'/>";
+  let cases = "", lines = "", dots = "";
+  const ins = merged(t.inputs), outs = merged(t.outputs);
+  // Hundreds of lines would cover the film, so each line fades as their number grows; overlaps build up where many meet.
+  const floor = Math.min(0.6, Math.max(0.2, 0.6 * Math.sqrt(30 / (ins.length + outs.length))));
+  const small = ins.length + outs.length > 150;
   const line = (kind, satoshi, d) => {
     const share = Math.sqrt(satoshi / total);
-    return "<path class='" + kind + "' d='" + d + "' stroke-width='" + (0.8 + 2.4 * share).toFixed(2) + "' stroke-opacity='" + (0.35 + 0.65 * share).toFixed(2) + "'/>";
+    const width = 0.8 + 2.4 * share, opacity = floor + (1 - floor) * share;
+    cases += "<path class='case' d='" + d + "' stroke-width='" + (width + 1.6).toFixed(2) + "' stroke-opacity='" + (0.6 * opacity).toFixed(2) + "'/>";
+    lines += "<path class='" + kind + "' d='" + d + "' stroke-width='" + width.toFixed(2) + "' stroke-opacity='" + opacity.toFixed(2) + "'/>";
   };
-  const dot = (kind, p, r) => "<circle class='" + kind + "' cx='" + p.x + "' cy='" + p.y + "' r='" + r + "'/>";
-  let svg = "";
-  for (const g of merged(t.inputs)) { const p = toDisplay(g.x, g.y); svg += line("in", g.satoshi, traceLink(p, hub, -1)) + dot("in", p, 2); }
-  for (const g of merged(t.outputs)) { const p = toDisplay(g.x, g.y); svg += line("out", g.satoshi, traceLink(hub, p, 1)) + dot("out", p, 3); }
+  for (const g of ins) { const p = toDisplay(g.x, g.y); line("in", g.satoshi, traceLink(p, hub, -1)); dots += dot("in", p, small ? 1.6 : 2.5); }
+  for (const g of outs) { const p = toDisplay(g.x, g.y); line("out", g.satoshi, traceLink(hub, p, 1)); dots += dot("out", p, small ? 2 : 3); }
   const marked = [...t.inputs.map(i => [i.txid + ":" + i.vout, i]), ...t.outputs.map(o => [t.txid + ":" + o.vout, o])]
     .find(([key, p]) => key === t.mark && p.x != null);
-  if (marked) svg += dot("mark", toDisplay(marked[1].x, marked[1].y), 7);
-  return svg + dot("hub", hub, 4);
+  if (marked) { const p = toDisplay(marked[1].x, marked[1].y); dots += dot("ring", p, 7) + dot("mark", p, 7); }
+  return cases + lines + dots + dot("hub", hub, 4);
 }
 // Largest first, with the marked coin on top; past the first dozen the rows fold away.
 function txRows(rows, head, cell, mark) {

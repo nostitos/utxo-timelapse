@@ -29,13 +29,16 @@ for (const file of ['cloudflare/utxo-video-worker/static/explorer.html', 'src/cp
   vm.runInContext(source, page);
 
   const svg = page.txSvg(tx, half);
-  const paths = [...svg.matchAll(/<path class='(in|out)' d='([^']*)' stroke-width='([\d.]+)'/g)].map(m => m.slice(1));
+  const paths = [...svg.matchAll(/<path class='(in|out|case)' d='([^']*)' stroke-width='([\d.]+)'/g)].map(m => m.slice(1));
+  const width = share => 0.8 + 2.4 * Math.sqrt(share);
   // Total value is 1,100 sat in: the two inputs in one pixel carry 800 of it, the output 900.
   assert.deepEqual(paths, [
-    ['in', 'M100 150L500 50', (0.8 + 2.4 * Math.sqrt(800 / 1100)).toFixed(2)],
-    ['out', 'M500 50Q541 65 500 80', (0.8 + 2.4 * Math.sqrt(900 / 1100)).toFixed(2)],
-  ], 'one line per pixel, weighted by value; an undated input and a zero-value output get none');
-  assert(svg.includes("<circle class='mark' cx='100' cy='150' r='7'/>"), 'the marked input is ringed');
+    ['case', 'M100 150L500 50', (width(800 / 1100) + 1.6).toFixed(2)],
+    ['case', 'M500 50Q541 65 500 80', (width(900 / 1100) + 1.6).toFixed(2)],
+    ['in', 'M100 150L500 50', width(800 / 1100).toFixed(2)],
+    ['out', 'M500 50Q541 65 500 80', width(900 / 1100).toFixed(2)],
+  ], 'one line per pixel, weighted by value, each over a wider casing drawn first; an undated input and a zero-value output get none');
+  assert(svg.includes("<circle class='ring' cx='100' cy='150' r='7'/><circle class='mark' cx='100' cy='150' r='7'/>"), 'the marked input is ringed');
   assert(svg.endsWith("<circle class='hub' cx='500' cy='50' r='4'/>"), 'the transaction is drawn last, on top');
   assert.equal(page.txSvg({ ...tx, hub: null }, half), '', 'a transaction after the viewed block draws nothing');
 
