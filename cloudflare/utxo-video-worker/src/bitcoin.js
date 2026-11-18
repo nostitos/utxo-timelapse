@@ -94,7 +94,8 @@ async function upstream(path, asJson = false) {
   return asJson ? response.json() : response.arrayBuffer();
 }
 
-export async function txidResponse(url) {
+// tip: the latest block the caller shows, the film's unless given (the landscape passes its dataset's).
+export async function txidResponse(url, tip = CONFIG.numBlocks - 1) {
   const heightText = url.searchParams.get("height");
   const satoshiText = url.searchParams.get("satoshi");
   if (!heightText || !/^\d{1,10}$/.test(heightText) || !satoshiText || !/^\d{1,16}$/.test(satoshiText)) {
@@ -102,7 +103,7 @@ export async function txidResponse(url) {
   }
   const height = Number(heightText);
   const satoshi = Number(satoshiText);
-  if (height >= CONFIG.numBlocks || satoshi < 1 || satoshi > 2100000000000000) {
+  if (height > tip || satoshi < 1 || satoshi > 2100000000000000) {
     return json({ error: "height or satoshi outside chain range" }, 400);
   }
   try {
@@ -139,10 +140,10 @@ export function txQuery(url) {
   return { txid, block: block === null ? null : Math.min(Number(block), CONFIG.numBlocks - 1) };
 }
 
-// Only the film's blocks count: a transaction after its latest block is out of reach, and a spend
-// after it counts as unspent, as in the history. This keeps a cached answer true for the release.
-function filmHeight(status) {
-  return status?.confirmed && Number.isInteger(status.block_height) && status.block_height < CONFIG.numBlocks
+// Only blocks up to tip count: a transaction after it is out of reach, and a spend after it counts
+// as unspent, as in the history. This keeps a cached answer true for the release.
+function filmHeight(status, tip) {
+  return status?.confirmed && Number.isInteger(status.block_height) && status.block_height <= tip
     ? status.block_height
     : null;
 }
@@ -199,7 +200,7 @@ async function spendsIn(env, height) {
 // are right as a group (shared), though not which input came from which. Otherwise the input
 // asks mempool.space for the transaction that created it, largest amounts first, up to
 // LOOKUP_LIMIT transactions; the rest keep height null and are listed without a line.
-async function dateInputs(env, height, inputs) {
+async function dateInputs(env, height, inputs, tip) {
   const spends = await spendsIn(env, height);
   const mine = new Map(); // amount -> this transaction's inputs of that amount
   for (const input of inputs) if (input.satoshi > 0) mine.set(input.satoshi, [...(mine.get(input.satoshi) ?? []), input]);
@@ -213,29 +214,29 @@ async function dateInputs(env, height, inputs) {
   const largest = (list) => Math.max(...list.map((input) => input.satoshi));
   const asked = [...ask].sort((a, b) => largest(b[1]) - largest(a[1])).slice(0, LOOKUP_LIMIT);
   await Promise.all(asked.map(async ([id, list]) => {
-    const created = filmHeight(await upstream(`/tx/${id}/status`, true));
+    const created = filmHeight(await upstream(`/tx/${id}/status`, true), tip);
     for (const input of list) input.height = created;
   }));
 }
 
 // One whole transaction: every input with the block that created it, every output with the
-// transaction that spent it.
-export async function txResponse(env, { txid }) {
+// transaction that spent it, up to tip (the film's latest block unless given; latest names it).
+export async function txResponse(env, { txid }, { tip = CONFIG.numBlocks - 1, latest = "the film's latest block" } = {}) {
   try {
     const [tx, spends] = await Promise.all([
       upstream(`/tx/${txid}`, true),
       upstream(`/tx/${txid}/outspends`, true),
     ]);
-    const height = filmHeight(tx.status);
+    const height = filmHeight(tx.status, tip);
     if (height === null) {
       return json({ error: tx.status?.confirmed
-        ? "This transaction is in block " + Number(tx.status.block_height).toLocaleString("en-US") + ", after the film's latest block"
+        ? "This transaction is in block " + Number(tx.status.block_height).toLocaleString("en-US") + ", after " + latest
         : "This transaction is not in a block yet" }, 404);
     }
     const coinbase = tx.vin[0]?.is_coinbase === true;
     const inputs = coinbase ? [] : tx.vin.map((vin) => ({ txid: vin.txid, vout: vin.vout, satoshi: vin.prevout?.value, height: null }));
     const outputs = tx.vout.map((out, vout) => {
-      const spent = spends[vout]?.spent ? filmHeight(spends[vout].status) : null;
+      const spent = spends[vout]?.spent ? filmHeight(spends[vout].status, tip) : null;
       return { vout, satoshi: out.value, spent: spent === null ? null : { txid: spends[vout].txid, height: spent } };
     });
     if (
@@ -243,7 +244,7 @@ export async function txResponse(env, { txid }) {
       inputs.some((input) => !TXID.test(input.txid) || !Number.isInteger(input.vout)) ||
       outputs.some((out) => out.spent && !TXID.test(out.spent.txid))
     ) throw new Error("bad upstream transaction");
-    if (!coinbase) await dateInputs(env, height, inputs);
+    if (!coinbase) await dateInputs(env, height, inputs, tip);
     return json({ txid, height, coinbase, inputs, outputs });
   } catch (error) {
     if (error?.message === "upstream 404") return json({ error: "No such transaction" }, 404);

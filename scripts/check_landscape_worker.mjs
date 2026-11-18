@@ -1,7 +1,8 @@
 // Checks the landscape Worker (cloudflare/utxo-landscape-worker) against mock R2, Cache API and
 // static assets: dataset allowlist and byte ranges, conditional requests, edge caching, the
-// cell API's validation and empty rows, the row table, the guide's media and its film from R2,
-// owner data unpublished and published, and the headers on every response.
+// cell API's validation and empty rows, the transaction lookups against a stubbed mempool.space,
+// the row table, the guide's media and its film from R2, owner data unpublished and published,
+// and the headers on every response.
 //   node scripts/check_landscape_worker.mjs
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -359,6 +360,71 @@ await check('cell API: validation, empty rows, rate limit', async () => {
     if (res.status === 429) { limited++; assert.equal(res.headers.get('Retry-After'), '1'); }
   }
   assert.ok(limited >= 9 && limited <= 11, 'burst of 20 then limited: ' + limited);
+});
+
+await check('transaction API: validation, this dataset\'s tip, cache and rate limit', async () => {
+  const realFetch = globalThis.fetch;
+  const tip = RELEASE.dataset.tip;
+  const T = (c) => c.repeat(64);
+  const u64 = (v) => Array.from({ length: 8 }, (_, i) => Math.floor(v / 2 ** (8 * i)) % 256);
+  // One legacy transaction with outputs of 1,234 and 5,000 sat, in a block of its own.
+  const raw = Uint8Array.from([...new Array(80).fill(0), 1, 1, 0, 0, 0, 1, ...new Array(36).fill(0), 0, 255, 255, 255, 255,
+    2, ...u64(1234), 0, ...u64(5000), 0, 0, 0, 0, 0]);
+  // A coinbase in the dataset's last block, after the film's: one output spent there, one unspent;
+  // and one transaction a block later.
+  const upstream = {
+    ['/tx/' + T('a')]: { vin: [{ is_coinbase: true }], vout: [{ value: 625000000 }, { value: 0 }], status: { confirmed: true, block_height: tip } },
+    ['/tx/' + T('a') + '/outspends']: [{ spent: true, txid: T('b'), status: { confirmed: true, block_height: tip } }, { spent: false }],
+    ['/tx/' + T('c')]: { vin: [{ is_coinbase: true }], vout: [{ value: 1 }], status: { confirmed: true, block_height: tip + 1 } },
+    ['/tx/' + T('c') + '/outspends']: [{ spent: false }],
+    ['/block-height/' + tip]: T('e'),
+    ['/block/' + T('e') + '/raw']: raw,
+    ['/block/' + T('e') + '/txids']: [T('d')],
+  };
+  const calls = [];
+  globalThis.fetch = async (u) => {
+    const path = String(u).replace('https://mempool.space/api', '');
+    calls.push(path);
+    const a = upstream[path];
+    if (a === undefined) return new Response('not found', { status: 404 });
+    return new Response(a instanceof Uint8Array ? a : typeof a === 'string' ? a : JSON.stringify(a));
+  };
+  try {
+    for (const q of ['', '?txid=' + T('A'), '?txid=abc']) {
+      const res = await req('/api/landscape/tx' + q);
+      assert.equal(res.status, 400, q);
+      securityHeadersOk(res, 'tx 400');
+    }
+    for (const q of ['', '?height=1', '?height=-1&satoshi=5', '?height=1&satoshi=1.5']) assert.equal((await req('/api/landscape/txid' + q)).status, 400, q);
+    assert.equal(calls.length, 0, 'malformed queries never reach mempool.space');
+    const ip = { headers: { 'CF-Connecting-IP': '203.0.113.20' } };
+    const res = await req('/api/landscape/tx?txid=' + T('a'), ip);
+    assert.equal(res.status, 200);
+    securityHeadersOk(res, 'tx');
+    assert.equal(res.headers.get('Cache-Control'), 'public, max-age=2592000, s-maxage=2592000');
+    assert.ok(tip > VIDEO_RELEASE.numBlocks - 1, 'the dataset reaches past the film');
+    assert.deepEqual(await res.json(), { txid: T('a'), height: tip, coinbase: true, inputs: [], outputs: [
+      { vout: 0, satoshi: 625000000, spent: { txid: T('b'), height: tip } }, { vout: 1, satoshi: 0, spent: null }] },
+    'a transaction and a spend in the dataset\'s last block are in reach');
+    const asked = calls.length;
+    for (let i = 0; i < 6; i++) assert.equal((await req('/api/landscape/tx?txid=' + T('a') + '&x=' + i, ip)).status, 200, 'cached ' + i);
+    assert.equal(calls.length, asked, 'cached answers never reach mempool.space and spend no token');
+    const late = await req('/api/landscape/tx?txid=' + T('c'), ip);
+    assert.equal(late.status, 404);
+    assert.match((await late.json()).error, /after the latest block of this landscape/);
+    // A burst of 4: the two lookups above and two more, then limited.
+    assert.equal((await req('/api/landscape/tx?txid=' + T('c'), ip)).status, 404);
+    assert.equal((await req('/api/landscape/tx?txid=' + T('c'), ip)).status, 404);
+    const limited = await req('/api/landscape/tx?txid=' + T('c'), ip);
+    assert.equal(limited.status, 429);
+    assert.equal(limited.headers.get('Retry-After'), '2');
+    const found = await req('/api/landscape/txid?height=' + tip + '&satoshi=5000', { headers: { 'CF-Connecting-IP': '203.0.113.21' } });
+    assert.equal(found.status, 200);
+    assert.deepEqual(await found.json(), { height: tip, satoshi: 5000, matches: [{ txid: T('d'), vout: 1 }], ambiguous: false },
+      'an output created after the film\'s last block can be traced');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });
 
 await check('static app: headers, cache policy, 404 and 304 pass through', async () => {
