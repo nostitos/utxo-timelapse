@@ -1,6 +1,6 @@
 # Transaction view for the landscape: plan
 
-Status: phases 1 and 2 are built on the local branch `codex/landscape-transactions`, stacked on PR #80's `codex/trace-output`, and previewed locally (2026-11-18). Nothing is pushed, deployed or published. Phases 3 and 4 remain. The founder's answers are under [Decisions](#decisions); what the build changed from this plan is under [Built in phases 1 and 2](#built-in-phases-1-and-2).
+Status: phases 1 to 4 are built on `codex/landscape-transactions`, stacked on PR #80's `codex/trace-output`, and previewed locally (2026-11-18). Nothing is deployed or published; the release waits for approval and for PR #80. The founder's answers are under [Decisions](#decisions); what the build changed from this plan is under [Built](#built).
 
 The 2D explorer's transaction view (draft PR #80, branch `codex/trace-output`, not merged) draws a transaction on the film as lines into one point and out of it. This plan brings the same view to the landscape (`landscape/web`, bitcoinlandscape.com) and uses the third dimension and the camera for the cases the film cannot separate.
 
@@ -187,9 +187,9 @@ Answered by the founder on 2026-11-18, every one as recommended.
 7. **First preview:** phases 1 and 2 together.
 8. **Approvals:** change PR #80's lookup code for the landscape's tip, stack on `codex/trace-output`, and start on a branch with nothing published.
 
-## Built in phases 1 and 2
+## Built
 
-What the build changed or settled beyond the plan:
+What the build changed or settled beyond the plan, phases 1 and 2:
 
 - **Tip in PR #80's code.** `txResponse` takes the tip and its name (`{tip, latest}`), and `txidResponse` takes the tip too, so the inspector's Trace reaches coins created after the film's block 974,310. `dateInputs` passes the tip to its lookups. It does not return candidate blocks for unplaced inputs, because the dashed stub does not use them. The 2D explorer's behaviour and messages are unchanged.
 - **Card.** The card shares the inspector's panel and its phone sheet. A cell clicked under the ribbons opens over the card, and closing it brings the card back; Trace hands the panel to the transaction. The inspector's `isOpen` now means that a cell is shown.
@@ -198,4 +198,12 @@ What the build changed or settled beyond the plan:
 - **Local runs.** The native explorer looks up no transactions, so a local run without the online Worker says so and links to the transaction at bitcoinlandscape.com.
 - **Checks.** `tests/tx-layout.test.mjs`, hash and share cases, a Worker check against a stubbed mempool.space, and the browser checks `tx`, `tx-looks` (every look, plus Performance and Extreme) and `tx-hops` with four recorded answers in `tests/fixtures/tx/`.
 
-Not built yet: the pulse, Follow a coin and hollow spent outputs (phase 3); owner names and the release (phase 4).
+Phases 3 and 4:
+
+- **Pulse.** Each curve carries a stretch of one path (inputs 0 to 0.45, the bridge to 0.55, outputs to 1), and a bright band runs along it for 2.4 s when a transaction opens. The view draws while it runs and goes idle after. With reduced motion set, it runs only from **Replay the flow**.
+- **Hollow outputs.** An output ribbon whose coins were all spent by the block shown keeps only the edges of its core, so playing on through history shows the outputs being spent.
+- **Follow a coin.** **Follow back** and **Follow forward** take the largest input or output each time (`nextCoin` in `ui/tx-layout.js`), wait for the pulse, and stop at a newly mined or unspent coin, a failed lookup, Stop, Esc or another transaction. Each hop is one uncached lookup at most, within the Worker's rate limit.
+- **Exchanges.** The replay worker matches coins to owner records by creation block, amount and spend block (`OwnerLedger.entitiesOf`, a binary search per coin over records sorted by creation block), and returns no owner when records of two owners match. It needs `long.bin` (77 MB, about 300 MB parsed, as for the Owners view) and at most two short chunks, so the card looks only on request unless the Owners view is lit. Matches name the exchange on the row, colour the fifth of the ribbon next to the coin and offer **Light**. The plan's stem and ring at each ribbon's foot were left out; the coloured stretch does that job.
+- **Checks.** `tx-follow` (pulse, idle afterwards, three hops back, Stop, hollow outputs) on a recorded peel chain, `tx-owners` on a recorded transaction that pays OKX (skipped without owner data), and an `entitiesOf` unit test.
+
+Not done: the release (a new `RELEASE.version` and a deploy of the landscape Worker), which waits for approval and for PR #80.

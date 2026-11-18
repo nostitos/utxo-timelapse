@@ -105,6 +105,24 @@ export function ribbonStyle(sat, total, n) {
 }
 
 /**
+ * The next step of Follow a coin (ui/tx.js) from a /api/landscape/tx answer. forward: the largest
+ * output and the transaction that spent it; back: the largest input and the transaction that made
+ * it (the first of equal amounts). Returns {txid, mark: "txid:vout" of the coin, sat}, or {stop:
+ * 'mined' | 'unspent', sat} when the coin has no transaction that way.
+ */
+export function nextCoin(answer, dir) {
+  const largest = (list) => list.reduce((a, b) => (b.satoshi > a.satoshi ? b : a), list[0]);
+  if (dir === 'back') {
+    if (answer.coinbase || !answer.inputs.length) return { stop: 'mined', sat: 0 };
+    const i = largest(answer.inputs);
+    return { txid: i.txid, mark: i.txid + ':' + i.vout, sat: i.satoshi };
+  }
+  const o = largest(answer.outputs);
+  if (!o || !o.spent) return { stop: 'unspent', sat: o ? o.satoshi : 0 };
+  return { txid: o.spent.txid, mark: answer.txid + ':' + o.vout, sat: o.satoshi };
+}
+
+/**
  * Cubic Bézier control points of every curve of a grouped transaction. ground(x, z) is the
  * terrain height (world units). Returns {hubY, half, top, curves}: top is the highest terrain
  * around the bridge, which the bridge clears; each curve is {kind ('in', 'out', 'rest', 'bridge'

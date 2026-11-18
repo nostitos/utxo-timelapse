@@ -1,7 +1,7 @@
 // ui/tx-layout.js: ribbons by cell, the cap, the curves and the camera that frames them.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { groupTx, txCurves, framedPoints, frameTx, ribbonStyle, MAX_RIBBONS } from '../web/ui/tx-layout.js';
+import { groupTx, txCurves, framedPoints, frameTx, ribbonStyle, nextCoin, MAX_RIBBONS } from '../web/ui/tx-layout.js';
 import { buildMinAmtTable, rowOfAmount } from '../web/data/axis.js';
 
 const minAmt = buildMinAmtTable();
@@ -95,4 +95,15 @@ test('ribbons widen and brighten with their share of the value and fade as they 
   assert.equal(all.px, 1.6 + 9);
   assert.ok(ribbonStyle(1, 10, 900).alpha < tenth.alpha);
   assert.ok(ribbonStyle(1, 10, 900).alpha >= 0.45 * 0.4);
+});
+
+test('Follow a coin takes the largest output forward and the largest input back, and stops where the coin does', () => {
+  const t = { txid: id(7), height: 100, coinbase: false,
+    inputs: [input(90, 5e7, 1), { ...input(95, 9e7, 2), vout: 3 }, input(80, 9e7, 4)],
+    outputs: [{ vout: 0, satoshi: 1e8, spent: { txid: id(8), height: 120 } }, { vout: 1, satoshi: 3e7, spent: null }] };
+  assert.deepEqual(nextCoin(t, 'forward'), { txid: id(8), mark: id(7) + ':0', sat: 1e8 });
+  assert.deepEqual(nextCoin(t, 'back'), { txid: id(2), mark: id(2) + ':3', sat: 9e7 }, 'the first of equal amounts');
+  const unspent = { ...t, outputs: [{ vout: 0, satoshi: 1e8, spent: null }, { vout: 1, satoshi: 3e7, spent: { txid: id(9), height: 130 } }] };
+  assert.deepEqual(nextCoin(unspent, 'forward'), { stop: 'unspent', sat: 1e8 }, 'the largest output decides, even when a smaller one was spent');
+  assert.deepEqual(nextCoin({ ...t, coinbase: true, inputs: [] }, 'back'), { stop: 'mined', sat: 0 });
 });

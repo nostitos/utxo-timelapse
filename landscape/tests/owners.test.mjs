@@ -571,3 +571,34 @@ test('engine frames carry owner words equal to brute force after seeks, playback
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('a transaction\u2019s inputs and outputs find their owner by creation block, amount and spend block', async () => {
+  const grid = gridFromManifest({ numBlocks: 2000 });
+  const rows = cppLikeRows();
+  const tip = 1000, life = 300;
+  const records = [
+    { created: 100, spent: 900, sats: 5000, entity: 0 },     // long.bin: alive longer than shortLife
+    { created: 700, spent: 750, sats: 7000, entity: 1 },     // short chunk 2
+    { created: 800, spent: UNSPENT, sats: 9000, entity: 0 }, // unspent at the owner tip
+    { created: 500, spent: 600, sats: 4000, entity: 0 },     // one coin claimed by two owners
+    { created: 500, spent: 600, sats: 4000, entity: 1 },
+    { created: 150, spent: 160, sats: 3000, entity: 1 },     // short chunk 0, never asked for
+  ];
+  const { files, manifest } = ownerFiles(records, { tip, life });
+  const fetched = [];
+  const ledger = new OwnerLedger({ grid, minAmt: rows, manifest, fetchFile: async (entry) => { fetched.push(entry.file); return files.get(entry.file); } });
+  const got = await ledger.entitiesOf([
+    { created: 100, spent: 900, sats: 5000 },
+    { created: 700, spent: 750, sats: 7000 },
+    { created: 800, spent: null, sats: 9000 },
+    { created: 800, spent: 1200, sats: 9000 }, // spent after the owner tip: unspent in the files
+    { created: 800, spent: 950, sats: 9000 },  // another spend block: not that coin
+    { created: 100, spent: 900, sats: 5001 },
+    { created: 500, spent: 600, sats: 4000 },
+    { created: 1100, spent: null, sats: 9000 }, // created after the owner tip
+  ]);
+  assert.deepEqual(got, [0, 1, 0, 0, -1, -1, -1, null]);
+  assert.deepEqual(fetched.sort(), ['long.bin', 'short/0001.bin', 'short/0002.bin'], 'long.bin and the chunks of coins spent within shortLife only');
+  await ledger.entitiesOf([{ created: 700, spent: 750, sats: 7000 }]);
+  assert.equal(fetched.length, 3, 'loaded files are kept');
+});

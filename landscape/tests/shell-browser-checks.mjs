@@ -126,11 +126,12 @@ const INSPECTOR_STATES = readFileSync(join(here, 'inspector-state-browser.mjs'),
 const SHARE_CHECKS = readFileSync(join(here, 'share-browser.mjs'), 'utf8');
 
 // Recorded /api/landscape/tx answers (tests/fixtures/tx): a 1 -> 2 payment, the transaction that
-// spent its output, a 224 -> 270 CoinJoin and a 1,093-input sweep. The tx checks seed them.
-const TX_ANSWERS = ['payment', 'payment-spender', 'coinjoin', 'sweep-1093'].map((n) => readFileSync(join(here, 'fixtures', 'tx', n + '.json'), 'utf8'));
+// spent its output, a 224 -> 270 CoinJoin, a 1,093-input sweep and the four transactions back from
+// the payment (follow-back.json), and a transaction paying OKX (exchange.json). The tx checks seed them.
+const TX_ANSWERS = ['payment', 'payment-spender', 'coinjoin', 'sweep-1093', 'follow-back', 'exchange'].map((n) => readFileSync(join(here, 'fixtures', 'tx', n + '.json'), 'utf8'));
 const TX_PRELUDE = 'const TX_FIXTURES = [' + TX_ANSWERS.join(',') + '];\n' +
-  'for (const a of TX_FIXTURES) L.tx.seed(a);\n' +
-  'const TX = { payment: TX_FIXTURES[0].txid, spender: TX_FIXTURES[1].txid, coinjoin: TX_FIXTURES[2].txid, sweep: TX_FIXTURES[3].txid };\n';
+  'for (const a of TX_FIXTURES.flat()) L.tx.seed(a);\n' +
+  'const TX = { payment: TX_FIXTURES[0].txid, spender: TX_FIXTURES[1].txid, coinjoin: TX_FIXTURES[2].txid, sweep: TX_FIXTURES[3].txid, back: TX_FIXTURES[4].map((a) => a.txid), exchange: TX_FIXTURES[5].txid };\n';
 
 
 // Device balance (device-balance checks): Landscape at block 840,000 from the middle camera of the
@@ -1641,6 +1642,102 @@ const CHECKS = [
         ['a cell opened over the transaction takes the panel and offers Trace (' + v.cell.trace + ' buttons)', v.cell.cardHidden && v.cell.trace > 0],
         ['closing the cell brings the transaction back', v.cell.cardBack],
       ] : [['no explorer to inspect a cell; the inspector half is skipped', true]]),
+      ['no frame errors', !v.frameError],
+    ],
+  },
+  {
+    // Phase 3 of the transaction view: the pulse, hollow spent outputs and Follow a coin, on
+    // recorded answers (tests/fixtures/tx/follow-back.json: four 1 -> 2 transactions, each
+    // spending the larger output of the one before).
+    name: 'tx-follow',
+    timeout: 180000,
+    shot: 'tx-follow.png',
+    script: TX_PRELUDE + `await idle(); await sleep(500); L.playback.pause();
+      if (tip < 974359) return { skipped: true, tip };
+      const out = {};
+      const card = () => document.querySelector('#inspector .tx-card');
+      await L.tx.open(TX.payment);
+      out.pulse = { opened: L.tx.state.pulsing };
+      await sleep(2800); await sleep(200);
+      out.pulse.done = !L.tx.state.pulsing;
+      // Once the pulse is over a parked view stops drawing (render/idle.js).
+      let idleSeen = false;
+      for (let t = 0; t < 40 && !idleSeen; t++) { await sleep(100); idleSeen = L.view.stats.idle; }
+      out.pulse.idle = idleSeen;
+      card().querySelector('[data-tx-pulse]').click();
+      await sleep(150);
+      out.pulse.replay = L.tx.state.pulsing;
+      // Follow back three transactions, then stop.
+      card().querySelector('[data-tx-follow="back"]').click();
+      await sleep(100);
+      out.following = { on: L.tx.state.following, stopButton: !!card().querySelector('[data-tx-stop]') };
+      const want = TX.back[2];
+      for (let t = 0; t < 300 && L.tx.state.txid !== want; t++) await sleep(100);
+      out.following.reached = L.tx.state.txid === want;
+      out.following.block = L.replay.block;
+      out.following.trail = L.tx.state.trail.slice();
+      out.following.marked = !!card().querySelector('tr.tx-marked');
+      card().querySelector('[data-tx-stop]')?.click();
+      await sleep(3500);
+      // A hop already on its way may still land; nothing follows it.
+      out.following.stopped = { on: L.tx.state.following, inChain: TX.back.slice(2).includes(L.tx.state.txid) };
+      // Hollow: at a block past both spends the payment's outputs are hollow.
+      await L.tx.open(TX.payment, { block: 974600 }); await idle(); await sleep(1200);
+      out.hollow = { block: L.replay.block, ribbons: L.tx.state.ribbons, note: /ribbons are hollow/.test(card().textContent) };
+      await L.seek(974300); await idle(); await sleep(1200);
+      out.notHollow = L.tx.state.ribbons.hollow;
+      out.frameError = L.frameError || null;
+      return out;`,
+    expect: (v) => v.skipped ? [['dataset tip ' + v.tip + ' is before the recorded transactions; skipped', true]] : [
+      ['a pulse runs when a transaction opens and ends', v.pulse.opened && v.pulse.done],
+      ['after the pulse the parked view stops drawing', v.pulse.idle],
+      ['Replay the flow runs it again', v.pulse.replay],
+      ['Follow back runs and offers Stop', v.following.on === 'back' && v.following.stopButton],
+      ['it walks three transactions back on its own (' + v.following.trail.length + ' in the trail, block ' + v.following.block + ')',
+        v.following.reached && v.following.block === 974192 && v.following.trail.length === 3 && v.following.marked],
+      ['Stop ends it where it is', v.following.stopped.on === null && v.following.stopped.inChain],
+      ['outputs spent by the block shown are hollow (' + JSON.stringify(v.hollow.ribbons) + ')', v.hollow.block === 974600 && v.hollow.ribbons.hollow === 2 && v.hollow.note],
+      ['at the transaction\u2019s own block none are', v.notHollow === 0],
+      ['no frame errors', !v.frameError],
+    ],
+  },
+  {
+    // Phase 4: exchange names from the owner data (replay/owners.js entitiesOf) on a recorded
+    // transaction that pays OKX (tests/fixtures/tx/exchange.json). Without owner data it only
+    // confirms the card offers no lookup.
+    name: 'tx-owners',
+    timeout: 180000,
+    shot: 'tx-owners.png',
+    script: TX_PRELUDE + `await idle(); await sleep(500); L.playback.pause();
+      const card = () => document.querySelector('#inspector .tx-card');
+      for (let t = 0; t < 100 && !L.owners.manifest; t++) await sleep(100);
+      await L.tx.open(TX.exchange); await idle(); await sleep(900);
+      const out = { data: !!L.owners.manifest, button: !!card().querySelector('[data-tx-owners]') };
+      if (!out.data || L.owners.manifest.tip < 974263) return out;
+      const before = L.tx.state.vertices;
+      card().querySelector('[data-tx-owners]').click();
+      for (let t = 0; t < 600 && !card().querySelector('.tx-owners'); t++) await sleep(100);
+      out.summary = card().querySelector('.tx-owners')?.textContent || card().textContent.slice(0, 300);
+      out.tags = [...card().querySelectorAll('.tx-owner')].map((e) => e.textContent);
+      out.stretches = L.tx.state.vertices - before;
+      card().querySelector('[data-tx-light="okx"]')?.click();
+      await sleep(800);
+      out.lit = L.owners.visible.slice();
+      // With the Owners view lit, a transaction's coins are looked up as it opens.
+      await L.tx.open(TX.payment); await idle();
+      for (let t = 0; t < 100 && !/known exchange addresses through/.test(card().textContent); t++) await sleep(100);
+      out.auto = /No coin of this transaction pays/.test(card().textContent);
+      L.owners.set([]);
+      await sleep(500);
+      out.frameError = L.frameError || null;
+      return out;`,
+    expect: (v) => !v.data ? [['no owner data: the card offers no exchange lookup', !v.button]] : [
+      ['the card offers to look for exchanges', v.button],
+      ['it finds OKX on one input and one output (' + v.summary + ')', /OKX/.test(v.summary) && /1 input, 1 output/.test(v.summary)],
+      ['the rows name OKX (' + v.tags.join(', ') + ')', v.tags.length === 2 && v.tags.every((t) => t === 'OKX')],
+      ['the ribbons take its colour next to its coins (' + v.stretches + ' vertices)', v.stretches > 0],
+      ['Light lights OKX in the Owners view', v.lit.includes('okx')],
+      ['with the Owners view lit, a transaction opens with its coins looked up', v.auto],
       ['no frame errors', !v.frameError],
     ],
   },

@@ -1150,6 +1150,11 @@ kbd {
 .tx-hop:hover, .in-trace:hover { border-color: var(--mint); background: rgba(168, 214, 179, 0.08); }
 .tx-all summary { min-height: 30px; }
 .tx-choices { display: grid; gap: 6px; }
+.tx-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.tx-following { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--ink); }
+.tx-table .tx-owner { display: block; margin-top: 2px; color: var(--muted); font: 10.5px/1.4 var(--body); }
+#inspector .tx-owners { margin-top: 12px; }
+#inspector .tx-owners dd { display: flex; align-items: center; gap: 8px; }
 .tx-choices .tx-hop { text-align: left; min-height: 34px; }
 #inspector .in-links a + a { margin-top: 8px; }
 @media (max-width: 700px) {

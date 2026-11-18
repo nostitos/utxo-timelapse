@@ -242,7 +242,7 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
     const planeModel = view.scene ? createPlaneModel({ scene: view.scene }) : null;
     const coinModels = view.scene ? createCoins({ scene: view.scene }) : null;
     // Transaction ribbons (ui/tx.js); dev shells without a scene get a stand-in that draws nothing.
-    const txRibbons = view.scene ? createTxRibbons() : { set() {}, update() {}, highlight() {}, picks: new Float32Array(0), highlighted: -1, vertices: 0 };
+    const txRibbons = view.scene ? createTxRibbons() : { set() {}, update() {}, highlight() {}, pulse() {}, picks: new Float32Array(0), highlighted: -1, vertices: 0 };
     if (txRibbons.object3d) view.scene.add(txRibbons.object3d);
     const planeHud = createPlaneHud({
       container: $('planehud'), nose: $('plane-nose'), keys: $('planekeys'), pops: $('funpops'), camera: view.camera, canvas, grid,
@@ -363,6 +363,12 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       lightGround: () => groundLight(), inspectorOpen: () => inspector.isOpen, closeInspector: () => inspector.close(),
       onChange: () => selectionChanged(), onShare: () => openShare('tx'), onRender: () => view.invalidate?.(),
       signature: () => (view.terrain?.drawSignature ? view.terrain.drawSignature() : ''), notice,
+      owners: {
+        available: () => !!owners.manifest, lit: () => owners.visible.length > 0, tip: () => owners.manifest.tip,
+        entities: () => owners.display, bytes: () => owners.manifest.files.long.bytes,
+        lookup: (points) => replay.ownersOf({ url: owners.url, manifest: owners.manifest, points }),
+        light: (id) => setOwnersVisible([...owners.visible, id]),
+      },
     });
     // What the pointer (the crosshair in flight mode) is aimed at, from local data only, in a
     // card docked under the HUD.
@@ -1044,9 +1050,10 @@ export async function startApp(deps = null, { query = new URLSearchParams(locati
       const pstate = playback.state;
       // Frames that must be drawn whatever the camera does; otherwise the view skips frames
       // that would repeat the last one (render/idle.js).
+      // The transaction's pulse animates too.
+      const txBusy = txView.update(now);
       const active = !hook.ready || pstate.playing || !!pstate.op || replay.busy || controls.mode === 'plane' || game.running ||
-        game.coins.length > 0;
-      txView.update(now);
+        game.coins.length > 0 || txBusy;
       const r = view.render(active);
       if (r && typeof r.catch === 'function') r.catch((err) => console.error('render', err));
       if (gotData && !hook.ready) {
