@@ -1,9 +1,11 @@
 import { CONFIG, blockToX, satoshiToY } from "./mapping.js";
+import { RELEASE as LANDSCAPE } from "../../utxo-landscape-worker/src/release.js";
+import { DecodedBlock, decodeBlock, indexRecords } from "../../../landscape/web/replay/blk2.js";
 
 const UPSTREAM = "https://mempool.space/api";
 const TXID = /^[0-9a-f]{64}$/;
-// Inputs and outputs listed per side of a trace, largest first. Each listed input costs one upstream request.
-const TRACE_LIMIT = 24;
+// Inputs the change log cannot date that are looked up at mempool.space, at most this many transactions per answer.
+const LOOKUP_LIMIT = 24;
 
 function json(value, status = 200) {
   return new Response(JSON.stringify(value), {
@@ -128,94 +130,140 @@ export async function txidResponse(url) {
   }
 }
 
-export function traceQuery(url) {
+export function txQuery(url) {
   const txid = url.searchParams.get("txid") ?? "";
-  const vout = url.searchParams.get("vout") ?? "";
   const block = url.searchParams.get("block");
-  if (!TXID.test(txid) || !/^\d{1,5}$/.test(vout) || (block !== null && !/^\d{1,10}$/.test(block))) {
-    return { error: "txid must be 64 hex characters; vout and block must be non-negative integers" };
+  if (!TXID.test(txid) || (block !== null && !/^\d{1,10}$/.test(block))) {
+    return { error: "txid must be 64 lowercase hex characters; block must be a non-negative integer" };
   }
-  return { txid, vout: Number(vout), block: block === null ? null : Math.min(Number(block), CONFIG.numBlocks - 1) };
+  return { txid, block: block === null ? null : Math.min(Number(block), CONFIG.numBlocks - 1) };
 }
 
-// One hop either side of an output: the inputs of the transaction that created it and the
-// outputs of the transaction that spent it. A transaction does not record which input paid
-// which output, so both lists are whole sides of a transaction, largest amounts first.
-// Only the film's blocks count: a spend after its latest block is reported as unspent, as in
-// the history, which also keeps a cached answer true for the whole release.
-export async function traceResponse({ txid, vout }) {
-  const filmHeight = (status) =>
-    status?.confirmed && Number.isInteger(status.block_height) && status.block_height < CONFIG.numBlocks
-      ? status.block_height
-      : null;
-  const largest = (items) =>
-    items
-      .filter((item) => Number.isSafeInteger(item.satoshi) && item.satoshi > 0)
-      .sort((a, b) => b.satoshi - a.satoshi)
-      .slice(0, TRACE_LIMIT);
-  const missing = () => json({ error: "No such output in the film's blocks" }, 404);
+// Only the film's blocks count: a transaction after its latest block is out of reach, and a spend
+// after it counts as unspent, as in the history. This keeps a cached answer true for the release.
+function filmHeight(status) {
+  return status?.confirmed && Number.isInteger(status.block_height) && status.block_height < CONFIG.numBlocks
+    ? status.block_height
+    : null;
+}
+
+// The landscape dataset in the same bucket keeps the film's change log as block-aligned chunks
+// (landscape/SPEC.md). A block's record lists every output spent in it with the block that created it.
+let chunkList = null;
+function changeChunks(env) {
+  chunkList ??= env.VIDEO_BUCKET.get("landscape/" + LANDSCAPE.dataset.id + "/chunks.json")
+    .then((object) => {
+      if (!object) throw new Error("change chunk list unavailable");
+      return object.json();
+    })
+    .then((list) => list.chunks)
+    .catch((error) => {
+      chunkList = null;
+      throw error;
+    });
+  return chunkList;
+}
+
+// amount -> the creation block of each output of that amount spent in block 'height'.
+async function spendsIn(env, height) {
+  if (height > LANDSCAPE.dataset.tip) return new Map();
+  const chunks = await changeChunks(env);
+  let lo = 0;
+  let hi = chunks.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (chunks[mid].firstBlock <= height) lo = mid;
+    else hi = mid - 1;
+  }
+  const chunk = chunks[lo];
+  if (!chunk || chunk.firstBlock > height || chunk.lastBlock < height || !TXID.test(chunk.sha256)) {
+    throw new Error("no change chunk for block " + height);
+  }
+  const object = await env.VIDEO_BUCKET.get("landscape/blobs/" + chunk.sha256);
+  if (!object) throw new Error("change chunk unavailable");
+  const bytes = new Uint8Array(await object.arrayBuffer());
+  const block = new DecodedBlock();
+  decodeBlock(bytes, indexRecords(bytes, chunk.firstBlock).offsets[height - chunk.firstBlock], block);
+  const spends = new Map();
+  for (let k = 0; k < block.count; k++) {
+    const satoshi = -block.sats[k];
+    if (satoshi <= 0) continue;
+    if (!spends.has(satoshi)) spends.set(satoshi, []);
+    spends.get(satoshi).push(block.heights[k]);
+  }
+  return spends;
+}
+
+// An input's amount names its creation block when every output of that amount spent in the
+// same block was created in one block. When this transaction spent all of them, their blocks
+// are right as a group (shared), though not which input came from which. Otherwise the input
+// asks mempool.space for the transaction that created it, largest amounts first, up to
+// LOOKUP_LIMIT transactions; the rest keep height null and are listed without a line.
+async function dateInputs(env, height, inputs) {
+  const spends = await spendsIn(env, height);
+  const mine = new Map(); // amount -> this transaction's inputs of that amount
+  for (const input of inputs) if (input.satoshi > 0) mine.set(input.satoshi, [...(mine.get(input.satoshi) ?? []), input]);
+  const ask = new Map();
+  for (const [satoshi, list] of mine) {
+    const heights = spends.get(satoshi) ?? [];
+    if (heights.length && heights.every((h) => h === heights[0])) for (const input of list) input.height = heights[0];
+    else if (heights.length === list.length) list.forEach((input, k) => Object.assign(input, { height: heights[k], shared: true }));
+    else for (const input of list) ask.set(input.txid, [...(ask.get(input.txid) ?? []), input]);
+  }
+  const largest = (list) => Math.max(...list.map((input) => input.satoshi));
+  const asked = [...ask].sort((a, b) => largest(b[1]) - largest(a[1])).slice(0, LOOKUP_LIMIT);
+  await Promise.all(asked.map(async ([id, list]) => {
+    const created = filmHeight(await upstream(`/tx/${id}/status`, true));
+    for (const input of list) input.height = created;
+  }));
+}
+
+// One whole transaction: every input with the block that created it, every output with the
+// transaction that spent it.
+export async function txResponse(env, { txid }) {
   try {
-    const [tx, spent] = await Promise.all([
+    const [tx, spends] = await Promise.all([
       upstream(`/tx/${txid}`, true),
-      upstream(`/tx/${txid}/outspend/${vout}`, true),
+      upstream(`/tx/${txid}/outspends`, true),
     ]);
     const height = filmHeight(tx.status);
-    const satoshi = tx.vout[vout]?.value;
-    if (height === null || !Number.isSafeInteger(satoshi)) return missing();
-    const coinbase = tx.vin[0].is_coinbase === true;
-    const inputs = coinbase
-      ? []
-      : largest(tx.vin.map((vin) => ({ txid: vin.txid, vout: vin.vout, satoshi: vin.prevout?.value })));
-    const spendHeight = spent.spent ? filmHeight(spent.status) : null;
-    if (spendHeight !== null && !TXID.test(spent.txid)) throw new Error("bad upstream spending txid");
-    const [created, spender] = await Promise.all([
-      Promise.all(
-        [...new Set(inputs.map((input) => input.txid))].map(async (id) => {
-          if (!TXID.test(id)) throw new Error("bad upstream input txid");
-          return [id, filmHeight(await upstream(`/tx/${id}/status`, true))];
-        }),
-      ),
-      spendHeight === null ? null : upstream(`/tx/${spent.txid}`, true),
-    ]);
-    const heights = new Map(created);
-    for (const input of inputs) {
-      input.height = heights.get(input.txid);
-      if (input.height === null || !Number.isInteger(input.vout)) throw new Error("bad upstream input");
+    if (height === null) {
+      return json({ error: tx.status?.confirmed
+        ? "This transaction is in block " + Number(tx.status.block_height).toLocaleString("en-US") + ", after the film's latest block"
+        : "This transaction is not in a block yet" }, 404);
     }
-    return json({
-      txid,
-      vout,
-      coinbase,
-      output: { height, satoshi },
-      inputs,
-      inputCount: coinbase ? 0 : tx.vin.length,
-      spend: spender && {
-        txid: spent.txid,
-        height: spendHeight,
-        inputCount: spender.vin.length,
-        outputs: largest(spender.vout.map((out, index) => ({ vout: index, satoshi: out.value }))),
-        outputCount: spender.vout.length,
-      },
+    const coinbase = tx.vin[0]?.is_coinbase === true;
+    const inputs = coinbase ? [] : tx.vin.map((vin) => ({ txid: vin.txid, vout: vin.vout, satoshi: vin.prevout?.value, height: null }));
+    const outputs = tx.vout.map((out, vout) => {
+      const spent = spends[vout]?.spent ? filmHeight(spends[vout].status) : null;
+      return { vout, satoshi: out.value, spent: spent === null ? null : { txid: spends[vout].txid, height: spent } };
     });
+    if (
+      [...inputs, ...outputs].some((point) => !Number.isSafeInteger(point.satoshi) || point.satoshi < 0) ||
+      inputs.some((input) => !TXID.test(input.txid) || !Number.isInteger(input.vout)) ||
+      outputs.some((out) => out.spent && !TXID.test(out.spent.txid))
+    ) throw new Error("bad upstream transaction");
+    if (!coinbase) await dateInputs(env, height, inputs);
+    return json({ txid, height, coinbase, inputs, outputs });
   } catch (error) {
-    if (error?.message === "upstream 404") return missing();
-    console.warn("trace failed", error?.message || error);
+    if (error?.message === "upstream 404") return json({ error: "No such transaction" }, 404);
+    console.warn("transaction lookup failed", error?.message || error);
     return json({ error: "Bitcoin lookup service is temporarily unavailable" }, 503);
   }
 }
 
-// Film pixels for a trace as seen at 'block'. A point created after that block has no pixel yet.
-export function placeTrace(trace, block) {
-  const place = (point, height) =>
-    height <= block ? { ...point, x: blockToX(height, block), y: satoshiToY(point.satoshi) } : point;
+// Film pixels for a transaction seen at 'block'. A point created after that block has none yet.
+export function placeTx(tx, block) {
+  const at = (point, height) => height !== null && height <= block && point.satoshi > 0
+    ? { ...point, x: blockToX(height, block), y: satoshiToY(point.satoshi) }
+    : point;
+  const value = tx.outputs.reduce((sum, out) => sum + out.satoshi, 0);
   return {
-    ...trace,
+    ...tx,
     block,
-    output: place(trace.output, trace.output.height),
-    inputs: trace.inputs.map((input) => place(input, input.height)),
-    spend: trace.spend && {
-      ...trace.spend,
-      outputs: trace.spend.outputs.map((out) => place(out, trace.spend.height)),
-    },
+    // The transaction itself sits on its block's column, at the row of the value it moved.
+    hub: tx.height <= block ? { x: blockToX(tx.height, block), y: satoshiToY(Math.max(1, value)) } : null,
+    inputs: tx.inputs.map((input) => at(input, input.height)),
+    outputs: tx.outputs.map((out) => at(out, tx.height)),
   };
 }

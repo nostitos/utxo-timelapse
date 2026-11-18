@@ -1124,7 +1124,7 @@ TEST_CASE("utxo_explorer" * doctest::skip()) {
     });
 
     // Tracing asks a block explorer service for whole transactions; only the online explorer does that.
-    server.Get("/api/trace", [](httplib::Request const&, httplib::Response& res) {
+    server.Get("/api/tx", [](httplib::Request const&, httplib::Response& res) {
         res.status = 501;
         res.set_content(R"({"error":"Tracing is available in the online explorer"})", "application/json");
     });

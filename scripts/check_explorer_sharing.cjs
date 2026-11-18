@@ -37,7 +37,15 @@ for (const file of files) {
   }
   const pixelUrl = build({ block: 314000, pixel: { nx: 3000, ny: 1525 }, autoplay: true });
   assert.equal(pixelUrl.searchParams.get('autoplay'), '0');
-  assert.deepEqual(read(pixelUrl.search), { block: 314000, pixel: { nx: 3000, ny: 1525 }, autoplay: false });
+  assert.deepEqual(read(pixelUrl.search), { block: 314000, pixel: { nx: 3000, ny: 1525 }, tx: null, autoplay: false });
+  const txid = 'a1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d';
+  const txUrl = build({ block: 57043, pixel: null, tx: txid, autoplay: true });
+  assert.equal(txUrl.searchParams.get('autoplay'), '0');
+  assert.deepEqual(read(txUrl.search), { block: 57043, pixel: null, tx: txid, autoplay: false }, 'A transaction link opens paused at its block');
+  assert.equal(read('?tx=' + txid.toUpperCase()).tx, txid);
+  assert.equal(read('?tx=' + txid).autoplay, false, 'A transaction link without a block never autoplays');
+  assert.equal(read('?tx=' + txid + '&x=3000&y=1525').pixel, null, 'A transaction wins over a pixel');
+  assert.equal(read('?tx=abc').tx, null);
   assert.equal(new URL(context.buildShareUrl('http://localhost:12988/', { block: 10, pixel: null, autoplay: false })).origin, 'http://localhost:12988');
   const pixel = { nx: 3000, ny: 1525, block: 314000 };
   assert(context.activeSharePixel(pixel, 314000, true, true, false, false));

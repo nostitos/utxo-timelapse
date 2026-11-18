@@ -1,47 +1,56 @@
-// The explorer's trace contract: straight links, arcs for hops inside one pixel column, and a
-// list that names both transactions without claiming which input paid which output.
+// The explorer's transaction contract: lines merged by pixel and weighted by value, arcs within
+// one column, and a list that names every input and output with a way to follow each.
 const fs = require('node:fs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
 
 const id = pair => pair.repeat(32);
-const trace = {
-  txid: id('ab'), vout: 1, block: 500, coinbase: false, inputCount: 131,
-  output: { height: 400, satoshi: 900, x: 1000, y: 100 },
+// A sweep at block 500: two inputs share a pixel, a third is undated, one output arcs back to its own column.
+const tx = {
+  txid: id('ab'), height: 400, block: 500, coinbase: false, mark: id('cd') + ':0',
+  hub: { x: 1000, y: 100 },
   inputs: [
-    { txid: id('cd'), vout: 0, height: 10, satoshi: 600, x: 200, y: 300 },
-    { txid: id('ef'), vout: 2, height: 399, satoshi: 300, x: 998, y: 700 },
+    { txid: id('cd'), vout: 0, satoshi: 600, height: 10, x: 200, y: 300 },
+    { txid: id('ce'), vout: 3, satoshi: 200, height: 11, shared: true, x: 200, y: 300 },
+    { txid: id('ef'), vout: 2, satoshi: 300, height: null },
   ],
-  spend: { txid: id('12'), height: 450, inputCount: 3, outputCount: 5, outputs: [{ vout: 0, satoshi: 500, x: 1000, y: 160 }] },
+  outputs: [
+    { vout: 0, satoshi: 900, spent: { txid: id('12'), height: 450 }, x: 1000, y: 160 },
+    { vout: 1, satoshi: 0, spent: null },
+  ],
 };
 const half = (x, y) => ({ x: x / 2, y: y / 2 });
 
 for (const file of ['cloudflare/utxo-video-worker/static/explorer.html', 'src/cpp/app/explorer_ui/explorer.html']) {
   const html = fs.readFileSync(file, 'utf8');
   for (const script of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) new vm.Script(script[1]);
-  const source = html.split('// ---- trace contract:')[1].split('\n').slice(1).join('\n').split('// ---- end trace contract ----')[0];
+  const source = html.split('// ---- transaction contract:')[1].split('\n').slice(1).join('\n').split('// ---- end transaction contract ----')[0];
   const page = vm.createContext({ fmtBtc: sat => sat + ' sat' });
   vm.runInContext(source, page);
 
-  const svg = page.traceSvg(trace, half);
-  assert(svg.includes("<path class='in' d='M100 150L500 50'/>"), 'a distant input is a straight line to the output');
-  assert(svg.includes("<path class='in' d='M499 350Q439.5 200 500 50'/>"), 'an input in the same column arcs to the left');
-  assert(svg.includes("<path class='out' d='M500 50Q541 65 500 80'/>"), 'a spend in the same column arcs to the right');
-  assert(svg.endsWith("<circle class='hub' cx='500' cy='50' r='4'/>"), 'the traced output is drawn last, on top');
-  assert.equal(page.traceSvg({ ...trace, output: { height: 400, satoshi: 900 } }, half), '', 'an output with no pixel draws nothing');
+  const svg = page.txSvg(tx, half);
+  const paths = [...svg.matchAll(/<path class='(in|out)' d='([^']*)' stroke-width='([\d.]+)'/g)].map(m => m.slice(1));
+  // Total value is 1,100 sat in: the two inputs in one pixel carry 800 of it, the output 900.
+  assert.deepEqual(paths, [
+    ['in', 'M100 150L500 50', (0.8 + 2.4 * Math.sqrt(800 / 1100)).toFixed(2)],
+    ['out', 'M500 50Q541 65 500 80', (0.8 + 2.4 * Math.sqrt(900 / 1100)).toFixed(2)],
+  ], 'one line per pixel, weighted by value; an undated input and a zero-value output get none');
+  assert(svg.includes("<circle class='mark' cx='100' cy='150' r='7'/>"), 'the marked input is ringed');
+  assert(svg.endsWith("<circle class='hub' cx='500' cy='50' r='4'/>"), 'the transaction is drawn last, on top');
+  assert.equal(page.txSvg({ ...tx, hub: null }, half), '', 'a transaction after the viewed block draws nothing');
 
-  const list = page.traceHtml(trace, 974310);
-  assert(list.includes('Inputs of the transaction that created it') && list.includes('(131, largest 2 shown)'));
-  assert(list.includes('Outputs of the transaction that spent it in block 450') && list.includes('(5, largest 1 shown; it had 2 other inputs)'));
-  assert(list.includes("data-trace='" + id('cd') + ":0'") && list.includes("data-trace='" + id('12') + ":0'"), 'inputs and spend outputs can be followed');
-  assert(!list.includes('data-block'));
-
-  const early = page.traceHtml({ ...trace, block: 420 }, 974310);
-  assert(early.includes("data-trace='" + id('ab') + ":1' data-block='450'"), 'a later spend offers its block');
-  assert(!early.includes(id('12')), 'and does not list outputs that have no pixel yet');
-  assert(page.traceHtml({ ...trace, spend: null }, 974310).includes('Unspent at block 974,310'));
-  const mined = page.traceHtml({ ...trace, coinbase: true, inputs: [], inputCount: 0 }, 974310);
-  assert(mined.includes('Newly mined') && !mined.includes('Inputs of'));
+  const list = page.txHtml(tx);
+  assert(list.includes('3 inputs') && list.includes('2 outputs') && list.includes('fee 200 sat'));
+  assert(list.includes('1 without a line (300 sat)'), 'undated inputs are counted');
+  assert(list.includes('<td>200 sat</td><td>11*</td>') && list.includes('* Inputs of one amount'), 'a block known only as a group is starred and explained');
+  assert(list.includes("<tr class='marked'><td>600 sat"), 'the marked coin is highlighted');
+  assert(list.includes("data-tx='" + id('ef') + "' data-mark='" + id('ef') + ":2'>← tx"), 'an input opens the transaction that made it');
+  assert(list.includes("data-tx='" + id('12') + "' data-mark='" + id('ab') + ":0'>tx →"), 'a spent output opens the transaction that spent it');
+  assert(list.includes("<span class='unspent'>unspent</span>"));
+  const many = page.txHtml({ ...tx, mark: null, inputs: Array.from({ length: 30 }, (_, i) => ({ txid: id('cd'), vout: i, satoshi: i + 1, height: 10 })) });
+  assert(many.includes('<details><summary>All 30</summary>') && many.indexOf('>30 sat<') < many.indexOf('>1 sat<'), 'largest first; past a dozen the rows fold');
+  const mined = page.txHtml({ ...tx, coinbase: true, inputs: [] });
+  assert(mined.includes('Newly mined') && !mined.includes('fee'));
 
   // The drawer's main button names the coin it will trace: the largest unspent at the viewed block, else the largest spent before it.
   const pixel = { count: 2, pastCount: 1, utxos: [{ sat: 700, created: 12 }, { sat: 900, created: 34 }], pastUtxos: [{ sat: 5000, created: 5 }] };
@@ -52,8 +61,8 @@ for (const file of ['cloudflare/utxo-video-worker/static/explorer.html', 'src/cp
   assert.equal(page.traceLeadHtml({ count: 0, pastCount: 3, utxos: [] }), '', 'no listed coin, no button');
 
   const one = page.traceMatchesHtml([{ txid: id('ab'), vout: 1 }], '57043');
-  assert(one.includes("data-trace='" + id('ab') + ":1'") && !one.includes('Pick one'));
+  assert(one.includes("data-tx='" + id('ab') + "' data-mark='" + id('ab') + ":1'") && !one.includes('Pick one'));
   const two = page.traceMatchesHtml([{ txid: id('ab'), vout: 1 }, { txid: id('cd'), vout: 0 }], '57043');
-  assert(two.startsWith('<div>2 outputs of this amount were created in block 57,043. Pick one:</div>') && two.includes("data-trace='" + id('cd') + ":0'"));
+  assert(two.startsWith('<div>2 outputs of this amount were created in block 57,043. Pick one:</div>') && two.includes("data-tx='" + id('cd') + "'"));
   console.log('PASS', file);
 }
