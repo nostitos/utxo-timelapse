@@ -89,11 +89,17 @@
   .fateHead { margin: 12px 0 2px; font-size: 12.5px; font-weight: 600; }
   .fateHead .sub { font-weight: 400; color: #9aa5b8; }
   .txbtn { font-size: 11px; padding: 1px 6px; }
+  #panel button.txbtn { padding-left: 6px; padding-right: 6px; }
   .txres { font-size: 11px; color: #9aa5b8; }
   .txres a { color: #7aa2f7; }
   /* A resolved transaction gets its own full-width line under its row, so it never widens the table. */
   tr.hasTx td { border-bottom: none; }
   tr.txRow td { text-align: left; padding: 0 6px 6px; }
+  /* The spend cell may wrap between its block and its date, so a long amount cannot push the trace button out of the drawer. */
+  td.goneLater { white-space: normal; }
+  td.goneLater span { white-space: nowrap; }
+  /* On a phone the spend block alone fits, which keeps the trace button in view. */
+  @media (max-width: 480px) { td.goneLater span + span { display: none; } }
   /* Trace: the inputs behind one output (blue) and the outputs of the transaction that spent it (pink). */
   #traceLayer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; fill: none; stroke-width: 1.2; filter: drop-shadow(0 0 1px #000); }
   #traceLayer .in { stroke: #7dcfff; }
@@ -105,6 +111,11 @@
   #traceBox a { color: #7aa2f7; }
   .traceIn { color: #7dcfff; }
   .traceOut { color: #ff7ad9; }
+  /* The drawer's main action. */
+  #traceLead { margin-bottom: 12px; }
+  #panel button.traceMain { background: #a8d6b3; border-color: #a8d6b3; color: #12221b; font-weight: 600; padding: 7px 14px; }
+  #panel button.traceMain:hover { background: #c4e5cc; border-color: #c4e5cc; }
+  #traceLead .note { color: #9aa5b8; font-size: 12px; margin: 5px 0 2px; }
   #hint { color: #565f74; font-size: 12.5px; }
   label.tog { display: inline-flex; gap: 5px; align-items: center; color: #9aa5b8; font-size: 12.5px; }
 
@@ -360,13 +371,13 @@
       <a id="landscapeLink" href="https://bitcoinlandscape.com/" target="_blank" rel="noopener" title="3D landscape (preview)">3D</a>
       <div class="extendedSteps" role="group" aria-label="Skip blocks"><button type="button" data-block-step="-20" aria-label="Back 20 blocks">‹‹ Back 20 blocks</button><button type="button" data-block-step="20" aria-label="Forward 20 blocks">Forward 20 blocks ››</button></div>
     </div>
-    <span id="hint">pause &amp; click a pixel</span>
+    <span id="hint">click a pixel to trace it</span>
   </div>
 </div>
 <div id="about" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
   <div id="aboutCard">
     <h1 id="aboutTitle">UTXO Timelapse</h1>
-    <p class="lead">Bitcoin’s unspent outputs, mapped by their creation block and amount. Many outputs can share one pixel. The timeline runs from genesis to the latest block shown below and is updated weekly. Play it as a video, pause anywhere, click any pixel to inspect the outputs represented there.</p>
+    <p class="lead">Bitcoin’s unspent outputs, mapped by their creation block and amount. Many outputs can share one pixel. The timeline runs from genesis to the latest block shown below and is updated weekly. Play it as a video, pause anywhere, click any pixel to inspect the outputs represented there, and trace where a coin came from and where it went.</p>
 
     <h3>Reading the picture</h3>
     <div class="grid">
@@ -386,6 +397,7 @@
     <h3>Using it</h3>
     <div class="grid">
       <span>Click a pixel</span><span>Opens the details drawer: which coins were there at that block, their amounts, when they were created, and whether they are still unspent in the latest data.</span>
+      <span>Trace a coin</span><span>In the drawer, <b>Trace</b> draws lines to a coin from the coins that went into the transaction that created it, and on to the coins that came out of the transaction that spent it. Press <b>trace</b> beside any of them to keep following.</span>
       <span>Hover</span><span>The strip at the bottom shows the block range, dates and amount range under the cursor.</span>
       <span>Aim precisely</span><span>Pause, then use the magnifier (click inside it to pick), or nudge with <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> (<kbd>Shift</kbd> = 10 px).</span>
       <span>Move in time</span><span>Scrub the bar, type a block number, pick a date, or step with <kbd>[</kbd> <kbd>]</kbd> or use the controls to step by 1 or 20 blocks.</span>
@@ -422,7 +434,7 @@
   <div class="welcomeCard" tabindex="-1" autofocus>
     <span class="shareEyebrow">Bitcoin Timelapse</span>
     <h2 id="welcomeTitle">Bitcoin, block by block.</h2>
-    <p id="welcomeLead">A film of every unspent bitcoin output, from the first block in 2009 to the latest. Pause anywhere and click a pixel to see the coins behind it.</p>
+    <p id="welcomeLead">A film of every unspent bitcoin output, from the first block in 2009 to the latest. Pause anywhere, click a pixel to see the coins behind it, and trace where they came from and where they went.</p>
     <div class="welcomeChoices">
       <a class="welcomeChoice" href="/guide/"><strong>About this site</strong><small>How to read the picture</small></a>
       <button class="welcomeChoice primary" id="welcomeExplore" type="button"><strong>Use the explorer</strong><small>Go straight to the timelapse</small></button>
@@ -1397,6 +1409,8 @@ async function selectPixel(nx, ny) {
   let html = "";
   if (!resp.utxos.length && !resp.pastCount) { panelBody.innerHTML = "<div id='hint'>No UTXOs were created in this pixel's block and amount ranges.</div>"; return; }
 
+  html += traceLeadHtml(resp);
+
   // ---- STATE AT VIEWED BLOCK ----
   html += "<div class='secHead'>At block " + block.toLocaleString("en-US") + "</div>";
   if (resp.count) {
@@ -1434,7 +1448,7 @@ async function selectPixel(nx, ny) {
   let btnSeq = 0;
   const rowsOf = (list, kind) => {
     let out = "<table><tr><th>amount</th><th>created</th><th>date</th>" +
-      (kind === "stay" ? "<th>age at block</th>" : "<th>spent @</th><th>lifespan</th>") + "<th>tx</th></tr>";
+      (kind === "stay" ? "<th>age at block</th>" : "<th>spent @</th><th>held</th>") + "<th>follow</th></tr>";
     list.forEach(u => {
       const id = "b" + (btnSeq++);
       out += "<tr><td>" + fmtBtc(u.sat) + "</td><td>" + u.created.toLocaleString("en-US") + "</td><td>" + u.createdDate + "</td>";
@@ -1443,9 +1457,9 @@ async function selectPixel(nx, ny) {
       } else {
         const leaveH = u.spent;
         const stayed = leaveH - u.created;
-        out += "<td class='goneLater'>@" + leaveH.toLocaleString("en-US") + (u.spentDate ? " · " + u.spentDate : "") + "</td><td>" + fmtAge(stayed) + "</td>";
+        out += "<td class='goneLater'><span>@" + leaveH.toLocaleString("en-US") + "</span>" + (u.spentDate ? " <span>· " + u.spentDate + "</span>" : "") + "</td><td>" + fmtAge(stayed) + "</td>";
       }
-      out += "<td><button class='txbtn' data-h='" + u.created + "' data-s='" + u.sat + "' data-i='" + id + "'>txid</button></td></tr>" +
+      out += "<td><button class='txbtn' data-find='" + u.created + ":" + u.sat + "' data-out='txres" + id + "'>trace</button></td></tr>" +
         "<tr class='txRow' hidden><td colspan='" + (kind === "stay" ? 5 : 6) + "'><div class='txres' id='txres" + id + "'></div></td></tr>";
     });
     return out + "</table>";
@@ -1502,27 +1516,26 @@ async function selectPixel(nx, ny) {
     ctx.lineWidth = 1;
     ctx.stroke();
   }
-  panelBody.querySelectorAll(".txbtn").forEach(btn => {
-    btn.onclick = async () => {
-      const el = document.getElementById("txres" + btn.dataset.i);
-      el.closest("tr").hidden = false;
-      el.closest("tr").previousElementSibling.classList.add("hasTx");
-      el.textContent = "resolving…";
-      try {
-        const r = await fetch("/api/txid?height=" + btn.dataset.h + "&satoshi=" + btn.dataset.s).then(x => x.json());
-        if (r.error) { el.textContent = r.error; return; }
-        if (!r.matches.length) { el.textContent = "no exact match"; return; }
-        el.innerHTML = r.matches.map(m =>
-          "<a target='_blank' href='https://mempool.space/tx/" + m.txid + "'>" + m.txid.slice(0, 12) + "…:" + m.vout + "</a> " + traceButton(m.txid, m.vout, "trace")
-        ).join("<br>");
-      } catch (err) { el.textContent = "failed: " + err; }
-    };
-  });
 }
 
 // ---- trace contract: one hop either side of an output (/api/trace) ----
 // A transaction does not record which input paid which output. A trace therefore shows the
 // inputs of the transaction that created the output and the outputs of the one that spent it.
+// The drawer's main action traces the largest coin listed for the pixel, those unspent at the viewed block first.
+function traceLeadHtml(resp) {
+  const list = resp.utxos.length ? resp.utxos : resp.pastUtxos || [];
+  if (!list.length) return "";
+  const lead = list.reduce((a, u) => (u.sat > a.sat ? u : a));
+  const only = resp.count + resp.pastCount === 1;
+  return "<div id='traceLead'><button class='traceMain' data-find='" + lead.created + ":" + lead.sat + "' data-out='txresLead'>" +
+    (only ? "Trace this coin" : "Trace a coin from this pixel") + "</button><div class='note'>" + (only ? "" : "The largest: ") + "<b>" + fmtBtc(lead.sat) +
+    "</b> created in block " + lead.created.toLocaleString("en-US") + ". See where it came from and where it went.</div><div class='txres' id='txresLead'></div></div>";
+}
+// The transactions that created an output of this amount in this block: usually one, and then it is traced at once.
+function traceMatchesHtml(matches, height) {
+  return (matches.length > 1 ? "<div>" + matches.length + " outputs of this amount were created in block " + Number(height).toLocaleString("en-US") + ". Pick one:</div>" : "") +
+    matches.map(m => "<a target='_blank' href='https://mempool.space/tx/" + m.txid + "'>" + m.txid.slice(0, 12) + "…:" + m.vout + "</a> " + traceButton(m.txid, m.vout, "trace")).join("<br>");
+}
 function traceButton(txid, vout, label, block) {
   return "<button class='txbtn' data-trace='" + txid + ":" + vout + "'" + (block == null ? "" : " data-block='" + block + "'") + ">" + label + "</button>";
 }
@@ -1581,15 +1594,24 @@ function traceNotice(text) {
   streamStatus.textContent = text;
   setTimeout(() => { if (streamStatus.textContent === text) streamStatus.textContent = ""; }, 4000);
 }
+// A lookup that reaches mempool.space is rate limited to one every two seconds after a short burst; wait once and retry.
+async function lookupJson(url) {
+  try {
+    let r = await fetch(url);
+    if (r.status === 429) {
+      await new Promise(ok => setTimeout(ok, 2100));
+      r = await fetch(url);
+    }
+    return await r.json();
+  } catch (err) { return { error: "Lookup failed: " + err }; }
+}
+// Returns the error text when the trace could not be shown.
 async function showTrace(txid, vout) {
   const selection = selPixel;
   const block = curBlock();
-  let t;
-  try {
-    t = await fetch("/api/trace?txid=" + txid + "&vout=" + vout + "&block=" + block).then(r => r.json());
-  } catch (err) { t = { error: "Trace failed: " + err }; }
+  const t = await lookupJson("/api/trace?txid=" + txid + "&vout=" + vout + "&block=" + block);
   if (selPixel !== selection || curBlock() !== block) return;
-  if (t.error) { traceNotice(t.error); return; }
+  if (t.error) { traceNotice(t.error); return t.error; }
   // Following a trace moves the selection to the output being traced.
   if (t.output.x != null && (!selPixel || selPixel.nx !== t.output.x || selPixel.ny !== t.output.y)) {
     await selectPixel(t.output.x, t.output.y);
@@ -1602,11 +1624,30 @@ async function showTrace(txid, vout) {
   traceData = t;
   drawTrace();
 }
+// One click on an output: find its transaction, then trace it when the amount names a single output.
+async function findAndTrace(button) {
+  const [height, sat] = button.dataset.find.split(":");
+  const el = document.getElementById(button.dataset.out);
+  const row = el.closest("tr");
+  if (row) { row.hidden = false; row.previousElementSibling.classList.add("hasTx"); }
+  el.textContent = "Finding the transaction…";
+  const r = await lookupJson("/api/txid?height=" + height + "&satoshi=" + sat);
+  if (!el.isConnected) return; // the drawer has moved on to another pixel
+  if (r.error) { el.textContent = r.error; return; }
+  if (!r.matches.length) { el.textContent = "no exact match"; return; }
+  el.innerHTML = traceMatchesHtml(r.matches, height);
+  if (r.matches.length > 1) return;
+  const error = await showTrace(r.matches[0].txid, r.matches[0].vout);
+  if (!el.isConnected) return;
+  if (error) el.append(" · " + error);
+  else if (!row) el.textContent = ""; // the trace box above the main button already names the transaction
+}
 panelBody.addEventListener("click", e => {
-  const button = e.target.closest("[data-trace]");
+  const button = e.target.closest("[data-trace], [data-find]");
   if (!button) return;
-  const [txid, vout] = button.dataset.trace.split(":");
   button.disabled = true;
+  if (button.dataset.find) { findAndTrace(button).finally(() => { button.disabled = false; }); return; }
+  const [txid, vout] = button.dataset.trace.split(":");
   if (!button.dataset.block) { showTrace(txid, vout).finally(() => { button.disabled = false; }); return; }
   // The spend is later than the block on screen: go there, then trace again in that frame.
   userWantsPlayback = false;

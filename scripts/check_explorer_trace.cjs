@@ -42,5 +42,18 @@ for (const file of ['cloudflare/utxo-video-worker/static/explorer.html', 'src/cp
   assert(page.traceHtml({ ...trace, spend: null }, 974310).includes('Unspent at block 974,310'));
   const mined = page.traceHtml({ ...trace, coinbase: true, inputs: [], inputCount: 0 }, 974310);
   assert(mined.includes('Newly mined') && !mined.includes('Inputs of'));
+
+  // The drawer's main button names the coin it will trace: the largest unspent at the viewed block, else the largest spent before it.
+  const pixel = { count: 2, pastCount: 1, utxos: [{ sat: 700, created: 12 }, { sat: 900, created: 34 }], pastUtxos: [{ sat: 5000, created: 5 }] };
+  const lead = page.traceLeadHtml(pixel);
+  assert(lead.includes("data-find='34:900' data-out='txresLead'") && lead.includes('Trace a coin from this pixel') && lead.includes('The largest: <b>900 sat</b> created in block 34'));
+  const single = page.traceLeadHtml({ count: 0, pastCount: 1, utxos: [], pastUtxos: [{ sat: 5000, created: 1234 }] });
+  assert(single.includes("data-find='1234:5000'") && single.includes('Trace this coin') && !single.includes('The largest'));
+  assert.equal(page.traceLeadHtml({ count: 0, pastCount: 3, utxos: [] }), '', 'no listed coin, no button');
+
+  const one = page.traceMatchesHtml([{ txid: id('ab'), vout: 1 }], '57043');
+  assert(one.includes("data-trace='" + id('ab') + ":1'") && !one.includes('Pick one'));
+  const two = page.traceMatchesHtml([{ txid: id('ab'), vout: 1 }, { txid: id('cd'), vout: 0 }], '57043');
+  assert(two.startsWith('<div>2 outputs of this amount were created in block 57,043. Pick one:</div>') && two.includes("data-trace='" + id('cd') + ":0'"));
   console.log('PASS', file);
 }

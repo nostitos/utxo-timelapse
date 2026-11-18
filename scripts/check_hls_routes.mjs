@@ -136,6 +136,13 @@ console.log('PASS: API cache keys hold only the validated parameters');
   assert.equal((await trace('txid=' + id(0xdead) + '&vout=0&block=1500')).status, 404);
   assert.equal((await trace('txid=' + A + '&vout=9&block=1500')).status, 404);
   for (const bad of ['txid=' + A.toUpperCase() + '&vout=0', 'txid=' + A, 'txid=' + A + '&vout=0&block=x']) assert.equal((await trace(bad)).status, 400, bad);
+
+  // Only lookups that reach mempool.space are rate limited, per client.
+  const from = (ip, query) => worker.fetch(new Request('https://example.test/api/trace?' + query, { headers: { 'CF-Connecting-IP': ip } }), env, ctx);
+  const fresh = [];
+  for (let i = 0; i < 5; i++) fresh.push((await from('10.9.9.9', 'vout=0&txid=' + id(0xbeef00 + i))).status);
+  assert.deepEqual(fresh, [404, 404, 404, 404, 429], 'a burst of four uncached lookups, then a wait');
+  assert.equal((await from('10.9.9.9', 'txid=' + A + '&vout=0&block=1500')).status, 200, 'a cached trace is still served to a client that is out of tokens');
   globalThis.fetch = realFetch;
   console.log('PASS: /api/trace lists inputs and the spender\'s outputs, places them, and caches one lookup per output');
 }
