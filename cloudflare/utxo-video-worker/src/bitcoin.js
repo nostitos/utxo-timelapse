@@ -92,17 +92,16 @@ function matchingOutputs(raw, targetSatoshi) {
 }
 
 // Where a request goes. With env.MEMPOOL_API set (the Mempool app on the maintainer's node, its
-// /api URL; env.MEMPOOL_ACCESS_ID and env.MEMPOOL_ACCESS_SECRET when a Cloudflare Access service
-// token guards it) the node answers first and mempool.space only when the node fails. That node
+// /api URL, reached through the Workers VPC binding env.MEMPOOL_NODE when there is one) the node
+// answers first and mempool.space only when the node fails. That node
 // runs Mempool in Electrum mode, which cannot name the transaction that spent an output (Bitcoin
 // Core keeps no spender index), so outspends always come from mempool.space; and it derives
 // heights from its own tip, which lags Bitcoin Core for a moment after each block, so txResponse
 // checks the heights it gets.
 function sources(env, path, publicOnly) {
   const node = env?.MEMPOOL_API;
-  if (!node || publicOnly || path.endsWith("/outspends") || Date.now() < nodeDownUntil) return [{ base: PUBLIC_API, headers: {} }];
-  const headers = env.MEMPOOL_ACCESS_ID ? { "CF-Access-Client-Id": env.MEMPOOL_ACCESS_ID, "CF-Access-Client-Secret": env.MEMPOOL_ACCESS_SECRET } : {};
-  return [{ base: String(node).replace(/\/+$/, ""), headers, node: true }, { base: PUBLIC_API, headers: {} }];
+  if (!node || publicOnly || path.endsWith("/outspends") || Date.now() < nodeDownUntil) return [{ base: PUBLIC_API }];
+  return [{ base: String(node).replace(/\/+$/, ""), node: true }, { base: PUBLIC_API }];
 }
 
 /** One upstream answer as kind 'json', 'text' or 'bytes' (an ArrayBuffer). */
@@ -110,8 +109,10 @@ async function upstream(env, path, kind = "bytes", { publicOnly = false } = {}) 
   let failure;
   for (const s of sources(env, path, publicOnly)) {
     try {
-      const response = await fetch(s.base + path, {
-        headers: { Accept: kind === "json" ? "application/json" : kind === "text" ? "text/plain" : "application/octet-stream", ...s.headers },
+      // The VPC binding carries the request through the node's tunnel; the local preview has none and goes direct.
+      const get = s.node && env.MEMPOOL_NODE ? (u, init) => env.MEMPOOL_NODE.fetch(u, init) : fetch;
+      const response = await get(s.base + path, {
+        headers: { Accept: kind === "json" ? "application/json" : kind === "text" ? "text/plain" : "application/octet-stream" },
         signal: AbortSignal.timeout(s.node ? NODE_TIMEOUT_MS : 20000),
       });
       if (!response.ok) throw new Error(`upstream ${response.status}`);

@@ -7,3 +7,13 @@ preview_urls = false
 [[r2_buckets]]
 binding = "VIDEO_BUCKET"
 bucket_name = "utxo-video"
+
+# The maintainer's Umbrel node answers transaction lookups first: its Mempool app, reached through
+# the tunnel umbrel-node and the Workers VPC service mempool-node (see "Your own Mempool" in
+# cloudflare/utxo-landscape-worker/README.md). Deploying needs a token with Connectivity Directory Bind.
+[vars]
+MEMPOOL_API = "http://127.0.0.1:3006/api"
+
+[[vpc_services]]
+binding = "MEMPOOL_NODE"
+service_id = "01a1f186-bcb0-7302-b83a-3703c2f3b463"

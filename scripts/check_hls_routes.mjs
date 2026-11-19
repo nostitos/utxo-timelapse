@@ -180,7 +180,7 @@ console.log('PASS: API cache keys hold only the validated parameters');
   assert.deepEqual(fresh, [404, 404, 404, 404, 429], 'a burst of four uncached lookups, then a wait');
   assert.equal((await from('10.9.9.9', 'txid=' + S + '&block=2500')).status, 200, 'a cached transaction is still served to a client that is out of tokens');
 
-  // A node's Mempool (env.MEMPOOL_API) answers first, with its access token. It cannot name
+  // A node's Mempool (env.MEMPOOL_API) answers first, through its VPC binding. It cannot name
   // spenders, so outspends come from mempool.space; a height that does not name the block its
   // hash does (the node's tip lags) sends the whole answer to mempool.space; a looked-up height
   // outside the change log's list leaves that input undated; and a node that fails is skipped.
@@ -201,24 +201,24 @@ console.log('PASS: API cache keys hold only the validated parameters');
       ['/tx/' + P + '/status']: confirmed(1499),
     };
     const calls = [];
-    globalThis.fetch = async (url, init = {}) => {
+    globalThis.fetch = async (url) => {
       const u = String(url);
-      if (!u.startsWith(NODE)) {
-        const path = u.replace('https://mempool.space/api', '');
-        calls.push('public ' + path);
-        const a = upstreamJson[path];
-        return a === undefined ? new Response('not found', { status: 404 }) : typeof a === 'string' ? new Response(a) : Response.json(a);
-      }
-      const path = u.slice(NODE.length);
-      calls.push('node ' + path + (init.headers?.['CF-Access-Client-Id'] === 'id' ? '' : ' without token'));
+      const path = u.replace('https://mempool.space/api', '');
+      calls.push(u.startsWith(NODE) ? 'node bypassed its binding' : 'public ' + path);
+      const a = upstreamJson[path];
+      return a === undefined ? new Response('not found', { status: 404 }) : typeof a === 'string' ? new Response(a) : Response.json(a);
+    };
+    const binding = { fetch: async (url) => {
+      const path = String(url).slice(NODE.length);
+      calls.push('node ' + path);
       if (path.startsWith('/tx/' + D)) throw new TypeError('node unreachable');
       const a = node[path];
       return a === undefined ? new Response('not found', { status: 404 }) : typeof a === 'string' ? new Response(a + '\n') : Response.json(a);
-    };
-    Object.assign(env, { MEMPOOL_API: NODE + '/', MEMPOOL_ACCESS_ID: 'id', MEMPOOL_ACCESS_SECRET: 'secret' });
+    } };
+    Object.assign(env, { MEMPOOL_API: NODE + '/', MEMPOOL_NODE: binding });
     const good = (await tx('txid=' + R)).body;
     assert.deepEqual(calls.sort(), ['node /block-height/2000', 'node /tx/' + P + '/status', 'node /tx/' + R, 'public /tx/' + R + '/outspends'],
-      'the node answers with its token, except for outspends');
+      'the node answers through its binding, except for outspends');
     assert.deepEqual(good.inputs.map((i) => i.height), [1000, null, 1700], 'a looked-up height the change log does not list leaves the input undated');
     assert.deepEqual(good.outputs[1].spent, { txid: T, height: 2100 }, 'spenders come from mempool.space');
     calls.length = 0;
@@ -231,7 +231,7 @@ console.log('PASS: API cache keys hold only the validated parameters');
     assert.equal(down.status, 200, 'a node that fails is skipped');
     assert.equal(down.body.height, 2000);
     assert(calls.includes('public /tx/' + D));
-    for (const k of ['MEMPOOL_API', 'MEMPOOL_ACCESS_ID', 'MEMPOOL_ACCESS_SECRET']) delete env[k];
+    for (const k of ['MEMPOOL_API', 'MEMPOOL_NODE']) delete env[k];
   }
   globalThis.fetch = realFetch;
   env.VIDEO_BUCKET.get = realGet;
