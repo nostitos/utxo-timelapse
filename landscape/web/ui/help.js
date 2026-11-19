@@ -24,7 +24,7 @@ const SECTIONS = [
     [['~Share button'], 'Copy the current location, block and appearance, a selected cell with its details open, or an open transaction. Cell and transaction links open paused; view links can autoplay.'],
   ]],
   ['Transactions', [
-    [['~Block field'], 'Paste a transaction id and press Enter: the landscape goes to its block and draws it, magenta ribbons rising from the coins it spent to a bridge above the block and white ribbons falling to the coins it made'],
+    [['~Block field'], 'Paste a transaction id and press Enter: the landscape goes to its block and draws it, ribbons rising red from the coins it spent to a white bridge above the block and falling green to the coins it made'],
     [['~Trace'], 'In a cell\u2019s outputs, open the transaction that created that output'],
     [['~\u2190 tx', '~tx \u2192'], 'Open the transaction that created an input or spent an output; the ones before stay as a dim trail'],
     [['~Follow back', '~Follow forward'], 'Hop on by itself along the largest input or output, one transaction after another, until the coin was newly mined or is unspent; Stop or Esc ends it'],
