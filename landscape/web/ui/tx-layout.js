@@ -163,8 +163,10 @@ export function txCurves(group, ground) {
   const [ix, iy, iz] = end(-1);
   const [ox, oy, oz] = end(1);
   if (group.rest.count) {
-    const s = Math.max(1.5, half * 2.4 + 1);
-    curves.push({ kind: 'rest', ribbon: -1, p: [ix - s, iy + 0.2 * s, iz, ix - 0.6 * s, iy + 0.1 * s, iz, ix - 0.3 * s, iy, iz, ix, iy, iz] });
+    // Inputs of unknown age come in from the past and above, like the oldest ribbons, but from
+    // nowhere on the ground: ui/tx.js fades the open end and labels it.
+    const s = clamp(0.25 * reach, 4, 24);
+    curves.push({ kind: 'rest', ribbon: -1, p: [ix - s, iy + 0.35 * s, iz, ix - 0.7 * s, iy + 0.35 * s, iz, ix - 0.35 * s, iy, iz, ix, iy, iz] });
   }
   curves.push({ kind: 'bridge', ribbon: -1, p: [ix, iy, iz, ix + (ox - ix) / 3, iy, iz, ix + (2 * (ox - ix)) / 3, oy, oz, ox, oy, oz] });
   curves.push({ kind: 'mast', ribbon: -1, p: [hub.x, base, hub.z, hub.x, base + (hubY - base) / 3, hub.z, hub.x, base + (2 * (hubY - base)) / 3, hub.z, hub.x, hubY, hub.z] });

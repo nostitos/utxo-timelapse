@@ -1496,7 +1496,7 @@ const CHECKS = [
       const s = L.tx.state;
       out.coinjoin = { ribbons: s.ribbons, vertices: s.vertices, block: L.replay.block, card: s.cardShown,
         title: document.querySelector('#inspector .tx-card h2')?.textContent, hash: location.hash.includes('tx=' + TX.coinjoin), framing: framing(),
-        rows: document.querySelectorAll('#inspector .tx-card tr[data-r]').length, stub: /dashed grey stub/.test(document.querySelector('#inspector').textContent) };
+        rows: document.querySelectorAll('#inspector .tx-card tr[data-r]').length, stub: /grey dashed line/.test(document.querySelector('#inspector').textContent) && document.querySelector('.tx-stub-tag')?.textContent === '82 inputs \u00b7 age unknown' };
       // Nothing is drawn before the transaction's block; the card offers to go there.
       await L.seek(L.replay.block - 1); await idle(); await sleep(900);
       out.before = { vertices: L.tx.state.vertices, go: !!document.querySelector('#inspector [data-tx-go]') };
@@ -1523,7 +1523,7 @@ const CHECKS = [
       out.frameError = L.frameError || null;
       return out;`,
     expect: (v) => v.skipped ? [['dataset tip ' + v.tip + ' is before the recorded transactions; skipped', true]] : [
-      ['the CoinJoin draws 73 input and 28 output ribbons and its 82 unplaced inputs on one stub (' + JSON.stringify(v.coinjoin.ribbons) + ')',
+      ['the CoinJoin draws 73 input and 28 output ribbons and its 82 unplaced inputs on one labelled line (' + JSON.stringify(v.coinjoin.ribbons) + ')',
         v.coinjoin.ribbons.in === 73 && v.coinjoin.ribbons.out === 28 && v.coinjoin.ribbons.rest === 82 && v.coinjoin.vertices > 1000 && v.coinjoin.stub],
       ['it opens at its block with its card and link (' + v.coinjoin.block + ', "' + v.coinjoin.title + '")', v.coinjoin.block === 974290 && v.coinjoin.card && v.coinjoin.title === 'Block 974,290' && v.coinjoin.hash],
       ['the card lists rows tied to ribbons (' + v.coinjoin.rows + ')', v.coinjoin.rows >= 20],
