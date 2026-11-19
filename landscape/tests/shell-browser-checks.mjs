@@ -125,6 +125,15 @@ const INSPECTOR_STATES = readFileSync(join(here, 'inspector-state-browser.mjs'),
 
 const SHARE_CHECKS = readFileSync(join(here, 'share-browser.mjs'), 'utf8');
 
+// Recorded /api/landscape/tx answers (tests/fixtures/tx): a 1 -> 2 payment, the transaction that
+// spent its output, a 224 -> 270 CoinJoin, a 1,093-input sweep and the four transactions back from
+// the payment (follow-back.json), and a transaction paying OKX (exchange.json). The tx checks seed them.
+const TX_ANSWERS = ['payment', 'payment-spender', 'coinjoin', 'sweep-1093', 'follow-back', 'exchange'].map((n) => readFileSync(join(here, 'fixtures', 'tx', n + '.json'), 'utf8'));
+const TX_PRELUDE = 'const TX_FIXTURES = [' + TX_ANSWERS.join(',') + '];\n' +
+  'for (const a of TX_FIXTURES.flat()) L.tx.seed(a);\n' +
+  'const TX = { payment: TX_FIXTURES[0].txid, spender: TX_FIXTURES[1].txid, coinjoin: TX_FIXTURES[2].txid, sweep: TX_FIXTURES[3].txid, back: TX_FIXTURES[4].map((a) => a.txid), exchange: TX_FIXTURES[5].txid };\n';
+
+
 // Device balance (device-balance checks): Landscape at block 840,000 from the middle camera of the
 // November 2026 measurements, values read once the tiles, the columns and the scale stop changing.
 const DEVICE_BALANCE = String.raw`await idle(); await sleep(500);
@@ -1464,6 +1473,272 @@ const CHECKS = [
       ['hidden and flat differ (mean RGB difference ' + v.hideDiffers + ')', v.hideDiffers > 1],
       ['near the camera the flat rest keeps its terrain where columns stand: ' + v.columns + ' columns, ' + Math.round(v.kept * 100) + '% of ' + v.blue + ' blue pixels kept', v.columns > 0 && v.blue > 1000 && v.kept > 0.55],
       ['turning it off restores the dimmed view (difference ' + v.restored + ')', v.restored < 3],
+    ],
+  },
+  {
+    // ui/tx.js with recorded answers (tests/fixtures/tx), so no lookup reaches the network.
+    name: 'tx',
+    timeout: 180000,
+    shot: 'tx.png',
+    script: TX_PRELUDE + `await idle(); await sleep(500); L.playback.pause();
+      const out = { tip: L.manifest.tip };
+      if (tip < 974359) return { ...out, skipped: true };
+      const { Vector3 } = await import('three');
+      // Framed points on the canvas and clear of the card: the bridge, and the share of the rest.
+      const framing = () => {
+        const f = L.tx.framed(), c = canvas.getBoundingClientRect(), k = document.getElementById('inspector').getBoundingClientRect();
+        const at = ([x, y, z]) => { const v = new Vector3(x, y, z).project(L.view.camera); return [c.left + (v.x + 1) / 2 * c.width, c.top + (1 - v.y) / 2 * c.height, v.z]; };
+        const free = ([x, y, z]) => z < 1 && x >= c.left && x <= c.right && y >= c.top && y <= c.bottom && !(x >= k.left && x <= k.right && y >= k.top && y <= k.bottom);
+        const pts = f.points.map(at);
+        return { bridge: f.bridge.map(at).every(free), share: Math.round(pts.filter(free).length / pts.length * 1000) / 1000, n: pts.length };
+      };
+      await L.tx.open(TX.coinjoin); await idle(); await sleep(1200);
+      const s = L.tx.state;
+      out.coinjoin = { ribbons: s.ribbons, vertices: s.vertices, block: L.replay.block, card: s.cardShown,
+        title: document.querySelector('#inspector .tx-card h2')?.textContent, hash: location.hash.includes('tx=' + TX.coinjoin), framing: framing(),
+        rows: document.querySelectorAll('#inspector .tx-card tr[data-r]').length, stub: /dashed grey stub/.test(document.querySelector('#inspector').textContent) };
+      // Nothing is drawn before the transaction's block; the card offers to go there.
+      await L.seek(L.replay.block - 1); await idle(); await sleep(900);
+      out.before = { vertices: L.tx.state.vertices, go: !!document.querySelector('#inspector [data-tx-go]') };
+      document.querySelector('#inspector [data-tx-go]')?.click(); await sleep(300); await idle(); await sleep(900);
+      out.back = { block: L.replay.block, vertices: L.tx.state.vertices };
+      await L.tx.open(TX.sweep); await idle(); await sleep(1200);
+      out.sweep = { ribbons: L.tx.state.ribbons, framing: framing() };
+      // Esc closes it; the block field opens one; a link opens one.
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape', bubbles: true }));
+      await sleep(600);
+      out.closed = { txid: L.tx.state.txid, vertices: L.tx.state.vertices, card: L.tx.state.cardShown, hidden: document.getElementById('inspector').hidden, hash: location.hash.includes('tx=') };
+      const bi = document.querySelector('.tl-block'); bi.focus(); bi.value = TX.payment.toUpperCase(); bi.dispatchEvent(new Event('change', { bubbles: true }));
+      for (let t = 0; t < 100 && L.tx.state.txid !== TX.payment; t++) await sleep(100);
+      await idle(); await sleep(900);
+      out.field = { txid: L.tx.state.txid, block: L.replay.block, framing: framing() };
+      location.hash = '#tx=' + TX.coinjoin;
+      for (let t = 0; t < 150 && L.tx.state.txid !== TX.coinjoin; t++) await sleep(100);
+      await idle(); await sleep(900);
+      out.link = { txid: L.tx.state.txid, block: L.replay.block, playing: L.playback.state.playing };
+      // A transaction no answer covers: the lookup fails (no explorer locally, none such online) and nothing is drawn.
+      await L.tx.open('ff'.repeat(32));
+      out.missing = { failure: !!L.tx.state.failure, vertices: L.tx.state.vertices, card: L.tx.state.cardShown };
+      await L.tx.open(TX.coinjoin); await idle(); await sleep(1500);
+      out.frameError = L.frameError || null;
+      return out;`,
+    expect: (v) => v.skipped ? [['dataset tip ' + v.tip + ' is before the recorded transactions; skipped', true]] : [
+      ['the CoinJoin draws 73 input and 28 output ribbons and its 82 unplaced inputs on one stub (' + JSON.stringify(v.coinjoin.ribbons) + ')',
+        v.coinjoin.ribbons.in === 73 && v.coinjoin.ribbons.out === 28 && v.coinjoin.ribbons.rest === 82 && v.coinjoin.vertices > 1000 && v.coinjoin.stub],
+      ['it opens at its block with its card and link (' + v.coinjoin.block + ', "' + v.coinjoin.title + '")', v.coinjoin.block === 974290 && v.coinjoin.card && v.coinjoin.title === 'Block 974,290' && v.coinjoin.hash],
+      ['the card lists rows tied to ribbons (' + v.coinjoin.rows + ')', v.coinjoin.rows >= 20],
+      ['the bridge and ' + Math.round(v.coinjoin.framing.share * 100) + '% of ' + v.coinjoin.framing.n + ' framed points show beside the card', v.coinjoin.framing.bridge && v.coinjoin.framing.share >= 0.95],
+      ['nothing is drawn a block earlier, and the card offers its block', v.before.vertices === 0 && v.before.go],
+      ['Go to block returns and draws it again', v.back.block === 974290 && v.back.vertices > 1000],
+      ['the 1,093-input sweep keeps at most 300 ribbons a side (' + JSON.stringify(v.sweep.ribbons) + ')', v.sweep.ribbons.in <= 300 && v.sweep.ribbons.in >= 200 && v.sweep.ribbons.rest === 6],
+      ['the sweep frames its bridge and ' + Math.round(v.sweep.framing.share * 100) + '% of its framed points', v.sweep.framing.bridge && v.sweep.framing.share >= 0.9],
+      ['Esc closes it: no ribbons, no card, no tx in the address', !v.closed.txid && v.closed.vertices === 0 && !v.closed.card && v.closed.hidden && !v.closed.hash],
+      ['a txid typed in the block field opens it at its block, framed (' + Math.round(v.field.framing.share * 100) + '%)', v.field.txid && v.field.block === 974300 && v.field.framing.bridge && v.field.framing.share >= 0.95],
+      ['a #tx= link opens it paused at its block', v.link.txid && v.link.block === 974290 && !v.link.playing],
+      ['a failed lookup draws nothing and says so', v.missing.failure && v.missing.vertices === 0 && v.missing.card],
+      ['no frame errors', !v.frameError],
+    ],
+  },
+  {
+    name: 'tx-looks',
+    timeout: 300000,
+    shot: 'tx-looks.png',
+    script: TX_PRELUDE + `await idle(); await sleep(500); L.playback.pause();
+      if (tip < 974290) return { skipped: true, tip };
+      const S = L.settings, out = { looks: {}, quality: {} };
+      await L.tx.open(TX.coinjoin); await idle(); await sleep(1200);
+      const group = L.view.scene.getObjectByName('TxRibbons');
+      // Pixels the ribbons change: the frame with them against the same frame without them.
+      async function seen() {
+        const a = (await frameImage(640, 360)).getContext('2d').getImageData(0, 0, 640, 360).data;
+        group.visible = false;
+        const b = (await frameImage(640, 360)).getContext('2d').getImageData(0, 0, 640, 360).data;
+        group.visible = true;
+        let n = 0;
+        for (let i = 0; i < a.length; i += 4) if (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]) > 90) n++;
+        return n;
+      }
+      for (const look of S.looks) {
+        S.setLook(look);
+        await settled(1200);
+        await sleep(700);
+        out.looks[look] = await seen();
+        out.shots = (out.shots || 0) + 1;
+      }
+      S.setLook('Landscape');
+      for (const q of ['Performance', 'Extreme']) {
+        S.applyPreset(q); await settled(1500); await sleep(700);
+        out.quality[q] = { px: await seen(), frameError: L.frameError || null };
+      }
+      S.applyPreset('High');
+      return out;`,
+    expect: (v) => v.skipped ? [['dataset tip ' + v.tip + ' is before the recorded transactions; skipped', true]] : [
+      ...Object.entries(v.looks).map(([look, px]) => [look + ': the ribbons stand out from the terrain at ' + px + ' pixels of 230,400', px >= 4000]),
+      ...Object.entries(v.quality).map(([q, r]) => [q + ': drawn without frame errors (' + r.px + ' pixels)', r.px >= 4000 && !r.frameError]),
+    ],
+  },
+  {
+    name: 'tx-hops',
+    timeout: 180000,
+    shot: 'tx-hops.png',
+    script: TX_PRELUDE + `await idle(); await sleep(500); L.playback.pause();
+      if (tip < 974359) return { skipped: true, tip };
+      const out = {};
+      const card = () => document.querySelector('#inspector .tx-card');
+      await L.tx.open(TX.payment); await idle(); await sleep(900);
+      // tx → on the output its spender spent, then ← tx back along the same coin.
+      card().querySelector('[data-tx-open="' + TX.spender + '"]').click();
+      for (let t = 0; t < 100 && L.tx.state.txid !== TX.spender; t++) await sleep(100);
+      await idle(); await sleep(900);
+      const marked = card().querySelector('tr.tx-marked');
+      out.forward = { txid: L.tx.state.txid, block: L.replay.block, trail: L.tx.state.trail, marked: marked ? marked.querySelector('[data-tx-open]')?.dataset.txOpen : null, first: card().querySelector('tbody tr') === marked };
+      marked.querySelector('[data-tx-open]').click();
+      for (let t = 0; t < 100 && L.tx.state.txid !== TX.payment; t++) await sleep(100);
+      await idle(); await sleep(900);
+      out.back = { txid: L.tx.state.txid, block: L.replay.block, trail: L.tx.state.trail, note: /dim trail/.test(card().textContent) };
+      // A row lights its ribbon; a ribbon under the pointer lights its row.
+      const row = card().querySelector('tr[data-r]');
+      row.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
+      await sleep(150);
+      out.rowLights = L.tx.state.highlighted === Number(row.dataset.r);
+      card().dispatchEvent(new PointerEvent('pointerleave'));
+      await sleep(150);
+      const id = Number(card().querySelector('tbody tr[data-r]:not(.tx-marked)')?.dataset.r ?? row.dataset.r);
+      const p = L.tx.screenPoint(id);
+      canvas.dispatchEvent(new PointerEvent('pointermove', { clientX: p.x, clientY: p.y, bubbles: true }));
+      await sleep(300);
+      out.ribbonLights = { want: id, lit: L.tx.state.highlighted, hot: !!card().querySelector('tr.tx-hot[data-r="' + id + '"]') };
+      canvas.dispatchEvent(new PointerEvent('pointerleave'));
+      await sleep(200);
+      out.cleared = L.tx.state.highlighted;
+      // The card's share button opens the dialog on the transaction.
+      card().querySelector('[data-tx-share]').click();
+      await sleep(300);
+      const dialog = document.getElementById('share');
+      out.share = { open: dialog.open, tx: dialog.querySelector('[value="tx"]').checked, link: dialog.querySelector('textarea').value };
+      dialog.querySelector('[data-close]').click();
+      await sleep(200);
+      // A cell clicked under the ribbons takes the panel; closing it brings the transaction back.
+      const found = await findCell();
+      out.cell = { found: !!found };
+      if (found) {
+        out.cell.trace = document.querySelectorAll('#inspector [data-trace]').length;
+        out.cell.cardHidden = !L.tx.state.cardShown;
+        document.querySelector('#inspector [data-close]').click();
+        await sleep(300);
+        out.cell.cardBack = L.tx.state.cardShown && L.tx.state.txid === TX.payment;
+      }
+      out.frameError = L.frameError || null;
+      return out;`,
+    expect: (v) => v.skipped ? [['dataset tip ' + v.tip + ' is before the recorded transactions; skipped', true]] : [
+      ['tx → opens the spender at its block with the payment as a trail', v.forward.txid && v.forward.block === 974359 && v.forward.trail.length === 1],
+      ['the coin followed is marked and listed first', v.forward.marked && v.forward.first],
+      ['← tx goes back along that coin; the trail keeps the spender', v.back.block === 974300 && v.back.trail.length === 1 && v.back.trail[0] === v.forward.txid && v.back.note],
+      ['a row lights its ribbon', v.rowLights],
+      ['a ribbon under the pointer lights it and its row (' + JSON.stringify(v.ribbonLights) + ')', v.ribbonLights.lit === v.ribbonLights.want && v.ribbonLights.hot],
+      ['leaving the canvas clears the light', v.cleared === -1],
+      ['the card shares the transaction, paused', v.share.open && v.share.tx && /[#&]tx=[0-9a-f]{64}/.test(v.share.link) && !/play=1/.test(v.share.link)],
+      ...(v.cell.found ? [
+        ['a cell opened over the transaction takes the panel and offers Trace (' + v.cell.trace + ' buttons)', v.cell.cardHidden && v.cell.trace > 0],
+        ['closing the cell brings the transaction back', v.cell.cardBack],
+      ] : [['no explorer to inspect a cell; the inspector half is skipped', true]]),
+      ['no frame errors', !v.frameError],
+    ],
+  },
+  {
+    // Phase 3 of the transaction view: the pulse, hollow spent outputs and Follow a coin, on
+    // recorded answers (tests/fixtures/tx/follow-back.json: four 1 -> 2 transactions, each
+    // spending the larger output of the one before).
+    name: 'tx-follow',
+    timeout: 180000,
+    shot: 'tx-follow.png',
+    script: TX_PRELUDE + `await idle(); await sleep(500); L.playback.pause();
+      if (tip < 974359) return { skipped: true, tip };
+      const out = {};
+      const card = () => document.querySelector('#inspector .tx-card');
+      await L.tx.open(TX.payment);
+      out.pulse = { opened: L.tx.state.pulsing };
+      await sleep(2800); await sleep(200);
+      out.pulse.done = !L.tx.state.pulsing;
+      // Once the pulse is over a parked view stops drawing (render/idle.js).
+      let idleSeen = false;
+      for (let t = 0; t < 40 && !idleSeen; t++) { await sleep(100); idleSeen = L.view.stats.idle; }
+      out.pulse.idle = idleSeen;
+      card().querySelector('[data-tx-pulse]').click();
+      await sleep(150);
+      out.pulse.replay = L.tx.state.pulsing;
+      // Follow back three transactions, then stop.
+      card().querySelector('[data-tx-follow="back"]').click();
+      await sleep(100);
+      out.following = { on: L.tx.state.following, stopButton: !!card().querySelector('[data-tx-stop]') };
+      const want = TX.back[2];
+      for (let t = 0; t < 300 && L.tx.state.txid !== want; t++) await sleep(100);
+      out.following.reached = L.tx.state.txid === want;
+      out.following.block = L.replay.block;
+      out.following.trail = L.tx.state.trail.slice();
+      out.following.marked = !!card().querySelector('tr.tx-marked');
+      card().querySelector('[data-tx-stop]')?.click();
+      await sleep(3500);
+      // A hop already on its way may still land; nothing follows it.
+      out.following.stopped = { on: L.tx.state.following, inChain: TX.back.slice(2).includes(L.tx.state.txid) };
+      // Hollow: at a block past both spends the payment's outputs are hollow.
+      await L.tx.open(TX.payment, { block: 974600 }); await idle(); await sleep(1200);
+      out.hollow = { block: L.replay.block, ribbons: L.tx.state.ribbons, note: /ribbons are hollow/.test(card().textContent) };
+      await L.seek(974300); await idle(); await sleep(1200);
+      out.notHollow = L.tx.state.ribbons.hollow;
+      out.frameError = L.frameError || null;
+      return out;`,
+    expect: (v) => v.skipped ? [['dataset tip ' + v.tip + ' is before the recorded transactions; skipped', true]] : [
+      ['a pulse runs when a transaction opens and ends', v.pulse.opened && v.pulse.done],
+      ['after the pulse the parked view stops drawing', v.pulse.idle],
+      ['Replay the flow runs it again', v.pulse.replay],
+      ['Follow back runs and offers Stop', v.following.on === 'back' && v.following.stopButton],
+      ['it walks three transactions back on its own (' + v.following.trail.length + ' in the trail, block ' + v.following.block + ')',
+        v.following.reached && v.following.block === 974192 && v.following.trail.length === 3 && v.following.marked],
+      ['Stop ends it where it is', v.following.stopped.on === null && v.following.stopped.inChain],
+      ['outputs spent by the block shown are hollow (' + JSON.stringify(v.hollow.ribbons) + ')', v.hollow.block === 974600 && v.hollow.ribbons.hollow === 2 && v.hollow.note],
+      ['at the transaction\u2019s own block none are', v.notHollow === 0],
+      ['no frame errors', !v.frameError],
+    ],
+  },
+  {
+    // Phase 4: exchange names from the owner data (replay/owners.js entitiesOf) on a recorded
+    // transaction that pays OKX (tests/fixtures/tx/exchange.json). Without owner data it only
+    // confirms the card offers no lookup.
+    name: 'tx-owners',
+    timeout: 180000,
+    shot: 'tx-owners.png',
+    script: TX_PRELUDE + `await idle(); await sleep(500); L.playback.pause();
+      const card = () => document.querySelector('#inspector .tx-card');
+      for (let t = 0; t < 100 && !L.owners.manifest; t++) await sleep(100);
+      await L.tx.open(TX.exchange); await idle(); await sleep(900);
+      const out = { data: !!L.owners.manifest, button: !!card().querySelector('[data-tx-owners]') };
+      if (!out.data || L.owners.manifest.tip < 974263) return out;
+      const before = L.tx.state.vertices;
+      card().querySelector('[data-tx-owners]').click();
+      for (let t = 0; t < 600 && !card().querySelector('.tx-owners'); t++) await sleep(100);
+      out.summary = card().querySelector('.tx-owners')?.textContent || card().textContent.slice(0, 300);
+      out.tags = [...card().querySelectorAll('.tx-owner')].map((e) => e.textContent);
+      out.stretches = L.tx.state.vertices - before;
+      card().querySelector('[data-tx-light="okx"]')?.click();
+      await sleep(800);
+      out.lit = L.owners.visible.slice();
+      // With the Owners view lit, a transaction's coins are looked up as it opens.
+      await L.tx.open(TX.payment); await idle();
+      for (let t = 0; t < 100 && !/known exchange addresses through/.test(card().textContent); t++) await sleep(100);
+      out.auto = /No coin of this transaction pays/.test(card().textContent);
+      L.owners.set([]);
+      await sleep(500);
+      out.frameError = L.frameError || null;
+      return out;`,
+    expect: (v) => !v.data ? [['no owner data: the card offers no exchange lookup', !v.button]] : [
+      ['the card offers to look for exchanges', v.button],
+      ['it finds OKX on one input and one output (' + v.summary + ')', /OKX/.test(v.summary) && /1 input, 1 output/.test(v.summary)],
+      ['the rows name OKX (' + v.tags.join(', ') + ')', v.tags.length === 2 && v.tags.every((t) => t === 'OKX')],
+      ['the ribbons take its colour next to its coins (' + v.stretches + ' vertices)', v.stretches > 0],
+      ['Light lights OKX in the Owners view', v.lit.includes('okx')],
+      ['with the Owners view lit, a transaction opens with its coins looked up', v.auto],
+      ['no frame errors', !v.frameError],
     ],
   },
   {

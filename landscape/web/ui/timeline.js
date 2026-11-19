@@ -28,7 +28,7 @@ const ICONS = {
 };
 const HALVINGS = [210000, 420000, 630000, 840000];
 
-export function createTimeline({ container, tip, blocktimes, playback, onSeek, onNotice, onPlaces, onSettings, onHelp, onFollow = null, onFly = null, onFun = null, onSound = null, onShare = null, onOwners = null }) {
+export function createTimeline({ container, tip, blocktimes, playback, onSeek, onTx = null, onNotice, onPlaces, onSettings, onHelp, onFollow = null, onFly = null, onFun = null, onSound = null, onShare = null, onOwners = null }) {
   let tipBlock = tip;
   container.innerHTML =
     '<div class="tl-transport">' +
@@ -47,7 +47,7 @@ export function createTimeline({ container, tip, blocktimes, playback, onSeek, o
     '<div class="tl-track"><div class="tl-marks" aria-hidden="true"></div>' +
     '<input type="range" class="tl-scrub" min="0" max="' + tipBlock + '" step="1" value="0" aria-label="Block (drag to scrub)"></div>' +
     '<div class="tl-field tl-where">' +
-    '<input type="number" class="tl-block" min="0" max="' + tipBlock + '" step="1" inputmode="numeric" aria-label="Block height" title="Block height: type one and press Enter">' +
+    '<input type="text" class="tl-block" inputmode="numeric" spellcheck="false" autocomplete="off" aria-label="Block height or transaction id" title="Block height or transaction id: type or paste one and press Enter">' +
     '<span class="tl-sep" aria-hidden="true">\u00b7</span>' +
     '<input type="text" class="tl-date" spellcheck="false" autocomplete="off" placeholder="YYYY-MM-DD HH:MM" aria-label="Date and time, UTC (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)" title="The block\u2019s date and time, UTC: type a date and press Enter">' +
     '<span class="tl-utc" aria-hidden="true">UTC</span>' +
@@ -135,8 +135,14 @@ export function createTimeline({ container, tip, blocktimes, playback, onSeek, o
 
   function commitBlock() {
     const v = blockInput.value.trim();
+    // A transaction id (ui/tx.js) opens that transaction at its block.
+    if (onTx && /^[0-9a-f]{64}$/i.test(v)) {
+      blockInput.blur();
+      onTx(v.toLowerCase());
+      return;
+    }
     if (!/^\d+$/.test(v)) {
-      if (onNotice) onNotice('Enter a block height from 0 to ' + fmtInt(tipBlock), 'warn');
+      if (onNotice) onNotice('Enter a block height from 0 to ' + fmtInt(tipBlock) + (onTx ? ', or a transaction id' : ''), 'warn');
       return;
     }
     const b = Math.min(Number(v), tipBlock);

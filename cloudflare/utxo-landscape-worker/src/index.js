@@ -4,13 +4,16 @@
 // dataset from the private R2 bucket (landscape/<id>/… at /dataset/<id>/…, its snapshots and
 // chunks stored once for every dataset at landscape/blobs/<sha256>), the owner
 // highlight data (landscape/owners/<id>/… at /owners/<id>/…), and the cell lifecycle API
-// (/api/landscape/cell), which reuses the 2D explorer's history shards and query code. The
-// guide's film, too large for a static asset, comes from the same bucket
+// (/api/landscape/cell), which reuses the 2D explorer's history shards and query code, and the
+// transaction lookups (/api/landscape/tx and /api/landscape/txid), which reuse its Bitcoin
+// lookup code up to this dataset's tip. The guide's film, too large for a static asset, comes
+// from the same bucket
 // (landscape/guide/film/… at /guide/film/…). See README.md.
 import { RELEASE } from './release.js';
 import { lifecycleJson } from '../../utxo-video-worker/src/history.js';
 import { CONFIG } from '../../utxo-video-worker/src/mapping.js';
 import { serveObject, parseRange, etagMatches } from '../../utxo-video-worker/src/r2_object.js';
+import { txQuery, txResponse, txidResponse } from '../../utxo-video-worker/src/bitcoin.js';
 
 export const BLOCKS_PER_COLUMN = 64;
 export const ROWS = 2072;
@@ -191,19 +194,45 @@ export async function cellResponse({ block, col, row }, env) {
   return lifecycleJson(env, { block, heights: [h1, h2], sats, row, lead });
 }
 
-function tokenBucket(ip) {
+// Per IP and kind: cells [rate per second, burst]; a transaction lookup reaches mempool.space,
+// so tx and txid share the 2D explorer's smaller bucket.
+function tokenBucket(ip, kind = 'cell') {
   const now = Date.now();
-  const [rate, burst] = [8, 20];
-  const entry = tokenBucket.entries.get(ip) || { tokens: burst, at: now };
+  const [rate, burst] = kind === 'cell' ? [8, 20] : [0.5, 4];
+  const key = kind + ':' + ip;
+  const entry = tokenBucket.entries.get(key) || { tokens: burst, at: now };
   entry.tokens = Math.min(burst, entry.tokens + ((now - entry.at) / 1000) * rate);
   entry.at = now;
   const allowed = entry.tokens >= 1;
   if (allowed) entry.tokens -= 1;
-  tokenBucket.entries.set(ip, entry);
+  tokenBucket.entries.set(key, entry);
   if (tokenBucket.entries.size > 10000) tokenBucket.entries.clear();
   return allowed;
 }
 tokenBucket.entries = new Map();
+
+const rateLimited = () => respond(JSON.stringify({ error: 'rate limited' }), 429, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Retry-After': '2' });
+
+/**
+ * A transaction lookup (ui/tx.js), cached for 30 days under the release, so a new tip refreshes
+ * what counts as unspent. key is the validated query; only a lookup that misses the cache, and
+ * so reaches mempool.space, spends a token.
+ */
+async function cachedLookup(request, ctx, key, produce) {
+  const cache = globalThis.caches && caches.default;
+  const cacheKey = new Request(new URL('/api/landscape/' + key + '&__release=' + RELEASE.version, request.url).toString(), { method: 'GET' });
+  if (cache) {
+    const hit = await cache.match(cacheKey);
+    if (hit) return respond(hit.body, hit.status, Object.fromEntries(hit.headers));
+  }
+  if (!tokenBucket(request.headers.get('CF-Connecting-IP') || 'unknown', 'tx')) return rateLimited();
+  const produced = await produce();
+  const text = await produced.text();
+  if (!produced.ok) return respond(text, produced.status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+  const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=2592000, s-maxage=2592000' };
+  if (cache) ctx.waitUntil(cache.put(cacheKey, new Response(text, { headers })));
+  return respond(text, 200, headers);
+}
 
 async function cachedCell(request, env, ctx, url) {
   const q = cellQuery(url);
@@ -428,6 +457,21 @@ export async function handle(request, env, ctx) {
     const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
     if (!tokenBucket(ip)) return respond(JSON.stringify({ error: 'rate limited' }), 429, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Retry-After': '1' });
     return cachedCell(request, env, ctx, url);
+  }
+  if (path === '/api/landscape/tx') {
+    if (request.method !== 'GET') return json({ error: 'method not allowed' }, 405);
+    const q = txQuery(url);
+    if (q.error) return json({ error: q.error }, 400);
+    return cachedLookup(request, ctx, 'tx?txid=' + q.txid,
+      () => txResponse(env, q, { tip: RELEASE.dataset.tip, latest: 'the latest block of this landscape' }));
+  }
+  if (path === '/api/landscape/txid') {
+    if (request.method !== 'GET') return json({ error: 'method not allowed' }, 405);
+    const [height, satoshi] = ['height', 'satoshi'].map((n) => url.searchParams.get(n) || '');
+    // Malformed queries get txidResponse's own 400 without reaching mempool.space or the cache.
+    if (!/^\d{1,10}$/.test(height) || !/^\d{1,16}$/.test(satoshi)) return respond(await (await txidResponse(url)).text(), 400, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    return cachedLookup(request, ctx, 'txid?height=' + Number(height) + '&satoshi=' + Number(satoshi),
+      () => txidResponse(url, RELEASE.dataset.tip, env));
   }
   if (path.startsWith('/api/')) return json({ error: 'not found' }, 404);
   if (path === '/explorer/' || path === '/explorer.html') {

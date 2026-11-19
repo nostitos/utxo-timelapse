@@ -746,6 +746,7 @@ wires frames → view, settings → consumers, and runs the rAF loop:
 follow tip → controls → playback → `view.update` → (`replay.setTiles` when desired tiles change) →
 `view.render`. `?webgl=1` forces WebGL2. URL hash keeps
 `b` (block), `cam`, `mode`, `follow=1` (Follow tip on), `cell=col,row` (one exact L0 cell),
+`tx=<txid>` (a transaction drawn, ui/tx.js; such links open paused),
 `play=1` (explicit autoplay for a location link), `look` and the view's settings overrides
 (`store.viewURL()`). Quality belongs to the device: the hash and shared links never name it or
 the settings a quality tier sets (plus auto scaling), and `store.fromURL(hash, {view: true})`

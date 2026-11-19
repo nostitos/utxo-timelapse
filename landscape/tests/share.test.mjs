@@ -47,3 +47,23 @@ test('invalid cell coordinates are ignored without becoming graphics settings', 
   assert.deepEqual(decodeHash(encodeHash({cell:{col:0,row:0}})).cell,{col:0,row:0});
   assert.equal(decodeHash('#play=yes').play,false);
 });
+
+test('transaction links carry the txid, open paused and never autoplay', () => {
+  const tx = 'ab'.repeat(32);
+  const url = new URL(buildShareUrl('https://bitcoinlandscape.com/', { ...snapshot, tx }, { transaction: true, autoplay: true }));
+  const parsed = decodeHash(url.hash);
+  assert.equal(parsed.tx, tx);
+  assert.equal(parsed.play, false);
+  assert.equal(parsed.cell, null);
+  assert.equal(parsed.block, snapshot.block);
+  assert.deepEqual(parsed.cam, snapshot.cam);
+  assert.equal(decodeHash(new URL(buildShareUrl(url.href, { ...snapshot, tx })).hash).tx, null, 'a view link leaves the transaction out');
+  assert.equal(decodeHash('#tx=' + tx.toUpperCase() + '&play=1').tx, tx);
+  assert.equal(decodeHash('#tx=' + tx + '&play=1').play, false);
+  for (const bad of ['abc', tx + '0', 'zz'.repeat(32)]) {
+    const d = decodeHash('#tx=' + bad + '&look=Paper');
+    assert.equal(d.tx, null, bad);
+    assert.equal(d.settings, 'look=Paper', 'an invalid txid never becomes a setting');
+  }
+  assert.equal(encodeHash({ block: 1, tx: 'nope', play: true }), '#b=1&play=1');
+});

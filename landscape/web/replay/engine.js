@@ -167,6 +167,9 @@ export class ReplayEngine {
       case 'cell':
         this.cellReqs.push(m);
         break;
+      case 'ownersOf':
+        this.ownersOf(m);
+        break;
       case 'setTiles':
         this.setDesired(m.ids || []);
         break;
@@ -310,6 +313,23 @@ export class ReplayEngine {
   ownerCell(level, col, row) {
     const o = this.owners;
     return this.ownersOn && o !== null && o.block === this.state.block ? o.cell(level, col, row) : null;
+  }
+
+  /**
+   * {id, url, manifest, points}: the owner entity of each of a transaction's inputs and outputs
+   * (OwnerLedger.entitiesOf). Uses the owner layer's ledger, creating it (still off) when needed.
+   */
+  async ownersOf({ id, url, manifest, points }) {
+    try {
+      if (this.owners === null || this.ownersUrl !== url) {
+        if (this.ownersOn) throw new Error('another owner dataset is lit');
+        this.owners = new OwnerLedger({ grid: this.grid, minAmt: this.rows, manifest, fetchFile: (entry) => this.fetchOwnerFile(this.ownersSourceFor(url), entry) });
+        this.ownersUrl = url;
+      }
+      this.post({ type: 'ownersOfResult', id, entities: await this.owners.entitiesOf(points) });
+    } catch (err) {
+      this.post({ type: 'ownersOfResult', id, error: String((err && err.message) || err) });
+    }
   }
 
   kick() {

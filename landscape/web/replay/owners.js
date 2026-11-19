@@ -160,6 +160,18 @@ function upperSpent(spent, order, v) {
   return lo;
 }
 
+/** First index whose creation height is at least h (records are sorted by creation height). */
+function firstCreated(created, h) {
+  let lo = 0;
+  let hi = created.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (created[mid] < h) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
 /** Parsed records plus their L0 cells and a spend-ordered index. */
 export function recordSet(buffer, grid, minAmt, entities) {
   const r = parseOwnerRecords(buffer);
@@ -467,5 +479,40 @@ export class OwnerLedger {
     let b = this.long ? this.long.bytes : 0;
     for (const s of this.chunks.values()) b += s.bytes;
     return b + this.cellBytes;
+  }
+
+  /**
+   * The owner of each point {created, spent (null: unspent), sats}, a transaction's input or
+   * output (ui/tx.js): the entity index of the records with that creation block, amount and spend
+   * block (a spend after the owner tip counts as unspent, as in the files), -1 when none match or
+   * records of different entities do, null when the point was created after the owner tip.
+   * Loads long.bin and the short chunks of points spent within shortLife blocks.
+   */
+  async entitiesOf(points) {
+    const unspentAtTip = (p) => p.spent === null || p.spent > this.tip;
+    const keys = new Set();
+    for (const p of points) {
+      const k = Math.floor(p.created / this.life);
+      if (p.created <= this.tip && !unspentAtTip(p) && p.spent - p.created <= this.life && this.chunkFiles.has(k)) keys.add(k);
+    }
+    const sets = new Map();
+    await Promise.all([
+      this.long ?? this.#load('long'),
+      ...[...keys].map(async (k) => sets.set(k, this.chunks.get(k) ?? (await this.#load(k)))),
+    ]);
+    return points.map((p) => {
+      if (!(p.created <= this.tip)) return null;
+      const spent = unspentAtTip(p) ? UNSPENT : p.spent;
+      let found = -1;
+      for (const set of [this.long, sets.get(Math.floor(p.created / this.life))]) {
+        if (!set) continue;
+        for (let i = firstCreated(set.created, p.created); i < set.count && set.created[i] === p.created; i++) {
+          if (set.sats[i] !== p.sats || set.spent[i] !== spent) continue;
+          if (found >= 0 && found !== set.entity[i]) return -1;
+          found = set.entity[i];
+        }
+      }
+      return found;
+    });
   }
 }

@@ -122,6 +122,14 @@ export async function createReplayClient(opts = {}) {
     cell(level, col, row, { load = true } = {}) {
       return request({ type: 'cell', level, col, row, load });
     },
+    /**
+     * Owner entity index of each point {created, spent (null: unspent), sats} of a transaction
+     * (replay/owners.js entitiesOf), from the owner dataset at url with its owners.json. Loads that
+     * dataset's long.bin (as the Owners view does) when it is not loaded yet.
+     */
+    ownersOf({ url, manifest, points }) {
+      return request({ type: 'ownersOf', url: new URL(url, base).href, manifest, points });
+    },
     onFrame(cb) { frameCbs.add(cb); return () => frameCbs.delete(cb); },
     onStatus(cb) { statusCbs.add(cb); return () => statusCbs.delete(cb); },
     onError(cb) { errorCbs.add(cb); return () => errorCbs.delete(cb); },
@@ -224,6 +232,9 @@ export async function createReplayClient(opts = {}) {
         break;
       case 'cellResult':
         settle(m, m.cell);
+        break;
+      case 'ownersOfResult':
+        settle(m, m.entities);
         break;
       case 'error':
         emitError(Object.assign(new Error(m.message), { workerStack: m.stack }));
