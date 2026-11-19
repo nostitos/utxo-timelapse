@@ -24,6 +24,7 @@ jobs:
       - run: node scripts/check_explorer_navigation.mjs
       - run: node scripts/check_explorer_sharing.cjs
       - run: node scripts/check_explorer_quality.cjs
+      - run: node scripts/check_explorer_trace.cjs
       - run: node scripts/check_hls_routes.mjs
       - uses: actions/upload-pages-artifact@v4
         if: github.event_name != 'pull_request'

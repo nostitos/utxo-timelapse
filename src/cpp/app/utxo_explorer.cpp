@@ -1123,6 +1123,12 @@ TEST_CASE("utxo_explorer" * doctest::skip()) {
                         "application/json");
     });
 
+    // Tracing asks a block explorer service for whole transactions; only the online explorer does that.
+    server.Get("/api/tx", [](httplib::Request const&, httplib::Response& res) {
+        res.status = 501;
+        res.set_content(R"({"error":"Tracing is available in the online explorer"})", "application/json");
+    });
+
     // --- txid resolution via Bitcoin Core REST (through SSH tunnel) ---
     server.Get("/api/txid", [&](httplib::Request const& req, httplib::Response& res) {
         auto heightOpt = parseParam<uint32_t>(req, "height");

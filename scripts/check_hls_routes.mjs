@@ -82,3 +82,104 @@ const invalid=await worker.fetch(new Request('https://example.test/api/pixel?blo
 assert.equal(invalid.status,400);await settle();
 assert.equal(cache.size,entries+1,'an invalid query is not cached');
 console.log('PASS: API cache keys hold only the validated parameters');
+
+// /api/tx: one whole transaction, from a stubbed mempool.space and a stubbed change chunk.
+{
+  const { blockToX, columnBlockRange, rowSatoshiRange, satoshiToY } = await import('../cloudflare/utxo-video-worker/src/mapping.js');
+  const { encodeBlock } = await import('../landscape/web/replay/blk2.js');
+  const { RELEASE: LANDSCAPE } = await import('../cloudflare/utxo-landscape-worker/src/release.js');
+  const id = n => n.toString(16).padStart(64, '0');
+  const confirmed = height => ({ confirmed: true, block_height: height });
+  const [S, A, P, Q, T, U, M, C, late, pending] = [0x5, 0xa, 0xb, 0xd, 0xe, 0xf, 0x6, 0xc, 0x7, 0x8].map(id);
+  // Block 2000 spends 5000 sat created in 1000 and 900 sat created in 1700, so those amounts name
+  // their blocks. Two 700 sat outputs of different ages are spent too, so 700 needs a lookup.
+  // Block 3000 spends thirty amounts twice each, from outputs created in blocks 100 and 200, and
+  // a sweep spends one of each. It also spends three more amounts twice each, both times by the sweep.
+  const chunks = {
+    ['landscape/' + LANDSCAPE.dataset.id + '/chunks.json']: { chunks: [
+      { firstBlock: 1999, lastBlock: 2000, sha256: 'a'.repeat(64) },
+      { firstBlock: 3000, lastBlock: 3000, sha256: 'b'.repeat(64) },
+    ] },
+    ['landscape/blobs/' + 'a'.repeat(64)]: new Uint8Array([
+      ...encodeBlock(1999, [[50, 1999]]),
+      ...encodeBlock(2000, [[-5000, 1000], [-700, 1500], [-700, 1600], [-900, 1700], [3000, 2000], [2500, 2000]]),
+    ]),
+    ['landscape/blobs/' + 'b'.repeat(64)]: encodeBlock(3000, [[1, 3000], ...[...Array(30).keys(), 100, 101, 102].map(i => [[-(400 + i), 100], [-(400 + i), 200]]).flat()]),
+  };
+  const realGet = env.VIDEO_BUCKET.get;
+  env.VIDEO_BUCKET.get = async (key, options) => key in chunks
+    ? { json: async () => chunks[key], arrayBuffer: async () => chunks[key].buffer.slice(0) }
+    : realGet(key, options);
+  const upstreamJson = {
+    ['/tx/' + S]: { status: confirmed(2000), vout: [{ value: 0 }, { value: 3000 }, { value: 2500 }],
+      vin: [{ txid: A, vout: 0, prevout: { value: 5000 } }, { txid: P, vout: 1, prevout: { value: 700 } }, { txid: Q, vout: 0, prevout: { value: 900 } }] },
+    ['/tx/' + S + '/outspends']: [{ spent: false }, { spent: true, txid: T, status: confirmed(2100) }, { spent: true, txid: U, status: confirmed(RELEASE.numBlocks) }],
+    ['/tx/' + P + '/status']: confirmed(1500),
+    ['/tx/' + M]: { status: confirmed(3000), vout: [{ value: 12000 }],
+      vin: [...Array.from({ length: 30 }, (_, i) => ({ txid: id(200 + i), vout: 0, prevout: { value: 400 + i } })),
+        ...[0, 1, 2].map(i => [{ txid: id(300 + i), vout: 0, prevout: { value: 500 + i } }, { txid: id(310 + i), vout: 1, prevout: { value: 500 + i } }]).flat()] },
+    ['/tx/' + M + '/outspends']: [{ spent: false }],
+    ['/tx/' + C]: { status: confirmed(10), vin: [{ is_coinbase: true }], vout: [{ value: 5000000000 }] },
+    ['/tx/' + C + '/outspends']: [{ spent: false }],
+    ['/tx/' + late]: { status: confirmed(RELEASE.numBlocks), vin: [], vout: [] },
+    ['/tx/' + late + '/outspends']: [],
+    ['/tx/' + pending]: { status: { confirmed: false }, vin: [], vout: [] },
+    ['/tx/' + pending + '/outspends']: [],
+  };
+  for (let i = 0; i < 30; i++) upstreamJson['/tx/' + id(200 + i) + '/status'] = confirmed(100);
+  const asked = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async url => {
+    const path = String(url).replace('https://mempool.space/api', '');
+    asked.push(path);
+    return path in upstreamJson ? Response.json(upstreamJson[path]) : new Response('not found', { status: 404 });
+  };
+  let client = 0;
+  const tx = async query => {
+    const r = await worker.fetch(new Request('https://example.test/api/tx?' + query, { headers: { 'CF-Connecting-IP': '10.0.0.' + client++ } }), env, ctx);
+    await settle();
+    return { status: r.status, body: await r.json() };
+  };
+
+  const seen = (await tx('txid=' + S + '&block=2500')).body;
+  assert.deepEqual(seen.inputs.map(i => i.height), [1000, 1500, 1700], 'amounts name their blocks; the ambiguous 700 is looked up');
+  assert.equal(asked.length, 3, 'the transaction, its spends and one lookup for the ambiguous input');
+  for (const point of seen.inputs) {
+    const [h1, h2] = columnBlockRange(point.x, 2500), [s1, s2] = rowSatoshiRange(point.y);
+    assert(h1 <= point.height && point.height <= h2 && s1 <= point.satoshi && point.satoshi <= s2, 'a point lies in the pixel the explorer would query');
+  }
+  assert.deepEqual(seen.hub, { x: blockToX(2000, 2500), y: satoshiToY(5500) }, 'the transaction sits on its column at the row of the value it moved');
+  assert.equal(seen.outputs[0].x, undefined, 'a zero-value output has no row');
+  assert.deepEqual(seen.outputs.map(o => o.spent), [null, { txid: T, height: 2100 }, null], 'a spend after the film counts as unspent');
+
+  const before = (await tx('block=1500&txid=' + S)).body;
+  assert.equal(asked.length, 3, 'another viewed block reuses the cached lookup');
+  assert.equal(before.hub, null, 'nothing of a later transaction is drawn');
+  assert.deepEqual(before.inputs.map(i => i.x !== undefined), [true, true, false]);
+  assert.equal((await tx('txid=' + S)).body.hub, undefined, 'no block, no pixels');
+
+  const sweep = (await tx('txid=' + M + '&block=3000')).body;
+  assert.equal(asked.length, 3 + 2 + 24, 'ambiguous inputs are looked up for at most 24 transactions');
+  assert.deepEqual(sweep.inputs.filter(i => i.height === null).map(i => i.satoshi), [400, 401, 402, 403, 404, 405], 'the smallest stay undated');
+  assert(sweep.inputs.filter(i => i.satoshi >= 406 && i.satoshi < 500).every(i => i.height === 100 && !i.shared), 'the looked-up ones are exact');
+  const grouped = sweep.inputs.filter(i => i.satoshi >= 500);
+  assert(grouped.length === 6 && grouped.every(i => i.shared), 'amounts the sweep spent entirely get their blocks as a group, without lookups');
+  for (const v of [500, 501, 502]) assert.deepEqual(grouped.filter(i => i.satoshi === v).map(i => i.height).sort(), [100, 200], v + ' sat: both blocks, once each');
+
+  const mined = (await tx('txid=' + C + '&block=1500')).body;
+  assert.deepEqual([mined.coinbase, mined.inputs], [true, []]);
+  assert.match((await tx('txid=' + late)).body.error, /after the film's latest block/);
+  assert.match((await tx('txid=' + pending)).body.error, /not in a block yet/);
+  assert.equal((await tx('txid=' + id(0xdead))).status, 404);
+  for (const bad of ['txid=' + A.toUpperCase(), 'block=5', 'txid=' + S + '&block=x']) assert.equal((await tx(bad)).status, 400, bad);
+
+  // Only lookups that reach mempool.space are rate limited, per client.
+  const from = (ip, query) => worker.fetch(new Request('https://example.test/api/tx?' + query, { headers: { 'CF-Connecting-IP': ip } }), env, ctx);
+  const fresh = [];
+  for (let i = 0; i < 5; i++) fresh.push((await from('10.9.9.9', 'txid=' + id(0xbeef00 + i))).status);
+  assert.deepEqual(fresh, [404, 404, 404, 404, 429], 'a burst of four uncached lookups, then a wait');
+  assert.equal((await from('10.9.9.9', 'txid=' + S + '&block=2500')).status, 200, 'a cached transaction is still served to a client that is out of tokens');
+  globalThis.fetch = realFetch;
+  env.VIDEO_BUCKET.get = realGet;
+  console.log('PASS: /api/tx dates every input from the change log, looks up ambiguous ones, places the transaction and caches it');
+}
