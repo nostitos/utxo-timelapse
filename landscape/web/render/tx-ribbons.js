@@ -14,10 +14,21 @@ import { Group, Mesh, BufferGeometry, Float32BufferAttribute, Uint32BufferAttrib
 import { attribute, positionGeometry, cameraPosition, modelWorldMatrix, uniform, vec3, vec4, normalize, cross, length, select, exp, abs } from 'three/tsl';
 import { noGBufferWrites } from './gbuffer.js';
 
-export const CASING_PX = 3;
+const CASING_PX = 3;
 const PULSE_WIDTH = 0.05; // of the path: the bright band's half-width
 const DASHES = 12;      // dashed curves: this many dashes
 const PICK_SAMPLES = 9; // points per hoverable curve kept for picking
+const FADE = 0.5;       // fading curves: the share of their length, from the open end, that fades in
+const FADE_FLOOR = 0.2; // and their opacity at the open end, so the line still reaches its label
+
+const ease = (s) => s * s * (3 - 2 * s);
+
+// A width in CSS px, or [start, middle, end] eased along the curve so it never steps.
+function widthAt(px, t) {
+  if (!Array.isArray(px)) return px;
+  const [a, b, s] = t < 0.5 ? [px[0], px[1], 2 * t] : [px[1], px[2], 2 * t - 1];
+  return a + (b - a) * ease(s);
+}
 
 function bezier(p, t, out, o) {
   const u = 1 - t;
@@ -47,7 +58,8 @@ export function createTxRibbons() {
     const dir = attribute('aDir', 'vec4');   // tangent, side (-1 or 1)
     const info = attribute('aInfo', 'vec4'); // width (CSS px), curve id, path (-1: none), hollow (0 or 1)
     const color = attribute(casing ? 'aCase' : 'aCol', 'vec4');
-    const lit = info.y.equal(hi);
+    // Curves without an id (bridge, stub) are never the highlighted one, even when hi is -1.
+    const lit = info.y.equal(hi).and(hi.greaterThanEqual(0));
     const dim = hi.greaterThanEqual(0).and(lit.not());
     const px = select(lit, info.x.mul(1.4).add(1.5), info.x).add(casing ? CASING_PX : 0);
     const toCam = cameraPosition.sub(modelWorldMatrix.mul(vec4(positionGeometry, 1)).xyz);
@@ -76,9 +88,9 @@ export function createTxRibbons() {
   let picks = new Float32Array(0);
 
   /**
-   * curves: [{p: 12 control-point numbers, px, color: [r, g, b, a], casing: [r, g, b, a], id (>= 0:
-   * hoverable, highlight(id) lights it), dash, path: [from, to] of the pulse path or null, hollow}].
-   * Colours are linear.
+   * curves: [{p: 12 control-point numbers, px (or [start, middle, end]), color: [r, g, b, a],
+   * casing: [r, g, b, a], id (>= 0: hoverable, highlight(id) lights it), dash, path: [from, to] of
+   * the pulse path or null, hollow, fade: faint at the start, full by FADE}]. Colours are linear.
    */
   function set(curves) {
     const pos = [], dirs = [], cols = [], cases = [], infos = [], index = [], pick = [];
@@ -87,7 +99,7 @@ export function createTxRibbons() {
       const p = c.p;
       let len = 0;
       for (let i = 0; i < 9; i += 3) len += Math.hypot(p[i + 3] - p[i], p[i + 4] - p[i + 1], p[i + 5] - p[i + 2]);
-      const n = c.dash ? DASHES * 2 : Math.max(8, Math.min(32, Math.ceil(len / 2)));
+      const n = c.dash ? DASHES * 2 : Math.max(16, Math.min(48, Math.ceil(len)));
       const path = (t) => (c.path ? c.path[0] + (c.path[1] - c.path[0]) * t : -1);
       const strip = (t0, t1, steps) => {
         const first = pos.length / 3;
@@ -95,12 +107,13 @@ export function createTxRibbons() {
           const t = t0 + ((t1 - t0) * s) / steps;
           bezier(p, t, pt, 0);
           const tl = Math.hypot(pt[3], pt[4], pt[5]) || 1;
+          const f = c.fade ? FADE_FLOOR + (1 - FADE_FLOOR) * ease(Math.min(1, t / FADE)) : 1;
           for (const side of [-1, 1]) {
             pos.push(pt[0], pt[1], pt[2]);
             dirs.push(pt[3] / tl, pt[4] / tl, pt[5] / tl, side);
-            cols.push(...c.color);
-            cases.push(...c.casing);
-            infos.push(c.px, c.id ?? -1, path(t), c.hollow ? 1 : 0);
+            cols.push(c.color[0], c.color[1], c.color[2], c.color[3] * f);
+            cases.push(c.casing[0], c.casing[1], c.casing[2], c.casing[3] * f);
+            infos.push(widthAt(c.px, t), c.id ?? -1, path(t), c.hollow ? 1 : 0);
           }
           if (s < steps) {
             const k = first + s * 2;

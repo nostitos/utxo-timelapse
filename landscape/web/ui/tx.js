@@ -86,7 +86,13 @@ export function createTxView({
   let ownerError = null;
   const card = document.createElement('div');
   card.className = 'tx-card';
+  // The line of the inputs of unknown age names itself where it fades out, in the axis labels' layer.
+  const stubTag = document.createElement('div');
+  stubTag.className = 'tx-stub-tag';
+  stubTag.hidden = true;
+  (document.getElementById('labels') || document.body).append(stubTag);
   const v3 = new Vector3();
+  let stubAt = null;         // control points of the drawn line of inputs of unknown age, or null
 
   async function lookup(path) {
     let r = null;
@@ -138,6 +144,7 @@ export function createTxView({
     let hollowCount = 0;
     const found = dim ? null : ownerOf.get(t.answer.txid);
     const stretches = [];
+    let wideIn = 0, wideOut = 0; // the widest ribbon on each side, which the bridge's ends match
     for (const c of curves) {
       let style, color = outColor, casing = outCase, id = -1, hollow = false;
       if (c.kind === 'in' || c.kind === 'out') {
@@ -149,12 +156,20 @@ export function createTxView({
         if (hollow) hollowCount++;
         if (!dim) id = c.kind === 'in' ? c.ribbon : nIn + c.ribbon;
         if (m && m.kind === c.kind && markedRibbon === c.ribbon) style = { px: style.px + 2.5, alpha: 1 };
+        if (c.kind === 'in') wideIn = Math.max(wideIn, style.px);
+        else wideOut = Math.max(wideOut, style.px);
       } else if (c.kind === 'rest') {
         style = { px: ribbonStyle(group.rest.sat, group.inSat, 1).px, alpha: 0.9 };
         [color, casing] = [REST, BLACK];
-      } else style = c.kind === 'bridge' ? { px: 5, alpha: 0.95 } : { px: 1.5, alpha: 0.55 };
+        if (!dim) id = nIn + group.outputs.length;
+      } else {
+        // The bridge: as wide as the widest input where they meet and the widest output where they part.
+        style = { px: [wideIn || 5, Math.max(5, wideIn, wideOut), wideOut || 5], alpha: 0.95 };
+      }
       const alpha = dim ? style.alpha * 0.3 : style.alpha;
-      out.push({ p: c.p, px: dim ? style.px * 0.7 : style.px, color: [...color, alpha], casing: [...casing, alpha * 0.75], id, dash: c.kind === 'rest',
+      const k = dim ? 0.7 : 1;
+      const px = Array.isArray(style.px) ? style.px.map((w) => w * k) : style.px * k;
+      out.push({ p: c.p, px, color: [...color, alpha], casing: [...casing, alpha * 0.75], id, dash: c.kind === 'rest', fade: c.kind === 'rest',
         hollow, path: dim ? null : PATH[c.kind] || null });
       // A ribbon holding an exchange's coin takes its colour next to that coin.
       if (found && (c.kind === 'in' || c.kind === 'out')) {
@@ -177,8 +192,22 @@ export function createTxView({
     for (const t of trail) if (t.answer.height <= block) curvesOf(t, true, list);
     drawn = cur ? curvesOf(cur, false, list) : null;
     ribbons.set(list);
+    const stub = drawn && drawn.group.rest.count ? drawn.curves.find((c) => c.kind === 'rest') : null;
+    stubAt = stub ? stub.p : null;
+    if (stub) stubTag.textContent = fmtInt(drawn.group.rest.count) + (drawn.group.rest.count === 1 ? ' input' : ' inputs') + ' \u00b7 age unknown';
+    placeStubTag();
     applyHover();
     onRender();
+  }
+
+  /** Keeps the label at the open end of the line of inputs of unknown age. */
+  function placeStubTag() {
+    if (stubAt) v3.set(stubAt[0], stubAt[1], stubAt[2]).project(camera);
+    const on = !!stubAt && v3.z > -1 && v3.z < 1 && Math.abs(v3.x) <= 1 && Math.abs(v3.y) <= 1;
+    stubTag.hidden = !on;
+    if (!on) return;
+    const r = canvas.getBoundingClientRect();
+    stubTag.style.transform = 'translate(' + (r.left + ((v3.x + 1) / 2) * r.width).toFixed(1) + 'px,' + (r.top + ((1 - v3.y) / 2) * r.height).toFixed(1) + 'px)';
   }
 
   // ---- camera ------------------------------------------------------------------------------
@@ -305,6 +334,7 @@ export function createTxView({
     const sum = (list) => list.reduce((s, p) => s + p.satoshi, 0);
     const inSat = sum(t.inputs), outSat = sum(t.outputs);
     const g = drawn?.group;
+    const restRows = new Set(g ? g.rest.rows : []);
     const m = markedRow(cur);
     let html = head('Block ' + fmtInt(t.height), '<span class="tx-id">' + t.txid + '</span>' + (date ? '<br>' + escapeHtml(date) : ''));
     if (loading) html += '<p class="in-more" role="status">Looking up the next transaction\u2026</p>';
@@ -329,20 +359,21 @@ export function createTxView({
     // The landscape has rows only for amounts of at least 1 sat.
     const zero = [...t.inputs, ...t.outputs].filter((p) => !(p.satoshi > 0)).length;
     if (zero) html += '<p class="in-more">' + fmtInt(zero) + (zero === 1 ? ' coin is' : ' coins are') + ' worth 0 sat; the landscape has no row for them, so they have no ribbon.</p>';
-    if (undated.length) html += '<p class="in-more">' + fmtInt(undated.length) + ' ' + (undated.length === 1 ? 'input arrives' : 'inputs arrive') + ' on the dashed grey stub (' + escapeHtml(fmtBtc(sum(undated))) + '): outputs of the same amount but different ages were spent in this block, and the lookup stopped before placing them.</p>';
+    if (undated.length) html += '<p class="in-more">' + fmtInt(undated.length) + ' ' + (undated.length === 1 ? 'input' : 'inputs') + ' (' + escapeHtml(fmtBtc(sum(undated))) + ') come in on the labelled grey dashed line: other coins of the same amounts but different ages were spent in this block, and the lookup did not reach their transactions, so their age is unknown and they have no place on the ground.</p>';
     if (t.inputs.some((p) => p.shared)) html += '<p class="in-more">* Inputs of one amount whose blocks are known together: each ribbon is in the right place, but which input came from which of those blocks is not.</p>';
     if (g && [...g.inputs, ...g.outputs].some((r) => r.level > 0)) html += '<p class="in-more">The smallest coins share coarser ribbons so the largest stay apart; every coin is listed below.</p>';
     html += ownersHtml(t) + '</section>';
     const order = (list, kind) => list.map((p, i) => i).sort((a, b) => (m && m.kind === kind ? (b === m.row) - (a === m.row) : 0) || list[b].satoshi - list[a].satoshi);
     const rid = (kind, i) => {
       const k = g ? (kind === 'in' ? g.inRibbon : g.outRibbon)[i] : -1;
+      if (k < 0 && kind === 'in' && restRows.has(i)) return drawn.nIn + g.outputs.length;
       return k >= 0 ? (kind === 'in' ? k : drawn.nIn + k) : -1;
     };
     const tr = (kind, i, cells) => '<tr' + (rid(kind, i) >= 0 ? ' data-r="' + rid(kind, i) + '"' : '') + (m && m.kind === kind && m.row === i ? ' class="tx-marked"' : '') + '>' + cells + '</tr>';
     if (!t.coinbase) {
       html += '<section class="in-sec"><h3>Inputs <span>Coins it spent \u00b7 largest first</span></h3>' + rowsTable('inputs', order(t.inputs, 'in'), 'Created', (i) => {
         const p = t.inputs[i];
-        const created = p.height == null ? '<span class="in-cell-main">\u2014</span><small>dashed stub</small>' : '<span class="in-cell-main">' + fmtInt(p.height) + (p.shared ? '*' : '') + '</span>';
+        const created = p.height == null ? '<span class="in-cell-main">\u2014</span><small>age unknown</small>' : '<span class="in-cell-main">' + fmtInt(p.height) + (p.shared ? '*' : '') + '</span>';
         return tr('in', i, amountCell(p.satoshi, ownerTag('in', i)) + '<td>' + created + '</td><td><button type="button" class="tx-hop" data-tx-open="' + p.txid + '" data-tx-mark="' + p.txid + ':' + p.vout + '" aria-label="Open the transaction that created this input">\u2190 tx</button></td>');
       }) + '</section>';
     }
@@ -663,6 +694,7 @@ export function createTxView({
     update(now = performance.now()) {
       if (!cur && !trail.length) return false;
       ribbons.update(camera, canvas.clientHeight);
+      placeStubTag();
       const stale = !built || dirty || getBlock() !== built.block || (now - built.at > 1000 && signature() !== built.signature);
       if (stale && now - (built ? built.at : 0) > REBUILD_MS) {
         // The card changes only when the view crosses the transaction's block.

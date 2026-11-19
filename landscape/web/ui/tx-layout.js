@@ -7,12 +7,12 @@
 // n + m ribbons, never n x m. Coins in one L0 cell share a ribbon; past MAX_RIBBONS on a side,
 // the largest half keep their own cell and the rest merge by the coarser cells of the grid's own
 // levels until the count fits. Inputs whose creation block the lookup left unknown are counted in
-// rest and drawn as one dashed stub.
+// rest and drawn as one labelled dashed line that fades in from the past.
 import { BLOCKS_PER_COLUMN, BLOCKS_PER_WORLD_UNIT, ROWS_PER_WORLD_UNIT, LEVELS, MAX_ROW_SHIFT } from '../data/grid.js';
 import { rowOfAmount } from '../data/axis.js';
 
 export const MAX_RIBBONS = 300;
-export const VALUE_FRAMED = 0.98; // share of each side's BTC whose ribbons the camera keeps in view
+const VALUE_FRAMED = 0.98; // share of each side's BTC whose ribbons the camera keeps in view
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const cellX = (col) => ((col + 0.5) * BLOCKS_PER_COLUMN) / BLOCKS_PER_WORLD_UNIT;
@@ -125,8 +125,8 @@ export function nextCoin(answer, dir) {
 /**
  * Cubic Bézier control points of every curve of a grouped transaction. ground(x, z) is the
  * terrain height (world units). Returns {hubY, half, top, curves}: top is the highest terrain
- * around the bridge, which the bridge clears; each curve is {kind ('in', 'out', 'rest', 'bridge'
- * or 'mast'), ribbon (index on its side, or -1), p: [x0, y0, z0, ... x3, y3, z3]}; inputs run
+ * around the bridge, which the bridge clears; each curve is {kind ('in', 'out', 'rest' or
+ * 'bridge'), ribbon (index on its side, or -1), p: [x0, y0, z0, ... x3, y3, z3]}; inputs run
  * from their cell to the bridge, outputs from the bridge to their cell.
  */
 export function txCurves(group, ground) {
@@ -149,10 +149,12 @@ export function txCurves(group, ground) {
     const d = Math.hypot(r.x - hub.x, r.z - hub.z);
     const [ex, ey, ez] = end(dir);
     // Inputs lean toward the past as they rise and meet the bridge from its past end; outputs
-    // leave its future end, swing out over the side beyond the leading edge and land.
+    // leave its future end, swing out over the side beyond the leading edge and land. The control
+    // point next to the bridge lies on its line, so every ribbon joins it along its direction, and
+    // lies farther out the steeper the ribbon, so one rising from under the bridge curves over.
     const lift = clamp(0.45 * d + 0.8, 0.6, hubY * 1.25);
     const nearFoot = [r.x + dir * Math.min(6, 0.12 * d + 0.3), y0 + lift, r.z];
-    const nearBridge = [ex + dir * clamp(0.3 * d, 0.5, 10), hubY + Math.min(6, 0.08 * d), ez + (r.z - ez) * 0.15];
+    const nearBridge = [ex + dir * clamp(0.35 * d + 0.5 * (hubY - y0), 1.5, 12), ey, ez];
     const p = dir < 0 ? [r.x, y0, r.z, ...nearFoot, ...nearBridge, ex, ey, ez] : [ex, ey, ez, ...nearBridge, ...nearFoot, r.x, y0, r.z];
     curves.push({ kind: dir < 0 ? 'in' : 'out', ribbon: k, p });
   };
@@ -161,11 +163,12 @@ export function txCurves(group, ground) {
   const [ix, iy, iz] = end(-1);
   const [ox, oy, oz] = end(1);
   if (group.rest.count) {
-    const s = Math.max(1.5, half * 2.4 + 1);
-    curves.push({ kind: 'rest', ribbon: -1, p: [ix - s, iy + 0.2 * s, iz, ix - 0.6 * s, iy + 0.1 * s, iz, ix - 0.3 * s, iy, iz, ix, iy, iz] });
+    // Inputs of unknown age come in from the past and above, like the oldest ribbons, but from
+    // nowhere on the ground: ui/tx.js fades the open end and labels it.
+    const s = clamp(0.25 * reach, 4, 24);
+    curves.push({ kind: 'rest', ribbon: -1, p: [ix - s, iy + 0.35 * s, iz, ix - 0.7 * s, iy + 0.35 * s, iz, ix - 0.35 * s, iy, iz, ix, iy, iz] });
   }
   curves.push({ kind: 'bridge', ribbon: -1, p: [ix, iy, iz, ix + (ox - ix) / 3, iy, iz, ix + (2 * (ox - ix)) / 3, oy, oz, ox, oy, oz] });
-  curves.push({ kind: 'mast', ribbon: -1, p: [hub.x, base, hub.z, hub.x, base + (hubY - base) / 3, hub.z, hub.x, base + (2 * (hubY - base)) / 3, hub.z, hub.x, hubY, hub.z] });
   return { hubY, half, top, curves };
 }
 
