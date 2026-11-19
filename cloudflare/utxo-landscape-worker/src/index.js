@@ -471,7 +471,7 @@ export async function handle(request, env, ctx) {
     // Malformed queries get txidResponse's own 400 without reaching mempool.space or the cache.
     if (!/^\d{1,10}$/.test(height) || !/^\d{1,16}$/.test(satoshi)) return respond(await (await txidResponse(url)).text(), 400, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     return cachedLookup(request, ctx, 'txid?height=' + Number(height) + '&satoshi=' + Number(satoshi),
-      () => txidResponse(url, RELEASE.dataset.tip));
+      () => txidResponse(url, RELEASE.dataset.tip, env));
   }
   if (path.startsWith('/api/')) return json({ error: 'not found' }, 404);
   if (path === '/explorer/' || path === '/explorer.html') {

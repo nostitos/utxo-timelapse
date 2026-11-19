@@ -247,7 +247,7 @@ async function handle(request, env, ctx) {
   }
   if (url.pathname === "/api/txid") {
     // Only a lookup that reaches mempool.space spends a token: a cached answer costs nothing to repeat.
-    return cachedApi(request, ctx, param("height") + "&" + param("satoshi"), () => tokenBucket(ip, "txid") ? txidResponse(url) : jsonError("rate limited", 429), 2592000);
+    return cachedApi(request, ctx, param("height") + "&" + param("satoshi"), () => tokenBucket(ip, "txid") ? txidResponse(url, undefined, env) : jsonError("rate limited", 429), 2592000);
   }
   if (url.pathname === "/api/tx") {
     const query = txQuery(url);

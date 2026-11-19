@@ -2,9 +2,15 @@ import { CONFIG, blockToX, satoshiToY } from "./mapping.js";
 import { RELEASE as LANDSCAPE } from "../../utxo-landscape-worker/src/release.js";
 import { DecodedBlock, decodeBlock, indexRecords } from "../../../landscape/web/replay/blk2.js";
 
-const UPSTREAM = "https://mempool.space/api";
+const PUBLIC_API = "https://mempool.space/api";
+// The node's Mempool is close: past this it counts as down and mempool.space answers.
+const NODE_TIMEOUT_MS = 5000;
+// After a node fails (unreachable, timed out or 5xx), it is skipped this long, so a down node
+// costs one wait and no doubled subrequests (the nightly update stops its Mempool).
+const NODE_RETRY_MS = 60000;
+let nodeDownUntil = 0;
 const TXID = /^[0-9a-f]{64}$/;
-// Inputs the change log cannot date that are looked up at mempool.space, at most this many transactions per answer.
+// Inputs the change log cannot date that are looked up upstream, at most this many transactions per answer.
 const LOOKUP_LIMIT = 24;
 
 function json(value, status = 200) {
@@ -85,17 +91,41 @@ function matchingOutputs(raw, targetSatoshi) {
   return matches;
 }
 
-async function upstream(path, asJson = false) {
-  const response = await fetch(`${UPSTREAM}${path}`, {
-    headers: { Accept: asJson ? "application/json" : "application/octet-stream" },
-    signal: AbortSignal.timeout(20000),
-  });
-  if (!response.ok) throw new Error(`upstream ${response.status}`);
-  return asJson ? response.json() : response.arrayBuffer();
+// Where a request goes. With env.MEMPOOL_API set (the Mempool app on the maintainer's node, its
+// /api URL; env.MEMPOOL_ACCESS_ID and env.MEMPOOL_ACCESS_SECRET when a Cloudflare Access service
+// token guards it) the node answers first and mempool.space only when the node fails. That node
+// runs Mempool in Electrum mode, which cannot name the transaction that spent an output (Bitcoin
+// Core keeps no spender index), so outspends always come from mempool.space; and it derives
+// heights from its own tip, which lags Bitcoin Core for a moment after each block, so txResponse
+// checks the heights it gets.
+function sources(env, path, publicOnly) {
+  const node = env?.MEMPOOL_API;
+  if (!node || publicOnly || path.endsWith("/outspends") || Date.now() < nodeDownUntil) return [{ base: PUBLIC_API, headers: {} }];
+  const headers = env.MEMPOOL_ACCESS_ID ? { "CF-Access-Client-Id": env.MEMPOOL_ACCESS_ID, "CF-Access-Client-Secret": env.MEMPOOL_ACCESS_SECRET } : {};
+  return [{ base: String(node).replace(/\/+$/, ""), headers, node: true }, { base: PUBLIC_API, headers: {} }];
+}
+
+/** One upstream answer as kind 'json', 'text' or 'bytes' (an ArrayBuffer). */
+async function upstream(env, path, kind = "bytes", { publicOnly = false } = {}) {
+  let failure;
+  for (const s of sources(env, path, publicOnly)) {
+    try {
+      const response = await fetch(s.base + path, {
+        headers: { Accept: kind === "json" ? "application/json" : kind === "text" ? "text/plain" : "application/octet-stream", ...s.headers },
+        signal: AbortSignal.timeout(s.node ? NODE_TIMEOUT_MS : 20000),
+      });
+      if (!response.ok) throw new Error(`upstream ${response.status}`);
+      return kind === "json" ? await response.json() : kind === "text" ? (await response.text()).trim() : await response.arrayBuffer();
+    } catch (error) {
+      if (s.node && !/^upstream 4\d\d$/.test(error?.message)) nodeDownUntil = Date.now() + NODE_RETRY_MS;
+      failure = error;
+    }
+  }
+  throw failure;
 }
 
 // tip: the latest block the caller shows, the film's unless given (the landscape passes its dataset's).
-export async function txidResponse(url, tip = CONFIG.numBlocks - 1) {
+export async function txidResponse(url, tip = CONFIG.numBlocks - 1, env = null) {
   const heightText = url.searchParams.get("height");
   const satoshiText = url.searchParams.get("satoshi");
   if (!heightText || !/^\d{1,10}$/.test(heightText) || !satoshiText || !/^\d{1,16}$/.test(satoshiText)) {
@@ -107,15 +137,11 @@ export async function txidResponse(url, tip = CONFIG.numBlocks - 1) {
     return json({ error: "height or satoshi outside chain range" }, 400);
   }
   try {
-    const hashResponse = await fetch(`${UPSTREAM}/block-height/${height}`, {
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!hashResponse.ok) throw new Error(`height upstream ${hashResponse.status}`);
-    const blockHash = (await hashResponse.text()).trim();
+    const blockHash = await upstream(env, `/block-height/${height}`, "text");
     if (!/^[0-9a-f]{64}$/.test(blockHash)) throw new Error("bad upstream block hash");
     const [raw, txids] = await Promise.all([
-      upstream(`/block/${blockHash}/raw`),
-      upstream(`/block/${blockHash}/txids`, true),
+      upstream(env, `/block/${blockHash}/raw`),
+      upstream(env, `/block/${blockHash}/txids`, "json"),
     ]);
     const locations = matchingOutputs(raw, satoshi);
     const matches = locations
@@ -200,7 +226,7 @@ async function spendsIn(env, height) {
 // are right as a group (shared), though not which input came from which. Otherwise the input
 // asks mempool.space for the transaction that created it, largest amounts first, up to
 // LOOKUP_LIMIT transactions; the rest keep height null and are listed without a line.
-async function dateInputs(env, height, inputs, tip) {
+async function dateInputs(env, height, inputs, tip, publicOnly) {
   const spends = await spendsIn(env, height);
   const mine = new Map(); // amount -> this transaction's inputs of that amount
   for (const input of inputs) if (input.satoshi > 0) mine.set(input.satoshi, [...(mine.get(input.satoshi) ?? []), input]);
@@ -214,20 +240,31 @@ async function dateInputs(env, height, inputs, tip) {
   const largest = (list) => Math.max(...list.map((input) => input.satoshi));
   const asked = [...ask].sort((a, b) => largest(b[1]) - largest(a[1])).slice(0, LOOKUP_LIMIT);
   await Promise.all(asked.map(async ([id, list]) => {
-    const created = filmHeight(await upstream(`/tx/${id}/status`, true), tip);
-    for (const input of list) input.height = created;
+    const created = filmHeight(await upstream(env, `/tx/${id}/status`, "json", { publicOnly }), tip);
+    // The change log lists every creation block of an amount spent in this block, so a height
+    // outside that list is wrong (a node's lagging tip) and the input stays undated.
+    for (const input of list) {
+      const known = spends.get(input.satoshi) ?? [];
+      input.height = created !== null && (!known.length || known.includes(created)) ? created : null;
+    }
   }));
 }
 
 // One whole transaction: every input with the block that created it, every output with the
 // transaction that spent it, up to tip (the film's latest block unless given; latest names it).
-export async function txResponse(env, { txid }, { tip = CONFIG.numBlocks - 1, latest = "the film's latest block" } = {}) {
+// publicOnly asks mempool.space alone (after a node's height failed its check).
+export async function txResponse(env, { txid }, { tip = CONFIG.numBlocks - 1, latest = "the film's latest block", publicOnly = false } = {}) {
   try {
     const [tx, spends] = await Promise.all([
-      upstream(`/tx/${txid}`, true),
-      upstream(`/tx/${txid}/outspends`, true),
+      upstream(env, `/tx/${txid}`, "json", { publicOnly }),
+      upstream(env, `/tx/${txid}/outspends`, "json"),
     ]);
     const height = filmHeight(tx.status, tip);
+    // A node's height must name the block its hash does; otherwise its tip lags and mempool.space answers.
+    if (env?.MEMPOOL_API && !publicOnly && tx.status?.confirmed &&
+        (await upstream(env, `/block-height/${tx.status.block_height}`, "text")) !== tx.status.block_hash) {
+      return txResponse(env, { txid }, { tip, latest, publicOnly: true });
+    }
     if (height === null) {
       return json({ error: tx.status?.confirmed
         ? "This transaction is in block " + Number(tx.status.block_height).toLocaleString("en-US") + ", after " + latest
@@ -244,7 +281,7 @@ export async function txResponse(env, { txid }, { tip = CONFIG.numBlocks - 1, la
       inputs.some((input) => !TXID.test(input.txid) || !Number.isInteger(input.vout)) ||
       outputs.some((out) => out.spent && !TXID.test(out.spent.txid))
     ) throw new Error("bad upstream transaction");
-    if (!coinbase) await dateInputs(env, height, inputs, tip);
+    if (!coinbase) await dateInputs(env, height, inputs, tip, publicOnly);
     return json({ txid, height, coinbase, inputs, outputs });
   } catch (error) {
     if (error?.message === "upstream 404") return json({ error: "No such transaction" }, 404);
