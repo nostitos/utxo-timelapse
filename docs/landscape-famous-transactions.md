@@ -1,0 +1,36 @@
+# Transactions to show in the landscape
+
+Checked 2026-11-18. Every txid below was looked up at mempool.space and drawn by the landscape's transaction view (`codex/landscape-transactions`, dataset `d974621-20261104`). Candidates whose txid did not resolve were dropped: the 2023 "83.65 BTC fee" txid in circulation does not exist. No txid could be sourced or found for the Bitfinex hack and its recovery, or for the Mt. Gox repayments.
+
+**Draws** rates the picture: *Strong* spreads many ribbons across years of terrain, *Good* reads clearly, *Plain* is one or a few ribbons or a single fan at the leading edge (worth showing for its story), *Empty* draws only the bridge. **Ribbons** counts ribbons per side after coins in one cell share a ribbon (at most 300 a side).
+
+Open one with `#tx=<txid>` or by pasting the txid into the block field.
+
+| Draws | Transaction | Date | Block | Inputs → outputs | Ribbons | What it shows | txid |
+|---|---|---|---:|---|---|---|---|
+| Strong | OKX consolidation | 2024-12-28 | 876,729 | 300 → 1 | 246 → 1 (+30 on the stub) | 300 inputs created over 3.5 years merge into one output; 246 ribbons. Look for exchanges names 237 of the inputs OKX. | `b125aa49d3751666ec8c9cadb60875020c9d8e1eae982de6f54e36e61365b269` |
+| Strong | Silk Road seizure | 2020-11-03 | 655,282 | 236 → 2 | 141 → 2 (+86 on the stub) | The US government takes 69,370 BTC from the Silk Road wallet. 141 input ribbons fan across 8 years of terrain, from coins created in 2012 and 2013. | `0d13a52e3b640d05cdf31b41f335b327f126cb79d9eec1e2bc46556ef30a0b57` |
+| Strong | Huobi consolidation | 2026-01-17 | 932,647 | 100 → 1 | 46 → 1 | 100 inputs created over 6.7 years merge into one output; 46 ribbons rain in from across the landscape. Look for exchanges names 84 of the inputs HTX (Huobi). | `a71570b070b44ef6cc60965a28a74c03bc57310fb5cd2a7d5a9dacfb0e840492` |
+| Strong | 50 BTC from 2009 spent in 2020 | 2020-05-20 | 631,058 | 1 → 2 | 1 → 2 | A coinbase reward from block 3,654 spent after 11.9 years: one arc nearly the length of the landscape. | `cb1440c787d8a46977886405a34da89939e1b04907f567bf182ef27ce53a8d71` |
+| Good | 430-input CoinJoin | 2024-10-29 | 867,950 | 430 → 488 | 145 → 36 (+139 on the stub) | 430 inputs and 488 outputs; inputs from the previous months rise on one side of the bridge, outputs fall on the other. 139 small inputs arrive on the dashed stub. | `649344a93bb9859215329100ff4ea4f89b53e5ade700d25c9aeca702c6f74894` |
+| Good | Bitcoin pizza | 2010-05-22 | 57,043 | 131 → 1 | 20 → 1 | Laszlo Hanyecz pays 10,000 BTC for two pizzas: 131 inputs from the weeks before, 20 ribbons, one output. | `a1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d` |
+| Good | US government moves Silk Road funds | 2024-04-02 | 837,416 | 15 → 2 | 15 → 2 | 15 inputs gathered into about 2,000 and 29,800 BTC; the ribbons reach back 1.1 years. | `b614dd2e0fa06d776ee4d45973fab5ceb6e2dfebfb84e5f7bd45ef0975455240` |
+| Plain | 13,107-output payout | 2016-01-01 | 391,204 | 1 → 13,107 | 1 → 229 | One input, 13,107 outputs merged into 229 ribbons; the largest payout found, drawn as one dense white fan. Opens in under 2 s. | `dd9f6bbf80ab36b722ca95d93268667a3ea6938288e0d4cf0e7d2e28a7a91ab3` |
+| Plain | 1,000-output payout | 2021-11-18 | 710,282 | 1 → 1,000 | 1 → 206 | One input, 1,000 outputs in 206 ribbons. All outputs are created in its own block, so they fall as one white fan at the leading edge. | `2b31277f9bbcb188528cf6b83dc9db52d43def92c15d2752a728bd028d876ca7` |
+| Plain | 171.8 BTC fee in 2011 | 2011-12-12 | 157,235 | 4 → 3 | 4 → 3 | Moves 35.8 BTC and pays 171.8 BTC in fees. | `1d7749c65c90c32f5e2c036217a2574f3f4403da39174626b246eefa620b58d9` |
+| Plain | 500,000 BTC in 2011 | 2011-11-16 | 153,527 | 4 → 2 | 4 → 2 | Another 2011 whale move, 18 blocks after the 550,000 BTC one; four inputs. | `044e32f5e01d70333fb84b744cb936bf49acab518282c111894b18bcf3a63c12` |
+| Plain | Paxos overpays 19.8 BTC in fees | 2023-09-10 | 807,057 | 1 → 5 | 1 → 5 | A 2023 payment that paid about 19.8 BTC in fees, later returned by the mining pool. | `d5392d474b4c436e1c9d1f4ff4be5f5f9bb0eb2e26b61d2781751474b7e870fd` |
+| Plain | Satoshi to Hal Finney | 2009-01-12 | 170 | 1 → 2 | 1 → 2 | The first person-to-person transaction, block 170: 10 BTC to Hal Finney, at the genesis edge with almost nothing around it. | `f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16` |
+| Plain | The pizza coins move on | 2010-05-22 | 57,044 | 1 → 2 | 1 → 2 | One block after the pizza payment, the 10,000 BTC is split into 5,777 and 4,223 BTC; open it with tx → from the pizza transaction. | `cca7507897abc89628f450e8b1e0c6fca4ec3f7b34cccf55f3f531c659ff4d79` |
+| Plain | 550,000 BTC in 2011 | 2011-11-16 | 153,509 | 11 → 2 | 1 → 2 | The largest value moved in one transaction found here. Its 11 inputs share one cell, so it draws as a single thick ribbon. | `29a3efd3ef04f9153d47a990bd7b048a4b2d213daaa5fb8ed670fb85f13bdbcf` |
+| Plain | F2Pool’s one-megabyte transaction | 2015-07-07 | 364,292 | 5,569 → 1 | 2 → 1 | 5,569 dust inputs cleaned up in a transaction that filled block 364,292. The dust sits in two cells, so it draws as two ribbons. | `bb41a757f405890fb0f5856228e23b715702d714d59bf2b1feb70d8b2b4e3e08` |
+| Plain | First native SegWit output | 2017-08-24 | 481,824 | 1 → 1 | 1 → 1 | In the SegWit activation block. | `dfcec48bb8491856c353306ab5febeb7e99e4d783eedf3de98f3ee0812b92bad` |
+| Plain | First wrapped SegWit spend | 2017-08-24 | 481,824 | 1 → 2 | 1 → 1 | In the SegWit activation block. | `8f907925d2ebe48765103e6845c06f1f2bb77c6adc1cc002865865eb5cfd5c1c` |
+| Plain | First Taproot spend | 2021-11-14 | 709,632 | 1 → 2 | 1 → 1 | The first Taproot transaction, in the activation block. | `777c998695de4b7ecec54c058c73b2cab71184cf1655840935cd9388923dc288` |
+| Plain | Ordinals inscription #0 | 2022-12-14 | 767,430 | 1 → 1 | 1 → 1 | The first Ordinals inscription: one input, one output. | `6fb976ab49dcec017f1e201e84395983204ae1a7c2abf7ced0a85d692e442799` |
+| Plain | Taproot Wizards inscription | 2023-02-01 | 774,628 | 1 → 1 | 1 → 1 | The 4 MB inscription that filled block 774,628: one input, one output. | `0301e0480b374b32851a9462db29dc19fe830a7f7d7a88b81612b9d42099c0ae` |
+| Empty | 20,000-input sweep (one of three) | 2015-08-01 | 367,899 | 20,000 → 1 | 0 → 0 (+20000 on the stub) | Spends 20,000 zero-value coins from the 2015 spam attacks. The landscape has no row for 0 sat, so only the bridge is drawn. Same for cf1032c2… and 30b3b19b…. | `f2e197a6d8d088b13afd0f99d4027da36a9413b9f3d7730ba5278132ebc950a7` |
+
+The test transactions from the 2D explorer's work also draw well: the 224 → 270 CoinJoin (`75bb2e8b…`), the 1,093-input sweep (`7c4d9247…`) and the 171 → 212 transaction (`452e6728…`) are in [landscape-transactions-plan.md](landscape-transactions-plan.md).
+
+How the extra candidates were found: the Silk Road seizure by reading the history of the Silk Road wallet `1HQ3Go3ggs8pFnXuHVHRytPCq5fGG8Hbhx`; the Huobi and OKX consolidations from the owner data (`o974481-20261104`), as blocks in which one exchange spent hundreds of coins created years apart, then the transaction that spent one of those coins. The other txids came from public sources (Learn Me a Bitcoin, Bitcoin Stack Exchange, Reddit, news articles, a Ledger journal paper) and were each checked.

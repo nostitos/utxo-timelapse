@@ -326,6 +326,9 @@ export function createTxView({
     const spentBy = t.outputs.filter((o) => o.spent && o.spent.height <= getBlock()).length;
     if (spentBy) html += '<p class="in-more">' + fmtInt(spentBy) + (spentBy === 1 ? ' output was' : ' outputs were') + ' spent by block ' + fmtInt(getBlock()) + '; their ribbons are hollow.</p>';
     const undated = t.inputs.filter((p) => p.satoshi > 0 && p.height == null);
+    // The landscape has rows only for amounts of at least 1 sat.
+    const zero = [...t.inputs, ...t.outputs].filter((p) => !(p.satoshi > 0)).length;
+    if (zero) html += '<p class="in-more">' + fmtInt(zero) + (zero === 1 ? ' coin is' : ' coins are') + ' worth 0 sat; the landscape has no row for them, so they have no ribbon.</p>';
     if (undated.length) html += '<p class="in-more">' + fmtInt(undated.length) + ' ' + (undated.length === 1 ? 'input arrives' : 'inputs arrive') + ' on the dashed grey stub (' + escapeHtml(fmtBtc(sum(undated))) + '): outputs of the same amount but different ages were spent in this block, and the lookup stopped before placing them.</p>';
     if (t.inputs.some((p) => p.shared)) html += '<p class="in-more">* Inputs of one amount whose blocks are known together: each ribbon is in the right place, but which input came from which of those blocks is not.</p>';
     if (g && [...g.inputs, ...g.outputs].some((r) => r.level > 0)) html += '<p class="in-more">The smallest coins share coarser ribbons so the largest stay apart; every coin is listed below.</p>';
