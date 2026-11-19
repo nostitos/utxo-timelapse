@@ -149,10 +149,12 @@ export function txCurves(group, ground) {
     const d = Math.hypot(r.x - hub.x, r.z - hub.z);
     const [ex, ey, ez] = end(dir);
     // Inputs lean toward the past as they rise and meet the bridge from its past end; outputs
-    // leave its future end, swing out over the side beyond the leading edge and land.
+    // leave its future end, swing out over the side beyond the leading edge and land. The control
+    // point next to the bridge lies on its line, so every ribbon joins it along its direction, and
+    // lies farther out the steeper the ribbon, so one rising from under the bridge curves over.
     const lift = clamp(0.45 * d + 0.8, 0.6, hubY * 1.25);
     const nearFoot = [r.x + dir * Math.min(6, 0.12 * d + 0.3), y0 + lift, r.z];
-    const nearBridge = [ex + dir * clamp(0.3 * d, 0.5, 10), hubY + Math.min(6, 0.08 * d), ez + (r.z - ez) * 0.15];
+    const nearBridge = [ex + dir * clamp(0.35 * d + 0.5 * (hubY - y0), 1.5, 12), ey, ez];
     const p = dir < 0 ? [r.x, y0, r.z, ...nearFoot, ...nearBridge, ex, ey, ez] : [ex, ey, ez, ...nearBridge, ...nearFoot, r.x, y0, r.z];
     curves.push({ kind: dir < 0 ? 'in' : 'out', ribbon: k, p });
   };

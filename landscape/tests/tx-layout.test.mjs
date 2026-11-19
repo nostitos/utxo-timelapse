@@ -48,7 +48,9 @@ test('inputs end at the bridge from the past side, outputs leave it toward the f
   const out = curves.find((c) => c.kind === 'out');
   assert.deepEqual(inc.p.slice(0, 3), [g.inputs[0].x, 3, g.inputs[0].z], 'the input starts on its cell');
   assert.deepEqual(inc.p.slice(9), [g.hub.x - half, hubY, g.hub.z], 'and ends at the bridge\u2019s past end');
+  assert.ok(inc.p[6] < g.hub.x - half && inc.p[7] === hubY && inc.p[8] === g.hub.z, 'arriving along the bridge');
   assert.deepEqual(out.p.slice(0, 3), [g.hub.x + half, hubY, g.hub.z]);
+  assert.ok(out.p[4] === hubY && out.p[5] === g.hub.z, 'outputs leave along it');
   assert.ok(out.p[3] > g.hub.x + half, 'outputs swing out beyond the leading edge');
   assert.ok(hubY > 3 + 2.2 && hubY <= 3 + 45);
   assert.deepEqual(curves.map((c) => c.kind), ['in', 'out', 'bridge', 'mast']);

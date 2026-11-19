@@ -138,6 +138,7 @@ export function createTxView({
     let hollowCount = 0;
     const found = dim ? null : ownerOf.get(t.answer.txid);
     const stretches = [];
+    let wideIn = 0, wideOut = 0; // the widest ribbon on each side, which the bridge's ends match
     for (const c of curves) {
       let style, color = outColor, casing = outCase, id = -1, hollow = false;
       if (c.kind === 'in' || c.kind === 'out') {
@@ -149,12 +150,19 @@ export function createTxView({
         if (hollow) hollowCount++;
         if (!dim) id = c.kind === 'in' ? c.ribbon : nIn + c.ribbon;
         if (m && m.kind === c.kind && markedRibbon === c.ribbon) style = { px: style.px + 2.5, alpha: 1 };
+        if (c.kind === 'in') wideIn = Math.max(wideIn, style.px);
+        else wideOut = Math.max(wideOut, style.px);
       } else if (c.kind === 'rest') {
         style = { px: ribbonStyle(group.rest.sat, group.inSat, 1).px, alpha: 0.9 };
         [color, casing] = [REST, BLACK];
-      } else style = c.kind === 'bridge' ? { px: 5, alpha: 0.95 } : { px: 1.5, alpha: 0.55 };
+      } else if (c.kind === 'bridge') {
+        // As wide as the widest input where they meet and the widest output where they part.
+        style = { px: [wideIn || 5, Math.max(5, wideIn, wideOut), wideOut || 5], alpha: 0.95 };
+      } else style = { px: 1.5, alpha: 0.55 };
       const alpha = dim ? style.alpha * 0.3 : style.alpha;
-      out.push({ p: c.p, px: dim ? style.px * 0.7 : style.px, color: [...color, alpha], casing: [...casing, alpha * 0.75], id, dash: c.kind === 'rest',
+      const k = dim ? 0.7 : 1;
+      const px = Array.isArray(style.px) ? style.px.map((w) => w * k) : style.px * k;
+      out.push({ p: c.p, px, color: [...color, alpha], casing: [...casing, alpha * 0.75], id, dash: c.kind === 'rest',
         hollow, path: dim ? null : PATH[c.kind] || null });
       // A ribbon holding an exchange's coin takes its colour next to that coin.
       if (found && (c.kind === 'in' || c.kind === 'out')) {
