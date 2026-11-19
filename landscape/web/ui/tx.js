@@ -359,7 +359,7 @@ export function createTxView({
     // The landscape has rows only for amounts of at least 1 sat.
     const zero = [...t.inputs, ...t.outputs].filter((p) => !(p.satoshi > 0)).length;
     if (zero) html += '<p class="in-more">' + fmtInt(zero) + (zero === 1 ? ' coin is' : ' coins are') + ' worth 0 sat; the landscape has no row for them, so they have no ribbon.</p>';
-    if (undated.length) html += '<p class="in-more">' + fmtInt(undated.length) + ' ' + (undated.length === 1 ? 'input' : 'inputs') + ' (' + escapeHtml(fmtBtc(sum(undated))) + ') come in on the grey dashed line that fades out behind the bridge. Other coins of the same amounts but different ages were spent in this block, and the lookup asks for at most 24 of their transactions, so their age is unknown and they have no place on the ground.</p>';
+    if (undated.length) html += '<p class="in-more">' + fmtInt(undated.length) + ' ' + (undated.length === 1 ? 'input' : 'inputs') + ' (' + escapeHtml(fmtBtc(sum(undated))) + ') come in on the labelled grey dashed line: other coins of the same amounts but different ages were spent in this block, and the lookup did not reach their transactions, so their age is unknown and they have no place on the ground.</p>';
     if (t.inputs.some((p) => p.shared)) html += '<p class="in-more">* Inputs of one amount whose blocks are known together: each ribbon is in the right place, but which input came from which of those blocks is not.</p>';
     if (g && [...g.inputs, ...g.outputs].some((r) => r.level > 0)) html += '<p class="in-more">The smallest coins share coarser ribbons so the largest stay apart; every coin is listed below.</p>';
     html += ownersHtml(t) + '</section>';

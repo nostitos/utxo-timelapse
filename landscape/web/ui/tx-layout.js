@@ -7,12 +7,12 @@
 // n + m ribbons, never n x m. Coins in one L0 cell share a ribbon; past MAX_RIBBONS on a side,
 // the largest half keep their own cell and the rest merge by the coarser cells of the grid's own
 // levels until the count fits. Inputs whose creation block the lookup left unknown are counted in
-// rest and drawn as one dashed stub.
+// rest and drawn as one labelled dashed line that fades in from the past.
 import { BLOCKS_PER_COLUMN, BLOCKS_PER_WORLD_UNIT, ROWS_PER_WORLD_UNIT, LEVELS, MAX_ROW_SHIFT } from '../data/grid.js';
 import { rowOfAmount } from '../data/axis.js';
 
 export const MAX_RIBBONS = 300;
-export const VALUE_FRAMED = 0.98; // share of each side's BTC whose ribbons the camera keeps in view
+const VALUE_FRAMED = 0.98; // share of each side's BTC whose ribbons the camera keeps in view
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const cellX = (col) => ((col + 0.5) * BLOCKS_PER_COLUMN) / BLOCKS_PER_WORLD_UNIT;

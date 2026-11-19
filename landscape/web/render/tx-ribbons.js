@@ -14,7 +14,7 @@ import { Group, Mesh, BufferGeometry, Float32BufferAttribute, Uint32BufferAttrib
 import { attribute, positionGeometry, cameraPosition, modelWorldMatrix, uniform, vec3, vec4, normalize, cross, length, select, exp, abs } from 'three/tsl';
 import { noGBufferWrites } from './gbuffer.js';
 
-export const CASING_PX = 3;
+const CASING_PX = 3;
 const PULSE_WIDTH = 0.05; // of the path: the bright band's half-width
 const DASHES = 12;      // dashed curves: this many dashes
 const PICK_SAMPLES = 9; // points per hoverable curve kept for picking
