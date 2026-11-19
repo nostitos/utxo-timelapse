@@ -1149,8 +1149,8 @@ kbd {
 #inspector .tx-head-actions { display: flex; gap: 4px; flex-shrink: 0; }
 #inspector .tx-id { font: 11px/1.5 var(--mono); overflow-wrap: anywhere; }
 .tx-key { display: inline-block; width: 14px; height: 3px; margin: 0 6px 3px 0; vertical-align: middle; border-radius: 2px; box-shadow: 0 0 0 1px #000; }
-.tx-key-in { background: #ff3df2; }
-.tx-key-out { background: #ececec; }
+.tx-key-in { background: #ff3b3b; }
+.tx-key-out { background: #33e07a; }
 .tx-table { margin-bottom: 4px; }
 .tx-col-amount { width: 44%; }
 .tx-col-hop { width: 64px; }

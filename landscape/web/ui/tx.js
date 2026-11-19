@@ -1,6 +1,6 @@
 // Transaction view (docs/landscape-transactions-plan.md): a transaction as a bridge in the air
-// above its block, magenta ribbons rising from the coins it spent and white ribbons falling to the
-// coins it made (ui/tx-layout.js, render/tx-ribbons.js), and a card listing every input and output.
+// above its block, ribbons rising red from the coins it spent, white across the bridge and falling
+// green to the coins it made (ui/tx-layout.js, render/tx-ribbons.js), and a card listing every input and output.
 //
 // The card shares the inspector's panel (#inspector) and shows while no cell is inspected: a cell
 // clicked under a ribbon opens over it, and closing the cell brings the transaction back. Answers
@@ -30,9 +30,11 @@ const EXPLORER_2D = 'https://bitcointimelapse.com/explorer';
 const VIEW = { yaw: 0, pitch: -32 }; // framing direction: from the small amounts, looking down
 const EYE_CLEARANCE = 10;            // the framed camera stays this high above the terrain around the bridge
 const MIN_DISTANCE = 40;             // even a small transaction is framed with the land around it
-// Linear colours. Inputs: the 2D explorer's magenta (#ff3df2). Outputs: white over a black
-// casing, or dark ink over a white casing on a light ground (Paper).
-const IN = [1, 0.047, 0.888];
+// Linear colours. Value flows from red where the coins are spent (#ff3b3b) through white at the
+// bridge to green where coins are made (#33e07a), over a black casing; on a light ground (Paper)
+// the white is dark ink and the outputs' casing white.
+const SPENT = [1, 0.044, 0.044];
+const MADE = [0.033, 0.745, 0.195];
 const OUT = [0.92, 0.92, 0.92];
 const INK = [0.01, 0.012, 0.018];
 const REST = [0.42, 0.42, 0.47];
@@ -44,6 +46,8 @@ const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms));
 const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 // Where each kind of curve sits on the pulse's path.
 const PATH = { in: [0, 0.45], rest: [0, 0.45], bridge: [0.45, 0.55], out: [0.55, 1] };
+// Where along a ribbon its colour turns: the half next to the bridge, so red and green hold elsewhere.
+const BLEND = { in: [0.5, 1], out: [0, 0.5] };
 const OWNER_STRETCH = 0.2;           // the share of a ribbon next to an exchange's coin drawn in its colour
 const linear = (hex) => {
   const n = parseInt(String(hex).slice(1), 16) || 0;
@@ -146,13 +150,16 @@ export function createTxView({
     const stretches = [];
     let wideIn = 0, wideOut = 0; // the widest ribbon on each side, which the bridge's ends match
     for (const c of curves) {
-      let style, color = outColor, casing = outCase, id = -1, hollow = false;
+      let style, color = outColor, casing = outCase, to = null, id = -1, hollow = false;
       if (c.kind === 'in' || c.kind === 'out') {
         const side = c.kind === 'in' ? group.inputs : group.outputs;
         style = ribbonStyle(side[c.ribbon].sat, c.kind === 'in' ? group.inSat : group.outSat, side.length);
-        if (c.kind === 'in') [color, casing] = [IN, BLACK];
-        // An output ribbon whose coins were all spent by the block shown is hollow.
-        else hollow = side[c.ribbon].rows.every((j) => t.answer.outputs[j].spent && t.answer.outputs[j].spent.height <= block);
+        if (c.kind === 'in') [color, casing, to] = [SPENT, BLACK, outColor];
+        else {
+          to = MADE;
+          // An output ribbon whose coins were all spent by the block shown is hollow.
+          hollow = side[c.ribbon].rows.every((j) => t.answer.outputs[j].spent && t.answer.outputs[j].spent.height <= block);
+        }
         if (hollow) hollowCount++;
         if (!dim) id = c.kind === 'in' ? c.ribbon : nIn + c.ribbon;
         if (m && m.kind === c.kind && markedRibbon === c.ribbon) style = { px: style.px + 2.5, alpha: 1 };
@@ -169,7 +176,7 @@ export function createTxView({
       const alpha = dim ? style.alpha * 0.3 : style.alpha;
       const k = dim ? 0.7 : 1;
       const px = Array.isArray(style.px) ? style.px.map((w) => w * k) : style.px * k;
-      out.push({ p: c.p, px, color: [...color, alpha], casing: [...casing, alpha * 0.75], id, dash: c.kind === 'rest', fade: c.kind === 'rest',
+      out.push({ p: c.p, px, color: [...color, alpha], to, blend: BLEND[c.kind], casing: [...casing, alpha * 0.75], id, dash: c.kind === 'rest', fade: c.kind === 'rest',
         hollow, path: dim ? null : PATH[c.kind] || null });
       // A ribbon holding an exchange's coin takes its colour next to that coin.
       if (found && (c.kind === 'in' || c.kind === 'out')) {

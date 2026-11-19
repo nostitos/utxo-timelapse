@@ -88,9 +88,10 @@ export function createTxRibbons() {
   let picks = new Float32Array(0);
 
   /**
-   * curves: [{p: 12 control-point numbers, px (or [start, middle, end]), color: [r, g, b, a],
-   * casing: [r, g, b, a], id (>= 0: hoverable, highlight(id) lights it), dash, path: [from, to] of
-   * the pulse path or null, hollow, fade: faint at the start, full by FADE}]. Colours are linear.
+   * curves: [{p: 12 control-point numbers, px (or [start, middle, end]), color: [r, g, b, a], to:
+   * [r, g, b] the core eases to across blend: [t0, t1] (or null), casing: [r, g, b, a], id (>= 0:
+   * hoverable, highlight(id) lights it), dash, path: [from, to] of the pulse path or null, hollow,
+   * fade: faint at the start, full by FADE}]. Colours are linear.
    */
   function set(curves) {
     const pos = [], dirs = [], cols = [], cases = [], infos = [], index = [], pick = [];
@@ -111,7 +112,8 @@ export function createTxRibbons() {
           for (const side of [-1, 1]) {
             pos.push(pt[0], pt[1], pt[2]);
             dirs.push(pt[3] / tl, pt[4] / tl, pt[5] / tl, side);
-            cols.push(c.color[0], c.color[1], c.color[2], c.color[3] * f);
+            const e = c.to ? ease(Math.min(1, Math.max(0, (t - c.blend[0]) / (c.blend[1] - c.blend[0])))) : 0;
+            cols.push(...[0, 1, 2].map((i) => c.color[i] + (c.to ? (c.to[i] - c.color[i]) * e : 0)), c.color[3] * f);
             cases.push(c.casing[0], c.casing[1], c.casing[2], c.casing[3] * f);
             infos.push(widthAt(c.px, t), c.id ?? -1, path(t), c.hollow ? 1 : 0);
           }
