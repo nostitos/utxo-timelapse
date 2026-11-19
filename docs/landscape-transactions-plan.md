@@ -63,7 +63,7 @@ The inputs that stay unplaced carry little value. They come from 48 distinct ear
 ## Reader's experience
 
 1. **Open a transaction.** Paste a txid into the block field, open a link with `#tx=<txid>`, or press Trace beside an output in the cell inspector. Playback pauses, the landscape seeks to the transaction's block, and the camera flies to a pose that holds the bridge and the ribbons carrying 98% of the value.
-2. **Read the picture.** Magenta ribbons rise from the coins spent; white ribbons fall to the coins made. Width and opacity grow with the square root of a ribbon's share of the BTC, as in 2D. A thin mast drops from the bridge to the ground at the transaction's block and the row of its total value, which is where the 2D explorer puts its point.
+2. **Read the picture.** Magenta ribbons rise from the coins spent; white ribbons fall to the coins made. Width and opacity grow with the square root of a ribbon's share of the BTC, as in 2D.
 3. **Read the card.** A docked card, built like the inspector, gives the txid, block, date, counts, total and fee, then inputs and outputs largest first. Rows carry `← tx` and `tx →` as in 2D. Inputs known only as a group keep the `*`. Hovering a row brightens its ribbon and the reverse; clicking a ribbon's foot opens that cell in the inspector.
 4. **Unplaced inputs** arrive as one dashed grey ribbon from the past side, labelled with their count and BTC.
 5. **Hop.** `tx →` seeks to the spending transaction and flies there. The transaction just left stays as a dim trail, up to eight hops, so a coin's path is visible across blocks.

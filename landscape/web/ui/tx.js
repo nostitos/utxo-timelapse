@@ -162,10 +162,10 @@ export function createTxView({
         style = { px: ribbonStyle(group.rest.sat, group.inSat, 1).px, alpha: 0.9 };
         [color, casing] = [REST, BLACK];
         if (!dim) id = nIn + group.outputs.length;
-      } else if (c.kind === 'bridge') {
-        // As wide as the widest input where they meet and the widest output where they part.
+      } else {
+        // The bridge: as wide as the widest input where they meet and the widest output where they part.
         style = { px: [wideIn || 5, Math.max(5, wideIn, wideOut), wideOut || 5], alpha: 0.95 };
-      } else style = { px: 1.5, alpha: 0.55 };
+      }
       const alpha = dim ? style.alpha * 0.3 : style.alpha;
       const k = dim ? 0.7 : 1;
       const px = Array.isArray(style.px) ? style.px.map((w) => w * k) : style.px * k;

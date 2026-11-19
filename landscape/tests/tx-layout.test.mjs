@@ -53,7 +53,7 @@ test('inputs end at the bridge from the past side, outputs leave it toward the f
   assert.ok(out.p[4] === hubY && out.p[5] === g.hub.z, 'outputs leave along it');
   assert.ok(out.p[3] > g.hub.x + half, 'outputs swing out beyond the leading edge');
   assert.ok(hubY > 3 + 2.2 && hubY <= 3 + 45);
-  assert.deepEqual(curves.map((c) => c.kind), ['in', 'out', 'bridge', 'mast']);
+  assert.deepEqual(curves.map((c) => c.kind), ['in', 'out', 'bridge']);
 });
 
 test('the frame keeps the bridge and the ribbons carrying most of the value in view', () => {

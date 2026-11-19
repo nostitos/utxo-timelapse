@@ -58,7 +58,7 @@ export function createTxRibbons() {
     const dir = attribute('aDir', 'vec4');   // tangent, side (-1 or 1)
     const info = attribute('aInfo', 'vec4'); // width (CSS px), curve id, path (-1: none), hollow (0 or 1)
     const color = attribute(casing ? 'aCase' : 'aCol', 'vec4');
-    // Curves without an id (bridge, mast, stub) are never the highlighted one, even when hi is -1.
+    // Curves without an id (bridge, stub) are never the highlighted one, even when hi is -1.
     const lit = info.y.equal(hi).and(hi.greaterThanEqual(0));
     const dim = hi.greaterThanEqual(0).and(lit.not());
     const px = select(lit, info.x.mul(1.4).add(1.5), info.x).add(casing ? CASING_PX : 0);

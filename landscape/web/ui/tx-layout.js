@@ -125,8 +125,8 @@ export function nextCoin(answer, dir) {
 /**
  * Cubic Bézier control points of every curve of a grouped transaction. ground(x, z) is the
  * terrain height (world units). Returns {hubY, half, top, curves}: top is the highest terrain
- * around the bridge, which the bridge clears; each curve is {kind ('in', 'out', 'rest', 'bridge'
- * or 'mast'), ribbon (index on its side, or -1), p: [x0, y0, z0, ... x3, y3, z3]}; inputs run
+ * around the bridge, which the bridge clears; each curve is {kind ('in', 'out', 'rest' or
+ * 'bridge'), ribbon (index on its side, or -1), p: [x0, y0, z0, ... x3, y3, z3]}; inputs run
  * from their cell to the bridge, outputs from the bridge to their cell.
  */
 export function txCurves(group, ground) {
@@ -169,7 +169,6 @@ export function txCurves(group, ground) {
     curves.push({ kind: 'rest', ribbon: -1, p: [ix - s, iy + 0.35 * s, iz, ix - 0.7 * s, iy + 0.35 * s, iz, ix - 0.35 * s, iy, iz, ix, iy, iz] });
   }
   curves.push({ kind: 'bridge', ribbon: -1, p: [ix, iy, iz, ix + (ox - ix) / 3, iy, iz, ix + (2 * (ox - ix)) / 3, oy, oz, ox, oy, oz] });
-  curves.push({ kind: 'mast', ribbon: -1, p: [hub.x, base, hub.z, hub.x, base + (hubY - base) / 3, hub.z, hub.x, base + (2 * (hubY - base)) / 3, hub.z, hub.x, hubY, hub.z] });
   return { hubY, half, top, curves };
 }
 
