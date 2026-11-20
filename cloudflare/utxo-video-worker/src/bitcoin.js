@@ -8,13 +8,27 @@ const NODE_TIMEOUT_MS = 5000;
 // After a node fails (unreachable, timed out or 5xx), it is skipped this long, so a down node
 // costs one wait and no doubled subrequests (the nightly update stops its Mempool).
 const NODE_RETRY_MS = 60000;
+// A transaction with hundreds of inputs takes the node's Mempool 5 to 20 s (it fetches every
+// prevout one by one) and mempool.space a moment: past this wait both are asked and the first
+// answer is used.
+const NODE_PATIENCE_MS = 800;
 let nodeDownUntil = 0;
 const TXID = /^[0-9a-f]{64}$/;
-// Inputs the change log cannot date that are looked up upstream, at most this many transactions per answer.
+// Inputs the change log cannot date that are looked up upstream, at most this many transactions
+// per answer unless env.TX_LOOKUP_LIMIT says otherwise. Each costs one subrequest (a Worker has
+// 50 an invocation on the free plan and 1,000 on the paid one), LOOKUP_POOL at a time, so a
+// lookup waits for its answer and never in a queue behind the others. With a node, whatever
+// the limit, mempool.space is asked for at most LOOKUP_LIMIT of them per answer (those the node
+// failed on): the rest are the node's alone, and stay undated when it fails.
 const LOOKUP_LIMIT = 24;
+const LOOKUP_POOL = 6;
 // Up to this many transactions, the node dates the inputs itself: two short answers each, where
 // the change log costs a 4 MB chunk.
 const NODE_DATED = 6;
+// A transaction with more inputs than this is not asked of the node's Mempool, which fetches every
+// prevout one by one (5 to 20 s for hundreds) and is slow to answer anything else meanwhile:
+// mempool.space answers it, and the node stays free to date its inputs.
+const NODE_TX_INPUTS = 16;
 
 function json(value, status = 200) {
   return new Response(JSON.stringify(value), {
@@ -49,6 +63,20 @@ function varInt(view, state) {
 function skip(view, state, amount) {
   state.offset += amount;
   if (state.offset > view.byteLength) throw new Error("truncated block");
+}
+
+/** The txids of the outputs a raw transaction (hex) spends, in input order. */
+function spentTxids(hex) {
+  const bytes = Uint8Array.from(String(hex).match(/[0-9a-f]{2}/g) ?? [], (b) => parseInt(b, 16));
+  const view = new DataView(bytes.buffer);
+  const state = { offset: bytes[4] === 0 && bytes[5] !== 0 ? 6 : 4 }; // past the version, and segwit's marker and flag
+  const ids = [];
+  for (let n = varInt(view, state); n > 0; n--) {
+    skip(view, state, 36);
+    ids.push(Array.from(bytes.subarray(state.offset - 36, state.offset - 4), (b) => b.toString(16).padStart(2, "0")).reverse().join(""));
+    skip(view, state, varInt(view, state) + 4); // script, sequence
+  }
+  return ids;
 }
 
 function matchingOutputs(raw, targetSatoshi) {
@@ -101,16 +129,19 @@ function matchingOutputs(raw, targetSatoshi) {
 // Core keeps no spender index), so outspends always come from mempool.space; and it derives
 // heights from its own tip, which lags Bitcoin Core for a moment after each block, so txResponse
 // checks the heights it gets.
-function sources(env, path, publicOnly) {
+function sources(env, path, publicOnly, nodeOnly) {
   const node = env?.MEMPOOL_API;
-  if (!node || publicOnly || path.endsWith("/outspends") || Date.now() < nodeDownUntil) return [{ base: PUBLIC_API }];
-  return [{ base: String(node).replace(/\/+$/, ""), node: true }, { base: PUBLIC_API }];
+  if (!node || publicOnly || path.endsWith("/outspends") || Date.now() < nodeDownUntil) return nodeOnly ? [] : [{ base: PUBLIC_API }];
+  return [{ base: String(node).replace(/\/+$/, ""), node: true }, ...(nodeOnly ? [] : [{ base: PUBLIC_API }])];
 }
 
-/** One upstream answer as kind 'json', 'text' or 'bytes' (an ArrayBuffer). */
-async function upstream(env, path, kind = "bytes", { publicOnly = false } = {}) {
-  let failure;
-  for (const s of sources(env, path, publicOnly)) {
+/**
+ * One upstream answer as kind 'json', 'text' or 'bytes' (an ArrayBuffer). slow: the node may take
+ * long over this one, so its timing out does not count the node as down.
+ */
+async function upstream(env, path, kind = "bytes", { publicOnly = false, nodeOnly = false, slow = false } = {}) {
+  let failure = new Error("no upstream");
+  for (const s of sources(env, path, publicOnly, nodeOnly)) {
     try {
       // The VPC binding carries the request through the node's tunnel; the local preview has none and goes direct.
       const get = s.node && env.MEMPOOL_NODE ? (u, init) => env.MEMPOOL_NODE.fetch(u, init) : fetch;
@@ -121,11 +152,23 @@ async function upstream(env, path, kind = "bytes", { publicOnly = false } = {}) 
       if (!response.ok) throw new Error(`upstream ${response.status}`);
       return kind === "json" ? await response.json() : kind === "text" ? (await response.text()).trim() : await response.arrayBuffer();
     } catch (error) {
-      if (s.node && !/^upstream 4\d\d$/.test(error?.message)) nodeDownUntil = Date.now() + NODE_RETRY_MS;
+      if (s.node && !/^upstream 4\d\d$/.test(error?.message) && !(slow && error?.name === "TimeoutError")) nodeDownUntil = Date.now() + NODE_RETRY_MS;
       failure = error;
     }
   }
   throw failure;
+}
+
+/** A transaction from the node, or from mempool.space too once the node has taken NODE_PATIENCE_MS. */
+function txUpstream(env, txid, publicOnly) {
+  const path = `/tx/${txid}`;
+  const first = upstream(env, path, "json", { publicOnly, slow: true });
+  if (publicOnly || !env?.MEMPOOL_API || Date.now() < nodeDownUntil) return first;
+  let settled = false;
+  first.then(() => { settled = true; }, () => { settled = true; });
+  const late = new Promise((ok) => setTimeout(ok, NODE_PATIENCE_MS))
+    .then(() => (settled ? first : upstream(env, path, "json", { publicOnly: true })));
+  return Promise.any([first, late]);
 }
 
 // tip: the latest block the caller shows, the film's unless given (the landscape passes its dataset's).
@@ -240,22 +283,37 @@ async function spendsIn(env, height) {
 // same block was created in one block. When this transaction spent all of them, their blocks
 // are right as a group (shared), though not which input came from which. Otherwise the input
 // asks mempool.space for the transaction that created it, largest amounts first, up to
-// LOOKUP_LIMIT transactions; the rest keep height null and are listed without a line.
-async function dateInputs(env, height, inputs, tip, publicOnly) {
+// LOOKUP_LIMIT (or env.TX_LOOKUP_LIMIT) transactions; the rest keep height null and are listed without a line.
+/**
+ * The block of a transaction from the node alone, or null. Its Mempool's merkle proof names the
+ * block from the Electrum index in about 0.1 s whatever the transaction's size. Its status would
+ * do too, but costs as much as the whole transaction (20 s for a coinjoin, every prevout fetched)
+ * and derives the height from a tip that lags for a moment after each block.
+ */
+async function nodeHeight(env, id) {
+  const proof = await upstream(env, `/tx/${id}/merkle-proof`, "json", { nodeOnly: true }).catch(() => null);
+  return Number.isInteger(proof?.block_height) ? proof.block_height : null;
+}
+
+/** The node's creation block of each of a few transactions (txid -> height), or null when there are more than NODE_DATED or one is missing. */
+async function nodeHeights(env, ids) {
+  if (ids.length > NODE_DATED) return null;
+  const heights = new Map(await Promise.all(ids.map(async (id) => [id, await nodeHeight(env, id)])));
+  return [...heights.values()].every((h) => h !== null) ? heights : null;
+}
+
+// early: nodeHeights already under way for these inputs' transactions (txResponse starts it from
+// the raw transaction, beside the transaction's own lookup), or null.
+async function dateInputs(env, height, inputs, tip, publicOnly, early = null) {
   const byTx = new Map();
   for (const input of inputs) if (input.satoshi > 0) byTx.set(input.txid, [...(byTx.get(input.txid) ?? []), input]);
-  if (env?.MEMPOOL_API && !publicOnly && Date.now() >= nodeDownUntil && byTx.size <= NODE_DATED) {
-    // A status's height holds when the node's block at that height has the status's hash (its
-    // tip lags for a moment after each block). One that does not sends the dating to the change log.
-    const held = await Promise.all([...byTx].map(async ([id, list]) => {
-      const status = await upstream(env, `/tx/${id}/status`, "json");
-      const created = filmHeight(status, height);
-      if (created === null || (await upstream(env, `/block-height/${created}`, "text")) !== status.block_hash) return false;
-      for (const input of list) input.height = created;
-      return true;
-    }));
-    if (held.every(Boolean)) return;
-    for (const input of inputs) input.height = null;
+  if (env?.MEMPOOL_API && !publicOnly && Date.now() >= nodeDownUntil) {
+    const heights = await (early ?? nodeHeights(env, [...byTx.keys()])).catch(() => null);
+    // One the node does not know sends the dating to the change log.
+    if (heights && [...byTx.keys()].every((id) => heights.get(id) <= height)) {
+      for (const [id, list] of byTx) for (const input of list) input.height = heights.get(id);
+      return;
+    }
   }
   const spends = await spendsIn(env, height);
   const mine = new Map(); // amount -> this transaction's inputs of that amount
@@ -268,14 +326,25 @@ async function dateInputs(env, height, inputs, tip, publicOnly) {
     else for (const input of list) ask.set(input.txid, [...(ask.get(input.txid) ?? []), input]);
   }
   const largest = (list) => Math.max(...list.map((input) => input.satoshi));
-  const asked = [...ask].sort((a, b) => largest(b[1]) - largest(a[1])).slice(0, LOOKUP_LIMIT);
-  await Promise.all(asked.map(async ([id, list]) => {
-    const created = filmHeight(await upstream(env, `/tx/${id}/status`, "json", { publicOnly }), tip);
-    // The change log lists every creation block of an amount spent in this block, so a height
-    // outside that list is wrong (a node's lagging tip) and the input stays undated.
-    for (const input of list) {
-      const known = spends.get(input.satoshi) ?? [];
-      input.height = created !== null && (!known.length || known.includes(created)) ? created : null;
+  const limit = Number(env?.TX_LOOKUP_LIMIT) > 0 ? Math.floor(Number(env.TX_LOOKUP_LIMIT)) : LOOKUP_LIMIT;
+  const asked = [...ask].sort((a, b) => largest(b[1]) - largest(a[1])).slice(0, limit);
+  const hasNode = !!env?.MEMPOOL_API && !publicOnly;
+  let next = 0;
+  let publicLeft = hasNode ? LOOKUP_LIMIT : limit; // with a node, mempool.space only covers its failures
+  await Promise.all(Array.from({ length: Math.min(LOOKUP_POOL, asked.length) }, async () => {
+    while (next < asked.length) {
+      const [id, list] = asked[next++];
+      let created = hasNode ? await nodeHeight(env, id) : null;
+      if (created === null) {
+        if (publicLeft-- <= 0) continue;
+        created = filmHeight(await upstream(env, `/tx/${id}/status`, "json", { publicOnly: true }), tip);
+      }
+      // The change log lists every creation block of an amount spent in this block, so a height
+      // outside that list is wrong (a node's lagging tip) and the input stays undated.
+      for (const input of list) {
+        const known = spends.get(input.satoshi) ?? [];
+        input.height = created !== null && (!known.length || known.includes(created)) ? created : null;
+      }
     }
   }));
 }
@@ -296,7 +365,15 @@ export async function txResponse(env, { txid }, { tip = CONFIG.numBlocks - 1, la
       return promise;
     };
     const spendsAsked = withSpends ? lap("spends", upstream(env, `/tx/${txid}/outspends`, "json")) : null;
-    const tx = await lap("tx", upstream(env, `/tx/${txid}`, "json", { publicOnly }));
+    // The node's raw transaction comes first, one short answer: it names the transactions that
+    // made the inputs, so their dating starts beside the transaction's own lookup, and it says
+    // when there are too many inputs for the node's Mempool.
+    const viaNode = !!env?.MEMPOOL_API && !publicOnly && Date.now() >= nodeDownUntil;
+    const spent = viaNode ? await lap("raw", upstream(env, `/tx/${txid}/hex`, "text", { nodeOnly: true }).then(spentTxids)).catch(() => null) : null;
+    const big = !!spent && spent.length > NODE_TX_INPUTS;
+    const early = spent && !big && !spent.some((id) => /^0+$/.test(id)) ? nodeHeights(env, [...new Set(spent)]) : null;
+    early?.catch(() => {}); // awaited in dateInputs
+    const tx = await lap("tx", txUpstream(env, txid, publicOnly || big));
     const height = filmHeight(tx.status, tip);
     // A node's height must name the block its hash does; otherwise its tip lags and mempool.space answers.
     const heightHolds = lap("check", env?.MEMPOOL_API && !publicOnly && tx.status?.confirmed
@@ -305,7 +382,7 @@ export async function txResponse(env, { txid }, { tip = CONFIG.numBlocks - 1, la
     const coinbase = tx.vin[0]?.is_coinbase === true;
     const inputs = coinbase ? [] : tx.vin.map((vin) => ({ txid: vin.txid, vout: vin.vout, satoshi: vin.prevout?.value, height: null }));
     const inputsOk = !inputs.some((input) => !Number.isSafeInteger(input.satoshi) || input.satoshi < 0 || !TXID.test(input.txid) || !Number.isInteger(input.vout));
-    const dated = lap("date", height !== null && !coinbase && inputsOk ? dateInputs(env, height, inputs, tip, publicOnly) : Promise.resolve());
+    const dated = lap("date", height !== null && !coinbase && inputsOk ? dateInputs(env, height, inputs, tip, publicOnly, early) : Promise.resolve());
     if (!(await heightHolds)) return txResponse(env, { txid }, { tip, latest, publicOnly: true, spends: withSpends });
     if (height === null) {
       return json({ error: tx.status?.confirmed

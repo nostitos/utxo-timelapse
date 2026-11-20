@@ -29,6 +29,16 @@ bucket_name = "utxo-video"
 # cloudflare/utxo-landscape-worker/README.md). Deploying needs a token with Connectivity Directory Bind.
 [vars]
 MEMPOOL_API = "http://127.0.0.1:3006/api"
+# Limits sized for the lab (AGENTS.md, Purpose and priorities); raise them here and deploy.
+# Inputs the change log cannot date that are looked up, per transaction (code default 24). Each is
+# one subrequest of the 1,000 a paid Worker has per invocation.
+TX_LOOKUP_LIMIT = "900"
+# Lookups per second and burst, per IP: "rate,burst". TX_RATE covers whole lookups, each of which
+# asks mempool.space once; it publishes no limit and answers 429 past it, so this one protects a
+# third party. NODE_RATE covers lookups the node answers alone, CELL_RATE the inspector's cells.
+TX_RATE = "4,200"
+NODE_RATE = "30,600"
+CELL_RATE = "30,300"
 
 [[vpc_services]]
 binding = "MEMPOOL_NODE"
