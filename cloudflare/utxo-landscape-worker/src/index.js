@@ -194,12 +194,13 @@ export async function cellResponse({ block, col, row }, env) {
   return lifecycleJson(env, { block, heights: [h1, h2], sats, row, lead });
 }
 
-// Per IP and kind: cells [rate per second, burst]. A transaction lookup asks mempool.space once
+// Per IP and kind: [rate per second, burst]. A whole transaction lookup asks mempool.space once
 // (the spenders; the node answers the rest), so tx and txid share a smaller bucket, sized for
-// Follow a coin: 30 hops at once, then two a second.
+// Follow a coin: 30 hops at once, then two a second. A lookup without the spenders ('node') asks
+// the node alone and shares the cells' numbers.
 function tokenBucket(ip, kind = 'cell') {
   const now = Date.now();
-  const [rate, burst] = kind === 'cell' ? [8, 20] : [2, 30];
+  const [rate, burst] = kind === 'tx' ? [2, 30] : [8, 20];
   const key = kind + ':' + ip;
   const entry = tokenBucket.entries.get(key) || { tokens: burst, at: now };
   entry.tokens = Math.min(burst, entry.tokens + ((now - entry.at) / 1000) * rate);
@@ -216,17 +217,17 @@ const rateLimited = () => respond(JSON.stringify({ error: 'rate limited' }), 429
 
 /**
  * A transaction lookup (ui/tx.js), cached for 30 days under the release, so a new tip refreshes
- * what counts as unspent. key is the validated query; only a lookup that misses the cache, and
- * so reaches mempool.space, spends a token.
+ * what counts as unspent. key is the validated query; only a lookup that misses the cache
+ * spends a token of kind.
  */
-async function cachedLookup(request, ctx, key, produce) {
+async function cachedLookup(request, ctx, key, produce, kind = 'tx') {
   const cache = globalThis.caches && caches.default;
   const cacheKey = new Request(new URL('/api/landscape/' + key + '&__release=' + RELEASE.version, request.url).toString(), { method: 'GET' });
   if (cache) {
     const hit = await cache.match(cacheKey);
     if (hit) return respond(hit.body, hit.status, Object.fromEntries(hit.headers));
   }
-  if (!tokenBucket(request.headers.get('CF-Connecting-IP') || 'unknown', 'tx')) return rateLimited();
+  if (!tokenBucket(request.headers.get('CF-Connecting-IP') || 'unknown', kind)) return rateLimited();
   const produced = await produce();
   const text = await produced.text();
   if (!produced.ok) return respond(text, produced.status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
@@ -463,8 +464,10 @@ export async function handle(request, env, ctx) {
     if (request.method !== 'GET') return json({ error: 'method not allowed' }, 405);
     const q = txQuery(url);
     if (q.error) return json({ error: q.error }, 400);
-    return cachedLookup(request, ctx, 'tx?txid=' + q.txid,
-      () => txResponse(env, q, { tip: RELEASE.dataset.tip, latest: 'the latest block of this landscape' }));
+    // spends=0 leaves the spenders out: the node answers alone, several times faster (Follow a coin back).
+    const partial = url.searchParams.get('spends') === '0';
+    return cachedLookup(request, ctx, 'tx?txid=' + q.txid + (partial ? '&spends=0' : ''),
+      () => txResponse(env, q, { tip: RELEASE.dataset.tip, latest: 'the latest block of this landscape', spends: !partial }), partial ? 'node' : 'tx');
   }
   if (path === '/api/landscape/txid') {
     if (request.method !== 'GET') return json({ error: 'method not allowed' }, 405);
