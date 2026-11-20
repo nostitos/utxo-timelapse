@@ -409,7 +409,8 @@ path-traversal protection, `Cross-Origin-Opener-Policy: same-origin` and
 `Cross-Origin-Embedder-Policy: require-corp`, immutable caching for `/dataset/` binaries and
 `no-cache` for app files.
 
-Cell inspection API (native explorer, port 12989):
+Cell inspection API. `serve.mjs` passes `/api/landscape/*` on to `https://bitcoinlandscape.com`, the
+app's default on a local run; `?explorer=http://127.0.0.1:12989` selects the native explorer:
 `GET http://127.0.0.1:12989/api/landscape/cell?block=B&col=C&row=R` (L0 column and
 graph row) returns the same JSON fields as `/api/pixel` for heights
 `[C*64, min(C*64+63, numBlocks-1)]` (scan stops at B) and the satoshi range of row R,

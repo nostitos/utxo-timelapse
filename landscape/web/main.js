@@ -5,7 +5,7 @@
 //   follow tip -> controls -> playback -> view.update -> replay.setTiles (when desired tiles change) -> view.render
 // ?webgl=1 forces WebGL2, ?data=URL picks the dataset (default: the current dataset named by
 // /dataset/index.json online, /dataset/ locally), ?explorer=URL the cell API (default: the
-// native explorer on 127.0.0.1:12989 locally, this site online), ?explorer2d=URL the 2D link,
+// page's own server), ?explorer2d=URL the 2D link,
 // ?startup=adaptive|high the first-visit quality (ui/online.js). The URL hash keeps b, cam,
 // mode, follow and the settings preset and overrides.
 

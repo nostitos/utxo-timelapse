@@ -22,7 +22,7 @@ The 2D explorer's transaction view (draft PR #80, branch `codex/trace-output`, n
 | The landscape Worker imports video Worker code | Yes: `lifecycleJson`, `CONFIG`, `serveObject`. PR #80's `bitcoin.js` in turn imports `blk2.js` and the landscape release from the landscape side. |
 | Tips differ | The history ends at `CONFIG.numBlocks - 1` (974,310). The landscape dataset ends at 974,621. `filmHeight` in PR #80 uses the film's tip, so the landscape needs its own tip passed in. |
 | Entry points | The inspector lists outputs by creation block and amount without a txid, so its Trace button needs `/api/txid` first, as in 2D. The block field is `type="number"` (`web/ui/timeline.js`) and must accept text to take a txid. `hash.js` has a fixed list of shell keys. |
-| Local runs | `serve.mjs` serves no API. The inspector asks the native explorer on port 12989, which answers `/api/tx` with 501 "Tracing is available in the online explorer" in PR #80. |
+| Local runs | `serve.mjs` passes `/api/landscape/*` on to the public site, so a local run looks transactions up as the online one does. A native explorer named by `?explorer=` answers `/api/tx` with 501 "Tracing is available in the online explorer", and the card then links to the online landscape. |
 | Transparent overlays | `flashes.js` and the now plane are transparent meshes in the scene pass with `noGBufferWrites` (`web/render/gbuffer.js`), render orders 11 and 10. The ribbons follow that pattern at order 12. |
 | Owners | `OwnerLedger` (`web/replay/owners.js`) holds exact records: creation block, spend block, amount, entity. An input or output can be matched on those three values. |
 

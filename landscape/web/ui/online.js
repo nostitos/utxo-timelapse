@@ -1,12 +1,12 @@
 // Online versus local behaviour of the app shell (docs/landscape.md "Online"). Pure module.
 //
 // Local runs (localhost, 127.0.0.1, [::1]) keep the development defaults: the dataset served by
-// landscape/tools/serve.mjs at /dataset/, the native explorer on 127.0.0.1:12989 for both the
-// cell API and the 2D link, and the schema's startup preset (High). Online, the site's Worker
-// names the current dataset in /dataset/index.json, answers the cell API itself, the 2D link
-// opens the public explorer, and a first visit starts at an adaptive quality.
+// landscape/tools/serve.mjs at /dataset/ and the schema's startup preset (High). Online, the
+// site's Worker names the current dataset in /dataset/index.json and a first visit starts at an
+// adaptive quality. Either way the page's own server answers the cell API (serve.mjs passes it
+// on to the public site) and the 2D link opens the public explorer; ?explorer=URL on a local run
+// asks a native explorer for both instead.
 
-export const LOCAL_EXPLORER = 'http://127.0.0.1:12989';
 export const PUBLIC_2D_EXPLORER = 'https://bitcointimelapse.com/explorer';
 export const ADAPTIVE_DISPLAY = Object.freeze({
   'display.autoScale': true, 'display.targetFps': 60, 'display.scaleMin': 0.5, 'display.scaleMax': 1,
@@ -25,8 +25,8 @@ export function isLocalHost(hostname) {
 export function resolveEndpoints({ hostname, origin, query = new URLSearchParams() }) {
   const local = isLocalHost(hostname);
   const trim = (s) => String(s).replace(/\/+$/, '');
-  const apiBase = trim(query.get('explorer') || (local ? LOCAL_EXPLORER : origin));
-  const linkBase = query.get('explorer2d') ? trim(query.get('explorer2d')) : local ? apiBase + '/' : PUBLIC_2D_EXPLORER;
+  const apiBase = trim(query.get('explorer') || origin);
+  const linkBase = query.get('explorer2d') ? trim(query.get('explorer2d')) : local && query.get('explorer') ? apiBase + '/' : PUBLIC_2D_EXPLORER;
   return { local, apiBase, link2d: (block, x, y) => linkBase + '?block=' + block + '&x=' + x + '&y=' + y };
 }
 

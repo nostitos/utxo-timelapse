@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   resolveEndpoints, resolveDataUrl, ownersUrl, startupMode, chooseStartup, deviceTraits, isLocalHost,
-  ADAPTIVE_DISPLAY, LOW_END_NOTICE, LOCAL_EXPLORER, isLowEnd,
+  ADAPTIVE_DISPLAY, LOW_END_NOTICE, isLowEnd,
 } from '../web/ui/online.js';
 import { SCHEMA, PRESETS } from '../web/settings.schema.js';
 import { createSettingsStore } from '../web/settings.js';
@@ -13,13 +13,16 @@ import { RELEASE } from '../../cloudflare/utxo-landscape-worker/src/release.js';
 
 const q = (s = '') => new URLSearchParams(s);
 
-test('local hosts keep the native explorer for the cell API and the 2D link', () => {
+test('local hosts ask their own server for the cell API, or a native explorer named by ?explorer', () => {
   for (const h of ['localhost', '127.0.0.1', '[::1]']) assert.equal(isLocalHost(h), true, h);
   assert.equal(isLocalHost('3d.bitcointimelapse.com'), false);
   const e = resolveEndpoints({ hostname: '127.0.0.1', origin: 'http://127.0.0.1:12990', query: q() });
   assert.equal(e.local, true);
-  assert.equal(e.apiBase, LOCAL_EXPLORER);
-  assert.equal(e.link2d(314000, 3000, 1525), 'http://127.0.0.1:12989/?block=314000&x=3000&y=1525');
+  assert.equal(e.apiBase, 'http://127.0.0.1:12990');
+  assert.equal(e.link2d(314000, 3000, 1525), 'https://bitcointimelapse.com/explorer?block=314000&x=3000&y=1525');
+  const n = resolveEndpoints({ hostname: '127.0.0.1', origin: 'http://127.0.0.1:12990', query: q('explorer=http://127.0.0.1:12989') });
+  assert.equal(n.apiBase, 'http://127.0.0.1:12989');
+  assert.equal(n.link2d(314000, 3000, 1525), 'http://127.0.0.1:12989/?block=314000&x=3000&y=1525');
 });
 
 test('online, the site answers the cell API and the 2D link opens the public explorer', () => {

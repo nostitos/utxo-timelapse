@@ -242,7 +242,7 @@ export function createInspector({
     }
     if (res?.blockRange && !res.error) html += metric('Value still unspent', btcText(res.liveUnspentSat)) + metric('Total created value', btcText(res.liveSat + res.pastSat)) + metric('Median lifespan', res.medianStay >= 0 ? fmtInt(res.medianStay) + ' blocks \u00b7 approximately ' + fmtAge(res.medianStay) : '\u2014');
     html += '</dl>';
-    if (res?.offline && local) html += '<p class="in-muted">Start the native explorer from the repository root:</p><pre>./build_local/buv -ns -tc=utxo_explorer \\\n  -cfg=configs/buv_explorer.json -port=12989</pre>';
+    if (res?.offline && local && explorerBase !== location.origin) html += '<p class="in-muted">Start the native explorer from the repository root:</p><pre>./build_local/buv -ns -tc=utxo_explorer \\\n  -cfg=configs/buv_explorer.json -port=12989</pre>';
     return disclosure('details', 'Rendering &amp; data details', html, 'in-sec');
   }
 
