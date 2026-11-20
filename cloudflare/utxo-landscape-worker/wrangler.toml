@@ -37,8 +37,9 @@ MEMPOOL_API = "http://127.0.0.1:3006/api"
 TX_LOOKUP_LIMIT = "40"
 # Lookups per second and burst, per IP: "rate,burst". TX_RATE covers whole lookups, each of which
 # asks mempool.space once; it publishes no limit and answers 429 past it, so this one protects a
-# third party. NODE_RATE covers lookups the node answers alone, CELL_RATE the inspector's cells.
-TX_RATE = "4,200"
+# third party: on 2026-11-20, after a few hundred requests in bursts, it held one answer for 20 s
+# and failed the next. NODE_RATE covers lookups the node answers alone, CELL_RATE the inspector's cells.
+TX_RATE = "2,100"
 NODE_RATE = "30,600"
 CELL_RATE = "30,300"
 
