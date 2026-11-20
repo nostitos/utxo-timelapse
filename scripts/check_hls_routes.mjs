@@ -188,9 +188,9 @@ console.log('PASS: API cache keys hold only the validated parameters');
 
   // A node's Mempool (env.MEMPOOL_API) answers first, through its VPC binding. It cannot name
   // spenders, so outspends come from mempool.space; a height that does not name the block its
-  // hash does (the node's tip lags) sends the whole answer to mempool.space; the node dates few
-  // inputs itself by their merkle proofs; a transaction with many inputs is mempool.space's; and
-  // a node that fails is skipped.
+  // hash does (the node's tip lags) sends the whole answer to mempool.space; the node looks up
+  // the inputs the change log cannot date, by merkle proof; a transaction with many inputs is
+  // mempool.space's; and a node that fails is skipped.
   {
     const NODE = 'https://node.test/api';
     const [R, W, D] = [0x51, 0x52, 0x53].map(id);
@@ -229,10 +229,9 @@ console.log('PASS: API cache keys hold only the validated parameters');
     } };
     Object.assign(env, { MEMPOOL_API: NODE + '/', MEMPOOL_NODE: binding });
     const good = (await tx('txid=' + R)).body;
-    assert.deepEqual(calls.sort(), ['node /block-height/2000', ...[A, P, Q].map((t) => 'node /tx/' + t + '/merkle-proof'),
-      'node /tx/' + R, 'node /tx/' + R + '/hex', 'public /tx/' + R + '/outspends'].sort(),
-    'the node answers through its binding, except for outspends');
-    assert.deepEqual(good.inputs.map((i) => i.height), [1000, 1500, 1700], 'the node dates few inputs by their merkle proofs, never by their status');
+    assert.deepEqual(calls.sort(), ['node /block-height/2000', 'node /tx/' + P + '/merkle-proof', 'node /tx/' + R, 'node /tx/' + R + '/hex', 'public /tx/' + R + '/outspends'].sort(),
+      'the node answers through its binding, except for outspends');
+    assert.deepEqual(good.inputs.map((i) => i.height), [1000, 1500, 1700], 'the change log dates the inputs; the node looks up the ambiguous one by merkle proof, never by status');
     assert.deepEqual(good.outputs[1].spent, { txid: T, height: 2100 }, 'spenders come from mempool.space');
     calls.length = 0;
     const lagging = (await tx('txid=' + W)).body;

@@ -22,9 +22,6 @@ const TXID = /^[0-9a-f]{64}$/;
 // failed on): the rest are the node's alone, and stay undated when it fails.
 const LOOKUP_LIMIT = 24;
 const LOOKUP_POOL = 6;
-// Up to this many transactions, the node dates the inputs itself: two short answers each, where
-// the change log costs a 4 MB chunk.
-const NODE_DATED = 6;
 // A transaction with more inputs than this is not asked of the node's Mempool, which fetches every
 // prevout one by one (5 to 20 s for hundreds) and is slow to answer anything else meanwhile:
 // mempool.space answers it, and the node stays free to date its inputs.
@@ -152,7 +149,8 @@ async function upstream(env, path, kind = "bytes", { publicOnly = false, nodeOnl
       if (!response.ok) throw new Error(`upstream ${response.status}`);
       return kind === "json" ? await response.json() : kind === "text" ? (await response.text()).trim() : await response.arrayBuffer();
     } catch (error) {
-      if (s.node && !/^upstream 4\d\d$/.test(error?.message) && !(slow && error?.name === "TimeoutError")) nodeDownUntil = Date.now() + NODE_RETRY_MS;
+      // Not the node's fault: a 4xx, a slow answer that was allowed to be, or a Worker out of subrequests.
+      if (s.node && !/^upstream 4\d\d$|subrequests/.test(error?.message) && !(slow && error?.name === "TimeoutError")) nodeDownUntil = Date.now() + NODE_RETRY_MS;
       failure = error;
     }
   }
@@ -241,7 +239,7 @@ function changeChunks(env) {
 // The chunks read last, indexed: sha256 -> {bytes, offsets}. Follow a coin walks neighbouring
 // blocks, so the next lookup usually needs the same 4 MB chunk again.
 const chunkMemo = new Map();
-const CHUNK_MEMO = 2;
+const CHUNK_MEMO = 8;
 
 // amount -> the creation block of each output of that amount spent in block 'height'.
 async function spendsIn(env, height) {
@@ -295,26 +293,7 @@ async function nodeHeight(env, id) {
   return Number.isInteger(proof?.block_height) ? proof.block_height : null;
 }
 
-/** The node's creation block of each of a few transactions (txid -> height), or null when there are more than NODE_DATED or one is missing. */
-async function nodeHeights(env, ids) {
-  if (ids.length > NODE_DATED) return null;
-  const heights = new Map(await Promise.all(ids.map(async (id) => [id, await nodeHeight(env, id)])));
-  return [...heights.values()].every((h) => h !== null) ? heights : null;
-}
-
-// early: nodeHeights already under way for these inputs' transactions (txResponse starts it from
-// the raw transaction, beside the transaction's own lookup), or null.
-async function dateInputs(env, height, inputs, tip, publicOnly, early = null) {
-  const byTx = new Map();
-  for (const input of inputs) if (input.satoshi > 0) byTx.set(input.txid, [...(byTx.get(input.txid) ?? []), input]);
-  if (env?.MEMPOOL_API && !publicOnly && Date.now() >= nodeDownUntil) {
-    const heights = await (early ?? nodeHeights(env, [...byTx.keys()])).catch(() => null);
-    // One the node does not know sends the dating to the change log.
-    if (heights && [...byTx.keys()].every((id) => heights.get(id) <= height)) {
-      for (const [id, list] of byTx) for (const input of list) input.height = heights.get(id);
-      return;
-    }
-  }
+async function dateInputs(env, height, inputs, tip, publicOnly) {
   const spends = await spendsIn(env, height);
   const mine = new Map(); // amount -> this transaction's inputs of that amount
   for (const input of inputs) if (input.satoshi > 0) mine.set(input.satoshi, [...(mine.get(input.satoshi) ?? []), input]);
@@ -337,7 +316,9 @@ async function dateInputs(env, height, inputs, tip, publicOnly, early = null) {
       let created = hasNode ? await nodeHeight(env, id) : null;
       if (created === null) {
         if (publicLeft-- <= 0) continue;
-        created = filmHeight(await upstream(env, `/tx/${id}/status`, "json", { publicOnly: true }), tip);
+        // With a node, one that mempool.space cannot answer either (or a Worker out of subrequests) stays undated.
+        const status = upstream(env, `/tx/${id}/status`, "json", { publicOnly: true });
+        created = filmHeight(await (hasNode ? status.catch(() => null) : status), tip);
       }
       // The change log lists every creation block of an amount spent in this block, so a height
       // outside that list is wrong (a node's lagging tip) and the input stays undated.
@@ -365,14 +346,11 @@ export async function txResponse(env, { txid }, { tip = CONFIG.numBlocks - 1, la
       return promise;
     };
     const spendsAsked = withSpends ? lap("spends", upstream(env, `/tx/${txid}/outspends`, "json")) : null;
-    // The node's raw transaction comes first, one short answer: it names the transactions that
-    // made the inputs, so their dating starts beside the transaction's own lookup, and it says
-    // when there are too many inputs for the node's Mempool.
+    // The node's raw transaction comes first, one short answer: it says when there are too many
+    // inputs for the node's Mempool.
     const viaNode = !!env?.MEMPOOL_API && !publicOnly && Date.now() >= nodeDownUntil;
     const spent = viaNode ? await lap("raw", upstream(env, `/tx/${txid}/hex`, "text", { nodeOnly: true }).then(spentTxids)).catch(() => null) : null;
     const big = !!spent && spent.length > NODE_TX_INPUTS;
-    const early = spent && !big && !spent.some((id) => /^0+$/.test(id)) ? nodeHeights(env, [...new Set(spent)]) : null;
-    early?.catch(() => {}); // awaited in dateInputs
     const tx = await lap("tx", txUpstream(env, txid, publicOnly || big));
     const height = filmHeight(tx.status, tip);
     // A node's height must name the block its hash does; otherwise its tip lags and mempool.space answers.
@@ -382,7 +360,7 @@ export async function txResponse(env, { txid }, { tip = CONFIG.numBlocks - 1, la
     const coinbase = tx.vin[0]?.is_coinbase === true;
     const inputs = coinbase ? [] : tx.vin.map((vin) => ({ txid: vin.txid, vout: vin.vout, satoshi: vin.prevout?.value, height: null }));
     const inputsOk = !inputs.some((input) => !Number.isSafeInteger(input.satoshi) || input.satoshi < 0 || !TXID.test(input.txid) || !Number.isInteger(input.vout));
-    const dated = lap("date", height !== null && !coinbase && inputsOk ? dateInputs(env, height, inputs, tip, publicOnly, early) : Promise.resolve());
+    const dated = lap("date", height !== null && !coinbase && inputsOk ? dateInputs(env, height, inputs, tip, publicOnly) : Promise.resolve());
     if (!(await heightHolds)) return txResponse(env, { txid }, { tip, latest, publicOnly: true, spends: withSpends });
     if (height === null) {
       return json({ error: tx.status?.confirmed
