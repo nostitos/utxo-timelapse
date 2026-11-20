@@ -182,8 +182,9 @@ console.log('PASS: API cache keys hold only the validated parameters');
 
   // A node's Mempool (env.MEMPOOL_API) answers first, through its VPC binding. It cannot name
   // spenders, so outspends come from mempool.space; a height that does not name the block its
-  // hash does (the node's tip lags) sends the whole answer to mempool.space; a looked-up height
-  // outside the change log's list leaves that input undated; and a node that fails is skipped.
+  // hash does (the node's tip lags) sends the whole answer to mempool.space; the node dates few
+  // inputs itself, each by the height of the block its status names by hash, so a lagging height
+  // is not used; and a node that fails is skipped.
   {
     const NODE = 'https://node.test/api';
     const [R, W, D] = [0x51, 0x52, 0x53].map(id);
@@ -198,8 +199,13 @@ console.log('PASS: API cache keys hold only the validated parameters');
       ['/tx/' + W]: { ...upstreamJson['/tx/' + W], status: { ...withHash(1999), block_hash: 'h2000' } },
       ['/block-height/2000']: 'h2000',
       ['/block-height/1999']: 'h1999',
-      ['/tx/' + P + '/status']: confirmed(1499),
     };
+    // The inputs' statuses: P's height lags by one, its hash names the right block.
+    const blockHash = (h) => id(0xb10c0000 + h);
+    for (const [t, said, real] of [[A, 1000, 1000], [P, 1499, 1500], [Q, 1700, 1700]]) {
+      node['/tx/' + t + '/status'] = { confirmed: true, block_height: said, block_hash: blockHash(real) };
+      node['/block/' + blockHash(real)] = { id: blockHash(real), height: real };
+    }
     const calls = [];
     globalThis.fetch = async (url) => {
       const u = String(url);
@@ -217,9 +223,11 @@ console.log('PASS: API cache keys hold only the validated parameters');
     } };
     Object.assign(env, { MEMPOOL_API: NODE + '/', MEMPOOL_NODE: binding });
     const good = (await tx('txid=' + R)).body;
-    assert.deepEqual(calls.sort(), ['node /block-height/2000', 'node /tx/' + P + '/status', 'node /tx/' + R, 'public /tx/' + R + '/outspends'],
-      'the node answers through its binding, except for outspends');
-    assert.deepEqual(good.inputs.map((i) => i.height), [1000, null, 1700], 'a looked-up height the change log does not list leaves the input undated');
+    assert.deepEqual(calls.sort(), ['node /block-height/2000', ...[1000, 1500, 1700].map((h) => 'node /block/' + blockHash(h)),
+      ...[A, P, Q].map((t) => 'node /tx/' + t + '/status'), 'node /tx/' + R, 'public /tx/' + R + '/outspends'].sort(),
+    'the node answers through its binding, except for outspends');
+    assert.deepEqual(good.inputs.map((i) => i.height), [1000, 1500, 1700], 'each input has the height of the block its status names by hash');
+    assert.ok(!('shared' in good.inputs[0]));
     assert.deepEqual(good.outputs[1].spent, { txid: T, height: 2100 }, 'spenders come from mempool.space');
     calls.length = 0;
     const lagging = (await tx('txid=' + W)).body;
