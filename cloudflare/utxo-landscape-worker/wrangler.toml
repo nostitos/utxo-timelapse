@@ -31,8 +31,10 @@ bucket_name = "utxo-video"
 MEMPOOL_API = "http://127.0.0.1:3006/api"
 # Limits sized for the lab (AGENTS.md, Purpose and priorities); raise them here and deploy.
 # Inputs the change log cannot date that are looked up, per transaction (code default 24). Each is
-# one subrequest of the 1,000 a paid Worker has per invocation.
-TX_LOOKUP_LIMIT = "900"
+# one subrequest, and this account's plan allows 50 per invocation (a lookup that needed 85
+# failed with "Too many subrequests"): 40 leaves room for the lookup's own. On the paid Workers
+# plan (1,000 per invocation) set 900; inputs past the limit, or past the plan's, have no age.
+TX_LOOKUP_LIMIT = "40"
 # Lookups per second and burst, per IP: "rate,burst". TX_RATE covers whole lookups, each of which
 # asks mempool.space once; it publishes no limit and answers 429 past it, so this one protects a
 # third party. NODE_RATE covers lookups the node answers alone, CELL_RATE the inspector's cells.
