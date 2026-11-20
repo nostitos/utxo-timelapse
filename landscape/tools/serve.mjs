@@ -94,6 +94,10 @@ export function parseRange(header, size) {
   return { start, end };
 }
 
+// /api/landscape/ (a cell's history, transaction lookups) is answered by the public site, so a
+// local run needs no native explorer; ?explorer=URL in the page's address still picks one.
+const ONLINE = 'https://bitcoinlandscape.com';
+
 function within(root, p) {
   return p === root || p.startsWith(root.endsWith(sep) ? root : root + sep);
 }
@@ -140,6 +144,15 @@ export function createLandscapeServer({ web = DEFAULT_WEB, data = null, owners =
     if (pathname.split('/').some((seg) => seg === '..')) return send(403, 'forbidden');
     if (pathname === '/explorer/' || pathname === '/explorer.html') {
       return send(302, 'moved', { Location: '/explorer' + new URL(req.url, 'http://localhost').search });
+    }
+    if (pathname.startsWith('/api/landscape/')) {
+      const url = new URL(req.url, 'http://localhost');
+      try {
+        const r = await fetch(ONLINE + url.pathname + url.search, { signal: AbortSignal.timeout(30000) });
+        return send(r.status, await r.text(), { 'Content-Type': r.headers.get('content-type') || MIME['.json'] });
+      } catch {
+        return send(502, JSON.stringify({ error: 'bitcoinlandscape.com did not answer' }), { 'Content-Type': MIME['.json'] });
+      }
     }
 
     let root = webRoot;

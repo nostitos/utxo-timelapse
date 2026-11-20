@@ -153,6 +153,30 @@ test('path traversal and symlink escapes are refused', async () => {
   assert.equal((await raw('/a%00b')).status, 400);
 });
 
+test('/api/landscape/ is answered by the public site', async () => {
+  const real = globalThis.fetch;
+  const asked = [];
+  globalThis.fetch = async (url) => {
+    asked.push(String(url));
+    if (String(url).includes('col=9')) throw new TypeError('offline');
+    return new Response('{"count":143}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  try {
+    const r = await raw('/api/landscape/cell?block=880383&col=13135&row=1191');
+    assert.equal(r.status, 200);
+    assert.equal(r.body.toString(), '{"count":143}');
+    assert.equal(r.headers['content-type'], 'application/json');
+    assert.equal(r.headers['cross-origin-resource-policy'], 'same-origin');
+    assert.deepEqual(asked, ['https://bitcoinlandscape.com/api/landscape/cell?block=880383&col=13135&row=1191']);
+    const down = await raw('/api/landscape/cell?col=9');
+    assert.equal(down.status, 502);
+    assert.match(JSON.parse(down.body.toString()).error, /did not answer/);
+    assert.equal((await raw('/api/other')).status, 404, 'only the landscape API is passed on');
+  } finally {
+    globalThis.fetch = real;
+  }
+});
+
 test('server without --data returns 404 under /dataset/', async () => {
   const s = createLandscapeServer({ web });
   await new Promise((r) => s.listen(0, '127.0.0.1', r));
