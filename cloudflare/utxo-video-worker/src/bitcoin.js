@@ -245,15 +245,17 @@ async function dateInputs(env, height, inputs, tip, publicOnly) {
   const byTx = new Map();
   for (const input of inputs) if (input.satoshi > 0) byTx.set(input.txid, [...(byTx.get(input.txid) ?? []), input]);
   if (env?.MEMPOOL_API && !publicOnly && Date.now() >= nodeDownUntil && byTx.size <= NODE_DATED) {
-    // A status names its block's hash and that block names its own height, so a lagging tip
-    // cannot shift it.
-    await Promise.all([...byTx].map(async ([id, list]) => {
+    // A status's height holds when the node's block at that height has the status's hash (its
+    // tip lags for a moment after each block). One that does not sends the dating to the change log.
+    const held = await Promise.all([...byTx].map(async ([id, list]) => {
       const status = await upstream(env, `/tx/${id}/status`, "json");
-      const block = status?.confirmed && TXID.test(status.block_hash) ? await upstream(env, `/block/${status.block_hash}`, "json") : null;
-      const created = Number.isInteger(block?.height) && block.height <= height ? block.height : null;
+      const created = filmHeight(status, height);
+      if (created === null || (await upstream(env, `/block-height/${created}`, "text")) !== status.block_hash) return false;
       for (const input of list) input.height = created;
+      return true;
     }));
-    return;
+    if (held.every(Boolean)) return;
+    for (const input of inputs) input.height = null;
   }
   const spends = await spendsIn(env, height);
   const mine = new Map(); // amount -> this transaction's inputs of that amount
