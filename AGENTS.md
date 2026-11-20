@@ -2,6 +2,10 @@
 
 The root is the Git repository. The C++ executable remains named `buv`; the public project is **UTXO Timelapse**. Use [GLOSSARY.md](GLOSSARY.md) for canonical terms and [docs/README.md](docs/README.md) for build/operations commands.
 
+## Purpose and priorities
+
+This project is a research lab for making educational Bitcoin videos. It is no longer run as a public-facing service. Build every feature for the lab: take the highest throughput the machine, the node and the data can give, and prefer a setting or a constant that is easy to raise over a cap, rate limit or small default sized for anonymous visitors. When a limit exists only to protect a third party (mempool.space) or a weak device, say so beside it and keep it adjustable. The correctness and data rules below still hold. The public sites stay online: do not break them, and do not size new work for them.
+
 ## Architecture
 
 Bitcoin Core REST → `utxo_to_change` → `changes.blk1`, then two paths:
