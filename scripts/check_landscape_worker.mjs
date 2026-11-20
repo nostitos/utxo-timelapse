@@ -406,6 +406,11 @@ await check('transaction API: validation, this dataset\'s tip, cache and rate li
     assert.deepEqual(await res.json(), { txid: T('a'), height: tip, coinbase: true, inputs: [], outputs: [
       { vout: 0, satoshi: 625000000, spent: { txid: T('b'), height: tip } }, { vout: 1, satoshi: 0, spent: null }] },
     'a transaction and a spend in the dataset\'s last block are in reach');
+    // Without the spenders: the outputs carry no 'spent', the answer says partial, and outspends are not asked.
+    const before = calls.length;
+    const part = await req('/api/landscape/tx?txid=' + T('a') + '&spends=0', ip);
+    assert.deepEqual(await part.json(), { txid: T('a'), height: tip, coinbase: true, inputs: [], outputs: [{ vout: 0, satoshi: 625000000 }, { vout: 1, satoshi: 0 }], partial: true });
+    assert.ok(!calls.slice(before).some((c) => c.endsWith('/outspends')), 'spends=0 never asks for the spenders');
     const asked = calls.length;
     for (let i = 0; i < 6; i++) assert.equal((await req('/api/landscape/tx?txid=' + T('a') + '&x=' + i, ip)).status, 200, 'cached ' + i);
     assert.equal(calls.length, asked, 'cached answers never reach mempool.space and spend no token');

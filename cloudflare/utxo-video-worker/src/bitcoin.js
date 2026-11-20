@@ -12,6 +12,9 @@ let nodeDownUntil = 0;
 const TXID = /^[0-9a-f]{64}$/;
 // Inputs the change log cannot date that are looked up upstream, at most this many transactions per answer.
 const LOOKUP_LIMIT = 24;
+// Up to this many transactions, the node dates the inputs itself: two short answers each, where
+// the change log costs a 4 MB chunk.
+const NODE_DATED = 6;
 
 function json(value, status = 200) {
   return new Response(JSON.stringify(value), {
@@ -239,6 +242,19 @@ async function spendsIn(env, height) {
 // asks mempool.space for the transaction that created it, largest amounts first, up to
 // LOOKUP_LIMIT transactions; the rest keep height null and are listed without a line.
 async function dateInputs(env, height, inputs, tip, publicOnly) {
+  const byTx = new Map();
+  for (const input of inputs) if (input.satoshi > 0) byTx.set(input.txid, [...(byTx.get(input.txid) ?? []), input]);
+  if (env?.MEMPOOL_API && !publicOnly && Date.now() >= nodeDownUntil && byTx.size <= NODE_DATED) {
+    // A status names its block's hash and that block names its own height, so a lagging tip
+    // cannot shift it.
+    await Promise.all([...byTx].map(async ([id, list]) => {
+      const status = await upstream(env, `/tx/${id}/status`, "json");
+      const block = status?.confirmed && TXID.test(status.block_hash) ? await upstream(env, `/block/${status.block_hash}`, "json") : null;
+      const created = Number.isInteger(block?.height) && block.height <= height ? block.height : null;
+      for (const input of list) input.height = created;
+    }));
+    return;
+  }
   const spends = await spendsIn(env, height);
   const mine = new Map(); // amount -> this transaction's inputs of that amount
   for (const input of inputs) if (input.satoshi > 0) mine.set(input.satoshi, [...(mine.get(input.satoshi) ?? []), input]);
@@ -264,8 +280,10 @@ async function dateInputs(env, height, inputs, tip, publicOnly) {
 
 // One whole transaction: every input with the block that created it, every output with the
 // transaction that spent it, up to tip (the film's latest block unless given; latest names it).
-// publicOnly asks mempool.space alone (after a node's height failed its check).
-export async function txResponse(env, { txid }, { tip = CONFIG.numBlocks - 1, latest = "the film's latest block", publicOnly = false } = {}) {
+// publicOnly asks mempool.space alone (after a node's height failed its check). spends: false
+// leaves the spenders out (the one answer only mempool.space has, and the slowest): the outputs
+// then carry no 'spent' and the answer says partial.
+export async function txResponse(env, { txid }, { tip = CONFIG.numBlocks - 1, latest = "the film's latest block", publicOnly = false, spends: withSpends = true } = {}) {
   try {
     // Everything that can run at once does: the spenders (mempool.space, the slowest answer) are
     // asked first and awaited last, and the node's height check runs beside the dating of the inputs.
@@ -275,7 +293,7 @@ export async function txResponse(env, { txid }, { tip = CONFIG.numBlocks - 1, la
       promise.then(() => { took[name] = Date.now() - started; }, () => {}); // a failure is thrown where it is awaited
       return promise;
     };
-    const spendsAsked = lap("spends", upstream(env, `/tx/${txid}/outspends`, "json"));
+    const spendsAsked = withSpends ? lap("spends", upstream(env, `/tx/${txid}/outspends`, "json")) : null;
     const tx = await lap("tx", upstream(env, `/tx/${txid}`, "json", { publicOnly }));
     const height = filmHeight(tx.status, tip);
     // A node's height must name the block its hash does; otherwise its tip lags and mempool.space answers.
@@ -286,7 +304,7 @@ export async function txResponse(env, { txid }, { tip = CONFIG.numBlocks - 1, la
     const inputs = coinbase ? [] : tx.vin.map((vin) => ({ txid: vin.txid, vout: vin.vout, satoshi: vin.prevout?.value, height: null }));
     const inputsOk = !inputs.some((input) => !Number.isSafeInteger(input.satoshi) || input.satoshi < 0 || !TXID.test(input.txid) || !Number.isInteger(input.vout));
     const dated = lap("date", height !== null && !coinbase && inputsOk ? dateInputs(env, height, inputs, tip, publicOnly) : Promise.resolve());
-    if (!(await heightHolds)) return txResponse(env, { txid }, { tip, latest, publicOnly: true });
+    if (!(await heightHolds)) return txResponse(env, { txid }, { tip, latest, publicOnly: true, spends: withSpends });
     if (height === null) {
       return json({ error: tx.status?.confirmed
         ? "This transaction is in block " + Number(tx.status.block_height).toLocaleString("en-US") + ", after " + latest
@@ -294,6 +312,7 @@ export async function txResponse(env, { txid }, { tip = CONFIG.numBlocks - 1, la
     }
     const spends = await spendsAsked;
     const outputs = tx.vout.map((out, vout) => {
+      if (!spends) return { vout, satoshi: out.value };
       const spent = spends[vout]?.spent ? filmHeight(spends[vout].status, tip) : null;
       return { vout, satoshi: out.value, spent: spent === null ? null : { txid: spends[vout].txid, height: spent } };
     });
@@ -305,7 +324,7 @@ export async function txResponse(env, { txid }, { tip = CONFIG.numBlocks - 1, la
     await dated;
     // Where a slow lookup spent its time (ms from the start to each answer), for wrangler tail.
     console.log("tx lookup " + txid.slice(0, 8) + " " + JSON.stringify(took));
-    return json({ txid, height, coinbase, inputs, outputs });
+    return json({ txid, height, coinbase, inputs, outputs, ...(spends ? {} : { partial: true }) });
   } catch (error) {
     if (error?.message === "upstream 404") return json({ error: "No such transaction" }, 404);
     console.warn("transaction lookup failed", error?.message || error);
