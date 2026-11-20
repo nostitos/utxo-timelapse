@@ -62,15 +62,16 @@ function skip(view, state, amount) {
   if (state.offset > view.byteLength) throw new Error("truncated block");
 }
 
-/** The txids of the outputs a raw transaction (hex) spends, in input order. */
-function spentTxids(hex) {
+/** The outputs a raw transaction (hex) spends, in input order: [{txid, vout}]. */
+export function spentOutpoints(hex) {
   const bytes = Uint8Array.from(String(hex).match(/[0-9a-f]{2}/g) ?? [], (b) => parseInt(b, 16));
   const view = new DataView(bytes.buffer);
   const state = { offset: bytes[4] === 0 && bytes[5] !== 0 ? 6 : 4 }; // past the version, and segwit's marker and flag
   const ids = [];
   for (let n = varInt(view, state); n > 0; n--) {
     skip(view, state, 36);
-    ids.push(Array.from(bytes.subarray(state.offset - 36, state.offset - 4), (b) => b.toString(16).padStart(2, "0")).reverse().join(""));
+    ids.push({ txid: Array.from(bytes.subarray(state.offset - 36, state.offset - 4), (b) => b.toString(16).padStart(2, "0")).reverse().join(""),
+      vout: view.getUint32(state.offset - 4, true) });
     skip(view, state, varInt(view, state) + 4); // script, sequence
   }
   return ids;
@@ -128,8 +129,10 @@ function matchingOutputs(raw, targetSatoshi) {
 // checks the heights it gets.
 function sources(env, path, publicOnly, nodeOnly) {
   const node = env?.MEMPOOL_API;
-  if (!node || publicOnly || path.endsWith("/outspends") || Date.now() < nodeDownUntil) return nodeOnly ? [] : [{ base: PUBLIC_API }];
-  return [{ base: String(node).replace(/\/+$/, ""), node: true }, ...(nodeOnly ? [] : [{ base: PUBLIC_API }])];
+  // env.NO_PUBLIC (a local run on its own node): mempool.space is never asked, so it never learns which transactions are looked at.
+  const fallback = nodeOnly || env?.NO_PUBLIC ? [] : [{ base: PUBLIC_API }];
+  if (!node || publicOnly || path.endsWith("/outspends") || Date.now() < nodeDownUntil) return fallback;
+  return [{ base: String(node).replace(/\/+$/, ""), node: true }, ...fallback];
 }
 
 /**
@@ -144,13 +147,14 @@ async function upstream(env, path, kind = "bytes", { publicOnly = false, nodeOnl
       const get = s.node && env.MEMPOOL_NODE ? (u, init) => env.MEMPOOL_NODE.fetch(u, init) : fetch;
       const response = await get(s.base + path, {
         headers: { Accept: kind === "json" ? "application/json" : kind === "text" ? "text/plain" : "application/octet-stream" },
-        signal: AbortSignal.timeout(s.node ? NODE_TIMEOUT_MS : 20000),
+        // With no one else to ask (env.NO_PUBLIC), the node gets the time it needs and is never skipped.
+        signal: AbortSignal.timeout(s.node && !env?.NO_PUBLIC ? NODE_TIMEOUT_MS : 20000),
       });
       if (!response.ok) throw new Error(`upstream ${response.status}`);
       return kind === "json" ? await response.json() : kind === "text" ? (await response.text()).trim() : await response.arrayBuffer();
     } catch (error) {
       // Not the node's fault: a 4xx, a slow answer that was allowed to be, or a Worker out of subrequests.
-      if (s.node && !/^upstream 4\d\d$|subrequests/.test(error?.message) && !(slow && error?.name === "TimeoutError")) nodeDownUntil = Date.now() + NODE_RETRY_MS;
+      if (s.node && !env?.NO_PUBLIC && !/^upstream 4\d\d$|subrequests/.test(error?.message) && !(slow && error?.name === "TimeoutError")) nodeDownUntil = Date.now() + NODE_RETRY_MS;
       failure = error;
     }
   }
@@ -166,7 +170,8 @@ function txUpstream(env, txid, publicOnly) {
   first.then(() => { settled = true; }, () => { settled = true; });
   const late = new Promise((ok) => setTimeout(ok, NODE_PATIENCE_MS))
     .then(() => (settled ? first : upstream(env, path, "json", { publicOnly: true })));
-  return Promise.any([first, late]);
+  // When both fail, the node's own failure is the answer (a 404 is "No such transaction").
+  return Promise.any([first, late]).catch(() => first);
 }
 
 // tip: the latest block the caller shows, the film's unless given (the landscape passes its dataset's).
@@ -242,7 +247,7 @@ const chunkMemo = new Map();
 const CHUNK_MEMO = 8;
 
 // amount -> the creation block of each output of that amount spent in block 'height'.
-async function spendsIn(env, height) {
+export async function spendsIn(env, height) {
   if (height > LANDSCAPE.dataset.tip) return new Map();
   const chunks = await changeChunks(env);
   let lo = 0;
@@ -345,22 +350,37 @@ export async function txResponse(env, { txid }, { tip = CONFIG.numBlocks - 1, la
       promise.then(() => { took[name] = Date.now() - started; }, () => {}); // a failure is thrown where it is awaited
       return promise;
     };
-    const spendsAsked = withSpends ? lap("spends", upstream(env, `/tx/${txid}/outspends`, "json")) : null;
+    // env.OUTSPENDS, env.BIG_TX and env.HEIGHT_OF (landscape/tools/node-direct.mjs, a local run
+    // with the node's Bitcoin Core and Electrum server) answer what the node's Mempool cannot;
+    // mempool.space is then asked only when they fail.
+    const publicSpends = () => upstream(env, `/tx/${txid}/outspends`, "json");
+    const spendsAsked = !withSpends ? null : lap("spends", env?.OUTSPENDS
+      ? env.OUTSPENDS(txid).catch((error) => { console.warn("the node could not name the spenders: " + (error?.message || error)); return publicSpends(); })
+      : publicSpends());
     // The node's raw transaction comes first, one short answer: it says when there are too many
     // inputs for the node's Mempool.
     const viaNode = !!env?.MEMPOOL_API && !publicOnly && Date.now() >= nodeDownUntil;
-    const spent = viaNode ? await lap("raw", upstream(env, `/tx/${txid}/hex`, "text", { nodeOnly: true }).then(spentTxids)).catch(() => null) : null;
+    const spent = viaNode ? await lap("raw", upstream(env, `/tx/${txid}/hex`, "text", { nodeOnly: true }).then(spentOutpoints)).catch(() => null) : null;
     const big = !!spent && spent.length > NODE_TX_INPUTS;
-    const tx = await lap("tx", txUpstream(env, txid, publicOnly || big));
+    const tx = await lap("tx", big && env?.BIG_TX
+      ? env.BIG_TX(txid).catch((error) => { console.warn("the node could not answer a large transaction: " + (error?.message || error)); return txUpstream(env, txid, true); })
+      : txUpstream(env, txid, publicOnly || big));
+    // env.HEIGHT_OF (a local run: Bitcoin Core's header for the block's hash) gives the height
+    // itself, so a Mempool whose tip lags is corrected and needs no check.
+    const sure = env?.HEIGHT_OF && tx.status?.confirmed ? await env.HEIGHT_OF(tx.status.block_hash).catch(() => null) : null;
+    if (Number.isInteger(sure)) tx.status.block_height = sure;
     const height = filmHeight(tx.status, tip);
     // A node's height must name the block its hash does; otherwise its tip lags and mempool.space answers.
-    const heightHolds = lap("check", env?.MEMPOOL_API && !publicOnly && tx.status?.confirmed
+    const heightHolds = lap("check", env?.MEMPOOL_API && !publicOnly && tx.status?.confirmed && !Number.isInteger(sure)
       ? upstream(env, `/block-height/${tx.status.block_height}`, "text").then((hash) => hash === tx.status.block_hash)
       : Promise.resolve(true));
     const coinbase = tx.vin[0]?.is_coinbase === true;
-    const inputs = coinbase ? [] : tx.vin.map((vin) => ({ txid: vin.txid, vout: vin.vout, satoshi: vin.prevout?.value, height: null }));
+    const inputs = coinbase ? [] : tx.vin.map((vin) => ({ txid: vin.txid, vout: vin.vout, satoshi: vin.prevout?.value,
+      // env.BIG_TX's answer names each input's creation block (Bitcoin Core's undo data).
+      height: Number.isInteger(vin.prevout?.height) && vin.prevout.height <= (height ?? -1) ? vin.prevout.height : null }));
     const inputsOk = !inputs.some((input) => !Number.isSafeInteger(input.satoshi) || input.satoshi < 0 || !TXID.test(input.txid) || !Number.isInteger(input.vout));
-    const dated = lap("date", height !== null && !coinbase && inputsOk ? dateInputs(env, height, inputs, tip, publicOnly) : Promise.resolve());
+    const dated = lap("date", height !== null && !coinbase && inputsOk && inputs.some((input) => input.satoshi > 0 && input.height === null)
+      ? dateInputs(env, height, inputs, tip, publicOnly) : Promise.resolve());
     if (!(await heightHolds)) return txResponse(env, { txid }, { tip, latest, publicOnly: true, spends: withSpends });
     if (height === null) {
       return json({ error: tx.status?.confirmed
