@@ -194,11 +194,12 @@ export async function cellResponse({ block, col, row }, env) {
   return lifecycleJson(env, { block, heights: [h1, h2], sats, row, lead });
 }
 
-// Per IP and kind: cells [rate per second, burst]; a transaction lookup reaches mempool.space,
-// so tx and txid share the 2D explorer's smaller bucket.
+// Per IP and kind: cells [rate per second, burst]. A transaction lookup asks mempool.space once
+// (the spenders; the node answers the rest), so tx and txid share a smaller bucket, sized for
+// Follow a coin: 30 hops at once, then two a second.
 function tokenBucket(ip, kind = 'cell') {
   const now = Date.now();
-  const [rate, burst] = kind === 'cell' ? [8, 20] : [0.5, 4];
+  const [rate, burst] = kind === 'cell' ? [8, 20] : [2, 30];
   const key = kind + ':' + ip;
   const entry = tokenBucket.entries.get(key) || { tokens: burst, at: now };
   entry.tokens = Math.min(burst, entry.tokens + ((now - entry.at) / 1000) * rate);
@@ -211,7 +212,7 @@ function tokenBucket(ip, kind = 'cell') {
 }
 tokenBucket.entries = new Map();
 
-const rateLimited = () => respond(JSON.stringify({ error: 'rate limited' }), 429, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Retry-After': '2' });
+const rateLimited = () => respond(JSON.stringify({ error: 'rate limited' }), 429, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Retry-After': '1' });
 
 /**
  * A transaction lookup (ui/tx.js), cached for 30 days under the release, so a new tip refreshes

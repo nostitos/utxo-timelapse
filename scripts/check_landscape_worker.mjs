@@ -412,12 +412,11 @@ await check('transaction API: validation, this dataset\'s tip, cache and rate li
     const late = await req('/api/landscape/tx?txid=' + T('c'), ip);
     assert.equal(late.status, 404);
     assert.match((await late.json()).error, /after the latest block of this landscape/);
-    // A burst of 4: the two lookups above and two more, then limited.
-    assert.equal((await req('/api/landscape/tx?txid=' + T('c'), ip)).status, 404);
-    assert.equal((await req('/api/landscape/tx?txid=' + T('c'), ip)).status, 404);
+    // A burst of 30: the two lookups above and 28 more, then limited.
+    for (let i = 0; i < 28; i++) assert.equal((await req('/api/landscape/tx?txid=' + T('c'), ip)).status, 404, 'in the burst ' + i);
     const limited = await req('/api/landscape/tx?txid=' + T('c'), ip);
     assert.equal(limited.status, 429);
-    assert.equal(limited.headers.get('Retry-After'), '2');
+    assert.equal(limited.headers.get('Retry-After'), '1');
     const found = await req('/api/landscape/txid?height=' + tip + '&satoshi=5000', { headers: { 'CF-Connecting-IP': '203.0.113.21' } });
     assert.equal(found.status, 200);
     assert.deepEqual(await found.json(), { height: tip, satoshi: 5000, matches: [{ txid: T('d'), vout: 1 }], ambiguous: false },
