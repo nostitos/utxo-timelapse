@@ -192,6 +192,11 @@ function changeChunks(env) {
   return chunkList;
 }
 
+// The chunks read last, indexed: sha256 -> {bytes, offsets}. Follow a coin walks neighbouring
+// blocks, so the next lookup usually needs the same 4 MB chunk again.
+const chunkMemo = new Map();
+const CHUNK_MEMO = 2;
+
 // amount -> the creation block of each output of that amount spent in block 'height'.
 async function spendsIn(env, height) {
   if (height > LANDSCAPE.dataset.tip) return new Map();
@@ -207,11 +212,17 @@ async function spendsIn(env, height) {
   if (!chunk || chunk.firstBlock > height || chunk.lastBlock < height || !TXID.test(chunk.sha256)) {
     throw new Error("no change chunk for block " + height);
   }
-  const object = await env.VIDEO_BUCKET.get("landscape/blobs/" + chunk.sha256);
-  if (!object) throw new Error("change chunk unavailable");
-  const bytes = new Uint8Array(await object.arrayBuffer());
+  let read = chunkMemo.get(chunk.sha256);
+  if (!read) {
+    const object = await env.VIDEO_BUCKET.get("landscape/blobs/" + chunk.sha256);
+    if (!object) throw new Error("change chunk unavailable");
+    const bytes = new Uint8Array(await object.arrayBuffer());
+    read = { bytes, offsets: indexRecords(bytes, chunk.firstBlock).offsets };
+    chunkMemo.set(chunk.sha256, read);
+    if (chunkMemo.size > CHUNK_MEMO) chunkMemo.delete(chunkMemo.keys().next().value);
+  }
   const block = new DecodedBlock();
-  decodeBlock(bytes, indexRecords(bytes, chunk.firstBlock).offsets[height - chunk.firstBlock], block);
+  decodeBlock(read.bytes, read.offsets[height - chunk.firstBlock], block);
   const spends = new Map();
   for (let k = 0; k < block.count; k++) {
     const satoshi = -block.sats[k];
@@ -256,33 +267,44 @@ async function dateInputs(env, height, inputs, tip, publicOnly) {
 // publicOnly asks mempool.space alone (after a node's height failed its check).
 export async function txResponse(env, { txid }, { tip = CONFIG.numBlocks - 1, latest = "the film's latest block", publicOnly = false } = {}) {
   try {
-    const [tx, spends] = await Promise.all([
-      upstream(env, `/tx/${txid}`, "json", { publicOnly }),
-      upstream(env, `/tx/${txid}/outspends`, "json"),
-    ]);
+    // Everything that can run at once does: the spenders (mempool.space, the slowest answer) are
+    // asked first and awaited last, and the node's height check runs beside the dating of the inputs.
+    const started = Date.now();
+    const took = {};
+    const lap = (name, promise) => {
+      promise.then(() => { took[name] = Date.now() - started; }, () => {}); // a failure is thrown where it is awaited
+      return promise;
+    };
+    const spendsAsked = lap("spends", upstream(env, `/tx/${txid}/outspends`, "json"));
+    const tx = await lap("tx", upstream(env, `/tx/${txid}`, "json", { publicOnly }));
     const height = filmHeight(tx.status, tip);
     // A node's height must name the block its hash does; otherwise its tip lags and mempool.space answers.
-    if (env?.MEMPOOL_API && !publicOnly && tx.status?.confirmed &&
-        (await upstream(env, `/block-height/${tx.status.block_height}`, "text")) !== tx.status.block_hash) {
-      return txResponse(env, { txid }, { tip, latest, publicOnly: true });
-    }
+    const heightHolds = lap("check", env?.MEMPOOL_API && !publicOnly && tx.status?.confirmed
+      ? upstream(env, `/block-height/${tx.status.block_height}`, "text").then((hash) => hash === tx.status.block_hash)
+      : Promise.resolve(true));
+    const coinbase = tx.vin[0]?.is_coinbase === true;
+    const inputs = coinbase ? [] : tx.vin.map((vin) => ({ txid: vin.txid, vout: vin.vout, satoshi: vin.prevout?.value, height: null }));
+    const inputsOk = !inputs.some((input) => !Number.isSafeInteger(input.satoshi) || input.satoshi < 0 || !TXID.test(input.txid) || !Number.isInteger(input.vout));
+    const dated = lap("date", height !== null && !coinbase && inputsOk ? dateInputs(env, height, inputs, tip, publicOnly) : Promise.resolve());
+    if (!(await heightHolds)) return txResponse(env, { txid }, { tip, latest, publicOnly: true });
     if (height === null) {
       return json({ error: tx.status?.confirmed
         ? "This transaction is in block " + Number(tx.status.block_height).toLocaleString("en-US") + ", after " + latest
         : "This transaction is not in a block yet" }, 404);
     }
-    const coinbase = tx.vin[0]?.is_coinbase === true;
-    const inputs = coinbase ? [] : tx.vin.map((vin) => ({ txid: vin.txid, vout: vin.vout, satoshi: vin.prevout?.value, height: null }));
+    const spends = await spendsAsked;
     const outputs = tx.vout.map((out, vout) => {
       const spent = spends[vout]?.spent ? filmHeight(spends[vout].status, tip) : null;
       return { vout, satoshi: out.value, spent: spent === null ? null : { txid: spends[vout].txid, height: spent } };
     });
     if (
-      [...inputs, ...outputs].some((point) => !Number.isSafeInteger(point.satoshi) || point.satoshi < 0) ||
-      inputs.some((input) => !TXID.test(input.txid) || !Number.isInteger(input.vout)) ||
+      !inputsOk ||
+      outputs.some((point) => !Number.isSafeInteger(point.satoshi) || point.satoshi < 0) ||
       outputs.some((out) => out.spent && !TXID.test(out.spent.txid))
     ) throw new Error("bad upstream transaction");
-    if (!coinbase) await dateInputs(env, height, inputs, tip, publicOnly);
+    await dated;
+    // Where a slow lookup spent its time (ms from the start to each answer), for wrangler tail.
+    console.log("tx lookup " + txid.slice(0, 8) + " " + JSON.stringify(took));
     return json({ txid, height, coinbase, inputs, outputs });
   } catch (error) {
     if (error?.message === "upstream 404") return json({ error: "No such transaction" }, 404);
