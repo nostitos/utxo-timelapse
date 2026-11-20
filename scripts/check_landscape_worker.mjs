@@ -426,6 +426,13 @@ await check('transaction API: validation, this dataset\'s tip, cache and rate li
     assert.equal(found.status, 200);
     assert.deepEqual(await found.json(), { height: tip, satoshi: 5000, matches: [{ txid: T('d'), vout: 1 }], ambiguous: false },
       'an output created after the film\'s last block can be traced');
+    // A var sets a bucket: TX_RATE "1,2" lets two uncached lookups through, then limits.
+    env.TX_RATE = '1,2';
+    const slow = { headers: { 'CF-Connecting-IP': '203.0.113.22' } };
+    const got = [];
+    for (let i = 0; i < 3; i++) got.push((await req('/api/landscape/tx?txid=' + T('c'), slow)).status);
+    delete env.TX_RATE;
+    assert.deepEqual(got, [404, 404, 429], 'the var TX_RATE sets the lookup bucket');
   } finally {
     globalThis.fetch = realFetch;
   }

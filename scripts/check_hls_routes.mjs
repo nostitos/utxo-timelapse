@@ -165,6 +165,12 @@ console.log('PASS: API cache keys hold only the validated parameters');
   const grouped = sweep.inputs.filter(i => i.satoshi >= 500);
   assert(grouped.length === 6 && grouped.every(i => i.shared), 'amounts the sweep spent entirely get their blocks as a group, without lookups');
   for (const v of [500, 501, 502]) assert.deepEqual(grouped.filter(i => i.satoshi === v).map(i => i.height).sort(), [100, 200], v + ' sat: both blocks, once each');
+  // The var TX_LOOKUP_LIMIT raises that limit.
+  const M2 = id(0x66);
+  for (const tail of ['', '/outspends']) upstreamJson['/tx/' + M2 + tail] = upstreamJson['/tx/' + M + tail];
+  env.TX_LOOKUP_LIMIT = '40';
+  assert.equal((await tx('txid=' + M2 + '&block=3000')).body.inputs.filter(i => i.height === null).length, 0, 'with a higher limit every ambiguous input is looked up');
+  delete env.TX_LOOKUP_LIMIT;
 
   const mined = (await tx('txid=' + C + '&block=1500')).body;
   assert.deepEqual([mined.coinbase, mined.inputs], [true, []]);
@@ -183,9 +189,8 @@ console.log('PASS: API cache keys hold only the validated parameters');
   // A node's Mempool (env.MEMPOOL_API) answers first, through its VPC binding. It cannot name
   // spenders, so outspends come from mempool.space; a height that does not name the block its
   // hash does (the node's tip lags) sends the whole answer to mempool.space; the node dates few
-  // inputs itself when each status's height names the block its hash does, and otherwise the
-  // change log dates them, leaving undated a looked-up height it does not list; and a node that
-  // fails is skipped.
+  // inputs itself by their merkle proofs; a transaction with many inputs is mempool.space's; and
+  // a node that fails is skipped.
   {
     const NODE = 'https://node.test/api';
     const [R, W, D] = [0x51, 0x52, 0x53].map(id);
@@ -201,12 +206,11 @@ console.log('PASS: API cache keys hold only the validated parameters');
       ['/block-height/2000']: 'h2000',
       ['/block-height/1999']: 'h1999',
     };
-    // The inputs' statuses: P's height lags by one, its hash names the right block.
-    const blockHash = (h) => id(0xb10c0000 + h);
-    for (const [t, said, real] of [[A, 1000, 1000], [P, 1499, 1500], [Q, 1700, 1700]]) {
-      node['/tx/' + t + '/status'] = { confirmed: true, block_height: said, block_hash: blockHash(real) };
-      for (const h of [said, real]) node['/block-height/' + h] = blockHash(h);
-    }
+    // The raw transaction the node is asked for first: it names the transactions spent.
+    const rawHex = (ids) => '02000000' + ids.length.toString(16).padStart(2, '0') + ids.map((t) => t.match(/../g).reverse().join('') + '0000000000ffffffff').join('') + '0000000000';
+    node['/tx/' + R + '/hex'] = rawHex([A, P, Q]);
+    // The inputs' blocks, from the node's merkle proofs.
+    for (const [t, h] of [[A, 1000], [P, 1500], [Q, 1700]]) node['/tx/' + t + '/merkle-proof'] = { block_height: h, merkle: [], pos: 0 };
     const calls = [];
     globalThis.fetch = async (url) => {
       const u = String(url);
@@ -219,30 +223,36 @@ console.log('PASS: API cache keys hold only the validated parameters');
       const path = String(url).slice(NODE.length);
       calls.push('node ' + path);
       if (path.startsWith('/tx/' + D)) throw new TypeError('node unreachable');
+      if (path === '/tx/' + id(0x55)) await new Promise((ok) => setTimeout(ok, 1100));
       const a = node[path];
       return a === undefined ? new Response('not found', { status: 404 }) : typeof a === 'string' ? new Response(a + '\n') : Response.json(a);
     } };
     Object.assign(env, { MEMPOOL_API: NODE + '/', MEMPOOL_NODE: binding });
     const good = (await tx('txid=' + R)).body;
-    assert.deepEqual(calls.sort(), [...[1000, 1499, 1700, 2000].map((h) => 'node /block-height/' + h),
-      ...[A, P, P, Q].map((t) => 'node /tx/' + t + '/status'), 'node /tx/' + R, 'public /tx/' + R + '/outspends'].sort(),
+    assert.deepEqual(calls.sort(), ['node /block-height/2000', ...[A, P, Q].map((t) => 'node /tx/' + t + '/merkle-proof'),
+      'node /tx/' + R, 'node /tx/' + R + '/hex', 'public /tx/' + R + '/outspends'].sort(),
     'the node answers through its binding, except for outspends');
-    assert.deepEqual(good.inputs.map((i) => i.height), [1000, null, 1700], 'a lagging input height goes to the change log, which does not list it: undated');
-    // With every height holding, the node dates the inputs and the change log is not read.
-    const G = id(0x54);
-    upstreamJson['/tx/' + G] = node['/tx/' + G] = upstreamJson['/tx/' + R];
-    upstreamJson['/tx/' + G + '/outspends'] = upstreamJson['/tx/' + R + '/outspends'];
-    node['/tx/' + P + '/status'] = { confirmed: true, block_height: 1500, block_hash: blockHash(1500) };
-    calls.length = 0;
-    assert.deepEqual((await tx('txid=' + G)).body.inputs.map((i) => i.height), [1000, 1500, 1700], 'the node dates few inputs');
-    assert.equal(calls.filter((c) => c.endsWith('/status')).length, 3, 'one status per input transaction');
-    node['/tx/' + P + '/status'] = { confirmed: true, block_height: 1499, block_hash: blockHash(1500) };
+    assert.deepEqual(good.inputs.map((i) => i.height), [1000, 1500, 1700], 'the node dates few inputs by their merkle proofs, never by their status');
     assert.deepEqual(good.outputs[1].spent, { txid: T, height: 2100 }, 'spenders come from mempool.space');
     calls.length = 0;
     const lagging = (await tx('txid=' + W)).body;
     assert.equal(lagging.height, 2000, 'a lagging node height is not used');
     assert(calls.includes('public /tx/' + W) && calls.includes('public /tx/' + P + '/status'), 'mempool.space answers it all');
     assert.deepEqual(lagging.inputs.map((i) => i.height), [1000, 1500, 1700]);
+    // A transaction with many inputs is not asked of the node, whose Mempool would fetch every prevout.
+    const B = id(0x56);
+    for (const tail of ['', '/outspends']) upstreamJson['/tx/' + B + tail] = upstreamJson['/tx/' + R + tail];
+    node['/tx/' + B + '/hex'] = rawHex(Array.from({ length: 20 }, (_, i) => id(0x7000 + i)));
+    calls.length = 0;
+    assert.equal((await tx('txid=' + B)).status, 200);
+    assert(calls.includes('public /tx/' + B) && !calls.includes('node /tx/' + B) && calls.includes('node /block-height/2000'), 'mempool.space answers a large transaction; the node checks and dates it');
+    // A transaction the node is slow over is asked of mempool.space too after a moment.
+    const Z = id(0x55);
+    upstreamJson['/tx/' + Z] = node['/tx/' + Z] = upstreamJson['/tx/' + R];
+    upstreamJson['/tx/' + Z + '/outspends'] = upstreamJson['/tx/' + R + '/outspends'];
+    calls.length = 0;
+    assert.equal((await tx('txid=' + Z)).status, 200);
+    assert(calls.includes('node /tx/' + Z) && calls.includes('public /tx/' + Z) && calls.includes('node /block-height/2000'), 'both were asked, and the node still answers the rest');
     calls.length = 0;
     const down = await tx('txid=' + D);
     assert.equal(down.status, 200, 'a node that fails is skipped');
